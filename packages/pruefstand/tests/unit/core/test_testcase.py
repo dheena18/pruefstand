@@ -146,3 +146,14 @@ def test_pre_round_12_json_parses() -> None:
     case = TestCase.model_validate_json(line)
     assert (case.block, case.judged_subset) == (None, False)
     assert "Kündigungsfrist" in case.question
+
+
+@pytest.mark.parametrize("value", ["", "   "])
+def test_blank_cluster_id_is_rejected(value: str) -> None:
+    with pytest.raises(ValidationError, match="cluster_id"):
+        TestCase.model_validate(row(cluster_id=value))
+
+
+def test_block_rejects_bool() -> None:
+    with pytest.raises(ValidationError, match="block"):
+        TestCase.model_validate(row(split="full", block=True))

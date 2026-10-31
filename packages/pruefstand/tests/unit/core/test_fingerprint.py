@@ -173,3 +173,12 @@ def test_stratum_all_keeps_the_pre_stratum_hash() -> None:
         False,
     ]
     assert efp() == stable_hash(*legacy_parts)
+
+
+def test_unknown_stratum_is_an_error() -> None:
+    with pytest.raises(ValueError, match="stratum"):
+        efp(stratum="bogus")
+
+
+def test_duplicate_splits_do_not_change_the_fingerprint() -> None:
+    assert efp(splits=[Split.CORE, Split.CORE, Split.ROBUST_PR]) == efp()

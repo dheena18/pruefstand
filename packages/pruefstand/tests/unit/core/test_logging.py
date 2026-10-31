@@ -123,3 +123,50 @@ def test_get_logger_before_configure_still_redacts(
     get_logger("early").info("x", **{"password": "hunter2"})
     assert "hunter2" not in capsys.readouterr().err
     assert logging_module._state["configured"] is True
+
+
+@pytest.mark.parametrize(
+    "secret",
+    ["github_pat_11ABCDEFG0abcdefgh_ijklmnop", "Bearer abcdefgh12345", "bearer   tok_abcdefgh"],
+)
+def test_pat_and_bearer_in_free_text_are_redacted(
+    secret: str, capsys: pytest.CaptureFixture[str]
+) -> None:
+    configure_logging(json=True, level="INFO")
+    get_logger("t").error(f"request failed with {secret} again")
+    (out,) = lines(capsys)
+    assert secret.rsplit(maxsplit=1)[-1] not in out
+    assert "request failed with" in out
+    assert "again" in out
+
+
+def test_short_bearer_word_is_kept(capsys: pytest.CaptureFixture[str]) -> None:
+    configure_logging(json=True, level="INFO")
+    get_logger("t").info("the Bearer scheme is used")
+    assert "the Bearer scheme is used" in lines(capsys)[0]
+
+
+def test_lazy_configure_leaves_existing_root_handlers_alone() -> None:
+    root = logging.getLogger()
+    seen: list[logging.LogRecord] = []
+
+    class Collect(logging.Handler):
+        def emit(self, record: logging.LogRecord) -> None:
+            seen.append(record)
+
+    for h in [h for h in root.handlers if getattr(h, "_pruefstand_handler", False)]:
+        root.removeHandler(h)
+    collector = Collect()
+    root.addHandler(collector)
+    before = (list(root.handlers), root.level)
+    try:
+        logging_module._state["configured"] = False
+        get_logger("early").warning("x", password="hunter2", note="saw ghp_abcdefgh12")  # noqa: S106
+        assert (list(root.handlers), root.level) == before
+        assert len(seen) == 1
+        text = seen[0].getMessage()
+        assert "hunter2" not in text
+        assert "ghp_abcdefgh12" not in text
+        assert "x" in text
+    finally:
+        root.removeHandler(collector)

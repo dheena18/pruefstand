@@ -54,3 +54,18 @@ def test_details_keep_their_types() -> None:
 
 def test_kind_values() -> None:
     assert MetricKind("judged") is MetricKind.JUDGED
+
+
+def test_ok_requires_a_value() -> None:
+    with pytest.raises(ValidationError, match="value"):
+        make("context_recall", None)
+
+
+@pytest.mark.parametrize("value", [float("nan"), float("inf"), -1.0])
+def test_latency_must_be_finite_and_non_negative(value: float) -> None:
+    with pytest.raises(ValidationError, match="latency_ms"):
+        make("latency_ms", value)
+
+
+def test_latency_zero_is_ok() -> None:
+    assert make("latency_ms", 0.0).value == 0.0
