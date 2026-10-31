@@ -34,11 +34,11 @@ The owner never holds a copy of the cluster key. A third member of group `docker
 
 | File | Runs as | Purpose |
 | --- | --- | --- |
-| `setup-users.sh` | root (`sudo`) | user/group, owner membership, group `docker`, `/var/lib/pruefstand` (2770), `gpu.lock` (0660), installs `pruefstand-lock` |
+| `setup-users.sh` | root (`sudo`) | user/group, owner membership, group `docker`, `/var/lib/pruefstand` (2770), `gpu.lock` (0660), **`chmod 0700 /home/pruefstand`** (security.md C18; the setup-log `adduser` left it open), installs `pruefstand-lock` |
 | `pruefstand-lock` | owner / any | `flock -w ${GPU_LOCK_TIMEOUT_S:-7200} /var/lib/pruefstand/gpu.lock env PRUEFSTAND_LOCK_HELD=1 "$@"`; exit 75 `gpu.lock busy` |
 | `setup-data-root.sh` | root | `/mnt/pruefstand` + `data corpus datasets baselines backups cache logs` (2775, `pruefstand:pruefstand`) + sentinel `.pruefstand-data-root` |
 | `setup-ssh-key.sh` | `pruefstand` | verifies/creates the key and the `Host cairo-s101lp` block; BatchMode test |
-| `pruefstand-tunnel.service`, `install-tunnel.sh` | root | the system unit (forwards on `127.0.0.1` and `172.17.0.1`) and its installer |
+| `pruefstand-tunnel.service`, `install-tunnel.sh` | root | the system unit (forwards on `127.0.0.1` and `172.17.0.1`; starts after the firewall unit) and its installer, which refuses unless `pruefstand-firewall` is active, keeps `<unit>.bak` and rolls back if the new tunnel does not show both listeners within 20 s |
 | `setup-proxy-net.sh` | root | networks `proxy-egress` (10.231.0.0/24) and `demo-egress` (10.233.0.0/24), installs the firewall script and unit |
 | `pruefstand-firewall.sh`, `pruefstand-firewall.service` | root (via systemd) | rules in `DOCKER-USER` and the own chain `PRUEFSTAND-INPUT` |
 | `vm_check.sh` | owner | `CHECK <id> <PASS\|FAIL\|WARN> <detail>` lines for V1–V7 |
@@ -102,7 +102,7 @@ reaches Ollama at `172.17.0.1:11434`, the tunnel's second listener. `pruefstand-
 (container -> host traffic is delivered locally and passes `INPUT`, not `FORWARD`). The demo networks (R13 P2.2):
 `demo-net` 10.232.0.0/24 is `--internal`; `demo-egress` 10.233.0.0/24 (cloudflared's internet side) may not reach
 RFC 1918 addresses, and neither demo network may reach a VM address. The rules live in `pruefstand-firewall.service`
-(a oneshot with `PartOf=docker.service`, so they are re-applied whenever Docker restarts). The script touches only its
+(a oneshot with `PartOf=docker.service`, so they are re-applied whenever Docker restarts). `PRUEFSTAND-INPUT` is replaced in one `iptables-restore --noflush` transaction and the `DOCKER-USER` rules are inserted (drop first, accept above it), so the gateway drop is never absent while rules are re-applied. Replies to connections the VM itself opened to the demo networks pass first (`conntrack ESTABLISHED,RELATED -j RETURN`, before the demo drops). The script aborts if a non-Docker route overlaps 10.232.0.0/24 or 10.233.0.0/24. It touches only its
 own chain and rules; it never flushes the ruleset or enables the distro nftables unit (that would delete Docker's
 NAT and isolation rules).
 
@@ -119,10 +119,11 @@ this folder publishes a port; SSH is the only inbound port from the LAN.
 infra/vm/vm_check.sh                       # all checks, exit 1 on any FAIL
 infra/vm/vm_check.sh firewall tunnel       # selected ids
 infra/vm/vm_check.sh --confirm vscode      # record an owner-confirmed check (tunnel-reboot | host-reboot | vscode)
-infra/vm/vm_check.sh --restart-drill       # N4.2: restarts Docker ONCE; refuses (exit 75) while gpu.lock is held
+infra/vm/vm_check.sh --strict              # WARN counts as failure: use for the S7 evidence run
+infra/vm/vm_check.sh --restart-drill       # N4.2: restarts Docker ONCE; refuses (exit 75) while gpu.lock is held, (exit 2) with running containers unless --yes
 ```
 
-`vm_check.sh` never restarts Docker. The probe image is `curlimages/curl:8.11.1`; pin it by digest for the Done-when
+`vm_check.sh` never restarts Docker and refuses to run as root. The cluster SSH endpoint is a public address, so the demo probes cannot expect it to be blocked by the RFC 1918 rules: `firewall` reports WARN "cluster endpoint is public; not blockable by RFC1918 rules" (a deviation from the prompt's Done-when for `cairo-s101lp:22`; only a private endpoint is probed). A DNS failure or a probe that cannot run is a WARN, never a PASS; only a connect timeout proves a DROP. The probe image is `curlimages/curl:8.11.1`; pin it by digest for the Done-when
 run: `PROBE_IMAGE=curlimages/curl@sha256:<digest> infra/vm/vm_check.sh firewall`. The demo probes use `TRUENAS_HOST_IP`
 (the TrueNAS host's LAN address, never committed) when set.
 
@@ -140,6 +141,6 @@ run: `PROBE_IMAGE=curlimages/curl@sha256:<digest> infra/vm/vm_check.sh firewall`
 ## First-time install order (S2b–S7)
 
 The exact commands, user and machine for each step are in the T0.7 pull request and mirror the table above. Order:
-`setup-users.sh`, `setup-data-root.sh` (verifies the existing directory), `setup-ssh-key.sh` (verifies), `install-tunnel.sh`,
-`setup-proxy-net.sh`, `vm_check.sh`, reboot the VM, `vm_check.sh`, reboot the TrueNAS host, `vm_check.sh`, save the output as
+`setup-users.sh`, `setup-data-root.sh` (verifies the existing directory), `setup-ssh-key.sh` (verifies), **`setup-proxy-net.sh` before
+`install-tunnel.sh`** (the tunnel orders after the firewall unit and the installer refuses otherwise), `vm_check.sh`, reboot the VM, `vm_check.sh`, reboot the TrueNAS host, `vm_check.sh`, save the output as
 `infra/vm/vm-check-<date>.out` and fill rows V1–V7 of `docs/engineering/gpu-cluster.md` section 0.2.
