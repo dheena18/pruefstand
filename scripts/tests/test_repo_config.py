@@ -55,6 +55,14 @@ def test_codeql_skips_dependabot_and_fork_prs() -> None:
     assert "github.event.pull_request.user.login != 'dependabot[bot]'" in condition
     assert "github.actor" not in condition  # re-runs keep the PR author
     assert "head.repo.full_name == github.repository" in condition
+    assert "github.event.repository.private == false" in condition
+
+
+def test_dependency_review_needs_a_public_repo() -> None:
+    steps = _load("security.yml")["jobs"]["zizmor"]["steps"]
+    review = next(s for s in steps if "dependency-review-action" in str(s.get("uses")))
+    assert "github.event.repository.private == false" in review["if"]
+    assert "pull_request" in review["if"]
 
 
 def _scan_exit_code(needs: dict[str, str]) -> int:

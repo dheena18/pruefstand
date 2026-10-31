@@ -18,12 +18,14 @@ concurrency:
 jobs:
   codeql:
     name: codeql
+    # Needs GitHub Advanced Security on a private repo: runs only while the repo is public.
     # Dependabot and fork PRs get a read-only token that cannot upload SARIF: skip there (the
     # `scan` aggregate tolerates exactly this skip).
     if: >-
-      github.event_name != 'pull_request' ||
+      github.event.repository.private == false &&
+      (github.event_name != 'pull_request' ||
       (github.event.pull_request.user.login != 'dependabot[bot]' &&
-      github.event.pull_request.head.repo.full_name == github.repository)
+      github.event.pull_request.head.repo.full_name == github.repository))
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     permissions:
@@ -122,7 +124,7 @@ jobs:
       - name: actionlint
         run: ./actionlint -color
       - name: Dependency review
-        if: github.event_name == 'pull_request'
+        if: github.event_name == 'pull_request' && github.event.repository.private == false
         uses: actions/dependency-review-action@a1d282b36b6f3519aa1f3fc636f609c47dddb294 # v5.0.0
 
   scorecard:
