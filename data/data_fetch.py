@@ -26,7 +26,10 @@ VERSION = "0.1"
 REPO_URL = "https://github.com/dheena18/pruefstand"
 USER_AGENT = f"pruefstand-data/{VERSION} (+{REPO_URL})"
 GII_URL = "https://www.gesetze-im-internet.de/{slug}/xml.zip"
-EURLEX_URL = "https://eur-lex.europa.eu/legal-content/{lang}/TXT/HTML/?uri=CELEX:{celex}"
+# EUR-Lex itself sits behind a bot challenge; the Publications Office CELLAR serves the same act
+# (official XHTML rendition) by CELEX with content negotiation (owner decision, T2.1).
+CELLAR_URL = "https://publications.europa.eu/resource/celex/{celex}"
+CELLAR_LANGS = {"de": "deu", "en": "eng"}
 GITHUB_RAW = "https://raw.githubusercontent.com/{repo}/{commit}/{path}"
 ATTEMPTS = 4
 RETRY_STATUS = frozenset({429, 500, 502, 503, 504})
@@ -61,10 +64,14 @@ def detect_license(text: str) -> str:
     return "unknown"
 
 
-def _attempt(client: httpx.Client, url: str, part: Path) -> bool:
+def _attempt(
+    client: httpx.Client, url: str, part: Path, extra: dict[str, str] | None = None
+) -> bool:
     """Run one download attempt into ``part``; return False if it should be retried."""
     offset = part.stat().st_size if part.exists() else 0
-    headers = {"Range": f"bytes={offset}-"} if offset else {}
+    headers = dict(extra or {})
+    if offset:
+        headers["Range"] = f"bytes={offset}-"
     with client.stream("GET", url, headers=headers) as resp:
         if resp.status_code in RETRY_STATUS:
             return False
@@ -87,7 +94,14 @@ def _attempt(client: httpx.Client, url: str, part: Path) -> bool:
     return True
 
 
-def fetch_file(client: httpx.Client, url: str, dest: Path, *, sleep: Sleep = time.sleep) -> None:
+def fetch_file(
+    client: httpx.Client,
+    url: str,
+    dest: Path,
+    *,
+    sleep: Sleep = time.sleep,
+    headers: dict[str, str] | None = None,
+) -> None:
     """Download ``url`` to ``dest`` (resumable, retried with exponential backoff).
 
     Raises:
@@ -97,7 +111,7 @@ def fetch_file(client: httpx.Client, url: str, dest: Path, *, sleep: Sleep = tim
     part = dest.with_name(dest.name + ".part")
     for attempt in range(ATTEMPTS):
         try:
-            if _attempt(client, url, part):
+            if _attempt(client, url, part, headers):
                 part.replace(dest)
                 return
         except httpx.TransportError:
@@ -107,15 +121,20 @@ def fetch_file(client: httpx.Client, url: str, dest: Path, *, sleep: Sleep = tim
     raise FetchError(msg)
 
 
+def request_headers(src: Source, name: str) -> dict[str, str]:
+    """Content-negotiation headers: CELLAR picks the language from Accept-Language."""
+    if src.kind != "eurlex":
+        return {}
+    lang = CELLAR_LANGS[name.removesuffix(".html")]
+    return {"Accept": "text/html, application/xhtml+xml", "Accept-Language": lang}
+
+
 def http_urls(src: Source) -> dict[str, str]:
     """Return ``{file name: URL}`` for the HTTP-served kinds (gii, eurlex, github)."""
     if src.kind == "gii":
         return {name: GII_URL.format(slug=src.slug) for name in src.files}
     if src.kind == "eurlex":
-        return {
-            name: EURLEX_URL.format(lang=name.removesuffix(".html").upper(), celex=src.celex)
-            for name in src.files
-        }
+        return {name: CELLAR_URL.format(celex=src.celex) for name in src.files}
     return {
         name: GITHUB_RAW.format(repo=src.repo, commit=src.commit, path=name) for name in src.files
     }
@@ -137,7 +156,7 @@ def _sync_files(
         if pin_check and target.is_file() and pin and sha256_file(target) == pin:
             result.files[name] = pin
             continue
-        fetch_file(client, url, target, sleep=sleep)
+        fetch_file(client, url, target, sleep=sleep, headers=request_headers(src, name))
         result.downloads += 1
         actual = sha256_file(target)
         if pin and actual != pin:

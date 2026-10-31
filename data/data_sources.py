@@ -15,6 +15,7 @@ import yaml
 
 KINDS = ("gii", "hf", "eurlex", "github")
 HEX40 = re.compile(r"[0-9a-f]{40}\Z")
+SHARE_ALIKE = frozenset({"odbl", "cc-by-sa-4.0"})
 HEX64 = re.compile(r"[0-9a-f]{64}\Z")
 CHUNK = 1 << 20
 SOURCES_HEADER = (
@@ -96,6 +97,7 @@ class Source:
     config: str | None = None
     revision: str | None = None
     ref: str | None = None
+    card_license: str | None = None
     repo: str | None = None
     commit: str | None = None
     extra: dict[str, Any] = field(default_factory=dict)
@@ -184,7 +186,23 @@ def load_sources(path: Path) -> list[Source]:
     if len(ids) != len(set(ids)):
         msg = "duplicate source ids in sources.yaml"
         raise SourcesError(msg)
+    _check_config_homogeneity(sources)
     return sources
+
+
+def _check_config_homogeneity(sources: list[Source]) -> None:
+    """Fail when a dataset config mixes a share-alike licence with any other (ADR-0015).
+
+    ODbL, CC BY-SA and CC BY never share a config: a config holding a share-alike source holds
+    sources of that one licence only.
+    """
+    by_config: dict[str, set[str]] = {}
+    for src in sources:
+        by_config.setdefault(src.license_config, set()).add(src.license)
+    for config, licences in by_config.items():
+        if licences & SHARE_ALIKE and len(licences) > 1:
+            msg = f"config {config!r} mixes licences {sorted(licences)}; share-alike stays alone"
+            raise SourcesError(msg)
 
 
 def save_pins(path: Path, updates: dict[str, dict[str, Any]]) -> None:

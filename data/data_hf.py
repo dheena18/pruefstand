@@ -43,8 +43,11 @@ def check_hf_license(src: Source, info: object | None = None) -> None:
     """
     info = info or dataset_info(str(src.repo_id))
     actual = _card_license(info)
-    if actual != src.license.lower():
-        raise LicenseMismatch(src.id, src.license, actual)
+    # card_license documents one known deviation of the card from the real licence (see
+    # DATA_LICENSES.md section 7); the card must then say exactly that value.
+    expected = (src.card_license or src.license).lower()
+    if actual != expected:
+        raise LicenseMismatch(src.id, expected, actual)
 
 
 def check_hf_config(src: Source, info: object) -> None:

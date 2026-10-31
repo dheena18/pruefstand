@@ -231,147 +231,150 @@ sources:
   celex: 32016R0679
   pinned: '2026-10-31'
   files:
-    de.html: null
-    en.html: null
+    de.html: 219040a03cea829785c9f9752dcab9bfcee7b3c012092f5da8567640a816116d
+    en.html: 962539af03738bf552319ff4ce42d69e5f95a576307c4dfed7bf87e81b646b9d
 - id: eurlex:32024R1689
   kind: eurlex
   celex: 32024R1689
   pinned: '2026-10-31'
   files:
-    de.html: null
-    en.html: null
+    de.html: 126daa7d62d9b0e9f4700d9ba5504b4a59ca9205b8764a1a27e40817d3144b3b
+    en.html: 8f0b656302f9864cc87e040c371f209a9d65ae1a6cecc25ca5eb737e872d721a
 - id: eurlex:32022L2555
   kind: eurlex
   celex: 32022L2555
   pinned: '2026-10-31'
   files:
-    de.html: null
-    en.html: null
+    de.html: 48011abb43c5cc0b0aed6f7eea929a39e1f9c74134482072a5aacf28ff0ebd37
+    en.html: 6ee66d5c419d9a056fb98d94083cacf9b818803bd6b416435718e0d4919cb589
 - id: eurlex:32022R2065
   kind: eurlex
   celex: 32022R2065
   pinned: '2026-10-31'
   files:
-    de.html: null
-    en.html: null
+    de.html: 6df8ce92d6f6ce95ad7f8fa6705644d02c53336866dea61501369cb53f156bc4
+    en.html: 11b119a7d45f3a10cd41714061f9d907839ef5d1634e41774490f00b95856bbf
 - id: eurlex:32022R1925
   kind: eurlex
   celex: 32022R1925
   pinned: '2026-10-31'
   files:
-    de.html: null
-    en.html: null
+    de.html: 1abc8aebdf65f598acf294d4decdf83a241f3968b9a9920fe5d5cdf0098c732c
+    en.html: d6af21a4f11c2b001b0486391fbd0813deba32305fb0d3865fbceccd45b827eb
 - id: eurlex:32023R2854
   kind: eurlex
   celex: 32023R2854
   pinned: '2026-10-31'
   files:
-    de.html: null
-    en.html: null
+    de.html: 2997e96e3843b0ff1d4cbec6e33ad9d4a18ccbf54d803ca3d1a727ddb0f727d1
+    en.html: 1085b7fa3011970b65b1e4d56205202dceb37f72cd22336aa0c78af35ceaea66
 - id: eurlex:32022R0868
   kind: eurlex
   celex: 32022R0868
   pinned: '2026-10-31'
   files:
-    de.html: null
-    en.html: null
+    de.html: 4f711520f1edb619418b0c265081cefd994dec52112e4244b173c549bad04e7e
+    en.html: f67dabbce62b7f1b1dfbc03fb1ea29dad88e2370d47599a3b1802a3cd7f268d8
 - id: eurlex:32002L0058
   kind: eurlex
   celex: 32002L0058
   pinned: '2026-10-31'
   files:
-    de.html: null
-    en.html: null
+    de.html: 555fc31383dce649dc19124a7bafaa7dd53893f5588f91d5a790d38af7a6237f
+    en.html: 1b41bc43b88d8e8c2e9ea759e5ba0bad00cad268a5d6ffd1d4cee6fcc262cba8
 - id: eurlex:32024R2847
   kind: eurlex
   celex: 32024R2847
   pinned: '2026-10-31'
   files:
-    de.html: null
-    en.html: null
+    de.html: fc6657b1db56de3dd9c839686a4d3bf456836e996758f95cf3e9db36ec60566e
+    en.html: fe0cca4a0caec50e7cf5a91432b94a19b211f86be8584fdba56372bdcea571ed
 - id: eurlex:32022R2554
   kind: eurlex
   celex: 32022R2554
   pinned: '2026-10-31'
   files:
-    de.html: null
-    en.html: null
+    de.html: 1b935144ff7f773068daa470aeba4036873cf555c883ab389ab3cf45e1a93717
+    en.html: cf50d8f023d23b2a56f535aaee0760eba7f1925ef08a9858c5c31d43d414f46b
 - id: eurlex:32014R0910
   kind: eurlex
   celex: 32014R0910
   pinned: '2026-10-31'
   files:
-    de.html: null
-    en.html: null
+    de.html: 70da180d58cd95acf7ca34b12f4ad6b0da8c82a0efe12bc4148522c4e5a10999
+    en.html: b4fa35255bc0ad6b7a8275cfa329a1f17f91830299b8096e6d5e6a3169b27f33
 - id: eurlex:32019L0944
   kind: eurlex
   celex: 32019L0944
   pinned: '2026-10-31'
   files:
-    de.html: null
-    en.html: null
+    de.html: 4d59fb57766eec987ea4a9fe9a3c6983c926c3adca8ea739f67c8eeabe3b4c62
+    en.html: 68355ebfd4f4fe90c9e73bcdd1b44cc2b343d930d790e45f50d1118e54f254de
 - id: eurlex:32019R0943
   kind: eurlex
   celex: 32019R0943
   pinned: '2026-10-31'
   files:
-    de.html: null
-    en.html: null
+    de.html: af111cd8ef611622b79694e665515356ce1096f50d47624c02ece4c7a42dc38a
+    en.html: 8a22c5eb65231a40e1f8245fbc800badca86e1a16d63706187e3ebb01ce6b9af
 - id: eurlex:32023L1791
   kind: eurlex
   celex: 32023L1791
   pinned: '2026-10-31'
   files:
-    de.html: null
-    en.html: null
+    de.html: a6f939a4d146c2f0dac2e45800cde416b2c65838e6d55630c97d2a75510fb617
+    en.html: 548c95df9104ffb75a45cfb00630b83c5458918bdd25206ffdb450db95a724df
 - id: eurlex:32011R1227
   kind: eurlex
   celex: 32011R1227
   pinned: '2026-10-31'
   files:
-    de.html: null
-    en.html: null
+    de.html: c69858f4d427cc436b61c0ceb090c75dc82ac264ca3ba40c674d19be161c2dcf
+    en.html: 43c53b4f5fd13493f86426e2749fc989a39cdaa79f5653b5ffd2ba76cb97a1bb
 - id: eurlex:32019L1937
   kind: eurlex
   celex: 32019L1937
   pinned: '2026-10-31'
   files:
-    de.html: null
-    en.html: null
+    de.html: 15c8d3892628bf489cfacff305137d0e74b153327e6388e07ba24f3dfaaed15a
+    en.html: b20533b5d612f67bcadce9c9aa79769dbee0037e42f9adef4b07ebefd8dbf7e7
 - id: eurlex:32011L0083
   kind: eurlex
   celex: 32011L0083
   pinned: '2026-10-31'
   files:
-    de.html: null
-    en.html: null
+    de.html: 6538b6172dfecd38c0002c1e510036a1ac59759bc2bfaeb051d89aee3840ea48
+    en.html: 6e9c0ddd987ff051e2ca291bf04cc7891ec002e04e1e5ea4a00f3ba4845e1b3a
 - id: eurlex:32024L2853
   kind: eurlex
   celex: 32024L2853
   pinned: '2026-10-31'
   files:
-    de.html: null
-    en.html: null
+    de.html: 97711734dd242d2a36f8cd6f30c2bfefca92f742c367142456b6c3b5fdbd59cb
+    en.html: 5f20d9d33eb307683419f481f0e661e1be9d2daf186780a65c20d7690bf940b5
 - id: eurlex:32003L0088
   kind: eurlex
   celex: 32003L0088
   pinned: '2026-10-31'
   files:
-    de.html: null
-    en.html: null
+    de.html: fe927d5b5ec7ee08cc25202e691df73a4c38d7db3f6a39d5fb0e59e3e80c9ef5
+    en.html: 0d23ad4953be900de8a614fea4022aa46086e0bdc2fdfd6d0fde0cd84429e4b6
 - id: eurlex:32019L1152
   kind: eurlex
   celex: 32019L1152
   pinned: '2026-10-31'
   files:
-    de.html: null
-    en.html: null
+    de.html: fe84dfc5eedd3366cbe98abaaaa668ad975eda4b2d1954633a9d2e100331fe02
+    en.html: 0171763090878960e374c720487c9d38a7480cbc255eeddfdc9e7cf5bb4fb67c
 - id: oldp_decisions
   kind: hf
   repo_id: openlegaldata/court-decisions-germany
   config: dump-20260520-1k
   revision: 408eb916fab64080580e4d67bf4242fb10cdedf5
   license: odbl
+  card_license: none
+  license_note: ODbL for the collection, para 5 UrhG (official works) for the individual decisions;
+    the Hub card has no license field (documented override, DATA_LICENSES.md section 7).
   license_config: oldp_derived
   redistribute: true
   attribution: Contains information from Open Legal Data (openlegaldata.io), made available under the
@@ -432,10 +435,13 @@ sources:
   kind: hf
   repo_id: DiscoResearch/germanrag
   revision: dcaafc4bf5b44c96a1ced56c0a7d42da5a3a2c45
-  license: cc-by-4.0
-  license_config: germanquad_derived
+  license: cc-by-sa-4.0
+  card_license: cc-by-4.0
+  license_note: README says the derived work inherits CC BY-SA 4.0 from GermanDPR; the card metadata
+    says cc-by-4.0 (documented override, DATA_LICENSES.md section 7).
+  license_config: germanrag_derived
   redistribute: true
-  attribution: GermanRAG by DiscoResearch, based on GermanDPR, CC BY 4.0. Modified.
+  attribution: GermanRAG by DiscoResearch, based on GermanDPR, CC BY-SA 4.0 (inherited). Modified.
   files:
     germanrag.jsonl: b6703cd91cceaeda0babbc3ff56d3ec0d2f96e95cf929601989544803c865891
 - id: prompt_injections

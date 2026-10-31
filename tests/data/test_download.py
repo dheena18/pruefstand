@@ -22,6 +22,7 @@ ABC = b"abc"
 ABC_SHA = "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad"
 HEX64 = set("0123456789abcdef")
 GII_URL = "https://www.gesetze-im-internet.de/kschg/xml.zip"
+CELLAR_URL = "https://publications.europa.eu/resource/celex/32016R0679"
 
 CELEX = [
     "32016R0679", "32024R1689", "32022L2555", "32022R2065", "32022R1925", "32023R2854",
@@ -38,8 +39,8 @@ HF_IDS = {
     "oldp_decisions", "oldp_laws", "oldp_citation_graph", "germanquad", "germandpr",
     "germanrag", "prompt_injections",
 }  # fmt: skip
-# Pins that need a human or a token (EUR-Lex bot challenge, gated OLDP data): data/README.md.
-PENDING_PINS = {"oldp_decisions", "oldp_laws"} | {f"eurlex:{c}" for c in CELEX}
+# Gated on the Hub: pins need HF_TOKEN of an account that accepted the terms (data/README.md).
+PENDING_PINS = {"oldp_decisions", "oldp_laws"}
 
 
 def _kinds(kind: str) -> list[Any]:
@@ -83,9 +84,7 @@ def test_every_file_entry_has_64_hex_sha_outside_pending_pins() -> None:
             assert set(sha) <= HEX64, f"{s.id}/{name}"
 
 
-@pytest.mark.xfail(
-    strict=True, reason="EUR-Lex bot challenge and gated OLDP datasets: pins pending"
-)
+@pytest.mark.xfail(strict=True, reason="gated OLDP datasets: pins pending (HF_TOKEN)")
 def test_all_file_entries_are_pinned() -> None:
     for s in load_sources(SOURCES):
         for sha in s.files.values():
@@ -210,7 +209,7 @@ def test_waf_challenge_is_reported_not_bypassed(
         "redistribute": True, "attribution": "EU", "files": {"de.html": None},
     }  # fmt: skip
     src = _write_sources(tmp_path, [entry])
-    url = "https://eur-lex.europa.eu/legal-content/DE/TXT/HTML/?uri=CELEX:32016R0679"
+    url = CELLAR_URL
     with respx.mock:
         respx.get(url).respond(202, headers={"x-amzn-waf-action": "challenge"})
         assert main(_args(tmp_path, src)) == 1
@@ -379,3 +378,75 @@ def test_file_names_cannot_escape_the_source_dir(tmp_path: Path) -> None:
     entry["files"] = {"../evil.zip": ABC_SHA}
     with pytest.raises(SourcesError, match="relative"):
         load_sources(_write_sources(tmp_path, [entry]))
+
+
+def test_eurlex_uses_cellar_with_language_negotiation(tmp_path: Path) -> None:
+    entry = {
+        "id": "eurlex:32016R0679", "kind": "eurlex", "celex": "32016R0679",
+        "pinned": "2026-10-31", "license": "eurlex-legal-notice", "license_config": "laws_eurlex",
+        "redistribute": True, "attribution": "EU",
+        "files": {"de.html": ABC_SHA, "en.html": ABC_SHA},
+    }  # fmt: skip
+    src = _write_sources(tmp_path, [entry])
+    with respx.mock:
+        route = respx.get(CELLAR_URL).respond(content=ABC)
+        assert main(_args(tmp_path, src)) == 0
+    langs = sorted(c.request.headers["accept-language"] for c in route.calls)
+    assert langs == ["deu", "eng"]
+    assert (tmp_path / "raw/eurlex/32016R0679/de.html").read_bytes() == ABC
+
+
+def test_manifest_shape_of_committed_sources() -> None:
+    sources = load_sources(SOURCES)
+    assert len(sources) == 58
+
+
+def test_card_license_override_accepts_exactly_the_documented_value(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(data_hf, "dataset_info", lambda *_a, **_k: _info(None))
+    plain = load_sources(_write_sources(tmp_path, [_hf(license_="odbl")]))[0]
+    with pytest.raises(LicenseMismatch, match="none"):
+        data_hf.check_hf_license(plain)
+    entry = {**_hf(license_="odbl"), "card_license": "none"}
+    (tmp_path / "o").mkdir()
+    data_hf.check_hf_license(load_sources(_write_sources(tmp_path / "o", [entry]))[0])
+    monkeypatch.setattr(data_hf, "dataset_info", lambda *_a, **_k: _info("cc-by-4.0"))
+    with pytest.raises(LicenseMismatch, match="cc-by-4"):
+        data_hf.check_hf_license(load_sources(_write_sources(tmp_path / "o", [entry]))[0])
+
+
+def test_committed_overrides_are_exactly_two() -> None:
+    overridden = {s.id: s.card_license for s in load_sources(SOURCES) if s.card_license}
+    assert overridden == {"oldp_decisions": "none", "germanrag": "cc-by-4.0"}
+
+
+def _two(first: str, second: str, tmp_path: Path) -> Path:
+    a = {**_hf(license_=first), "id": "a"}
+    b = {**_hf(license_=second), "id": "b"}
+    return _write_sources(tmp_path, [a, b])
+
+
+@pytest.mark.parametrize(
+    ("first", "second"),
+    [("cc-by-4.0", "cc-by-sa-4.0"), ("odbl", "cc-by-4.0"), ("odbl", "cc-by-sa-4.0")],
+)
+def test_config_never_mixes_share_alike_with_other_licences(
+    tmp_path: Path, first: str, second: str
+) -> None:
+    with pytest.raises(SourcesError, match="germanquad_derived"):
+        load_sources(_two(first, second, tmp_path))
+
+
+def test_config_with_one_licence_is_fine(tmp_path: Path) -> None:
+    assert len(load_sources(_two("cc-by-sa-4.0", "cc-by-sa-4.0", tmp_path))) == 2
+
+
+def test_germanrag_is_share_alike_in_its_own_config() -> None:
+    by_id = {s.id: s for s in load_sources(SOURCES)}
+    rag = by_id["germanrag"]
+    assert rag.license == "cc-by-sa-4.0"
+    assert rag.license_config == "germanrag_derived"
+    others = [s for s in by_id.values() if s.license_config == "germanrag_derived"]
+    assert others == [rag]
+    assert by_id["germanquad"].license_config != rag.license_config
