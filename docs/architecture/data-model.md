@@ -34,6 +34,8 @@ erDiagram
         string config_hash
         json judge_models
         json judge_prompt_versions
+        json judge_serving "metric to engine, version, quantization, digest[:12] of its gated judge (R9 X3.3)"
+        int judge_epoch "calibration epoch, part of eval_fingerprint (R9 X3.3)"
         json metric_versions
         int seed
         json cost "CostSummary"
