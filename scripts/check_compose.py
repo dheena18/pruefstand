@@ -2,8 +2,8 @@
 
 A compose file fails when
 
- * a service with an ``image`` is not pinned by digest (``build:`` without ``image:`` is exempt;
-   its base images are pinned in the Dockerfile and checked by hadolint);
+ * a service with an ``image`` is not pinned by digest (``@sha256:<64 hex>`` at the end);
+   ``build:`` without ``image:`` is exempt, its base images are pinned in the Dockerfile (hadolint);
  * a published port does not bind ``127.0.0.1`` explicitly;
  * a published host port is a literal instead of ``${<NAME>_PORT:-<default>}``;
  * a service has no (enabled) ``healthcheck``;
@@ -23,6 +23,8 @@ import yaml
 REPO = Path(__file__).resolve().parents[1]
 LOOPBACK = "127.0.0.1"
 HOST_PORT_VAR = re.compile(r"^\$\{[A-Z][A-Z0-9_]*_PORT:-\d+\}$")
+DIGEST_PIN = re.compile(r"@sha256:[0-9a-f]{64}$")
+VAR_DEFAULT = re.compile(r"\$\{[^}:?-]*:?-([^}]+)\}")
 SECRET_NAME = re.compile(r"(?i)(key|token|secret|password)")
 VAR_REF = re.compile(r"\$\{[^}]*\}")
 SHORT_WITH_IP = 3
@@ -62,7 +64,11 @@ def _port_parts(entry: object) -> tuple[str | None, str | None]:
         ip = entry.get("host_ip")
         published = entry.get("published")
         return (None if ip is None else str(ip)), (None if published is None else str(published))
-    parts = _split_port(str(entry))
+    spec = str(entry)
+    if spec.startswith("["):  # bracketed IPv6 host: returned as is, rejected by _check_ports
+        end = spec.find("]")
+        return (spec, None) if end < 0 else (spec[: end + 1], _split_port(spec[end + 2 :])[0])
+    parts = _split_port(spec)
     if len(parts) >= SHORT_WITH_IP:
         return parts[0], parts[1]
     if len(parts) == SHORT_WITH_HOST:
@@ -77,20 +83,24 @@ def _check_ports(name: str, service: Mapping[str, object]) -> Iterator[str]:
     for entry in ports:
         ip, host_port = _port_parts(entry)
         if ip != LOOPBACK:
-            yield f"{name}: port {entry!r} binds all interfaces (use 127.0.0.1:...)"
+            ipv6 = ip is not None and (ip.startswith("[") or ":" in ip)
+            kind = "binds all interfaces or uses an IPv6 host" if ipv6 else "binds all interfaces"
+            yield f"{name}: port {entry!r} {kind} (use 127.0.0.1:...)"
         if host_port is not None and not HOST_PORT_VAR.match(host_port):
             yield f"{name}: literal host port in {entry!r} (use ${{<NAME>_PORT:-<default>}})"
 
 
 def _check_image(name: str, service: Mapping[str, object]) -> Iterator[str]:
     image = service.get("image")
-    if image is not None and "@sha256:" not in str(image):
+    if image is not None and not DIGEST_PIN.search(str(image)):
         yield f"{name}: image not pinned by digest"
 
 
 def _check_healthcheck(name: str, service: Mapping[str, object]) -> Iterator[str]:
     health = service.get("healthcheck")
-    if not isinstance(health, Mapping) or health.get("disable") is True:
+    test = health.get("test") if isinstance(health, Mapping) else None
+    none_test = test == "NONE" or (isinstance(test, Sequence) and list(test) == ["NONE"])
+    if not isinstance(health, Mapping) or health.get("disable") is True or none_test:
         yield f"{name}: no healthcheck"
 
 
@@ -106,8 +116,12 @@ def _env_pairs(environment: object) -> Iterator[tuple[str, str | None]]:
 
 def _check_secrets(name: str, service: Mapping[str, object]) -> Iterator[str]:
     for key, value in _env_pairs(service.get("environment")):
-        if SECRET_NAME.search(key) and value and "${" not in value:
+        if not SECRET_NAME.search(key) or not value:
+            continue
+        if "${" not in value:
             yield f"{name}: environment {key} looks like a secret with a literal value"
+        elif any(m.group(1).strip() for m in VAR_DEFAULT.finditer(value)):
+            yield f"{name}: environment {key} is a secret with a literal default in {value!r}"
 
 
 def check_compose(data: Mapping[str, object]) -> list[str]:

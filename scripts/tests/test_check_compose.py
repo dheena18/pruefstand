@@ -119,3 +119,35 @@ def test_main_reports_and_exits_nonzero(tmp_path: Path, capsys: pytest.CaptureFi
 
 def test_repo_compose_file_passes() -> None:
     assert check_compose.check_file(REPO / "docker-compose.yml") == []
+
+
+def test_digest_must_be_64_hex_at_the_end() -> None:
+    for bad in ("x@sha256:abc", f"x@{DIGEST}-extra", "x@sha256:" + "G" * 64, "x@sha256:"):
+        assert "qdrant: image not pinned by digest" in _problems(image=bad)
+    assert _problems(image=f"x:1@{DIGEST}") == []
+
+
+def test_none_healthcheck_counts_as_missing() -> None:
+    for test in (["NONE"], "NONE"):
+        assert "qdrant: no healthcheck" in _problems(healthcheck={"test": test})
+
+
+def test_secret_with_literal_default_fails() -> None:
+    for value in ("${HF_TOKEN:-abc}", "${HF_TOKEN-abc}"):
+        assert any("literal default" in p for p in _problems(environment={"HF_TOKEN": value}))
+    assert any("literal default" in p for p in _problems(environment=["API_KEY=${API_KEY:-x}"]))
+
+
+def test_secret_with_empty_default_or_required_marker_passes() -> None:
+    for value in ("${HF_TOKEN:-}", "${HF_TOKEN-}", "${HF_TOKEN:?set it}", "${HF_TOKEN}"):
+        assert _problems(environment={"HF_TOKEN": value}) == []
+
+
+def test_non_secret_default_may_be_literal() -> None:
+    assert _problems(environment={"LOG_LEVEL": "${LOG_LEVEL:-info}"}) == []
+
+
+def test_bracketed_ipv6_host_is_rejected_clearly() -> None:
+    for spec in ("[::1]:${QDRANT_HTTP_PORT:-6333}:6333", "[::]:${QDRANT_HTTP_PORT:-6333}:6333"):
+        problems = _problems(ports=[spec])
+        assert any("IPv6" in p and "binds all interfaces" in p for p in problems)

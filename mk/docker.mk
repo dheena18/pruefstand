@@ -2,12 +2,37 @@
 # Compose has no arithmetic, so every published host port is exported here as default + PORT_OFFSET
 # (D214, Y1.4): PORT_OFFSET unset or 0 = defaults (CI, laptops), 10000 = the owner's dev stack on the VM.
 # Prefer `make up` over a raw `docker compose`; a raw call needs `make ports-env` first (`make check-ports`).
-.PHONY: up down logs stack-run compose-lint image-smoke ports ports-env check-ports
+.PHONY: up down logs stack-run compose-lint image-smoke ports ports-env check-ports project
 
 ENV_FILE ?= .env
-PORT_OFFSET ?= $(or $(shell sed -n 's/^PORT_OFFSET=//p' $(ENV_FILE) 2>/dev/null | tail -n 1),0)
-ifeq ($(shell printf '%s' '$(PORT_OFFSET)' | grep -cE '^[0-9]+$$'),0)
-$(error PORT_OFFSET must be a non-negative integer, got '$(PORT_OFFSET)')
+# From the environment, else the PORT_OFFSET line of ENV_FILE, else 0. Validated before any shell use.
+PORT_OFFSET ?= $(shell sed -n 's/^PORT_OFFSET=//p' $(ENV_FILE) 2>/dev/null | tail -n 1)
+PORT_OFFSET := $(or $(strip $(PORT_OFFSET)),0)
+# The largest default port is 11500, so the offset must keep every port <= 65535.
+MAX_PORT_OFFSET := 54035
+digits_left = $(subst 0,,$(subst 1,,$(subst 2,,$(subst 3,,$(subst 4,,$(subst 5,,$(subst 6,,$(subst 7,,$(subst 8,,$(subst 9,,$(1)))))))))))
+ifneq ($(call digits_left,$(PORT_OFFSET)),)
+$(error PORT_OFFSET must be a non-negative integer without sign or spaces)
+endif
+ifneq ($(PORT_OFFSET),0)
+ifneq ($(filter 0%,$(PORT_OFFSET)),)
+$(error PORT_OFFSET must not have leading zeros)
+endif
+ifeq ($(shell test $(PORT_OFFSET) -le $(MAX_PORT_OFFSET) && echo ok),)
+$(error PORT_OFFSET must be at most $(MAX_PORT_OFFSET) so that every port stays <= 65535)
+endif
+endif
+
+# Shared dev project (PARALLEL-PLAN section 7): with an offset, every worktree uses `pruefstand-dev` unless the
+# environment or ENV_FILE names another project. Without an offset compose keeps its own default.
+COMPOSE_PROJECT_NAME ?= $(shell sed -n 's/^COMPOSE_PROJECT_NAME=//p' $(ENV_FILE) 2>/dev/null | tail -n 1)
+ifeq ($(strip $(COMPOSE_PROJECT_NAME)),)
+ifneq ($(PORT_OFFSET),0)
+COMPOSE_PROJECT_NAME := pruefstand-dev
+endif
+endif
+ifneq ($(strip $(COMPOSE_PROJECT_NAME)),)
+export COMPOSE_PROJECT_NAME
 endif
 
 # The one port table: <service>:<exported variable>:<default host port>. docker.md section 3 is the source.
@@ -23,8 +48,12 @@ PROFILES ?= core
 SERVICES ?=
 COMPOSE_FILES ?=
 WAIT ?=
+VOLUMES ?=
+SMOKE_TAG ?= pruefstand-smoke
 STACK_LOCK ?= $(HOME)/pruefstand/stack.lock
-DEV_PROJECT ?= pruefstand-dev
+# Seconds to wait for the stack lock (flock -w); empty = wait forever.
+STACK_LOCK_WAIT ?=
+EXECUTOR_PROJECT ?= pruefstand-exec
 DEFAULT_PORTS := 6333 6334 8000 8080 8090 8201 11500
 
 COMPOSE_BASE = docker compose -f docker-compose.yml $(addprefix -f ,$(COMPOSE_FILES))
@@ -33,26 +62,32 @@ COMPOSE = $(COMPOSE_BASE) $(addprefix --profile ,$(PROFILES))
 up:
 	$(COMPOSE) up -d $(if $(WAIT),--wait) $(SERVICES)
 
+# Named volumes (qdrant_data) survive `down`; `make down VOLUMES=1` removes them too.
 down:
-	$(COMPOSE_BASE) --profile '*' down --remove-orphans
+	$(COMPOSE_BASE) --profile '*' down --remove-orphans $(if $(VOLUMES),-v)
 
 logs:
 	$(COMPOSE_BASE) --profile '*' logs --tail=200 $(SERVICES)
 
+project:
+	@echo '$(COMPOSE_PROJECT_NAME)'
+
 # One stack session = one lock hold (A13-M8): another agent's `up` cannot replace these containers between
-# this `up` and the checks. CMD must not contain single quotes. Never call it from inside the lock.
+# this `up` and the checks. CMD runs in a subshell and the EXIT trap always tears the stack down, whatever CMD
+# does (exit N, set -e, a signal); the exit code of CMD (or of a failed `up`) is preserved.
+# CMD must not contain single quotes; never call it from inside the lock.
 stack-run:
 	@test -n '$(CMD)' || { echo 'usage: make stack-run CMD="..."' >&2; exit 2; }
 	$(if $(findstring ',$(CMD)),$(error CMD must not contain single quotes))
 	mkdir -p $(dir $(STACK_LOCK))
-	flock $(STACK_LOCK) sh -c '$(MAKE) up WAIT=1 && { $(CMD); rc=$$?; } || rc=$$?; $(MAKE) down; exit $$rc'
+	flock $(if $(STACK_LOCK_WAIT),-w $(STACK_LOCK_WAIT)) $(STACK_LOCK) sh -c 'trap "$(MAKE) --no-print-directory down" EXIT; trap "exit 130" INT; trap "exit 143" TERM; $(MAKE) --no-print-directory up WAIT=1 && ( $(CMD) )'
 
 compose-lint:
 	uv run python scripts/check_compose.py
 
 image-smoke:
 	docker build -f infra/docker/python-uv.Dockerfile --build-arg PKG=pruefstand \
-	    --build-arg GIT_SHA="$$(git rev-parse HEAD 2>/dev/null || echo unknown)" -t pruefstand-smoke .
+	    --build-arg GIT_SHA="$$(git rev-parse HEAD 2>/dev/null || echo unknown)" -t $(SMOKE_TAG) .
 
 ports:
 	@$(foreach e,$(PORT_TABLE),printf '%s %s\n' '$(call port_svc,$(e))' '$(call port_val,$(e))';)
@@ -69,16 +104,18 @@ ports-env:
 	  echo '# <<< ports'; } > $(ENV_FILE) && rm -f $$tmp
 	@echo "ports-env: wrote the port block (PORT_OFFSET=$(PORT_OFFSET)) to $(ENV_FILE)"
 
-# Warns when a container of the dev project publishes a default (executor) port; STRICT=1 makes it fail.
-# CHECK_PORTS_PS overrides the `docker ps` call (tests).
-CHECK_PORTS_PS ?= docker ps --filter label=com.docker.compose.project=$(DEV_PROJECT) --format '{{.Names}} {{.Ports}}'
+# Warns when a container of any compose project except the executor's publishes a default (executor) port and
+# names the project; STRICT=1 makes it fail. CHECK_PORTS_PS overrides the `docker ps` call (tests); its lines are
+# "<project> <container> <ports>".
+CHECK_PORTS_PS ?= docker ps --filter label=com.docker.compose.project --format '{{.Label "com.docker.compose.project"}} {{.Names}} {{.Ports}}'
 check-ports:
 	@bad=0; \
 	for line in $$($(CHECK_PORTS_PS) | tr ' ' '|'); do \
-	  name=$${line%%|*}; \
-	  for p in $$(printf '%s' "$$line" | grep -oE ':[0-9]+->' | tr -d ':>-'); do \
+	  proj=$${line%%|*}; rest=$${line#*|}; name=$${rest%%|*}; \
+	  [ "$$proj" = "$(EXECUTOR_PROJECT)" ] && continue; \
+	  for p in $$(printf '%s' "$$rest" | grep -oE ':[0-9]+->' | tr -d ':>-'); do \
 	    case " $(DEFAULT_PORTS) " in *" $$p "*) \
-	      echo "WARNING: $$name publishes default port $$p (executor port); run make ports-env or use make up" >&2; bad=1;; esac; \
+	      echo "WARNING: project $$proj, container $$name publishes default port $$p (executor port); run make ports-env or use make up" >&2; bad=1;; esac; \
 	  done; \
 	done; \
 	if [ $$bad -eq 1 ] && [ -n "$(STRICT)" ]; then exit 1; fi; exit 0
