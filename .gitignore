@@ -1,3 +1,33 @@
+# Secrets and local environment
 .env
 .env.*
 !.env.example
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.hypothesis/
+.coverage
+.coverage.*
+coverage.json
+htmlcov/
+build/
+dist/
+*.egg-info/
+
+# Node
+node_modules/
+.next/
+.pnpm-store/
+
+# Run artefacts, data and caches (never commit raw data)
+runs/
+data/raw/
+corpus/*
+.cache/
+datasets/private/
+site/

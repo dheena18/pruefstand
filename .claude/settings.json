@@ -1,0 +1,36 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(make:*)",
+      "Bash(uv run:*)",
+      "Bash(uv sync:*)",
+      "Bash(uv lock:*)",
+      "Bash(pnpm:*)",
+      "Bash(git status)",
+      "Bash(git diff:*)",
+      "Bash(git log:*)"
+    ],
+    "deny": [
+      "Read(./.env)",
+      "Read(./.env.*)",
+      "Bash(git push --force:*)",
+      "Read(/var/lib/pruefstand/**)",
+      "Edit(/var/lib/pruefstand/**)",
+      "Read(/home/pruefstand/**)",
+      "Edit(/home/pruefstand/**)"
+    ]
+  },
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "Edit|Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "uv run python scripts/hooks/format_edited.py"
+          }
+        ]
+      }
+    ]
+  }
+}

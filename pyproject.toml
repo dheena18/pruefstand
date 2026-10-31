@@ -1,0 +1,158 @@
+[project]
+name = "pruefstand-workspace"
+version = "0.0.1"
+description = "uv workspace root of Prüfstand (not published; holds tool config and the dev group)"
+requires-python = ">=3.12,<3.14"
+dependencies = []
+
+[dependency-groups]
+dev = [
+  "ruff",
+  "mypy",
+  "pytest",
+  "pytest-asyncio",
+  "pytest-cov",
+  "hypothesis",
+  "syrupy",
+  "import-linter",
+  "pre-commit",
+  "respx",
+  "pytest-recording",
+  "vcrpy",
+  "pytest-xdist",
+  "types-PyYAML",
+  "jsonschema",
+  "types-jsonschema",
+]
+
+[tool.uv.workspace]
+members = ["packages/pruefstand", "apps/rag-demo"]
+
+# --- T0.1: tool configuration, copied from docs/engineering/coding-standards.md §1.1 (D127) ---
+
+[tool.ruff]
+target-version = "py312"
+line-length = 100
+src = ["packages/pruefstand/src", "apps/rag-demo/src"]
+extend-exclude = ["*.md"]      # ruff >= 0.17 formats/lints Python blocks in Markdown; docs hold pseudo-code (T0.1)
+
+[tool.ruff.lint]
+preview = true                  # needed for PLR0917 (max-positional-args)
+explicit-preview-rules = true   # no other preview rule is switched on implicitly
+select = [
+  "E", "W", "F",      # pycodestyle, pyflakes
+  "I",                # isort
+  "N",                # pep8-naming
+  "UP",               # pyupgrade
+  "B",                # bugbear
+  "A",                # builtins shadowing
+  "C4",               # comprehensions
+  "C90",              # mccabe complexity
+  "SIM",              # simplify
+  "RET",              # return hygiene
+  "ARG",              # unused arguments
+  "PTH",              # pathlib over os.path
+  "ERA",              # commented-out code
+  "PL",               # pylint subset (PLR0913 too-many-args etc.)
+  "TRY",              # exception hygiene
+  "EM",               # exception messages not inline f-strings
+  "S",                # bandit security
+  "T20",              # no print
+  "DTZ",              # timezone-aware datetimes
+  "RUF",              # ruff-specific (incl. ambiguous unicode, see per-file ignores)
+  "ASYNC",            # async pitfalls
+  "PT",               # pytest style
+  "D",                # pydocstyle
+  "ANN",              # annotations
+  "FBT",              # boolean positional args
+  "TID",              # banned imports (see below)
+  "PLR0917",          # too many positional args (preview rule, D127)
+]
+ignore = ["D105", "D107", "TRY003", "PLR2004"]   # TRY003: ConfigError("…") messages are prescribed by the prompts
+allowed-confusables = ["–", "−", "„", "“", "‚", "‘", "’"]   # German quotes, en dash, minus sign in src strings/docstrings
+
+[tool.ruff.lint.mccabe]
+max-complexity = 10
+
+[tool.ruff.lint.pylint]
+max-args = 8                    # longer interface signatures: inline noqa + "Allowed long signatures" (R9 X4.1)
+max-positional-args = 5         # PLR0917: long signatures stay keyword-only
+max-statements = 40
+
+[tool.ruff.lint.pydocstyle]
+convention = "google"
+
+[tool.ruff.lint.flake8-tidy-imports.banned-api]
+"litellm".msg = "Use pruefstand.llm.LLMClient (ADR-0009)"
+"openai".msg = "Use pruefstand.llm.LLMClient (ADR-0009)"
+"anthropic".msg = "Use pruefstand.llm.LLMClient (ADR-0009)"
+"yaml.load".msg = "Use yaml.safe_load"
+"random".msg = "Pass a numpy.random.Generator"
+"numpy.random.seed".msg = "Pass a numpy.random.Generator"
+"numpy.random.rand".msg = "Pass a numpy.random.Generator"
+
+[tool.ruff.lint.per-file-ignores]
+"**/tests/**" = ["S101", "D", "ANN", "PLR2004", "ARG", "RUF001", "RUF002", "RUF003"]   # German test strings (D127)
+"**/llm/backends/litellm.py" = ["TID251"]
+"scripts/**" = ["T201"]            # CLI scripts may print
+"tools/**" = ["T201"]
+"experiments/**" = ["T201"]
+"benchmarks/**" = ["T201"]
+"data/**" = ["T201"]
+
+[tool.pytest.ini_options]
+addopts = "--import-mode=importlib --strict-markers"
+# ONE root list (R9 X4.2, D177): identical in pythonpath and [tool.mypy] mypy_path, order as CLAUDE.md §3
+# (check_test_locations.py fails when they differ). R11 Y6.4 / D232: the last roots hold the helpers of
+# T0.6, T0.7, T3.1a and T6.2a.
+pythonpath = [
+  "packages/pruefstand/src", "apps/rag-demo/src", "packages/pruefstand/tests", "apps/rag-demo/tests",
+  "scripts", "data", "experiments", "tools", "action", "infra/gpu", "benchmarks",
+  "infra/vm", "infra/cluster", "infra/gate-executor/orchestrator", "infra/gate-executor/llm-proxy",
+]
+# Explicit, append-only (globs are expanded by pytest >= 8). Tests of an import root stay in <root>/tests/.
+testpaths = [
+  "packages/*/tests", "apps/rag-demo/tests", "tools/*/tests", "infra/gpu/tests", "infra/vm/tests",
+  "infra/cluster/tests", "infra/gate-executor/*/tests", "scripts/tests", "scripts/*/tests", "tests",
+  "benchmarks/tests", "experiments",
+]
+asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "function"
+markers = [
+  "integration: needs Docker",
+  "e2e: full pipeline on the real live stack",
+  "live: real model calls",
+  "gpu: A40 Ollama via the VM tunnels",
+  "slow: takes more than 10 s",
+  "network: needs the internet",
+  "quarantine: flaky test with a linked issue, @pytest.mark.quarantine(issue=N)",
+]
+
+[tool.mypy]
+python_version = "3.12"
+strict = true
+explicit_package_bases = true
+files = [
+  "packages", "scripts", "tools", "experiments", "benchmarks", "data", "action",
+  "infra/gpu", "infra/vm", "infra/cluster", "infra/gate-executor",
+]
+mypy_path = [
+  "packages/pruefstand/src", "apps/rag-demo/src", "packages/pruefstand/tests", "apps/rag-demo/tests",
+  "scripts", "data", "experiments", "tools", "action", "infra/gpu", "benchmarks",
+  "infra/vm", "infra/cluster", "infra/gate-executor/orchestrator", "infra/gate-executor/llm-proxy",
+]
+warn_unreachable = true
+enable_error_code = ["ignore-without-code", "redundant-expr", "truthy-bool", "possibly-undefined"]
+plugins = ["pydantic.mypy"]
+
+[tool.pydantic-mypy]
+init_forbid_extra = true
+init_typed = true
+warn_required_dynamic_aliases = true
+
+[tool.coverage.run]
+source = ["packages/pruefstand/src/pruefstand", "apps/rag-demo/src/rag_demo"]
+branch = true
+
+[tool.coverage.report]
+exclude_also = ["if TYPE_CHECKING:", "raise NotImplementedError"]

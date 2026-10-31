@@ -1,0 +1,103 @@
+# The seven contracts of ADR-0016 (names are fixed; CI and the docs refer to them).
+# `include_external_packages` is a global import-linter option: it lets `gate-pure` and
+# `llm-gateway` see litellm/openai/anthropic/httpx imports.
+[importlinter]
+root_packages =
+    pruefstand
+    rag_demo
+include_external_packages = True
+
+[importlinter:contract:layers]
+name = layers
+type = layers
+layers =
+    pruefstand.cli
+    pruefstand.pipeline
+    pruefstand.report | pruefstand.gate | pruefstand.runner | pruefstand.dataset
+    pruefstand.metrics
+    pruefstand.judges | pruefstand.adapters | pruefstand.store | pruefstand.ingest | pruefstand.perturb | pruefstand.attacks
+    pruefstand.llm
+    pruefstand.core
+
+[importlinter:contract:gate-pure]
+name = gate-pure
+type = forbidden
+source_modules =
+    pruefstand.gate
+forbidden_modules =
+    pruefstand.llm
+    pruefstand.adapters
+    pruefstand.store
+    pruefstand.runner
+    pruefstand.judges
+    pruefstand.metrics
+    httpx
+    litellm
+
+[importlinter:contract:llm-gateway]
+name = llm-gateway
+type = forbidden
+source_modules =
+    pruefstand
+forbidden_modules =
+    litellm
+    openai
+    anthropic
+allow_indirect_imports = True
+# The one allowed edge. The module arrives with T1.4, so an unmatched ignore must not alert yet.
+unmatched_ignore_imports_alerting = none
+ignore_imports =
+    pruefstand.llm.backends.litellm -> litellm
+    pruefstand.llm.backends.litellm -> openai
+    pruefstand.llm.backends.litellm -> anthropic
+
+[importlinter:contract:deterministic-no-llm]
+name = deterministic-no-llm
+type = forbidden
+source_modules =
+    pruefstand.metrics.deterministic
+forbidden_modules =
+    pruefstand.llm
+    pruefstand.judges
+
+[importlinter:contract:sut-independent]
+name = sut-independent
+type = forbidden
+source_modules =
+    rag_demo
+forbidden_modules =
+    pruefstand
+
+[importlinter:contract:core-leaf]
+name = core-leaf
+type = forbidden
+source_modules =
+    pruefstand.core
+forbidden_modules =
+    pruefstand.cli
+    pruefstand.pipeline
+    pruefstand.report
+    pruefstand.gate
+    pruefstand.runner
+    pruefstand.dataset
+    pruefstand.metrics
+    pruefstand.judges
+    pruefstand.adapters
+    pruefstand.store
+    pruefstand.ingest
+    pruefstand.perturb
+    pruefstand.attacks
+    pruefstand.llm
+
+# Same-row modules never import each other. `layers` already treats `|` rows as independent;
+# this contract states it explicitly for the widest row and names it as ADR-0016 requires.
+[importlinter:contract:siblings-independent]
+name = siblings-independent
+type = independence
+modules =
+    pruefstand.judges
+    pruefstand.adapters
+    pruefstand.store
+    pruefstand.ingest
+    pruefstand.perturb
+    pruefstand.attacks
