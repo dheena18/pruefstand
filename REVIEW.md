@@ -316,7 +316,7 @@ No reviewer round: the owner supplied the real facts of the A40 cluster (`ollama
 decisions accepted with it). The main changes:
 
 1. **Topology.** The cluster `cairo-s101lp` has a full local disk, no confirmed Docker and `Linger=no`, so it runs
-   **only two Ollama servers** (GPU0 generator + `bge-m3`, GPU1 judges; started with `setsid nohup` since round 11)
+   **only one Ollama server** for both GPUs (generator + `bge-m3` and the judges, placed by Ollama; ADR-0018 replaced the earlier two-server plan; started with `setsid nohup` only if none runs)
    with models on the NAS. Runner,
    orchestrator, Docker, Qdrant, candidates, the CPU reranker, locks and state move to the TrueNAS VM
    `pruefstand-exec` (64 GB RAM), which reaches Ollama through `autossh` tunnels and logs in with an SSH key only.

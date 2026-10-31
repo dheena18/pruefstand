@@ -448,7 +448,7 @@ Layering (enforced by import-linter, ADR-0016) is defined in `CLAUDE.md` §4. `g
    the `pruefstand-bot` App key in environment `gate-router` (step 9). The candidate
    image is pulled by digest and its signature verified (origin only); the candidate container gets
    **no GPU and no internet egress** and reaches only the executor's Qdrant, `rerank-cpu` and the
-   trusted `llm-proxy` (generator + embeddings on `ollama-gpu0` only) on an internal network on the VM. Gate config, dataset, judge config and the `pruefstand` package come from public `main` or
+   trusted `llm-proxy` (generator + embedding models only; judges blocked by its allow-list, ADR-0018) on an internal network on the VM. Gate config, dataset, judge config and the `pruefstand` package come from public `main` or
    the private repo, never from the PR; from the PR only `apps/rag-demo/configs/rag.gpu.yaml` (the
    tier-2 profile) and the image are used.
 4. The executor queries the candidate with `smoke` + `core` (`/v1/query`) + `robust_pr`
@@ -714,7 +714,7 @@ Profiles: `apps/rag-demo/configs/rag.yaml` (tier 1, CPU) and `apps/rag-demo/conf
 | --- | --- | --- | --- | --- |
 | 0 Code | public repo, GitHub-hosted | every push / PR (incl. forks) | lint, types, arch, unit on real inputs, property, statistical validation, cassette replay, contract, integration (real Qdrant/rag-demo/llama.cpp), UI, docs, security scans, Docker build + Trivy, image build + signing | none (OIDC for signing only) |
 | 1 Live | public repo, GitHub-hosted CPU (`live-e2e.yml`) | every same-repo PR, push to `main`, nightly; scenario matrix nightly + PRs touching `apps/rag-demo/**` | real stack on the 5-law slice: `smoke_live` (20), gate on hard fails + `error_rate` vs `live-baseline` (latest push-to-`main` run; injection/language/citation/refusal reported), ≤ 10 informational judge calls via GitHub Models (else `judge_mode=skipped`), bug-switch scenario matrix (deterministic outcomes), real PR comment | `GITHUB_TOKEN` only (`models: read`) |
-| PR gate | private executor repo `pruefstand-gate`, persistent runner on the VM `pruefstand-exec` (GPU via tunnels to Ollama on the A40s) | **only** a `workflow_dispatch` of `gate-executor.yml` (input `pr`) by the owner from the browser or the GitHub mobile app (round 13 P1.2; no label, no PR poll; the VM token cannot reach the private repo). Fork PRs: the owner pushes the reviewed head to branch `gate/pr-N` (no mirror PR), then dispatches `pr=N` | `smoke` + `core` + `robust_pr` (≤ 90 min), PR judge, redacted PR comment + commit status `pruefstand/gate` | private repo only |
+| PR gate | private executor repo `pruefstand-gate`, persistent runner on the VM `pruefstand-exec` (GPU via the tunnel to the one Ollama server on the A40s, ADR-0018) | **only** a `workflow_dispatch` of `gate-executor.yml` (input `pr`) by the owner from the browser or the GitHub mobile app (round 13 P1.2; no label, no PR poll; the VM token cannot reach the private repo). Fork PRs: the owner pushes the reviewed head to branch `gate/pr-N` (no mirror PR), then dispatches `pr=N` | `smoke` + `core` + `robust_pr` (≤ 90 min), PR judge, redacted PR comment + commit status `pruefstand/gate` | private repo only |
 | Baseline | private executor | polls public `main` every 15 min | run main's image, promote baseline (plain files) | private repo |
 | Nightly | private executor | window **22:00–06:00 Europe/Berlin** (two UTC cron entries for CET/CEST; a hosted guard accepts the one that matches the current Berlin offset, by `github.event.schedule`, not by start hour; one orchestrator job with a hard 06:00 deadline checked before each phase; round 11 Y4.3, round 12 N4.3) | night-judge anchor check first, then refusal stratum + block *k* of `full` (`--stratum all --block auto`, *k* = `state/nightly_counter` mod 3, ≤ 600 cases, ≤ 8 h; generation on GPU0 overlapped with judging on GPU1) vs ref `nightly-b<k>`, drift vs `release-b<k>`; a hosted guard job sets `run=true\|false` and the nightly job runs only `if: needs.guard.outputs.run == 'true'` (round 13 P2.1); skipped nights reported; `cause-switches` weekly (Sunday); mutmut runs in public `ci.yml` | private repo |
 | Release | public repo, GitHub-hosted | release-please (token of GitHub App `pruefstand-release`: contents + pull_requests write, used only by `release-please.yml`) | PyPI (Trusted Publishing), GHCR images built on the tag (cosign + SBOM); optional sync to `pruefstand-action` | OIDC |
@@ -733,21 +733,25 @@ files or gate config from the PR. Required checks include `live-e2e / gate` (tie
 ### 6.1 Hardware and topology (round 10; single source `docs/engineering/gpu-cluster.md`)
 
 - **GPU cluster `cairo-s101lp`: 2 × NVIDIA A40**, 46 068 MiB each (≈ 45 GiB usable), Ampere (sm_86),
-  **no FP8 compute**. Reached by **plain SSH** (no Slurm). It runs **only two Ollama servers**,
-  started detached with `setsid nohup` (no `tmux`, no Docker, no systemd linger; round 11 D228); they
-  survive logout unless logind kills the session scope (`KillUserProcesses=yes`; `setsid` does not leave
-  the cgroup), T0.6 C4 decides go/no-go, the fallback is linger or an admin exception (A12-M10): `ollama-gpu0` on `127.0.0.1:11434` (GPU0: generator +
-  `bge-m3`) and `ollama-gpu1` on `127.0.0.1:11435` (GPU1: PR judge by day, nightly judge by night).
-  `start-ollama.sh` exports `OLLAMA_MODELS=/data/dheena/truenas-ollama/ollama-models` (NAS) for both;
+  **no FP8 compute**. Reached by **plain SSH** (no Slurm). It runs **only one Ollama server** for both GPUs
+  on `127.0.0.1:11434` (ADR-0018, 2026-10-31: `CUDA_VISIBLE_DEVICES=0,1`, `OLLAMA_MAX_LOADED_MODELS=3`,
+  `OLLAMA_NUM_PARALLEL=4`, `OLLAMA_KEEP_ALIVE=24h`). The server already running on the cluster is reused;
+  only if none runs is one started detached with `setsid nohup` (no `tmux`, no Docker, no systemd linger;
+  round 11 D228; it survives logout unless logind kills the session scope (`KillUserProcesses=yes`; `setsid`
+  does not leave the cgroup), T0.6 C4 decides go/no-go, the fallback is linger or an admin exception,
+  A12-M10). Ollama places the generator + `bge-m3` and the judge (PR judge by day, nightly judge by night) on
+  the two cards; `health.sh` checks via `/api/ps` that each model is fully in VRAM. Generator and judge are
+  separated by model (the `llm-proxy` allow-list), not by port. The server uses
+  `OLLAMA_MODELS=/data/dheena/truenas-ollama/ollama-models` (NAS; T0.6 C4 verifies the existing server's dir);
   nothing is stored on the cluster's nearly full local disk. Models are quantised GGUF (generator
   `Q8_0`, judges and datagen `Q4_K_M`). Only the native Ollama API is used (D219).
 - **Executor and development VM `pruefstand-exec`** on TrueNAS (Ubuntu 24.04, ≥ 8 vCPU, 64 GB RAM,
   rootful Docker): persistent runner, orchestrator, cluster SSH key and state owned by the system user
   `pruefstand`, lock `/var/lib/pruefstand/gpu.lock` on the local VM disk (round 11 D211–D213), Qdrant,
   candidate containers, `rerank-cpu` (CPU reranker), `llm-proxy`, CPU models ≤ 24 GB in total. It
-  reaches Ollama only through `autossh` tunnels (`OLLAMA_GPU0_URL=http://localhost:11434`,
-  `OLLAMA_GPU1_URL=http://localhost:11435`; system unit `pruefstand-tunnel.service`), logging in with
-  an SSH key that exists only on the VM. Candidates reach GPU0 only through `llm-proxy` on
+  reaches Ollama only through the `autossh` tunnel (`OLLAMA_GPU0_URL` and `OLLAMA_GPU1_URL` both
+  `http://127.0.0.1:11434`, ADR-0018; system unit `pruefstand-tunnel.service`), logging in with
+  an SSH key that exists only on the VM. Candidates reach the generator and embeddings only through `llm-proxy` on
   `http://llm-proxy:11500` on `gate-net`; the proxy reaches the tunnel at `172.17.0.1:11434` over `proxy-egress` (D242).
 - **NAS** (TrueNAS dataset; VM `/mnt/pruefstand` = `PRUEFSTAND_DATA_ROOT`, cluster
   `/data/dheena/truenas-ollama` = `CLUSTER_NAS_ROOT`): models, cluster scripts (`bin/`), data, corpus,
@@ -756,22 +760,22 @@ files or gate config from the PR. Required checks include `live-e2e / gate` (tie
   (D227).
 - vLLM and TEI are **not** used in tier 2 (not available on the cluster; rejected in ADR-0009).
 - Development happens on the VM through VS Code Remote-SSH (WSL2 optional), with the same `live`
-  compose profile as tier 1 (llama.cpp on CPU) or the tunnels to the Ollama servers.
+  compose profile as tier 1 (llama.cpp on CPU) or the tunnel to the Ollama server.
 
 ### 6.2 GPU allocation plan
 
 The single source of truth is `docs/engineering/gpu-cluster.md` (VRAM table, Ollama settings, mode
 switching). Summary (planning numbers, measured in T3.1b):
 
-| Mode | GPU 0 (`ollama-gpu0`, `:11434`) | GPU 1 (`ollama-gpu1`, `:11435`) | VM CPU |
+| Mode | Generator card (one server `:11434`, placed by Ollama) | Judge card (same server) | VM CPU |
 | --- | --- | --- | --- |
 | Day (PR gate, default) | generator `qwen3.8:27b-q8_0` (thinking off, `num_ctx` 8192 × 4 slots) + `bge-m3` embeddings, ≈ 40 of 45 GB | PR judge (family `mistral`, 24B-class `Q4_K_M`; `gemma` if mistral fails calibration), ≈ 26 GB | `rerank-cpu` (`bge-reranker-v2-m3`) |
 | Night 22:00–06:00 Europe/Berlin (round 11 Y4.3) | generator + `bge-m3` (unchanged) | PR judge unloaded, nightly judge (family `gemma`, 27B-class `Q4_K_M`) loaded | same |
-| Datagen (manual weekend jobs, outside the nightly window, `MAINTENANCE` set) | both day servers stopped; `ollama-all` serves `llama` 70B-class `Q4_K_M` split over GPU0 + GPU1 (T4.2, T4.5, T2.6, RQ2 large arm) | ← same | – |
+| Datagen (manual weekend jobs, outside the nightly window, `MAINTENANCE` set) | all day models unloaded; the same server loads `llama` 70B-class `Q4_K_M`, split over both cards by Ollama (T4.2, T4.5, T2.6, RQ2 large arm) | ← same | – |
 
-Mode switches load and unload models through the Ollama API (`keep_alive`), under the VM lock. Because
-the nightly judge runs on GPU1 while the generator stays on GPU0, nightly generation and judging
-**overlap**.
+Mode switches only load and unload models through the Ollama API (`keep_alive`), under the VM lock; the
+server is never restarted for a mode. Because the nightly judge sits on the other card than the generator
+(they do not fit one card together), nightly generation and judging **overlap**.
 
 Models selectable by a PR are listed in `infra/gpu/models.yaml`; endpoints in
 `infra/gpu/endpoints.yaml` (both created in T3.1a). The nightly judge fits one card and is part of the
@@ -780,7 +784,7 @@ metrics of that run are informational (§5.4, round 11 Y4.4). The 70B model is
 used only for datagen batch jobs, which the maintainer starts manually on weekends (`datagen` mode),
 never inside the nightly window and never during a gate run. Cluster and NAS access are verified
 first (T0.6, T0.7); if it is no-go, the same VM-side design runs against one rented 48 GB GPU host with
-two Ollama servers.
+one Ollama server.
 
 **Time budgets** (round 10 Z4, round 11 Y4; excluding the first model load per mode from the NAS):
 smoke ≤ 10 min, PR tier ≤ 90 min, nightly ≤ 8 h incl. lock wait inside the 22:00–06:00
@@ -903,8 +907,8 @@ re-read from the model card / measured on the pinning day; nothing in this table
 | Generator (M11) | 2 | Qwen3 8B / 14B (Ollama tag) | `q8_0`, ~9 / ~16 GB + KV (**verify**) | Apache-2.0 (**verify**) | Same family, local only; swapped on GPU0 under the lock |
 | PR judge | 2 (A40 GPU1, Ollama) | Mistral Small 3.2 24B-class (Ollama tag) | `Q4_K_M`, ~15 GB + KV, **`num_ctx` 12288** (D306: generator 8 192 + rubric/answer allowance ≤ 3 072 + 1 024 output reserve; 12 288 × 4 slots ≈ 7.5 GB KV → ≈ 23 GB on GPU1; T3.1b may lower it only if its VRAM measurement fails, after `OLLAMA_NUM_PARALLEL` 2, AI12-09/D270; **verify** KV fit) | Apache-2.0 (**verify**) | **Default**, family `mistral`; **verify** structured output (`format` JSON schema) on the pinned Ollama and that the PR tier stays ≤ 90 min in `budget.py` |
 | PR judge (alt) | 2 | Gemma 3 12B / 27B (Ollama tag) | `Q4_K_M`, ~8 / ~17 GB + KV (**verify**) | Gemma Terms + Prohibited Use Policy (**verify**) | Fallback only if `mistral` fails calibration (27B only if the PR tier stays ≤ 90 min); 12B also serves the RQ2 size contrast |
-| Nightly judge | 2 night (GPU1, PR judge unloaded) | Gemma 3 27B-class (Ollama tag) | `Q4_K_M`, ~17 GB + KV, **`num_ctx` 12288** (D306, the same rule as the PR judge: generator 8 192 + allowance ≤ 3 072 + 1 024 reserve; T3.1b may lower it only if its VRAM measurement fails): 12 288 × 4 slots ≈ 6–8 GiB if the pinned Ollama sizes Gemma's sliding-window cache, ≈ 23 GiB without it (62 layers × 16 KV heads ≈ 0.48 MiB/token) → ≈ 41 GiB on GPU1, fits; 8192 is **not** a fallback (a faithfulness input with the generator's chunks would exceed its cap, AI12-09); if the chosen `num_ctx` × 4 does not fit, `OLLAMA_NUM_PARALLEL` 2 on `ollama-gpu1`; T3.1b **verifies** the sliding-window behaviour | Gemma Terms + Prohibited Use Policy (**verify**) | **Default**, family `gemma` (D141); also the `core` reviewer (§3.5). Judging overlaps generation on GPU0; nightly block ≤ 8 h (**verify** with `budget.py`) |
-| Datagen / perturbation rewrites | 2 `datagen` mode (`ollama-all` over both cards, weekends) | Llama 3.3 70B-class (pinned `llama` Ollama entry) | `Q4_K_M`, ~43 GB weights (~21.5 GB/card) + KV (`num_ctx` 8192 × 4) (**verify**) | Llama 3.3 Community Licence: attribution, AUP, naming duty for models trained on outputs (**verify**) | Pinned datagen entry; ≠ generator and ≠ both gating judges; never a gate judge |
+| Nightly judge | 2 night (judge card, PR judge unloaded) | Gemma 3 27B-class (Ollama tag) | `Q4_K_M`, ~17 GB + KV, **`num_ctx` 12288** (D306, the same rule as the PR judge: generator 8 192 + allowance ≤ 3 072 + 1 024 reserve; T3.1b may lower it only if its VRAM measurement fails): 12 288 × 4 slots ≈ 6–8 GiB if the pinned Ollama sizes Gemma's sliding-window cache, ≈ 23 GiB without it (62 layers × 16 KV heads ≈ 0.48 MiB/token) → ≈ 41 GiB on the judge card, fits; 8192 is **not** a fallback (a faithfulness input with the generator's chunks would exceed its cap, AI12-09); if the chosen `num_ctx` × 4 does not fit, `OLLAMA_NUM_PARALLEL` 2 (server-wide, ADR-0018); T3.1b **verifies** the sliding-window behaviour | Gemma Terms + Prohibited Use Policy (**verify**) | **Default**, family `gemma` (D141); also the `core` reviewer (§3.5). Judging overlaps generation on GPU0; nightly block ≤ 8 h (**verify** with `budget.py`) |
+| Datagen / perturbation rewrites | 2 `datagen` mode (the one server, model split over both cards, weekends) | Llama 3.3 70B-class (pinned `llama` Ollama entry) | `Q4_K_M`, ~43 GB weights (~21.5 GB/card) + KV (`num_ctx` 8192 × 4) (**verify**) | Llama 3.3 Community Licence: attribution, AUP, naming duty for models trained on outputs (**verify**) | Pinned datagen entry; ≠ generator and ≠ both gating judges; never a gate judge |
 | Datagen | 2 | Qwen2.5-72B-Instruct | int4, ~40 GB | Qwen licence (**verify**) | **Reject** (generator family, licence) |
 | Dense embeddings | 2 (GPU0, Ollama) | `bge-m3` (Ollama tag of BAAI/bge-m3) | ~1.2–1.5 GB | MIT (**verify**) | **Primary**; dense only via `/api/embed`; **verify** cosine ≥ 0.99 against the reference checkpoint on 20 passages (T3.1b) |
 | Dense embeddings (RQ1) | 2 | intfloat/multilingual-e5-large (Ollama tag if one exists, else CPU on the VM; **verify**) | ~1.1 GB | MIT (**verify**) | With prefixes only; truncates at 512 tokens (RQ1 reports an e5 sensitivity row on chunks ≤ 512 tokens) |
@@ -1443,7 +1447,7 @@ tier-2 PR run (`smoke` + `core` + `robust_pr`, PR judge); "nightly" = tier-2 nig
 | M19 | ß folding off | Recall on `eszett` slice | PR |
 | M20 | App writes "Paragraph 622 BGB" instead of "§ 622 BGB" | **Nothing** (expected PASS: tests normaliser robustness) | PR (`core`) and nightly; a separate "normaliser robustness" row, **outside** the detection rate |
 | N1–N8 | No-ops: whitespace, comments, identical re-run, harmless synonym in prompt, reordered YAML keys, log-level change, docstring edit, dependency patch bump | Nothing | PR |
-| N9–N10 | Realistic-churn no-ops (`cache_invalidating`): same model re-quantised (`Q8_0` → `Q6_K` GGUF); Ollama patch bump of the **GPU0** server only (`start-ollama.sh` takes a per-server binary path; the judges' server is unchanged, so `judge_serving` and `eval_fingerprint` stay the same; AI11-09) | Nothing | PR |
+| N9–N10 | Realistic-churn no-ops (`cache_invalidating`): same model re-quantised (`Q8_0` → `Q6_K` GGUF); Ollama patch bump of the generator's serving binary (AI11-09; **ADR-0018**: with one server for generator and judges a bump also changes `judge_serving` and so the `eval_fingerprint`, which makes N10 infeasible as specified; T7.1b drops it with a decision line, its existing fallback, unless it finds another serving-only change that leaves `judge_serving` equal) | Nothing | PR |
 
 - **Pre-registration:** `experiments/rq3/PREREGISTRATION.md` (expected effects, tiers, gate configs,
   analysis) is committed before any RQ3 run. It pre-registers two strata (one list, shared by T7.1a/b
@@ -1500,7 +1504,7 @@ blocking a bad PR through the executor on the A40s) lands around week 12–14; t
 gate flow by week 5. `tasks/TASKS.md` marks each task `core` or `optional`. Optional: T8.4 ("Try it"),
 T9.1b (Marketplace repo; the Action stays usable as `uses: dheena18/pruefstand/action@vX`), the
 optional third RQ1 embedding model (jina-v2-base-de), and all of P10 (the nightly judge is core since D141: one A40 card). Top risk: A40 cluster access and NAS model-load speed;
-T0.6/T0.7 give a go/no-go in week 1, and the fallback is one rented 48 GB GPU host running two Ollama servers with the same VM-side design.
+T0.6/T0.7 give a go/no-go in week 1, and the fallback is one rented 48 GB GPU host running one Ollama server with the same VM-side design.
 
 Rule: do not start a phase until the previous milestone's "Done when" checks pass, except tasks
 listed as parallel lanes in `tasks/TASKS.md`.

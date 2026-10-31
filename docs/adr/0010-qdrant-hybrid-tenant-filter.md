@@ -1,6 +1,7 @@
 # 0010 — Qdrant only: dense + own German sparse vectors, in-query tenant filter
 
 - Status: Accepted (revised 2026-10-31: round 8 AI-13/29/35, W3.10; round 9 X3.13; round 10 D198: `bge-m3` via Ollama, reranker on the VM CPU; round 11 D219/D220/D222: native Ollama API with catalogue options, reranker top 10 x 256 tokens)
+- Amended by: [ADR-0018](0018-single-ollama-server.md) (2026-10-31: one Ollama server for both GPUs, port 11434 only)
 - Date: 2026-10-27
 - Tasks: T3.3, T3.4, T3.5, T7.1a
 
@@ -12,7 +13,7 @@ cut is the classic leak bug (mutation M8). A separate BM25 engine would mean two
 ## Decision
 - One Qdrant collection with two named vectors: `dense` (BGE-M3, cosine) and `sparse` (own analyzer → hashed vocab,
   BM25 TF weights, `modifier: idf`). In tier 2 the dense vectors come from the Ollama model `bge-m3` on
-  GPU0 (`/api/embed`, dense only; T3.1b verifies cosine ≥ 0.99 against the reference checkpoint on 20
+  the cluster's one Ollama server (ADR-0018; `/api/embed`, dense only; T3.1b verifies cosine ≥ 0.99 against the reference checkpoint on 20
   passages); the sparse side is always our own analyzer. Qdrant runs on the executor VM with storage
   on the local VM disk (`$PRUEFSTAND_HOME/qdrant`), never on the NAS.
 - Payload index on `tenant_id` (`is_tenant: true`), plus `doc_id`, `lang` and `is_attack`.

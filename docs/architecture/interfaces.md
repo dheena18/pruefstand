@@ -39,7 +39,7 @@ uses it. Modules only implement behaviour. Concretely, these live in `core`:
 | `core.fingerprint` | `corpus_version`, `target_fingerprint`, `eval_fingerprint` (the only place fingerprints are computed) |
 | `core.hashing` | `stable_hash` |
 | `core.models.attacks` | `Canary`, `CanaryRegistry` (created in T1.1) |
-| `core.data` | `law_aliases.yaml` (T1.5a; incl. English statute names, D123), `model_families.yaml` (T1.2; the only model-family table; it also records the **family plan** (D112): generator = `qwen`; A40 PR judge = `mistral` (`gemma` if mistral fails calibration); A40 nightly judge = `gemma` (27B-class int4, one A40; D141); datagen = `llama` 70B-class (≠ generator and ≠ every judge family; datagen batch jobs only, run as manual weekend jobs, R9 D172; the PR judge never writes or rewrites references, R9 D168); tier-1 informational judge = a GitHub Models model of a non-`qwen` family; exact versions pinned by benchmark in T1.13/T3.1b) |
+| `core.data` | `law_aliases.yaml` (T1.5a; incl. English statute names, D123), `model_families.yaml` (T1.2; the only model-family table; ADR-0018: the generator tag `qwen3.8:27b-q8_0`, which Ollama reports as family `qwen35`, maps to `qwen` (a pattern row for `qwen3.8` / `qwen35`); it also records the **family plan** (D112): generator = `qwen`; A40 PR judge = `mistral` (`gemma` if mistral fails calibration); A40 nightly judge = `gemma` (27B-class int4, one A40; D141); datagen = `llama` 70B-class (≠ generator and ≠ every judge family; datagen batch jobs only, run as manual weekend jobs, R9 D172; the PR judge never writes or rewrites references, R9 D168); tier-1 informational judge = a GitHub Models model of a non-`qwen` family; exact versions pinned by benchmark in T1.13/T3.1b) |
 | `core.models.llm` | `LLMRole`, `Message`, `LLMRequest`, `LLMResponse`, `PromptTemplate` |
 | `core.models.judge` | `JudgeTask`, `JudgeVerdict` (created in T1.8) |
 | `core.models.dashboard` | `RunIndexEntry`, `DashboardRunIndex`, `DashboardSliceRow`, `DashboardSlices`, `DashboardCase`, `DashboardCases`, `LabelsDocument` (T8.1; `LabelsDocument` created in T1.9; fields in §10.1; R9 X5.3) |
@@ -152,7 +152,10 @@ runs/<run_id>/
 
 Numbers (models, VRAM, budgets) live only in `docs/engineering/gpu-cluster.md`; this section fixes the names
 and wire contracts. There is **no vLLM and no TEI** in the default plan (D198); every A40 model is served by
-Ollama on `cairo-s101lp` and reached from the VM `pruefstand-exec` through the `autossh` tunnels.
+Ollama on `cairo-s101lp` and reached from the VM `pruefstand-exec` through the `autossh` tunnel.
+**ADR-0018 (2026-10-31): one Ollama server (`127.0.0.1:11434`, both GPUs) serves every model**; there is no
+second port, no per-GPU server and no datagen server; generator/judge separation is by model (the `llm-proxy`
+allow-list), GPU placement is Ollama's and is checked by `health.sh` through `/api/ps`.
 Round 11 (`round11-resolution.md` Y1–Y5, D211–D231) fixes the VM identity, ports, the `llm-proxy` reach method,
 the native Ollama API and the unattended-operation rules below. Round 12 (`round12-resolution.md` N2, N4, N6.4, N7;
 D252–D257, D267, D270, D274–D276, D280, D282) adds the `llm-proxy` option policy and `/health` counters, the NAS and
@@ -165,7 +168,7 @@ VM identity and coordination files (R11 Y1, D211-D213)
   lock              /var/lib/pruefstand/gpu.lock (0660, group pruefstand); owner user is in group pruefstand
   owner GPU work    pruefstand-lock <cmd>  (flock on the same file, exports PRUEFSTAND_LOCK_HELD=1, runs <cmd>)
   owner cluster ops only through the wrapper: sudo -n -u pruefstand /usr/local/bin/pruefstand-cluster <op> [args]
-                    (T3.1a; ops start-ollama day|datagen, stop-ollama gpu0|gpu1|all, status, pull|rm|show <tag>;
+                    (T3.1a; ops start-ollama, stop-ollama, status, pull|rm|show <tag> (ADR-0018: no mode or GPU args);
                     anything else exit 64); the owner never holds the cluster key, never runs ssh to the cluster.
                     R12 (A12-M5, D276): the mutating ops (start-ollama, stop-ollama, pull, rm) run only when the
                     caller holds gpu.lock: sudoers keeps PRUEFSTAND_LOCK_HELD (env_keep) and the wrapper checks that
@@ -200,10 +203,11 @@ ports (R11 Y1.4, D214)
   executor stack    default ports (Qdrant 6333/6334); rerank-cpu and rag-demo publish no host port
   dev stack         compose profile dev, PORT_OFFSET=10000: Qdrant 16333/16334, rerank 18201, rag-demo 18000,
                     dev llm-proxy 127.0.0.1:21500; make (mk/docker.mk, T0.3) exports each *_PORT = default + offset
-  tunnel (T0.7)     127.0.0.1:11434 and 172.17.0.1:11434 -> cluster :11434; 127.0.0.1:11435 and 172.17.0.1:11435
-                    -> cluster :11435 (autossh -L 127.0.0.1:11434:localhost:11434 -L 127.0.0.1:11435:localhost:11435
-                    -L 172.17.0.1:11434:localhost:11434 -L 172.17.0.1:11435:localhost:11435; R11 integration D242)
-  VM firewall       11434/11435 on 172.17.0.1 accepted only from the proxy-egress subnet (10.231.0.0/24);
+  tunnel (T0.7)     127.0.0.1:11434 and 172.17.0.1:11434 -> cluster :11434 only (autossh
+                    -L 127.0.0.1:11434:localhost:11434 -L 172.17.0.1:11434:localhost:11434; R11 integration D242,
+                    ADR-0018). The 127.0.0.1 forward already runs (docs/ops/setup-log.md §3); T0.7 adds the 172.17.0.1
+                    forward once Docker exists. The SSH alias cairo-s101lp may use a non-default Port
+  VM firewall       11434 on 172.17.0.1 accepted only from the proxy-egress subnet (10.231.0.0/24);
                     dropped from every other source (LAN, gate-net, demo-net, dev networks). R12 (N4.2, D255, D285): the
                     rules live in Docker's DOCKER-USER chain (container-to-container / egress) AND in the dedicated
                     chain PRUEFSTAND-INPUT jumped to from INPUT (container -> 172.17.0.1 is delivered locally and hits
@@ -212,20 +216,22 @@ ports (R11 Y1.4, D214)
                     idempotent: flushes only PRUEFSTAND-INPUT, inserts into DOCKER-USER only if `iptables -C` misses
                     the rule); never `flush ruleset`,
                     never a reload of the full ruleset through nftables.service (that would delete Docker's own chains)
-  T0.6 probe        temporary forwards 127.0.0.1:21434 / :21435 (never clashes with the T0.7 tunnel)
+  T0.6 probe        temporary forward 127.0.0.1:21434 only where no tunnel exists (never clashes with the T0.7 tunnel)
   llm-proxy         container port 11500 on gate-net (no host port in the executor stack), D242
   Docker networks   gate-net (--internal, created by compose.executor.yml, T6.2a): candidate, qdrant, rerank-cpu,
                     llm-proxy; proxy-egress (plain bridge, subnet 10.231.0.0/24, created by T0.7 so the firewall
                     rule can name it; external in compose): llm-proxy only (executor and dev instance)
 
 endpoints (VM .env / runner.env, D203)
-  OLLAMA_GPU0_URL = http://localhost:11434   ollama-gpu0: generator + bge-m3 (day + night); ollama-all in datagen
-  OLLAMA_GPU1_URL = http://localhost:11435   ollama-gpu1: PR judge (day) | gemma nightly judge (night); down in datagen
+  OLLAMA_GPU0_URL = http://127.0.0.1:11434  generator lane: generator + bge-m3 (day + night); llama 70B in datagen
+  OLLAMA_GPU1_URL = http://127.0.0.1:11434  judge lane: PR judge (day) | gemma nightly judge (night); unused in datagen
+                    Both URLs name the SAME server (ADR-0018); they stay two settings so a later split is a .env
+                    change only. Which card holds a model is Ollama's choice, reported by health.sh
   RERANK_URL      = http://rerank-cpu:8201   rerank-cpu on gate-net, container port 8201 (dev: localhost:18201)
   LLM_PROXY_URL   = http://llm-proxy:11500   the candidate's only LLM / embedding URL (D206, D242), resolved by
                     name on gate-net; set by the orchestrator; no extra_hosts / host-gateway entry anywhere
                     (dev stack from the host: http://127.0.0.1:21500)
-  LLM_PROXY_UPSTREAM = http://172.17.0.1:11434   llm-proxy's only upstream (GPU0 tunnel via proxy-egress)
+  LLM_PROXY_UPSTREAM = http://172.17.0.1:11434   llm-proxy's only upstream (the tunnel via proxy-egress)
   Clients use only the native $URL/api/* endpoints (R11 D219); nothing outside infra/gpu/, infra/vm/ and
   infra/cluster/ knows about the tunnel.
 
@@ -247,8 +253,8 @@ Ollama request rules (every client: rag-demo, LLMClient, the T3.1b bench; R11 D2
                    config_hash and so in target_fingerprint.
                    num_ctx: generator 8192; judges = 12288 (generator 8192 + allowance <= 3072 + 1024 reserve, D306) for the PR
                    judge and the gemma nightly judge (R12 N7, D270; T3.1b verifies gemma's sliding-window KV at 12288); if a
-                   judge does not fit at 4 slots, OLLAMA_NUM_PARALLEL on ollama-gpu1 drops to 2 before num_ctx is
-                   lowered (AI12-09). Embed entries: num_ctx = max_input_tokens (max chunk tokens, e.g. 1024-2048,
+                   judge does not fit at 4 slots, OLLAMA_NUM_PARALLEL (server-wide since ADR-0018) drops to 2 before
+                   num_ctx is lowered (AI12-09). Embed entries: num_ctx = max_input_tokens (max chunk tokens, e.g. 1024-2048,
                    never the model's 8192 default; AI12-08). Judge input cap = num_ctx - 1024 (D169)
   model ids        ollama/<tag> in configs, the catalogue id and endpoints.yaml.model_id; bare <tag> only in
                    Ollama API bodies (D221)
@@ -259,9 +265,10 @@ Ollama request rules (every client: rag-demo, LLMClient, the T3.1b bench; R11 D2
 llm-proxy (trusted, T6.2a; module infra/gate-executor/llm-proxy/llm_proxy.py; D206, D242, D216, D220)
   a normal container (no network_mode: host) attached to gate-net and proxy-egress; listens on 0.0.0.0:11500
   inside the container (reached as http://llm-proxy:11500 from gate-net); forwards only to
-  LLM_PROXY_UPSTREAM = http://172.17.0.1:11434 (GPU0) over proxy-egress; never to :11435 (D242)
+  LLM_PROXY_UPSTREAM = http://172.17.0.1:11434 over proxy-egress (D242; the one server, ADR-0018)
   allowed: POST /api/chat, POST /api/embed, GET /api/tags; only the run's catalogue generator + embedding tags
-  (passed by the orchestrator)
+  (passed by the orchestrator). Judges run on the same server, so this allow-list IS the generator/judge
+  separation (ADR-0018): every judge / nightly_judge / large tag -> 403
   auth: Authorization: Bearer $PRUEFSTAND_CANDIDATE_API_KEY (sent by rag-demo: T3.4 embeddings client, T3.6
   generator client, T1.13 tier-1 client from day 1; D216)
   option policy (R12 N2, D252; supersedes the D220 "overwrite all options" rule): the proxy enforces ONLY
@@ -284,7 +291,7 @@ llm-proxy (trusted, T6.2a; module infra/gate-executor/llm-proxy/llm_proxy.py; D2
     writes the differences into RunManifest.counts["model_reloads"] and counts["upstream_errors"] through the
     runner's store, ArtifactStore.add_counts (§7, T1.8); either difference > 0 -> infra error (kind model_reload /
     proxy_upstream, D226/D245)
-  ollama-gpu1 (judges) is never reachable through llm-proxy
+  no judge model is ever reachable through llm-proxy (allow-list above; T6.2a tests a judge tag -> 403)
 
 rerank-cpu (trusted, T3.1a; VM; NO auth, D217)
   only on gate-net, container port 8201; no host port in the executor stack (dev profile: 18201); no secrets
@@ -303,35 +310,48 @@ cluster scripts (infra/cluster/, copied to $CLUSTER_NAS_ROOT/bin/, run as
   cluster.env                      generated by T3.1a from infra/cluster/cluster.env.template, written to NAS bin/
                                    with the scripts and listed in SHA256SUMS (D231); sourced by start-ollama.sh,
                                    which derives the NAS root from its own path (dirname of $0, then ..)
-  start-ollama.sh day|datagen      idempotent; starts each server detached with setsid nohup (never tmux; D228),
-                                   pid + log under <nas>/run/ (the only pid/log dir; listed in gpu-cluster §9);
-                                   exports OLLAMA_MODELS=<nas>/ollama-models,
-                                   OLLAMA_HOST=127.0.0.1:<port>, CUDA_VISIBLE_DEVICES=<gpu> per server (Z7);
-                                   datagen adds OLLAMA_SCHED_SPREAD=1; refuses if the NAS path is not mounted
-  stop-ollama.sh [gpu0|gpu1|all]   status.sh -> CSV check,status,detail (pid, /api/tags, /api/ps, nvidia-smi);
-                                   R12 (A12-M3, D276): before acting on a pid both scripts check that
-                                   /proc/<pid>/cmdline is `ollama serve` and that the server's port is listening;
+  start-ollama.sh                  ADR-0018: if an Ollama server already answers /api/tags on 127.0.0.1:11434,
+                                   it is reused and nothing is started (exit 0); only if none runs it starts ONE
+                                   server detached with setsid nohup (never tmux; D228), pid + log under
+                                   <nas>/run/ollama.{pid,log} (the only pid/log dir; gpu-cluster §9), exporting
+                                   CUDA_VISIBLE_DEVICES=0,1, OLLAMA_HOST=127.0.0.1:11434,
+                                   OLLAMA_MODELS=<nas>/ollama-models and the cluster.env values (Z7); never a
+                                   second server; refuses if the NAS path is not mounted
+  stop-ollama.sh                   stops only a server whose pid file the scripts wrote (the pre-existing server
+                                   is stopped by the owner, runbook §2a)
+  status.sh                        CSV check,status,detail: server pid (pid file or pgrep + listener on :11434),
+                                   its OLLAMA_* env from /proc/<pid>/environ (WARN on a difference from
+                                   cluster.env), /api/tags, /api/ps (size, size_vram), nvidia-smi per card, and the
+                                   card(s) of each resident model (compute-apps pid/gpu_uuid joined with the
+                                   model's runner process; verify in T3.1a);
+                                   R12 (A12-M3, D276): before acting on a pid stop-ollama.sh and status.sh check
+                                   that /proc/<pid>/cmdline is `ollama serve` and that :11434 is listening;
                                    a stale pid file is removed and reported, never killed
 
 VM scripts (infra/gpu/; never take the lock; exit 2 unless PRUEFSTAND_LOCK_HELD=1; D151)
   MAINTENANCE rule (D230): while /var/lib/pruefstand/MAINTENANCE exists only mode datagen is allowed;
             switch-mode.sh datagen creates the file itself, switch-mode.sh day removes it; the orchestrator
             skips gated work while it exists
-  switch-mode.sh day|night|datagen   night unloads the PR judge before loading gemma; GPU0 untouched; preload
-                                     with the catalogue options (D220)
+  switch-mode.sh day|night|datagen   API loads/unloads only (keep_alive 0 to unload), never a server start/stop
+                                     (ADR-0018); night unloads the PR judge before loading gemma, generator and
+                                     bge-m3 untouched; datagen unloads all, then loads llama 70B; preload with
+                                     the catalogue options (D220)
   health.sh [--repair]               CSV check,status,detail; exit 0 ok, 10 free VRAM below threshold, 11 endpoint
                                      down, 12 status.sh unreachable (SSH), 13 resident digest != catalogue,
                                      14 NAS bin/ out of date, 15 a resident model not fully on the GPU (/api/ps
-                                     size_vram < size, AI11-06), 16 NAS mount missing (D227); --repair relaunches a
-                                     down server over SSH (<= 5 min) and NORMALISES each server to exactly the
-                                     mode's model set: models not in the mode are unloaded first (keep_alive 0),
-                                     then missing ones are preloaded (D208; R12 A12-M12, D276: a killed nightly that
-                                     left gemma on GPU1 is cleaned by the next day-mode --repair)
+                                     size_vram < size, AI11-06) or, outside datagen, spread over both cards
+                                     (ADR-0018; the CSV reports the card of every model), 16 NAS mount missing
+                                     (D227); --repair runs start-ollama.sh when no server answers (it reuses a
+                                     running one, <= 5 min) and NORMALISES the server to exactly the mode's model
+                                     set: catalogue models not in the mode are unloaded first (keep_alive 0), then
+                                     missing ones are preloaded (D208; R12 A12-M12, D276: a killed nightly that left
+                                     gemma, or a datagen that left llama 70B, is cleaned by the next day-mode
+                                     --repair); non-catalogue models are reported (WARN) and left alone
                                      embedding swap (R12 AI12-08, D280): a run whose rag.gpu.yaml selects another
                                      catalogue embed model -> the orchestrator unloads bge-m3, preloads that model
                                      with its catalogue options before indexing, and restores bge-m3 in `finally`
                                      (same rule as the generator swap)
-  fetch-model.sh <models.yaml id>    ollama pull <tag> via ollama-gpu0 into the NAS store, then manifest-digest
+  fetch-model.sh <models.yaml id>    ollama pull <tag> via the one server into the NAS store, then manifest-digest
                                      check; mismatch -> ollama rm <tag>, exit 1 (D207)
 deploy-cluster-bin.sh [--check]      (infra/gpu/; needs no lock) infra/cluster/*.sh + cluster.env ->
                                      $PRUEFSTAND_DATA_ROOT/bin/ (*.partial + mv) + SHA256SUMS
@@ -376,7 +396,9 @@ unattended operation (R11 Y5, D225-D229)
 catalogue (infra/gpu/models.yaml, validated by infra/gpu/catalogue_schema.py)
   per entry: id (ollama/<tag> for engine ollama), engine (ollama|cpu), tag (bare), digest (64-hex manifest
              sha256), quantization, family, role (generator|judge|nightly_judge|large|embed|rerank),
-             server (gpu0|gpu1|all|vm), options {num_ctx, num_predict, temperature, seed, top_p} (defaults),
+             server (gpu0|gpu1|all|vm: the lane / URL setting, not a card or port, ADR-0018),
+             options {num_ctx, num_predict, temperature, seed, top_p} (defaults), think (false for every entry whose
+             Ollama capabilities include `thinking`, e.g. the generator qwen3.8:27b-q8_0, D95),
              option_bounds {temperature: [min, max], top_p: [min, max], num_predict: [1, max]} (R12 D252; chat
              entries; default bounds temperature [0, 1], top_p [0, 1], num_predict [1, catalogue num_predict]),
              license, provisional; embed entries also query_prefix, doc_prefix, max_input_tokens (= their num_ctx,
@@ -580,7 +602,7 @@ class DatasetError; class StoreError; class GateInputError; class PromptError; c
 
 ## 3. llm
 
-The only module allowed to import `litellm`; the import lives in `pruefstand.llm.backends.litellm` only. There are **no fake backends** (ADR-0008, real-stack testing): every backend talks to a real model (llama.cpp server on CPU in CI, Ollama on the A40s through the VM tunnels (R10, §1.5), GitHub Models free tier).
+The only module allowed to import `litellm`; the import lives in `pruefstand.llm.backends.litellm` only. There are **no fake backends** (ADR-0008, real-stack testing): every backend talks to a real model (llama.cpp server on CPU in CI, Ollama on the A40s through the VM tunnel (R10, §1.5, ADR-0018), GitHub Models free tier).
 
 ```python
 class LLMRole(StrEnum): GENERATOR, JUDGE, DATAGEN, PERTURB

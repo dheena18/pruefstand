@@ -88,7 +88,7 @@ git worktree add ../pruefstand-T1.5b -b feat/T1.5b-deterministic-metrics origin/
   Windows with Remote-SSH** (round 10 Z7, D202): the repo is cloned on the VM (`~/code/pruefstand`), and
   every coding-agent command runs in the VM terminal **as the owner login user** (Y1). The VM has rootful
   Docker, the NAS at `/mnt/pruefstand` and the tunnels of the system unit `pruefstand-tunnel.service` to
-  the cluster's Ollama servers (`localhost:11434` / `:11435`), so `make test-gpu` and tier-2 experiments run
+  the cluster's one Ollama server (`127.0.0.1:11434`, ADR-0018), so `make test-gpu` and tier-2 experiments run
   from the same shell. Never run code or keep a checkout on the cluster.
 - **Sharing the VM with the executor (Y1, binding).** The executor runs as the system user `pruefstand`.
   Your user is in groups `pruefstand` and `docker` (which makes it root-equivalent, `security.md` C18).
@@ -99,7 +99,7 @@ git worktree add ../pruefstand-T1.5b -b feat/T1.5b-deterministic-metrics origin/
   `/var/lib/pruefstand/**` or `/home/pruefstand/**` directly.
 - **Optional alternative: WSL2 Ubuntu 24.04** on the laptop; clone into the Linux filesystem, never under
   `/mnt/c` (slow I/O, line-ending and permission problems); reach the GPUs with your own
-  `ssh -N -L 11434:localhost:11434 -L 11435:localhost:11435 cairo-s101lp`.
+  `ssh -N -L 11434:localhost:11434 cairo-s101lp`.
 - `git config --global core.autocrlf input`; the repo's `.gitattributes` (`* text=auto eol=lf`, T0.1) keeps every
   file LF. The planning pack is normalised to LF before the first commit (T0.0).
 - `gh` on the VM: a **fine-grained token limited to the public repo** `dheena18/pruefstand` (contents + pull requests + workflows write, Workflows being required to push `.github/workflows/**`, D284; no administration, no access to `pruefstand-gate` or `pruefstand-dashboard-data`), given via `gh auth login --with-token` + `gh auth setup-git`, never `gh auth login --web` (full OAuth scopes); check `gh api repos/dheena18/pruefstand-gate` → 404 (R12 N4.4, `security.md` C18). The token can push branches, open/update PRs and push workflow files, but cannot produce `pruefstand/gate` (pinned to the `pruefstand-bot` App) or start tier 2 (only the owner's dispatch of the private `gate-executor.yml`; no `run-gate` label) (round 13 P1.3). Tier-2 dispatches, merges, bypasses and anything on the private repo are done by the owner in the browser or the GitHub mobile app. The remote is `https://github.com/dheena18/pruefstand.git`. On a laptop/WSL shell the same token type is fine.

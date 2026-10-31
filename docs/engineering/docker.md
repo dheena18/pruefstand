@@ -12,7 +12,7 @@ Binding summary: `CLAUDE.md` §8. This file holds the **single port table** (§3
 | `pruefstand-smoke` | `infra/docker/python-uv.Dockerfile` | `python:3.12-slim-bookworm` | template smoke image (`make image-smoke`, T0.3) | no |
 | `dashboard` (dev only) | `apps/dashboard/Dockerfile` | `node:22-bookworm-slim` | local preview of the static export served by `nginx-unprivileged` | no (GitHub Pages in production, Y7.1) |
 | `rerank-cpu` | `infra/gpu/rerank/Dockerfile` (T3.1a; CLAUDE.md §8 rules) | `python:3.12-slim-bookworm` | `BAAI/bge-reranker-v2-m3` on the VM CPU (sentence-transformers), TEI-compatible `POST /rerank` | no (built on the VM) |
-| `llm-proxy` | `infra/gate-executor/llm-proxy/Dockerfile` (T6.2a) | `python:3.12-slim-bookworm` | trusted allowlisting proxy from `gate-net` to `ollama-gpu0` (D206, `ci-cd.md` §7) | no (built on the VM) |
+| `llm-proxy` | `infra/gate-executor/llm-proxy/Dockerfile` (T6.2a) | `python:3.12-slim-bookworm` | trusted allowlisting proxy from `gate-net` to the one Ollama server, generator + embed tags only (D206, ADR-0018, `ci-cd.md` §7) | no (built on the VM) |
 | third-party | – | `qdrant/qdrant`, `ghcr.io/ggml-org/llama.cpp:server` (CPU), `ghcr.io/huggingface/text-embeddings-inference` (CPU tag; tier 1 and demo only) | vector DB, CPU LLM serving, CPU embeddings | pinned in compose |
 
 **No container on the GPU cluster** (round 10 Z1, D196): GPU models are served by two plain Ollama
@@ -122,21 +122,20 @@ stacks can run at the same time; Done-when checks against internal-only services
 | `rag-demo` | `live`, `dev`, `demo` | `ghcr.io/dheena18/rag-demo@sha256:<d>` or build | `8000` (8000); the executor's **candidate** has no host port (`gate-net` only) | `18000` | `./corpus:/corpus:ro`; `RAG_CONFIG` env selects `apps/rag-demo/configs/rag*.yaml` (`rag.yaml` tier 1 / CPU, `rag.gpu.yaml` tier 2 / A40, X3.15; `rag.public.yaml` demo, T8.4); never a canary-registry mount (X2.5) | `GET /v1/health` |
 | `rerank-cpu` | `gpu` (VM) | `rerank-cpu` (built on the VM, base pinned by digest) | executor: **none** (`gate-net` only, container port **8201**, no auth, Y2.2) | `18201` (8201) | `rerank-models:/models` (HF weights of the pinned revision, VM disk) | `GET /health` |
 | `llm-proxy` | executor: started by the orchestrator (T6.2a); `dev` | `llm-proxy` (built on the VM) | executor: **none** (normal container on `gate-net` + `proxy-egress`, container port **11500**; candidates use `LLM_PROXY_URL=http://llm-proxy:11500`, D242) | `127.0.0.1:21500` (11500; dev instance on its compose network + `proxy-egress`) | none (upstream `LLM_PROXY_UPSTREAM=http://172.17.0.1:11434` via `proxy-egress`) | `GET /health` |
-| tunnel `ollama-gpu0` (no compose) | – | system unit `pruefstand-tunnel.service` (user `pruefstand`, T0.7) | `11434` on `127.0.0.1` and `172.17.0.1` → cluster `127.0.0.1:11434`; `172.17.0.1` only from the `proxy-egress` subnet (VM firewall, D242) | shared (same tunnel) | – | `GET /api/tags` |
-| tunnel `ollama-gpu1` (no compose) | – | same unit | `11435` on `127.0.0.1` and `172.17.0.1` → cluster `127.0.0.1:11435` (same firewall rule; never forwarded by `llm-proxy`) | shared | – | `GET /api/tags` |
-| T0.6 tunnel check (temporary) | – | `ssh -N -L …` in `tunnel_check.sh` | `21434`, `21435` (Y1.4; closed after the check) | – | – | – |
+| tunnel to the one Ollama server (no compose; ADR-0018) | – | system unit `pruefstand-tunnel.service` (user `pruefstand`; `127.0.0.1` forward already set up, `docs/ops/setup-log.md` §3; `172.17.0.1` added by T0.7) | `11434` on `127.0.0.1` and `172.17.0.1` → cluster `127.0.0.1:11434`; `172.17.0.1` only from the `proxy-egress` subnet (VM firewall, D242) | shared (same tunnel) | – | `GET /api/tags` |
+| T0.6 tunnel check (temporary, only where no tunnel exists) | – | `ssh -N -L …` in `tunnel_check.sh` | `21434` (Y1.4; closed after the check) | – | – | – |
 | dashboard (no compose) | – | `pnpm dev` | `3000` | `13000` | – | – |
 
 The candidate reaches `rerank-cpu` inside `gate-net` (`RERANK_URL=http://rerank-cpu:8201`); the dev stack
 uses `http://localhost:18201` from the host. The TEI-compatible `/rerank` contract is unchanged.
 **`llm-proxy` networking (D242, supersedes the host-network design of Y1.5/D215).** The `autossh` tunnel
-(T0.7) binds `11434`/`11435` on `127.0.0.1` **and** on the Docker bridge gateway `172.17.0.1`. `llm-proxy` is
+(T0.7) binds `11434` (the only Ollama port, ADR-0018) on `127.0.0.1` **and** on the Docker bridge gateway `172.17.0.1`. `llm-proxy` is
 a normal container attached to the internal network `gate-net` **and** the small non-internal bridge
 `proxy-egress` (subnet `10.231.0.0/24`, created by T0.7, `external: true` in compose); it reaches Ollama at
 `http://172.17.0.1:11434` over `proxy-egress` and forwards only the native Ollama API (`/api/chat`,
 `/api/embed`, `/api/tags`, Y3.1). Candidates are only on `gate-net` and reach `http://llm-proxy:11500` by
 name; no container has an `extra_hosts`/`host-gateway` entry. The VM firewall (`DOCKER-USER` + `PRUEFSTAND-INPUT`, D285)
-accepts `172.17.0.1:11434/11435` only from the `proxy-egress` subnet, so neither `gate-net`, `demo-net` nor the LAN reaches the tunnel. The
+accepts `172.17.0.1:11434` only from the `proxy-egress` subnet, so neither `gate-net`, `demo-net` nor the LAN reaches the tunnel. The
 dev instance (`dev` profile) joins its compose network and `proxy-egress` and publishes
 `127.0.0.1:${LLM_PROXY_PORT:-11500}:11500` (`21500` on the VM). The candidate's client is the same as
 against Ollama directly plus the bearer key (Y2.1). Env names:
@@ -158,8 +157,8 @@ reaches the LAN, the NAS (NFS/SMB/web UI), `cairo-s101lp:22`, `gate-net` or the 
 `.env.example` committed (every name: `docs/ops/secrets.md`). Every service has `restart: unless-stopped` (except in CI), `mem_limit` and
 log rotation (`max-size: 10m`). On the VM the executor attaches `qdrant` and `rerank-cpu` to the
 `--internal` network `gate-net` for the candidate, together with `llm-proxy`; the candidate reaches
-`llm-proxy` only at `http://llm-proxy:11500`; nothing on `gate-net` reaches the tunnel (`:11434`/`:11435`),
-and `llm-proxy` (the only container on `proxy-egress`) is the only path to `ollama-gpu0`.
+`llm-proxy` only at `http://llm-proxy:11500`; nothing on `gate-net` reaches the tunnel (`:11434`),
+and `llm-proxy` (the only container on `proxy-egress`) is the only path to Ollama, for the generator and embedding tags only.
 
 ### 3.1 VM services of profile `gpu` (`infra/gpu/compose.gpu.yml`, T3.1a)
 
@@ -180,8 +179,9 @@ and `llm-proxy` (the only container on `proxy-egress`) is the only path to `olla
 ```
 
 **No GPU reservation exists anywhere in compose**: the VM has no GPU, and the cluster runs no Docker.
-GPU placement (`CUDA_VISIBLE_DEVICES`, ports `11434`/`11435`, `OLLAMA_MODELS` on the NAS) is set by
-`infra/cluster/start-ollama.sh` (`gpu-cluster.md` §4). The candidate rag-demo in a gate job gets a
+GPU placement is Ollama's: one server with `CUDA_VISIBLE_DEVICES=0,1` on port `11434` and `OLLAMA_MODELS` on the NAS
+(the existing server is reused, else started by `infra/cluster/start-ollama.sh`; `gpu-cluster.md` §4, ADR-0018);
+`health.sh` checks via `/api/ps` that each model is fully on a card. The candidate rag-demo in a gate job gets a
 read-only root fs, `--cap-drop ALL` and only the `--internal` network `gate-net` (no internet egress),
 see `ci-cd.md` §7.
 

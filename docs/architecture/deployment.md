@@ -7,12 +7,12 @@ and operations in `docs/ops/runbook.md`. This page only summarises them.
 
 | Environment | Runs | Trust |
 | --- | --- | --- |
-| Local dev (primary: the VM `pruefstand-exec` via VS Code Remote-SSH, owner login user; WSL2 optional) | compose `core` / `live` / `gpu` with profile `dev` and `PORT_OFFSET=10000` on the VM (Y1.4); tier-2 models through the `pruefstand-tunnel.service` tunnels, GPU work only via `pruefstand-lock` | developer; root-equivalent on the VM through group `docker` (accepted, `security.md` C18) |
+| Local dev (primary: the VM `pruefstand-exec` via VS Code Remote-SSH, owner login user; WSL2 optional) | compose `core` / `live` / `gpu` with profile `dev` and `PORT_OFFSET=10000` on the VM (Y1.4); tier-2 models through the `pruefstand-tunnel.service` tunnel (port 11434, ADR-0018), GPU work only via `pruefstand-lock` | developer; root-equivalent on the VM through group `docker` (accepted, `security.md` C18) |
 | Hosted CI tier 0 (public repo) | lint, types, unit tests on real inputs, doctests, statistical validation, cassettes, integration (real Qdrant, rag-demo, llama.cpp), image build + signing | untrusted code, no secrets for forks, never reaches the cluster |
 | Hosted CI tier 1 live (public repo) | `live-e2e.yml`: real Qdrant + rag-demo + llama.cpp generator + CPU embeddings, split `smoke_live`, deterministic gate, informational judge via GitHub Models (`GITHUB_TOKEN` `models: read`, ≤ 10 calls per PR), real PR comment; `executor-health.yml` hourly; `gate-router.yml` (`pull_request_target`, no checkout, environment `gate-router`) posts `pruefstand/gate` with the `pruefstand-bot` App token: success "not gated" for PRs without gated paths, `pending` "gated: awaiting tier-2 dispatch" otherwise (round 13 P1.1) | only `GITHUB_TOKEN`, except the App key in environment `gate-router` (deployment branch `main`, used only by `gate-router.yml`); forks get no judge (`judge_mode=skipped`); public data only; `gate-router.yml` runs no PR code |
 | Private executor repo `pruefstand-gate` | gate (owner `workflow_dispatch` only, round 13 P1.2), nightly, baseline (polls public `main`) and backup workflows; holds the baseline `index.json` (branch `baselines`), processed-work state and `state/nightly_counter`, and held-out canaries | trusted, owner only; the VM token has no access |
 | Executor VM `pruefstand-exec` (TrueNAS) | system user `pruefstand` (Y1): persistent executor runner, orchestrator, Qdrant, `rerank-cpu`, `llm-proxy` (`gate-net` + `proxy-egress`, `http://llm-proxy:11500`, D242), candidate rag-demo (no GPU, no egress, no canary registry), `/var/lib/pruefstand/gpu.lock` + state + run dirs + caches on the VM disk, `pruefstand-tunnel.service` (no NAS dependency), `pruefstand-runner.service` (`Wants=`/`After=mnt-pruefstand.automount`, N4.1), `pruefstand-firewall.service` (rules in Docker's `DOCKER-USER` chain, N4.2), VM → cluster SSH key; optional demo on the `--internal` `demo-net` (+ `cloudflared` on `demo-egress`) behind a Cloudflare Tunnel | runs only private-repo workflows; the candidate is isolated on `gate-net`, the demo on `demo-net` with RFC 1918 and VM addresses dropped (P2.2) |
-| A40 cluster `cairo-s101lp` (shared) | only two Ollama servers started with `setsid nohup` (GPU0 `:11434`, GPU1 `:11435`, loopback) | no code, data or state of ours beyond NAS `bin/` scripts; other local users can reach loopback Ollama (accepted risk, `security.md` C14) |
+| A40 cluster `cairo-s101lp` (shared) | only **one** Ollama server for both GPUs on loopback `:11434` (ADR-0018; the existing server is reused, else started with `setsid nohup`) | no code, data or state of ours beyond NAS `bin/` scripts; other local users can reach loopback Ollama (accepted risk, `security.md` C14) |
 | NAS dataset (TrueNAS) | `ollama-models/`, `bin/`, `run/` (Ollama logs + pid files), baselines, backups (+ laptop receipt), data, corpus, datasets; on the VM `mnt-pruefstand.automount` (`nofail`) | single writer per path; no locks or state |
 | Dashboard-data repo `pruefstand-dashboard-data` (public) | sanitised run data, `runs/index.json`, sha256 manifest on `main`; `heartbeat.json` on branch `heartbeat` (single force-pushed commit) | written only by the executor (repo-scoped PAT); read anonymously |
 | Public web | dashboard on **GitHub Pages** (Y7.1); optional demo API + llama.cpp generator on the VM (4 vCPU / 8 GB limits) behind a free **Cloudflare Tunnel** (Y7.5) | public internet |
@@ -37,7 +37,7 @@ flowchart LR
         end
         dash["dashboard :3000<br/>pnpm dev"]
     end
-    tun(["A40 Ollama via pruefstand-tunnel.service<br/>localhost:11434 (GPU0) / :11435 (GPU1), GPU work under pruefstand-lock;<br/>dev rerank-cpu :18201, dev llm-proxy 127.0.0.1:21500"])
+    tun(["A40 Ollama via pruefstand-tunnel.service<br/>127.0.0.1:11434 (one server, both GPUs), GPU work under pruefstand-lock;<br/>dev rerank-cpu :18201, dev llm-proxy 127.0.0.1:21500"])
     ghm(["GitHub Models<br/>(free tier, informational judge)"])
 
     cli -->|"POST /v1/query"| ragl
@@ -56,10 +56,10 @@ the same real CPU stack tier 1 runs in CI (llama.cpp generator, CPU embeddings, 
 every developer run uses real models. On the VM (the primary development machine, Z7) the owner's stacks
 run with compose profile `dev` and `PORT_OFFSET=10000` (Qdrant 16333/16334, rerank 18201, rag-demo 18000;
 `docker.md` §3), so they never collide with the executor stack on the default ports (Y1.4). For the tier-2
-models the dev rag-demo reaches GPU0 through the dev `llm-proxy`, and GPU work runs only under
+models the dev rag-demo reaches the generator through the dev `llm-proxy`, and GPU work runs only under
 `pruefstand-lock` (the same `/var/lib/pruefstand/gpu.lock` the executor takes). Done-when checks against
 internal-only services use `docker compose exec` or the dev ports (Y6.5). From WSL (optional) a personal
-`ssh -N -L 11434:… -L 11435:… cairo-s101lp` works. Endpoint URLs come from
+`ssh -N -L 11434:localhost:11434 cairo-s101lp` works. Endpoint URLs come from
 `.env`, never from committed files.
 
 ## 2. Hosted CI runners (public repo)
@@ -123,8 +123,8 @@ flowchart TB
             qd[("qdrant :6333 / :6334 (profile gpu)<br/>storage PRUEFSTAND_HOME/qdrant (VM disk)")]
             rr["rerank-cpu :8201 (gate-net only, no auth)<br/>bge-reranker-v2-m3 on CPU, top 10"]
         end
-        proxy["llm-proxy (trusted, gate-net + proxy-egress)<br/>llm-proxy:11500 → 172.17.0.1:11434, bearer key, native /api/chat, /api/embed, /api/tags,<br/>GPU0 only, catalogue tags only, enforces num_ctx and keep_alive,<br/>sampling options pass within catalogue bounds, no admin API"]
-        tun["system unit pruefstand-tunnel.service (user pruefstand, no NAS dependency)<br/>127.0.0.1:11434 and :11435, also 172.17.0.1 (DOCKER-USER + PRUEFSTAND-INPUT rules: proxy-egress only)"]
+        proxy["llm-proxy (trusted, gate-net + proxy-egress)<br/>llm-proxy:11500 → 172.17.0.1:11434, bearer key, native /api/chat, /api/embed, /api/tags,<br/>generator + embed tags only (no judge), enforces num_ctx and keep_alive,<br/>sampling options pass within catalogue bounds, no admin API"]
+        tun["system unit pruefstand-tunnel.service (user pruefstand, no NAS dependency)<br/>127.0.0.1:11434, also 172.17.0.1:11434 (DOCKER-USER + PRUEFSTAND-INPUT rules: proxy-egress only)"]
         local[("/var/lib/pruefstand: gpu.lock, MAINTENANCE<br/>PRUEFSTAND_HOME (VM disk): state/, runs/, pruefstand-cache/")]
         key[("/home/pruefstand/.ssh/id_ed25519_cluster (key only here)")]
     end
@@ -134,8 +134,7 @@ flowchart TB
         durable[("baselines/FP/history/, backups/ (age-encrypted),<br/>data/, corpus/, datasets/")]
     end
     subgraph CLUSTER["TRUST: shared A40 cluster cairo-s101lp (plain SSH, Ollama only via setsid nohup, no Docker)"]
-        o0["ollama-gpu0 127.0.0.1:11434 · GPU0<br/>generator qwen3.8:27b-q8_0 + bge-m3"]
-        o1["ollama-gpu1 127.0.0.1:11435 · GPU1<br/>PR judge (day) / gemma nightly judge (night)"]
+        oll["one Ollama server 127.0.0.1:11434 · GPU0 + GPU1 (ADR-0018)<br/>generator qwen3.8:27b-q8_0 + bge-m3, PR judge (day) / gemma nightly judge (night);<br/>placement by Ollama, checked via /api/ps"]
     end
     gh(["github.com / ghcr.io<br/>outbound HTTPS only"])
 
@@ -146,55 +145,53 @@ flowchart TB
     rag -->|"http://llm-proxy:11500 (gate-net)"| proxy
     proxy --> tun
     orch -->|"judges, mode switch, digest checks"| tun
-    tun -->|"SSH, key auth"| o0
-    tun -->|"SSH, key auth"| o1
+    tun -->|"SSH, key auth"| oll
     orch --> local
     orch -->|"write-then-rename, single writer"| durable
     orch -->|"deploy-cluster-bin.sh"| bin
     orch -.->|"ssh: bin/start-ollama.sh, status.sh"| CLUSTER
-    o0 -->|"load models"| models
-    o1 -->|"load models"| models
+    oll -->|"load models"| models
     hooks -.->|"wipe workspace, job containers, PR collections, PR overlays"| local
     RUNNER -->|"long-poll jobs from pruefstand-gate (PR gates only by owner dispatch), read public PRs via App token, push heartbeat"| gh
 ```
 
 The runner, orchestrator, Qdrant, `rerank-cpu`, `llm-proxy` and the candidate all run on the VM as the
-system user `pruefstand` (Y1); the cluster runs only two Ollama processes started detached with
-`setsid nohup` (Y5.4; no Docker, no linger, nearly full local disk), with `OLLAMA_MODELS` on the NAS and
-`OLLAMA_HOST` on loopback. The VM reaches them through the system unit `pruefstand-tunnel.service`,
-logging in with a key that only `pruefstand` holds. In day mode GPU0 serves the generator and
-`bge-m3`, GPU1 the PR judge, so generator and judge never share a model family or a card. In night mode
-the PR judge is unloaded and the `gemma` nightly judge is loaded on GPU1 while the generator stays on
-GPU0, so generation and judging overlap (nightly ≤ 8 h, 22:00–06:00 Europe/Berlin, Y4.3; one
+system user `pruefstand` (Y1); the cluster runs only **one** Ollama server for both GPUs (ADR-0018: the
+existing server is reused; only if none runs is it started detached with `setsid nohup`, Y5.4; no Docker, no
+linger, nearly full local disk), with `OLLAMA_MODELS` on the NAS and `OLLAMA_HOST=127.0.0.1:11434`. The VM
+reaches it through the system unit `pruefstand-tunnel.service`, logging in with a key that only `pruefstand`
+holds. In day mode the server holds the generator, `bge-m3` and the PR judge; Ollama places them, and since
+generator and judge do not fit one card together they sit on different cards (`health.sh` reports the card and
+fails when a model is not fully in VRAM). Generator and judge never share a model family. In night mode
+the PR judge is unloaded and the `gemma` nightly judge is loaded while the generator stays resident, so
+generation and judging overlap (nightly ≤ 8 h, 22:00–06:00 Europe/Berlin, Y4.3; one
 orchestrator job, started only when the hosted guard's output `run` is `true` (P2.1), with a hard 06:00 deadline
 of the fired night checked at start and before each phase, N4.3; a nightly killed before its
-`finally` leaves gemma on GPU1, and the next preflight's `--repair` normalises GPU1 to exactly the day
+`finally` leaves gemma resident, and the next preflight's `--repair` normalises the server to exactly the day
 set, A12-M12). Datagen weekend
-jobs stop both servers and run the 70B `llama` model as `ollama-all` across both cards; `switch-mode.sh
-datagen` sets `MAINTENANCE` itself (X3.12, Y6.2). Mode switches are Ollama API loads/unloads (with the
+jobs unload every model and load the 70B `llama` model, which Ollama splits across both cards (no server
+restart); `switch-mode.sh datagen` sets `MAINTENANCE` itself (X3.12, Y6.2). Mode switches are Ollama API loads/unloads (with the
 catalogue `options`) by the orchestrator under `/var/lib/pruefstand/gpu.lock` with
-`PRUEFSTAND_LOCK_HELD=1` (X2.1, D200, D211); the preflight restarts a down Ollama server over SSH and checks resident model digests
+`PRUEFSTAND_LOCK_HELD=1` (X2.1, D200, D211); the preflight starts the Ollama server over SSH only if none answers and checks resident model digests and `size_vram == size`
 (D208). The candidate gets no GPU and reaches GPU models only through `llm-proxy` (D206, D242: a normal
 container on `gate-net` and `proxy-egress`, reached as `http://llm-proxy:11500`; it reaches the tunnel at
 `172.17.0.1:11434`, which the VM firewall opens only to the `proxy-egress` subnet through rules in Docker's
 `DOCKER-USER` chain (container-to-container and egress) and in the dedicated `PRUEFSTAND-INPUT` chain hooked
 from `INPUT` (container → `172.17.0.1` hits `INPUT`, not `DOCKER-USER`), both applied by the oneshot
 `pruefstand-firewall.service` after `docker.service` and never by flushing the full ruleset, N4.2, D285); `llm-proxy` enforces only `num_ctx`/`keep_alive` and passes sampling
-options through within the catalogue `option_bounds`, 403 outside them (N2); the judge server `:11435` is never reachable from the
-candidate. An infra failure during a run gives `error` and one retry, never `failure` (Y5.2); after a
+options through within the catalogue `option_bounds`, 403 outside them (N2); judges run on the same server, so
+its model allow-list (generator + embedding tags only) keeps every judge unreachable from the candidate (ADR-0018). An infra failure during a run gives `error` and one retry, never `failure` (Y5.2); after a
 second infra failure the job is recorded with result `error` and waits for a new owner dispatch (A12-M1, P1.2). The runner
 unit only `Wants=` the NAS automount, so a late or lost NAS never blocks the runner or the tunnel; the
 preflight reports it as `infra_error="nas_unavailable"` (N4.1). The held-out canary registry is never mounted into
 the candidate (X2.5). Only catalogue models (`infra/gpu/models.yaml`) can be served; swapping the
-generator for a PR unloads and loads on GPU0 inside that job. Locks, state, Qdrant and run dirs stay on
+generator for a PR unloads and loads on the one server inside that job. Locks, state, Qdrant and run dirs stay on
 the VM disk; baselines and backups go to the NAS (no locks there). No port is exposed to the internet.
 Host ports: `docker.md` §3.
 
 | Service | Machine | Host port (`127.0.0.1`) | `gate-net` | GPU | Runs as | Healthcheck |
 | --- | --- | --- | --- | --- | --- | --- |
-| `ollama-gpu0` (generator + `bge-m3`) | cluster | 11434 (loopback, via tunnel on the VM) | only through `llm-proxy` | 0 | `setsid nohup ollama serve` | `GET /api/tags`, `/api/ps` |
-| `ollama-gpu1` (PR judge / nightly judge) | cluster | 11435 (loopback, via tunnel on the VM) | never | 1 | `setsid nohup ollama serve` | `GET /api/tags`, `/api/ps` |
-| `ollama-all` (datagen, llama 70B) | cluster | 11434 (11435 down) | never (no gate runs in datagen mode) | 0+1 | `setsid nohup` | `GET /api/tags` |
+| Ollama (one server, ADR-0018: generator + `bge-m3` + judge; llama 70B in datagen) | cluster | 11434 (loopback, via tunnel on the VM) | generator + embed tags only, through `llm-proxy`; judges never | 0 + 1 (placed by Ollama) | existing server, else `setsid nohup ollama serve` | `GET /api/tags`, `/api/ps` (`size_vram == size`) |
 | `llm-proxy` | VM | none (dev stack: `21500`) | yes, plus `proxy-egress` (`LLM_PROXY_URL=http://llm-proxy:11500`; upstream `172.17.0.1:11434`, D242) | – | container (T6.2a) | `GET /health` |
 | `rerank-cpu` | VM | – (no host port in the executor stack, Y2.2) | 8201 (`RERANK_URL=http://rerank-cpu:8201`, D247) | – | container (T3.1a) | `GET /health` |
 | Qdrant | VM | 6333 / 6334 | 6333 | – | `qdrant/qdrant` | `GET /readyz` |
@@ -222,7 +219,7 @@ stateDiagram-v2
     Selecting --> Waiting: GPU work selected
     Waiting --> Preflight: flock gpu.lock acquired (once per job)
     Waiting --> Cleanup: lock timeout, status pending executor busy, nothing recorded, owner re-dispatches
-    Preflight --> Verifying: health.sh --repair OK (tunnels, Ollama up, digests, NAS mount, df, GPU memory)
+    Preflight --> Verifying: health.sh --repair OK (tunnel, Ollama up, digests, placement, NAS mount, df, GPU memory)
     Preflight --> Cleanup: unhealthy under the lock (e.g. nas_unavailable), status error posted
     Verifying --> Serving: owner dispatch, image status on the head SHA, fork SHA matches, config and dataset from main, cosign verify, baseline found
     Verifying --> Cleanup: verification failed or no baseline, status failure posted
@@ -300,7 +297,7 @@ container on `demo-net` and the egress network `demo-egress`, the only demo cont
 drops `demo-egress` (`10.233.0.0/24`) → RFC 1918, `PRUEFSTAND-INPUT` drops both subnets → the VM's own addresses;
 `demo-net` = `10.232.0.0/24`, `cloudflared` = `10.232.0.2`, P2.2; token in `/home/pruefstand/demo.env`):
 no inbound port, no LAN, NAS or cluster access, no host port beyond
-loopback (`127.0.0.1:8090`/`8091` for smoke and e2e), no link to `gate-net`, `llm-proxy`, the tunnels, the NAS or the GPU lock (`security.md`
+loopback (`127.0.0.1:8090`/`8091` for smoke and e2e), no link to `gate-net`, `llm-proxy`, the tunnel, the NAS or the GPU lock (`security.md`
 D4). It is the same rag-demo image with demo settings: fixed tenant list, no canary registry, and the
 in-process rate limit and daily budget enforced before every LLM call (429 for rate limit, 503 when the
 budget is spent or the kill switch is on, both with a JSON body `{code, message, retry_after_s}`). The

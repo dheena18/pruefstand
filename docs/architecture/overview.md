@@ -17,7 +17,7 @@ flowchart LR
 
     sys["Prüfstand<br/>release gate for German RAG"]
 
-    llm(["LLM providers (free only)<br/>Ollama on the A40 cluster (via VM tunnels), llama.cpp on CPU,<br/>GitHub Models free tier (tier-1 informational judge)"])
+    llm(["LLM providers (free only)<br/>Ollama on the A40 cluster (one server, via the VM tunnel), llama.cpp on CPU,<br/>GitHub Models free tier (tier-1 informational judge)"])
     nas[("TrueNAS dataset<br/>models, baselines, backups, datasets")]
     hf(["Hugging Face Hub<br/>datasets + public corpora"])
     src(["Public sources<br/>Gesetze im Internet, EUR-Lex,<br/>Open Legal Data"])
@@ -48,8 +48,8 @@ flowchart LR
 Prüfstand sits between a pull request and the merge button. The public repo builds and signs images
 and holds no secret that reaches the executor; the private executor repo runs gated PRs only when the owner
 dispatches them (round 13 P1.2; coding agents cannot), polls `main` for baselines, executes them on
-its persistent runner on the TrueNAS VM `pruefstand-exec` (GPU models: two Ollama servers on the A40
-cluster, reached through the `pruefstand-tunnel.service` tunnels; executor user `pruefstand`), keeps the baseline index and the held-out canaries
+its persistent runner on the TrueNAS VM `pruefstand-exec` (GPU models: one Ollama server for both A40s,
+ADR-0018, reached through the `pruefstand-tunnel.service` tunnel; executor user `pruefstand`), keeps the baseline index and the held-out canaries
 (baseline files and backups live on the NAS), and posts a redacted result back to the PR. PRs that
 touch no gated path get their "not gated" status from the public `gate-router.yml` on a hosted runner
 (no checkout; it posts with the `pruefstand-bot` App token from environment `gate-router`, and marks gated PRs
@@ -85,19 +85,17 @@ flowchart TB
         orch["gate_orchestrator<br/>flock /var/lib/pruefstand/gpu.lock once per job, then preflight"]
         core["pruefstand package<br/>cli, pipeline, runner, gate, report"]
         rag["candidate rag-demo<br/>Target API v1, gate-net :8000<br/>no GPU, no egress, no canary registry"]
-        proxy["llm-proxy (trusted, gate-net + proxy-egress)<br/>llm-proxy:11500, GPU0 native chat/embed only"]
+        proxy["llm-proxy (trusted, gate-net + proxy-egress)<br/>llm-proxy:11500, generator + embed tags only, native chat/embed"]
         qdrant[("Qdrant<br/>:6333 / :6334, VM disk")]
         rerank["rerank-cpu<br/>gate-net only, bge-reranker-v2-m3 on CPU, top 10"]
-        tun["pruefstand-tunnel.service (autossh)<br/>127.0.0.1:11434 / :11435"]
+        tun["pruefstand-tunnel.service (autossh)<br/>127.0.0.1:11434"]
         cache[("DiskKVCache<br/>target + llm, PR overlays (VM disk)")]
         runs[("run dirs RUN_ID/<br/>run.json, results.parquet,<br/>responses.jsonl, llm_calls.parquet, gate.json")]
         idx[("RunIndex<br/>DuckDB")]
     end
 
     subgraph CLU["TRUST: shared A40 cluster cairo-s101lp (Ollama only)"]
-        ogpu0["ollama-gpu0 127.0.0.1:11434 (GPU0)<br/>generator qwen3.8:27b-q8_0 + bge-m3"]
-        ogpu1["ollama-gpu1 127.0.0.1:11435 (GPU1)<br/>PR judge (day), gemma nightly judge (night)"]
-        oall["ollama-all (GPU0+1)<br/>llama 70B, datagen weekends only"]
+        oll["one Ollama server 127.0.0.1:11434 (GPU0 + GPU1, ADR-0018)<br/>generator qwen3.8:27b-q8_0 + bge-m3, PR judge (day) / gemma nightly judge (night);<br/>llama 70B alone in datagen weekends only"]
     end
 
     subgraph NASX["TRUST: TrueNAS dataset (VM /mnt/pruefstand)"]
@@ -130,10 +128,8 @@ flowchart TB
     rag -->|"http://llm-proxy:11500"| proxy
     proxy --> tun
     core -->|"LLMClient (judges, provider ollama)"| tun
-    tun -->|"SSH"| ogpu0
-    tun -->|"SSH"| ogpu1
-    tun -.->|"datagen scripts only, never a gate run"| oall
-    ogpu0 & ogpu1 & oall -->|"load models"| models
+    tun -->|"SSH"| oll
+    oll -->|"load models"| models
     core --> runs
     core <--> base
     core <--> bfiles
@@ -150,8 +146,8 @@ flowchart TB
 The same `pruefstand` package runs in every tier, always against real models (ADR-0008). On hosted
 runners (tier 1) it drives the real rag-demo with a llama.cpp generator on CPU and gates on
 deterministic checks, with GitHub Models as an informational judge; on the executor VM (tier 2) it
-drives the candidate rag-demo, whose generator and embeddings are Ollama on GPU0 (through `llm-proxy`),
-judges with the Ollama judge on GPU1 and applies the statistical gate. The dashboard reads sanitised
+drives the candidate rag-demo, whose generator and embeddings are Ollama on the generator card (through `llm-proxy`),
+judges with the Ollama judge on the judge card and applies the statistical gate. The dashboard reads sanitised
 artefacts from the dashboard-data repo and never computes metrics; it is published on GitHub Pages. The
 optional demo API runs on the VM on its own `--internal` network `demo-net` (only `cloudflared` is also on
 `demo-egress`; RFC 1918 and VM addresses dropped, P2.2), reachable only through a Cloudflare Tunnel, and never
@@ -165,12 +161,12 @@ touches the gate network, the LAN, the NAS, the GPU lock or the cluster. Ports: 
 | GitHub Action | Packages the CLI for PR workflows (`uses: dheena18/pruefstand/action@vX`; optional `pruefstand-action` Marketplace mirror) | Docker action | GitHub API |
 | Image build | Builds and signs rag-demo per SHA; the GHCR package is public | Docker, cosign keyless | GHCR |
 | Private executor repo | Trusted gate (owner dispatch only, P1.2), nightly, baseline (polls `main`) and backup workflows, baseline `index.json`, processed-work state and `state/nightly_counter`, held-out canaries | GitHub Actions (self-hosted runner attached only here) | Public repo via the `pruefstand-bot` App (read PRs, write status/comment); dashboard-data repo via a repo-scoped PAT |
-| Executor runner | Persistent system service `pruefstand-runner.service` (user `pruefstand`) on the VM `pruefstand-exec`, job-start/-complete cleanup hooks; runs Qdrant, `rerank-cpu`, `llm-proxy` and the candidate as containers; the candidate gets no GPU and no egress | actions-runner, Docker | private repo, GHCR, VM services, Ollama via tunnels |
-| `gate_orchestrator` | Selects jobs, takes `/var/lib/pruefstand/gpu.lock` once per job, runs the preflight under it (restarts a down Ollama server over SSH, checks digests), switches Ollama modes, runs and reports, refreshes the heartbeat every 15 min, turns infra failures into `error` + one retry (T6.2a) | Python (`infra/gate-executor/orchestrator`) | GitHub API, Ollama via tunnels, cluster `bin/` scripts over SSH |
-| rag-demo | System under test, multi-tenant German RAG | FastAPI, Qdrant client, httpx | Qdrant; tier 1: llama.cpp + TEI (CPU); tier 2: `llm-proxy` (Ollama GPU0) + `rerank-cpu` |
+| Executor runner | Persistent system service `pruefstand-runner.service` (user `pruefstand`) on the VM `pruefstand-exec`, job-start/-complete cleanup hooks; runs Qdrant, `rerank-cpu`, `llm-proxy` and the candidate as containers; the candidate gets no GPU and no egress | actions-runner, Docker | private repo, GHCR, VM services, Ollama via the tunnel |
+| `gate_orchestrator` | Selects jobs, takes `/var/lib/pruefstand/gpu.lock` once per job, runs the preflight under it (starts the Ollama server over SSH only if none runs, checks digests and GPU placement), switches Ollama modes, runs and reports, refreshes the heartbeat every 15 min, turns infra failures into `error` + one retry (T6.2a) | Python (`infra/gate-executor/orchestrator`) | GitHub API, Ollama via the tunnel, cluster `bin/` scripts over SSH |
+| rag-demo | System under test, multi-tenant German RAG | FastAPI, Qdrant client, httpx | Qdrant; tier 1: llama.cpp + TEI (CPU); tier 2: `llm-proxy` (Ollama, generator lane) + `rerank-cpu` |
 | Qdrant | Dense + sparse vectors, tenant payload filter, PR-scoped collections | Qdrant | – |
-| Ollama servers (cluster) | Tier-2 LLM + embedding serving: GPU0 generator + `bge-m3`, GPU1 judges, `ollama-all` for datagen (catalogue models only, pinned by digest) | Ollama started with `setsid nohup`, models on the NAS | – (reached only through the VM tunnels) |
-| `llm-proxy` | Candidate's only route to Ollama: normal container on `gate-net` + `proxy-egress` (`http://llm-proxy:11500`, upstream `172.17.0.1:11434` firewalled to `proxy-egress`), bearer key, GPU0, native `/api/chat`, `/api/embed`, `/api/tags`, catalogue tags; enforces `num_ctx`/`keep_alive`, sampling options pass within the catalogue `option_bounds` (403 outside, R12 N2); no admin API (D206, D242, D220) | Python (T6.2a) | `ollama-gpu0` via tunnel |
+| Ollama server (cluster, one for both GPUs, ADR-0018) | Tier-2 LLM + embedding serving: generator + `bge-m3` and the judge on the two cards (placed by Ollama, checked via `/api/ps`), llama 70B alone for datagen (catalogue models only, pinned by digest) | Ollama (existing server reused, else started with `setsid nohup`), models on the NAS | – (reached only through the VM tunnel) |
+| `llm-proxy` | Candidate's only route to Ollama: normal container on `gate-net` + `proxy-egress` (`http://llm-proxy:11500`, upstream `172.17.0.1:11434` firewalled to `proxy-egress`), bearer key, generator + embed tags only (no judge), native `/api/chat`, `/api/embed`, `/api/tags`, catalogue tags; enforces `num_ctx`/`keep_alive`, sampling options pass within the catalogue `option_bounds` (403 outside, R12 N2); no admin API (D206, D242, D220) | Python (T6.2a) | the Ollama server via the tunnel |
 | `rerank-cpu` | `bge-reranker-v2-m3` on the VM CPU, TEI-compatible `/rerank` (tier 2) | sentence-transformers (T3.1a) | – |
 | TEI (CPU) | CPU embeddings (tier 1, demo) | text-embeddings-inference | – |
 | Artefact store | Source of truth for runs | Files (JSON, Parquet) | – |

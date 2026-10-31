@@ -101,7 +101,7 @@ VM reboot test, TrueNAS host reboot test V7).
 | T1.2 | `feat/T1.2-config` | `core/config/**`, `core/data/model_families.yaml`, creates `examples/live/pruefstand.yaml` | – | 3 |
 | T1.5a | `feat/T1.5a-citation-parser` | `core/citations/**`, creates `core/data/law_aliases.yaml` | – | 3 |
 | T0.4 | `docs/T0.4-docs-site` | `mkdocs.yml`, `docs.yml`, site build scripts | NET | 2 |
-| T0.6 | `docs/T0.6-cluster-feasibility` | `infra/cluster/feasibility/**` (tunnel check on temporary ports 21434/21435, Y1.4; detached-process-survives-logout check, Y5.4), `scripts/models/quota_probe.py`, gpu-cluster.md §0.2 rows C1–C9, ci-cd.md §1.1a | GPU, NET, HUMAN | 2 |
+| T0.6 | `docs/T0.6-cluster-feasibility` | `infra/cluster/feasibility/**` (tunnel check on the existing tunnel or temporary port 21434, Y1.4, ADR-0018; detached-process-survives-logout check, Y5.4), `scripts/models/quota_probe.py`, gpu-cluster.md §0.2 rows C1–C9, ci-cd.md §1.1a | GPU, NET, HUMAN | 2 |
 | T0.5 (human) | — | GitHub settings, App `pruefstand-bot` | HUMAN | 1 |
 
 Shared hunks: `live-e2e.yml` (T0.6 input `probe_quota`). Merge: T1.2 → T1.5a → T0.4 → T0.6.

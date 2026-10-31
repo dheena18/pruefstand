@@ -76,7 +76,7 @@ Support files: [`_TEMPLATE.md`](_TEMPLATE.md) (structure every prompt follows) Â
 | T2.4 | [T2.4-eurlex-loader.md](T2.4-eurlex-loader.md) | EUR-Lex DE/EN loader + article chunker + alignment | AI | core |
 | T2.5 | [T2.5-tenants-ingest.md](T2.5-tenants-ingest.md) | Tenant plan, `pruefstand ingest`, corpus versioning | AI | core |
 | T2.6 | [T2.6-private-docs-canaries.md](T2.6-private-docs-canaries.md) | Synthetic private docs, canaries, held-out canary set | AI+H | core |
-| T3.1a | [T3.1a-gpu-cluster-services.md](T3.1a-gpu-cluster-services.md) | Two Ollama servers on the cluster (`setsid nohup`, models on the NAS, `cluster.env`; R11), `infra/cluster/` scripts, VM-side `switch-mode.sh` / `health.sh --repair` / `fetch-model.sh` (D151, D207, D208), catalogue, endpoints, `rerank-cpu` | AI+H | core |
+| T3.1a | [T3.1a-gpu-cluster-services.md](T3.1a-gpu-cluster-services.md) | One Ollama server on the cluster for both GPUs (ADR-0018; reused, else `setsid nohup`; models on the NAS, `cluster.env`), `infra/cluster/` scripts, VM-side `switch-mode.sh` / `health.sh --repair` / `fetch-model.sh` (D151, D207, D208), catalogue, endpoints, `rerank-cpu` | AI+H | core |
 | T3.1b | [T3.1b-model-benchmark.md](T3.1b-model-benchmark.md) | Model shortlist benchmark through Ollama (quality, tok/s, VRAM, first load), pinning by tag + digest, PR/nightly budgets | AI+H | core |
 | T3.2 | [T3.2-rag-app-skeleton.md](T3.2-rag-app-skeleton.md) | rag-demo v1 (extends T1.13): `rag_demo/models.py`, `/v1/info` serving, A40 endpoints | AI | core |
 | T3.3 | [T3.3-german-analyzer.md](T3.3-german-analyzer.md) | German analyzer + sparse encoder | AI | core |

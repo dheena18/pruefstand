@@ -2,8 +2,8 @@
 
 Trust model (ADR-0005): the public repo `dheena18/pruefstand` has **no self-hosted runner and no
 secret that reaches the executor**. The persistent executor runner (on the TrueNAS VM `pruefstand-exec`;
-running as the system user `pruefstand`; GPU models are two Ollama servers on the A40 cluster, reached
-through the `pruefstand-tunnel.service` tunnels, rounds 10 and 11) is
+running as the system user `pruefstand`; GPU models are served by one Ollama server for both A40s (ADR-0018), reached
+through the `pruefstand-tunnel.service` tunnel, rounds 10 and 11) is
 registered only to the private
 executor repo `dheena18/pruefstand-gate`, which runs its own workflows from its own `main` and
 **pulls** work: PR gates start only from the owner's `workflow_dispatch` of `gate-executor.yml` (round 13
@@ -82,7 +82,7 @@ sequenceDiagram
     participant Priv as Private repo pruefstand-gate
     participant Exec as Executor runner (VM pruefstand-exec)
     participant RAG as candidate rag-demo (VM, no GPU, no egress)
-    participant Oll as Ollama (cluster, via tunnels: GPU0 generator + bge-m3, GPU1 PR judge)
+    participant Oll as Ollama (cluster, one server via the tunnel: generator + bge-m3, PR judge)
     participant App as pruefstand-bot App
     participant DD as pruefstand-dashboard-data
 
@@ -110,7 +110,7 @@ sequenceDiagram
         Exec->>App: post_status pending "image not built yet, re-dispatch after build-images"
     else gated
         Exec->>Exec: flock /var/lib/pruefstand/gpu.lock once (wait up to 2 h, heartbeat every 15 min, timeout gives pending "executor busy, re-dispatch")
-        Exec->>Oll: preflight under the lock: health.sh --repair (tunnels, start-ollama.sh over SSH with setsid nohup if down, day-mode models resident with catalogue digests)
+        Exec->>Oll: preflight under the lock: health.sh --repair (tunnel, start-ollama.sh over SSH with setsid nohup only if no server runs, day-mode models resident with catalogue digests)
         Exec->>Exec: NAS mounted (else error, infra_error nas_unavailable), df, GPU memory via bin/status.sh, failure gives error "executor unhealthy"
         Exec->>Exec: load pruefstand.yaml, dataset, judge config, pruefstand package from public main (never from the PR)
         Exec->>Pub: read PR rag.gpu.yaml + image digest from status pruefstand/image
@@ -120,12 +120,12 @@ sequenceDiagram
             Exec->>App: status pruefstand/gate = failure "no baseline for FP, run baseline-promote"
             Exec->>Priv: append (pr, head sha, dispatch run id, failure) to state/processed.jsonl
         else baseline found
-            Exec->>Exec: start Qdrant and rerank-cpu on gate-net, llm-proxy on gate-net + proxy-egress (llm-proxy:11500, D242), swap the GPU0 generator if the PR selects another catalogue model, and a PR-scoped collection if embedding/chunking changed
+            Exec->>Exec: start Qdrant and rerank-cpu on gate-net, llm-proxy on gate-net + proxy-egress (llm-proxy:11500, D242), swap the generator if the PR selects another catalogue model, and a PR-scoped collection if embedding/chunking changed
             Exec->>RAG: start candidate on internal network gate-net (no GPU, no egress, read-only fs, no canary registry)
             Exec->>RAG: GET /v1/info (models + serving + corpus_version to target_fingerprint)
             Exec->>RAG: pruefstand run --tier pr (smoke + core via /v1/query, robust_pr via /v1/retrieve only, at most 90 min, --judged-subset limits generation and judging of core answerable cases only if the fallback is on)
-            RAG->>Oll: generation + bge-m3 embeddings via llm-proxy (GPU0 only, native API, num_ctx and keep_alive enforced, sampling options within catalogue bounds)
-            Exec->>Oll: judged metrics with the PR judge on GPU1 (pipelined with generation)
+            RAG->>Oll: generation + bge-m3 embeddings via llm-proxy (generator + embed tags only, native API, num_ctx and keep_alive enforced, sampling options within catalogue bounds)
+            Exec->>Oll: judged metrics with the PR judge on the judge card (pipelined with generation)
             Exec->>Exec: pruefstand gate --from-store --ref main (one Holm family over all testable gated pairs)
             Exec->>Exec: keep the full run dir on the VM disk, upload run.json, gate.json, comment.md (14 days)
             alt infra failure during the run (Ollama down, tunnel lost, NAS unavailable, model reload)
@@ -148,8 +148,8 @@ sequenceDiagram
 
 The executor never runs workflow files, scripts or gate config from the PR. From the PR it uses only
 `apps/rag-demo/configs/rag.gpu.yaml` (X3.15) and the candidate image; the candidate is untrusted (the image signature proves origin, not
-content) and runs without GPU or internet; it reaches Ollama only through `llm-proxy` (GPU0, no admin
-API, native endpoints only) and never the judge server. An infra failure during a run gives `error`
+content) and runs without GPU or internet; it reaches Ollama only through `llm-proxy` (generator + embed tags only, no admin
+API, native endpoints only) and never a judge model (allow-list, ADR-0018). An infra failure during a run gives `error`
 and one retry, never `failure` (Y5.2); after a second infra failure the job is recorded with result
 `error` and runs again only after a new owner dispatch (A12-M1, P1.2). Public PRs get a redacted comment: no chunk text, canaries
 masked, plus δ and the MDE for each gated metric. A new push needs a new dispatch, and a gated
@@ -247,8 +247,8 @@ sequenceDiagram
     autonumber
     participant Cron as schedule 20:07 and 21:07 UTC, hosted guard by the cron that fired (22:07 local)
     participant Exec as Executor runner (VM pruefstand-exec)
-    participant RAG as rag-demo (main, rag.gpu.yaml, generator on Ollama GPU0)
-    participant Big as nightly judge (gemma 27B-class on Ollama GPU1, else PR judge)
+    participant RAG as rag-demo (main, rag.gpu.yaml, generator on Ollama, generator lane)
+    participant Big as nightly judge (gemma 27B-class on Ollama, judge lane, else PR judge)
     participant Base as Baseline store (NAS files + index.json)
     participant Pub as Public repo
     participant DD as pruefstand-dashboard-data
@@ -264,12 +264,12 @@ sequenceDiagram
     else normal night (one orchestrator job, deadline 06:00 Berlin checked before every phase)
         Exec->>Exec: flock /var/lib/pruefstand/gpu.lock once (until the deadline), export PRUEFSTAND_LOCK_HELD=1, heartbeat every 15 min
         Exec->>Exec: preflight under the lock (health.sh --repair, NAS mount, df, GPU memory)
-        Exec->>Exec: switch-mode.sh night (no new lock: unload PR judge on GPU1, load gemma at its catalogue num_ctx 12288, generator stays on GPU0)
+        Exec->>Exec: switch-mode.sh night (no new lock: unload PR judge on the judge card, load gemma at its catalogue num_ctx 12288, generator stays on the generator card)
         Exec->>Big: judge-drift night judge first: 50 anchors (a judge that drifted tonight never gates tonight)
         Exec->>Exec: read state/nightly_counter, k = counter mod 3
-        par generation on GPU0
+        par generation (generator card)
             Exec->>RAG: pruefstand run --split full --stratum all --block auto (refusal stratum + block k, at most 600 cases), responses into target cache
-        and judging on GPU1 (overlapping)
+        and judging on the judge card (overlapping)
             Exec->>Big: judged metrics on cached responses as they arrive (judge cache hits skip unchanged cases)
         end
         Exec->>Base: BaselineStore.get(eval_fingerprint, nightly-b(k))
@@ -281,7 +281,7 @@ sequenceDiagram
         Exec->>Base: BaselineStore.get(eval_fingerprint, release-b(k))
         Exec->>Exec: drift gate block k vs release-b(k), or report drift no release baseline once
         Exec->>Exec: contamination probe, cause-switches (Sundays only, judge_mode skipped except the refusal row with --stratum refusal)
-        Exec->>Exec: switch-mode.sh day (no new lock: unload gemma, reload PR judge on GPU1), also in finally
+        Exec->>Exec: switch-mode.sh day (no new lock: unload gemma, reload PR judge on the judge card), also in finally
         Exec->>Big: judge-drift PR judge: 50 anchors
         Exec->>Exec: runs and cache prune, repo-size guard
         opt a phase does not fit before 06:00
@@ -300,8 +300,8 @@ The nightly tier runs `pruefstand run --split full --stratum all --block auto`: 
 advanced only after a completed nightly, P4.4), at most 600 cases, so `full` is covered every 3 completed
 nightlies (SPEC §6.2, Y4.3, round 12 N1); it gates against baseline ref `nightly-b<k>` and checks drift against
 the release anchor `release-b<k>` (N1.4, AI13-09),
-with the nightly judge (`gemma` 27B-class on GPU1, D141, D205;
-generation on GPU0 and judging on GPU1 overlap;
+with the nightly judge (`gemma` 27B-class on the judge card, D141, D205;
+generation on the generator card and judging on the judge card overlap;
 the PR judge with `judge_fallback=true` if it is unavailable, which makes judged metrics informational,
 Y4.4), so it has its own `eval_fingerprint` and baseline line. Comparing against
 the last release baseline catches slow drift that per-merge baselines hide. The status is posted every
@@ -321,7 +321,7 @@ sequenceDiagram
     autonumber
     actor O as Owner (50-item spot-check)
     participant CLI as pruefstand build-dataset
-    participant Gen as Datagen LLM (llama 70B-class, Ollama ollama-all on 2x A40, datagen mode, manual weekend job)
+    participant Gen as Datagen LLM (llama 70B-class, the one Ollama server split over 2x A40, datagen mode, manual weekend job)
     participant RM as Review model (gemma nightly judge, batch job, never the PR judge)
     participant Sup as Support check (LLMClient + support_check_de_v1)
     participant Rev as Review tool (tools/review_app)

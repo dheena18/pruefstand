@@ -6,7 +6,7 @@ commands and paths: `docs/engineering/gpu-cluster.md` §1, §4, §8, §9 (round 
 D211–D239; round 12 N1–N5 and the `round12-arch.md` minors; round 13 P1–P5 and the `round13-arch.md` minors). This is the
 **single** runbook (D145): first-time install of the VM and runner is §0 (T0.7, T6.2a); cluster and
 Ollama operations are §2a (T3.1a); the dashboard deploy, the optional demo and their rollback are §9 (T8.5). Owners of the steps
-below: T0.7 (VM, NAS mount, SSH key, tunnels), T3.1a (cluster scripts, models), T6.2a (runner,
+below: T0.7 (VM, NAS mount, SSH key, tunnel), T3.1a (cluster scripts, models), T6.2a (runner,
 orchestrator, `llm-proxy`), T6.2b (workflows, health, backups), T8.5 (dashboard-data consumer).
 
 **Where things run (Z1) and as whom (Y1).** Every command below runs **on the VM `pruefstand-exec`**
@@ -15,9 +15,9 @@ login user (groups `pruefstand`, `docker`), **[pruefstand]** = the executor's sy
 (`sudo -u pruefstand -i …`), **[root]** = `sudo`. GPU work by you always goes through
 `pruefstand-lock <cmd>` (lock `/var/lib/pruefstand/gpu.lock`). You never hold the cluster key: **every
 command of yours that needs the cluster goes through the sudo wrapper** (T3.1a, D247)
-`sudo -n -u pruefstand /usr/local/bin/pruefstand-cluster <op>` (ops `start-ollama day|datagen`,
-`stop-ollama gpu0|gpu1|all`, `status`, `pull|rm|show <tag>`; anything else exits 64). The cluster
-`cairo-s101lp` runs only the two Ollama servers; it is reached from the VM by key-only SSH as
+`sudo -n -u pruefstand /usr/local/bin/pruefstand-cluster <op>` (ops `start-ollama`,
+`stop-ollama`, `status`, `pull|rm|show <tag>`; anything else exits 64). The cluster
+`cairo-s101lp` runs only **one** Ollama server for both GPUs (ADR-0018; `127.0.0.1:11434`); it is reached from the VM by key-only SSH as
 `pruefstand`, which calls the scripts as `ssh "$CLUSTER_SSH_HOST" bash "$CLUSTER_NAS_ROOT/bin/<script>.sh"`
 (the wrapper does exactly that for you). Nothing is stored on the cluster outside the NAS mount.
 
@@ -27,12 +27,16 @@ command of yours that needs the cluster goes through the sudo wrapper** (T3.1a, 
 | `PRUEFSTAND_HOME` | executor: `/home/pruefstand/pruefstand` (`runner.env` of user `pruefstand`) on the **local VM disk**: `state/`, `runner/`, `runs/`, `qdrant/`, `pruefstand-cache/`; your own `.env`: `~/pruefstand` (dev state only) |
 | `PRUEFSTAND_DATA_ROOT` | `/mnt/pruefstand` (NAS dataset): `ollama-models/`, `bin/`, `data/`, `corpus/`, `datasets/`, `baselines/`, `backups/` |
 | `CLUSTER_SSH_HOST` / `CLUSTER_NAS_ROOT` | `cairo-s101lp` / `/data/dheena/truenas-ollama` (the same NAS dataset seen from the cluster) |
-| `OLLAMA_GPU0_URL` / `OLLAMA_GPU1_URL` | `http://localhost:11434` / `http://localhost:11435` (tunnel ends) |
+| `OLLAMA_GPU0_URL` / `OLLAMA_GPU1_URL` | both `http://127.0.0.1:11434` (the one tunnel end; generator lane / judge lane, ADR-0018) |
 | `PORT_OFFSET` | your `.env` only: `10000` (dev stack ports, `docker.md` §3); never set for `pruefstand` |
 
 `dheena18` = your GitHub account.
 
-## 0. First-time install of VM, tunnels and runner (T0.7, T6.2a fill in the exact commands)
+## 0. First-time install of VM, tunnel and runner (T0.7, T6.2a fill in the exact commands)
+
+Already done on 2026-10-31 (commands in `docs/ops/setup-log.md`): user `pruefstand`, the cluster key and the
+alias `cairo-s101lp` (step 2), and `pruefstand-tunnel.service` with the `127.0.0.1:11434` forward (step 3, first
+half). Re-run those steps only to rebuild the VM.
 
 1. **VM** (T0.7, `[HUMAN]`): create `pruefstand-exec` on TrueNAS (Ubuntu 24.04, ≥ 8 vCPU, **64 GB RAM**,
    ≥ 200 GB local disk) with **autostart on host boot** (after the sharing service); VS Code Remote-SSH
@@ -42,7 +46,7 @@ command of yours that needs the cluster goes through the sudo wrapper** (T3.1a, 
    (`flock` on that file, exports `PRUEFSTAND_LOCK_HELD=1`); one `sudoers` line allowing `pruefstand` to
    run `systemctl restart pruefstand-tunnel`, and the wrapper line for you (`pruefstand-cluster`, with
    `Defaults env_keep += PRUEFSTAND_LOCK_HELD`, so its mutating ops can prove you hold the GPU lock, A12-M5);
-   firewall: inbound SSH only; the tunnel ports on `172.17.0.1` (`11434`/`11435`) accept connections only
+   firewall: inbound SSH only; the tunnel port on `172.17.0.1` (`11434`) accepts connections only
    from the `proxy-egress` subnet (step 3); `llm-proxy` has **no** host port (A12-M6). NAS: `/etc/fstab`
    entry for `/mnt/pruefstand` with `x-systemd.automount,nofail,x-systemd.mount-timeout=30` (Y5.3), unit
    name **`mnt-pruefstand.automount`** everywhere; check `timeout 10 mountpoint -q /mnt/pruefstand` after a
@@ -53,26 +57,29 @@ command of yours that needs the cluster goes through the sudo wrapper** (T3.1a, 
    merges and private-repo actions: only from your browser or the GitHub mobile app (what the token can do: §2 step 7).
    Run the bypass drill of §2 step 7 once. Group-based NAS permissions for `pruefstand`, you and the cluster
    user (record them).
-2. **SSH key to the cluster** (T0.7 V5, Z7, Y1.1), [pruefstand]:
-   `ssh-keygen -t ed25519 -N '' -f /home/pruefstand/.ssh/id_ed25519_cluster` and
-   `ssh-copy-id -i /home/pruefstand/.ssh/id_ed25519_cluster.pub cairo-s101lp`. You type the cluster
+2. **SSH key to the cluster** (T0.7 V5, Z7, Y1.1; **done**, setup log §2), [pruefstand]:
+   `ssh-keygen -t ed25519 -N '' -f /home/pruefstand/.ssh/id_ed25519_cluster`, then
+   `ssh-copy-id -i /home/pruefstand/.ssh/id_ed25519_cluster.pub -p <cluster-ssh-port> <cluster-user>@<cluster-ssh-host>`
+   and the alias `cairo-s101lp` in `/home/pruefstand/.ssh/config` (`HostName`, non-default `Port`, `User`,
+   `IdentityFile`; placeholders in git, real values only on the VM). If the cluster's home folder is
+   group-writable, sshd ignores `authorized_keys`: `chmod g-w ~` on the cluster (setup log §2). You type the cluster
    password **once, interactively**; it is never written to `.env`, a file, GitHub or the NAS. Check:
    `ssh -o BatchMode=yes cairo-s101lp true` succeeds. The private key stays only in
    `/home/pruefstand/.ssh` (mode 600).
-3. **Tunnels** (T0.7 S5), [root]: `infra/vm/install-tunnel.sh` installs the **system** unit
-   `pruefstand-tunnel.service` (`User=pruefstand`, `autossh -M 0 -N -o ExitOnForwardFailure=yes -L
-   127.0.0.1:11434:localhost:11434 -L 127.0.0.1:11435:localhost:11435 -L 172.17.0.1:11434:localhost:11434
-   -L 172.17.0.1:11435:localhost:11435 cairo-s101lp`, `Wants=` and `After=network-online.target
+3. **Tunnel** (T0.7 S5; the unit with the `127.0.0.1` forward already runs, setup log §3), [root]:
+   `infra/vm/install-tunnel.sh` rewrites the **system** unit `pruefstand-tunnel.service` (`User=pruefstand`,
+   `autossh -M 0 -N -o ExitOnForwardFailure=yes -L 127.0.0.1:11434:localhost:11434
+   -L 172.17.0.1:11434:localhost:11434 cairo-s101lp`, port 11434 only, ADR-0018; `Wants=` and `After=network-online.target
    docker.service`, `Restart=always`, `RestartSec=10`; **no** dependency on the NAS mount, N4.1; D242).
    [root] `infra/vm/setup-proxy-net.sh` creates the Docker network `proxy-egress` (`10.231.0.0/24`) and
    installs the oneshot **`pruefstand-firewall.service`** (`After=docker.service`, `PartOf=docker.service`
    so it is re-applied on every Docker restart), which inserts into Docker's **`DOCKER-USER`** chain (container-to-container and egress) **and** into the
    dedicated chain **`PRUEFSTAND-INPUT`** jumped to from `INPUT` (container → `172.17.0.1` is delivered
-   locally and hits `INPUT`, not `DOCKER-USER`): accept `172.17.0.1:11434/11435` from `10.231.0.0/24`,
+   locally and hits `INPUT`, not `DOCKER-USER`): accept `172.17.0.1:11434` from `10.231.0.0/24`,
    drop them from everything else (N4.2, D285). Never
    enable the distro `nftables.service`, never `flush ruleset`, never `systemctl restart nftables`: that
    deletes Docker's own rules, including the isolation of the `--internal` `gate-net`. Check after a VM
-   reboot: `curl -s localhost:11434/api/tags`; `ss -ltn | grep 1143` shows only `127.0.0.1` and
+   reboot: `curl -s 127.0.0.1:11434/api/tags`; `ss -ltn | grep 11434` shows only `127.0.0.1` and
    `172.17.0.1`; `infra/vm/vm_check.sh firewall` (rules in `DOCKER-USER` and `PRUEFSTAND-INPUT`, Docker's chains present,
    no egress from a throwaway `--internal` container). `vm_check.sh` **never restarts Docker** (a restart would kill a
    running gate or nightly); the Docker-restart probe is the separate `infra/vm/vm_check.sh --restart-drill`, which
@@ -84,7 +91,7 @@ command of yours that needs the cluster goes through the sudo wrapper** (T3.1a, 
 4. **Cluster scripts and models** (T3.1a), [pruefstand] from its trusted `main` checkout:
    `infra/gpu/deploy-cluster-bin.sh` copies `infra/cluster/*.sh` and the rendered `cluster.env` (Y6.3) to
    `$PRUEFSTAND_DATA_ROOT/bin/` (+ `SHA256SUMS`); move or re-pull `qwen3.8:27b-q8_0` into
-   `ollama-models/` once (§2a.4); start the servers (§2a.1).
+   `ollama-models/` once if T0.6 C4 found another model dir (§2a.4); reuse or start the one server (§2a.1).
 5. Private repo `dheena18/pruefstand-gate`, secrets `BOT_APP_ID`, `BOT_APP_KEY`, `DASHBOARD_DATA_PAT`. Public repo
    (round 13 P1.1), in your browser: environment **`gate-router`** (deployment branches: `main` only, no reviewer) with
    the same `BOT_APP_ID` / `BOT_APP_KEY`, used only by `gate-router.yml`; the `main` ruleset requires
@@ -104,8 +111,8 @@ command of yours that needs the cluster goes through the sudo wrapper** (T3.1a, 
 | Part | Where | Health signal |
 | --- | --- | --- |
 | Persistent runner (D100) | VM: `/home/pruefstand/pruefstand/runner`, system service `pruefstand-runner` (user `pruefstand`) | runner "Idle"/"Active" in the private repo settings; `heartbeat.json` age |
-| Tunnels (T0.7) | VM: system unit `pruefstand-tunnel` (`autossh`, user `pruefstand`) | `curl -s localhost:11434/api/tags`, `curl -s localhost:11435/api/tags` |
-| Ollama servers (T3.1a) | cluster: detached (`setsid nohup`) servers `ollama-gpu0` (`127.0.0.1:11434`, GPU0) and `ollama-gpu1` (`127.0.0.1:11435`, GPU1); datagen: `ollama-all`; pid + log files in NAS `run/` (pids checked against `/proc/<pid>/cmdline` and the port before use, A12-M3); `OLLAMA_MODELS` on the NAS | [owner] `sudo -n -u pruefstand /usr/local/bin/pruefstand-cluster status` (CSV), `/api/ps` through the tunnel |
+| Tunnel (T0.7) | VM: system unit `pruefstand-tunnel` (`autossh`, user `pruefstand`, port 11434 only) | `curl -s 127.0.0.1:11434/api/tags` |
+| Ollama server (T3.1a, ADR-0018) | cluster: **one** server on `127.0.0.1:11434` for both GPUs (the pre-existing server is reused; only if none runs the scripts start one detached with `setsid nohup`, pid + log in NAS `run/`, pid checked against `/proc/<pid>/cmdline` and `:11434` before use, A12-M3); every mode is API loads/unloads on it; `OLLAMA_MODELS` on the NAS | [owner] `sudo -n -u pruefstand /usr/local/bin/pruefstand-cluster status` (CSV: server env, card per model), `/api/ps` through the tunnel (`size_vram == size`) |
 | VM services | rootful Docker on the VM, executor stack (user `pruefstand`): `qdrant` (`:6333`), `rerank-cpu` (`gate-net` only, no host port), `llm-proxy` (`gate-net` + `proxy-egress`, no host port; upstream `172.17.0.1:11434`, firewalled to `proxy-egress`); your dev stack on `+10000` ports | `docker ps`; `GET /readyz`, `GET /health` (proxy: also upstream error counters) |
 | NAS dataset | VM `/mnt/pruefstand` (`mnt-pruefstand.automount`, `nofail`; the runner only `Wants=` it, the tunnel does not depend on it), cluster `/data/dheena/truenas-ollama` | `timeout 10 mountpoint -q /mnt/pruefstand`; sentinel `.pruefstand-data-root` |
 | Executor workflows | private repo `dheena18/pruefstand-gate`: `gate-executor.yml` (**dispatch only**, input `pr`; you start it from the browser or the GitHub mobile app, P1.2), `baseline-promote.yml`, `nightly.yml` (hosted job `guard` with output `run` + one orchestrator job `nightly` with `if: needs.guard.outputs.run == 'true'`, 06:00 deadline of the fired night, P2.1), `backup.yml`, optional `demo-nightly.yml` (one concurrency group each, dispatches per PR, D101) | Actions tab of the private repo; heartbeat `last_nightly_at`, `last_nightly_status` |
@@ -132,8 +139,7 @@ runner.
 1. [owner] On the VM: `systemctl status pruefstand-runner pruefstand-tunnel mnt-pruefstand.automount`;
    `journalctl -u pruefstand-runner -n 200` (both are system units).
 2. `sudo fuser -v /var/lib/pruefstand/gpu.lock` (who holds the lock?); `df -h /home/pruefstand`;
-   `timeout 10 mountpoint -q /mnt/pruefstand && echo nas-ok`; `curl -s localhost:11434/api/tags`,
-   `curl -s localhost:11435/api/tags`; GPU use: [owner] `sudo -n -u pruefstand /usr/local/bin/pruefstand-cluster status`
+   `timeout 10 mountpoint -q /mnt/pruefstand && echo nas-ok`; `curl -s 127.0.0.1:11434/api/tags`; GPU use: [owner] `sudo -n -u pruefstand /usr/local/bin/pruefstand-cluster status`
    (someone else on the cards?). If the lock is free, run the preflight in report mode, [pruefstand]:
    `pruefstand-lock infra/gpu/health.sh` (from the executor's trusted checkout)
    (exit codes 10–16, incl. 15 = a resident model not fully on the GPU, `interfaces.md` §1.5).
@@ -142,7 +148,7 @@ runner.
    - tunnel: [root] `systemctl restart pruefstand-tunnel`; if it still fails, [pruefstand] `ssh -o BatchMode=yes
      cairo-s101lp true` (key rejected → §7 key rotation; host down → wait, the cluster is not ours);
    - Ollama down (e.g. after a cluster reboot; `Linger=no`, so nothing restarts it on the cluster):
-     the next job's preflight (`health.sh --repair`) restarts it with `setsid nohup`; to do it by hand see
+     the next job's preflight (`health.sh --repair`) starts one server with `setsid nohup` (never a second one, ADR-0018); to do it by hand see
      §2a.1. If it dies again after you log out, check `KillUserProcesses` (T0.6 C4) and ask the admins;
    - resident digest ≠ catalogue (exit 13; someone pulled or replaced a tag on the shared store,
      `security.md` C14): re-run `fetch-model.sh <id>` under the lock (§2a.4);
@@ -156,8 +162,8 @@ runner.
      lock-guarded flag, A13-M11);
    - **Docker restarted or the firewall looks wrong**: `systemctl status pruefstand-firewall` (it re-runs
      after every Docker start); never fix it with `nftables.service` (step §0.3);
-   - **GPU1 holds the wrong judge** (a nightly was killed before its `finally`, so gemma is still on
-     GPU1): nothing to do; the next preflight's `health.sh --repair day` unloads every non-mode model first
+   - **the wrong judge is resident** (a nightly was killed before its `finally`, so gemma is still
+     loaded): nothing to do; the next preflight's `health.sh --repair day` unloads every non-mode model first
      (A12-M12). By hand: `pruefstand-lock infra/gpu/switch-mode.sh day`;
    - **nightly skipped or stopped at the deadline** (`nightly skipped` issue): read the reason in
      `last_nightly_status` (the one value set, A13-M3: `ok`, `failed`, `aborted: window_exceeded`,
@@ -221,39 +227,50 @@ wrapper; it runs the fixed NAS `bin/` scripts over SSH with the cluster key of `
 Every step that loads, unloads or pulls models runs under the GPU lock: `pruefstand-lock <cmd>` (waits on
 `/var/lib/pruefstand/gpu.lock`).
 
-1. **Start Ollama** (day mode; idempotent, a healthy server is left alone): `pruefstand-lock $C start-ollama day`.
-   For each server the script exports, before `setsid nohup ollama serve … &` (Y5.4; settings from
-   `bin/cluster.env`, Y6.3):
+1. **Start Ollama** (ADR-0018; idempotent): `pruefstand-lock $C start-ollama`. If a server already answers on
+   `127.0.0.1:11434` (the pre-existing one), nothing is started. Only if none runs does the script start **one**
+   server, `setsid nohup ollama serve … &` (Y5.4; settings from `bin/cluster.env`, Y6.3), with
+   `CUDA_VISIBLE_DEVICES=0,1`, `OLLAMA_HOST=127.0.0.1:11434`,
    `OLLAMA_MODELS=/data/dheena/truenas-ollama/ollama-models` (models load from the NAS; without it
-   Ollama would use `~/.ollama` on the full local disk), `OLLAMA_HOST=127.0.0.1:11434` /
-   `127.0.0.1:11435`, `CUDA_VISIBLE_DEVICES=0` / `1`, `OLLAMA_NUM_PARALLEL=4`,
-   `OLLAMA_MAX_LOADED_MODELS=2`, `OLLAMA_KEEP_ALIVE=-1` (**verify**, else `24h`), `OLLAMA_NOPRUNE=1`,
+   Ollama would use `~/.ollama` on the full local disk), `OLLAMA_NUM_PARALLEL=4`,
+   `OLLAMA_MAX_LOADED_MODELS=3`, `OLLAMA_KEEP_ALIVE=24h`, `OLLAMA_NOPRUNE=1`,
    `OLLAMA_KV_CACHE_TYPE=f16`, `OLLAMA_FLASH_ATTENTION=1` (AI12-04; source `infra/cluster/cluster.env.template`).
-   It refuses to start if the NAS path is not mounted. The wrapper's mutating ops (`start-ollama`,
+   It never starts a second server and refuses to start if the NAS path is not mounted.
+   **Pre-existing server with other settings** (`$C status` shows WARN for `OLLAMA_*` env ≠ `cluster.env`, e.g.
+   another model dir or `MAX_LOADED_MODELS`): decide once, outside any gate run, under the lock: on the cluster,
+   stop it yourself (`kill <pid>` of `ollama serve`, as the cluster user), then `pruefstand-lock $C start-ollama`
+   starts the one server with the template env; record the decision in `docs/decisions.md`. The wrapper's mutating ops (`start-ollama`,
    `stop-ollama`, `pull`, `rm`) refuse unless you hold the GPU lock (`pruefstand-lock …`, A12-M5);
    `status` and `show` work without it. Check: `$C status`; `curl -s localhost:11434/api/tags`.
-2. **Stop**: `pruefstand-lock $C stop-ollama gpu0|gpu1|all` (pid files in NAS `run/`; a pid is used only if
-   `/proc/<pid>/cmdline` is `ollama serve` and the port listens, so stale pids after a cluster reboot never
-   hit another process, A12-M3). **Logs** (on the NAS, nothing on the cluster disk):
-   `tail -n 200 /mnt/pruefstand/run/ollama-gpu0.log`.
+2. **Stop**: normally not needed (unload models instead: `switch-mode.sh` or `keep_alive: 0`).
+   `pruefstand-lock $C stop-ollama` stops only a server the scripts started (pid file in NAS `run/`; a pid is
+   used only if `/proc/<pid>/cmdline` is `ollama serve` and `:11434` listens, so stale pids after a cluster
+   reboot never hit another process, A12-M3). **Logs** (on the NAS, nothing on the cluster disk):
+   `tail -n 200 /mnt/pruefstand/run/ollama.log` (only for a server the scripts started).
 3. **Mode switch** (`gpu-cluster.md` §2): `infra/gpu/switch-mode.sh day|night|datagen` under the lock.
-   Day/night only unload/load through the Ollama API (`keep_alive: 0` / `-1`, loads always with the
-   catalogue `options` so the first real request does not reload; the PR judge is unloaded before the
-   gemma nightly judge is loaded on GPU1 at `num_ctx` 12288 (both judges, D306: generator 8 192 + allowance ≤ 3 072
-   + 1 024 reserve; lower only if T3.1b's VRAM measurement failed; the catalogue entry is the value used). `datagen` stops both day servers and
-   starts `ollama-all` on both cards (`$C start-ollama datagen`); it creates `MAINTENANCE` itself, and
+   Every mode only unloads/loads through the Ollama API on the one server (`keep_alive: 0` / `"24h"`, loads always
+   with the catalogue `options` so the first real request does not reload; no server start or stop, ADR-0018);
+   the PR judge is unloaded before the gemma nightly judge is loaded at `num_ctx` 12288 (both judges, D306: generator 8 192 + allowance ≤ 3 072
+   + 1 024 reserve; lower only if T3.1b's VRAM measurement failed; the catalogue entry is the value used). `datagen` unloads every model and
+   loads llama 70B, which Ollama splits over both cards; it creates `MAINTENANCE` itself, and
    `switch-mode.sh day` removes it afterwards (Y6.2). The first load per mode comes from the NAS and is
    slow; it is excluded from the budgets.
 4. **Pull or update a model**: `infra/gpu/fetch-model.sh <models.yaml id>` under the lock:
-   `ollama pull <tag>` on the cluster against `ollama-gpu0` (store on the NAS), then the manifest digest
+   `ollama pull <tag>` on the cluster against the one server (store on the NAS), then the manifest digest
    is compared with `infra/gpu/models.yaml`; a mismatch removes the tag and exits 1 (D207). One pull at a
-   time. One-time migration of the existing `qwen3.8:27b-q8_0` from Ollama's default store into
-   `ollama-models/` (T3.1a S2b): re-pull with `fetch-model.sh`, then check `ollama list` on the cluster
+   time. One-time migration of the existing `qwen3.8:27b-q8_0` (digest `8f5fb6b7…1766039`) into
+   `ollama-models/` (T3.1a S2b; only if T0.6 C4 found the server using another model dir): re-pull with `fetch-model.sh`, then check `ollama list` on the cluster
    shows the same digest as `models.yaml`.
-5. **Deploy cluster scripts** after a change to `infra/cluster/**` on `main`, [pruefstand] from the
+5. **Card placement** (ADR-0018): `$C status` lists the card(s) of every resident model; `health.sh` exit 15 =
+   a model not fully in VRAM (`size_vram < size`) or, outside datagen, spread over both cards. Usually another
+   process holds VRAM (`nvidia-smi` foreign pids) or a fourth model was loaded: unload the extra models with
+   `switch-mode.sh <mode>` and re-run `health.sh --repair`.
+6. **ngrok URL to Ollama** (rejected, `security.md` C19, setup log §5): Prüfstand never uses it. If it still runs
+   on the cluster, stop it, or protect it (basic auth or an IP allow-list in its traffic policy) and rotate the URL.
+7. **Deploy cluster scripts** after a change to `infra/cluster/**` on `main`, [pruefstand] from the
    trusted checkout only (development uses `bin-dev/`): `infra/gpu/deploy-cluster-bin.sh` (writes `*.partial`, then `mv`, plus `bin/SHA256SUMS`; the
    orchestrator also runs it). `health.sh` exit 14 = `bin/` stale.
-6. **Shared-cluster checks** (accepted risk `security.md` C14): `$C status` shows other processes on
+8. **Shared-cluster checks** (accepted risk `security.md` C14): `$C status` shows other processes on
    our cards; a resident digest that is not in the catalogue fails the preflight. Ask the cluster admins
    once whether per-user network namespaces or a loopback firewall exist and record the answer in
    `docs/decisions.md`.

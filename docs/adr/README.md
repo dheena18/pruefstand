@@ -23,6 +23,7 @@ ADR that **supersedes** the old one, then set the old one's status to `Supersede
 | [0015](0015-license-homogeneous-configs.md) | Dataset split into license-homogeneous configs; per-checkpoint model licences | Accepted (revised) |
 | [0016](0016-import-linter.md) | Architecture enforced by import-linter | Accepted |
 | [0017](0017-release-automation.md) | release-please (App token), PyPI Trusted Publishing, images built on the tag, cosign, SBOM, optional Action repo | Accepted (revised) |
+| [0018](0018-single-ollama-server.md) | One Ollama server on the cluster for both A40s (`:11434` only; placement by Ollama, checked via `/api/ps`; generator/judge separation by the `llm-proxy` allow-list) | Accepted |
 
 ## Template (MADR-lite)
 

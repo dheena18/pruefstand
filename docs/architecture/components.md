@@ -124,7 +124,7 @@ reader validated by `schemas/chunk.schema.json` and never imports `pruefstand`.
 | `RagConfig` | Typed `rag.yaml` (tier 1, CPU) / `rag.gpu.yaml` (tier 2: Ollama via `LLM_PROXY_URL`, `RERANK_URL`; X3.15) |
 | `GermanAnalyzer` | NFC, lowercase, optional ß folding, Snowball German stemming, optional compound split |
 | `SparseEncoder` | Hashed vocabulary + term weights; IDF applied by Qdrant |
-| `DenseEncoder` | small multilingual CPU model (v0, tier 1) or `bge-m3` via Ollama `/api/embed` on GPU0 (tier 2, through `llm-proxy`); e5-family models get `query: ` / `passage: ` prefixes and truncation with a logged count (D121) |
+| `DenseEncoder` | small multilingual CPU model (v0, tier 1) or `bge-m3` via Ollama `/api/embed` on the generator card (tier 2, through `llm-proxy`); e5-family models get `query: ` / `passage: ` prefixes and truncation with a logged count (D121) |
 | `models.py` | Only home of rag-demo models: `RagConfig`, `SparseVector`, `Hit`, `GenOutput` |
 | `Indexer` | Reads chunk files, encodes, upserts into one collection with a `tenant_id` payload index |
 | `Retriever` | Dense + sparse prefetch, **tenant filter inside each prefetch**, RRF fusion, optional rerank |

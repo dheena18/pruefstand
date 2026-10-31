@@ -71,7 +71,7 @@ tests/                                repo-level tests only (CI workflows, data 
 | Machine | Role |
 | --- | --- |
 | TrueNAS VM `pruefstand-exec` (Ubuntu 24.04, 64 GB) | **primary**: development (VS Code on Windows → Remote-SSH; every coding-agent command runs here, as the owner user) **and** execution as system user **`pruefstand`** (runner, orchestrator, cluster key `/home/pruefstand/.ssh/id_ed25519_cluster`, system unit `pruefstand-tunnel.service`, state; R11 D211). Rootful Docker (group `docker` = `pruefstand` + owner; D213), Qdrant, candidates, `rerank-cpu`, `llm-proxy` (normal container on `gate-net` + `proxy-egress`, candidates use `http://llm-proxy:11500`; tunnel also bound on `172.17.0.1`, firewalled to `proxy-egress`; D242); lock `/var/lib/pruefstand/gpu.lock` and the file `/var/lib/pruefstand/MAINTENANCE` (group `pruefstand`; D212); NAS dataset at `/mnt/pruefstand` (`mnt-pruefstand.automount`; the runner unit only `Wants=`/`After=` it, the tunnel unit has no NAS dependency, preflight fails the job with `infra_error="nas_unavailable"`; R12 N4.1, D254); `autossh` tunnels to the cluster; firewall rules in Docker's `DOCKER-USER` chain and the own `PRUEFSTAND-INPUT` chain hooked from `INPUT` (container -> `172.17.0.1` hits `INPUT`), both via `pruefstand-firewall.service`, never flushing the ruleset (R12 N4.2, D255, D285) |
-| Cluster `cairo-s101lp` (2 × A40) | **Ollama only**: two servers started detached with `setsid nohup` (`:11434` GPU0, `:11435` GPU1; never `tmux`, R11 D228), models on the NAS; native `/api/*` only (D219); no checkout, Docker, data, caches or state; reached only by SSH from the VM with the `pruefstand` key |
+| Cluster `cairo-s101lp` (2 × A40) | **Ollama only**: **one** server on `127.0.0.1:11434` for both GPUs (ADR-0018; the running server is reused, started detached with `setsid nohup` only if none runs, never a second one, never `tmux`, R11 D228; GPU placement by Ollama, checked via `/api/ps`; generator/judge separation by the `llm-proxy` model allow-list), models on the NAS; native `/api/*` only (D219); no checkout, Docker, data, caches or state; reached only by SSH from the VM with the `pruefstand` key (alias `cairo-s101lp`, non-default `Port`; already set up, `docs/ops/setup-log.md`) |
 | Windows laptop | VS Code client; WSL2 Ubuntu 24.04 is an **optional** alternative dev shell |
 
 A second, **private** repository `dheena18/pruefstand-gate` (the *gate executor*) holds the
@@ -97,7 +97,7 @@ baseline** for its `eval_fingerprint` gets `failure` "no baseline for <fp>; run 
 fork PRs are gated from branch `gate/pr-N` (pushed by the owner after review) only when its head SHA equals the fork
 head SHA at dispatch time, and the status goes to that SHA only; the candidate never sees the held-out canary registry; baselines live on
 the NAS (`$PRUEFSTAND_DATA_ROOT/baselines/`, last 20 per fingerprint; R10 D209) with only `index.json` in the private repo;
-the candidate reaches GPU models only through the trusted `llm-proxy` (GPU0 generator + embeddings; R10 D206);
+the candidate reaches GPU models only through the trusted `llm-proxy` (generator + embedding models only, judges blocked by its allow-list; R10 D206, ADR-0018);
 the weekly backup bundle is `age`-encrypted as a whole and copied weekly to the owner's laptop as well (receipt file on
 the NAS, `backup-check` warns after 8 days; R11 D229); sanitised dashboard data and `heartbeat.json` (refreshed every
 15 min during long jobs, D225) go to the public repo `dheena18/pruefstand-dashboard-data` (repo-scoped PAT kept in
@@ -139,7 +139,7 @@ Node 22 LTS (fnm) + pnpm (`corepack enable`), Docker (+ Compose, user in `docker
 | `make cassettes` | re-records `tests/cassettes/` from **real** model calls (needs the `live` stack) |
 | `make test-integration` | `pytest -m integration` (Docker needed) |
 | `make test-slow` | `pytest -m slow` (PR: reduced simulation grid, 500 sims; nightly sets `PRUEFSTAND_SIM_GRID=full` for 4 000 sims, D131) |
-| `make test-gpu` | `pytest -m gpu` (on the VM, against the A40 Ollama servers through the tunnels; run it as `pruefstand-lock make test-gpu`, R11 D212) |
+| `make test-gpu` | `pytest -m gpu` (on the VM, against the A40 Ollama server through the tunnel; run it as `pruefstand-lock make test-gpu`, R11 D212) |
 | `make schemas` | `pruefstand schema export --out schemas/` + OpenAPI export |
 | `make schemas-fresh` | regenerates schemas and fails if `git diff` is non-empty (CI) |
 | `make ui-check` | dashboard lint, typecheck, unit, Playwright (from T8.1/T8.3) |
@@ -292,6 +292,7 @@ Modules in the same row never import each other. All shared types live in `core`
   binding round-11 decisions are D211–D247 (source: `docs/planning/reviews/round11-resolution.md`, Y1–Y7; D242–D247 from `round11-integration.md`);
   binding round-12 decisions are D248–D283 (source: `docs/planning/reviews/round12-resolution.md`, N1–N7, plus the reviewers' exact minor fixes in `round12-{dev,ai,ui,arch}.md`; D284–D286 from `round12-integration.md`);
   binding round-13 decisions are D287–D323 (D319–D323: round-13 integration) (source: `docs/planning/reviews/round13-resolution.md`, P1–P5, plus the reviewers' exact minor fixes in `round13-{dev,ai,ui,arch}.md`).
+  D324–D327 (2026-10-31, owner-verified cluster facts, `docs/ops/setup-log.md`) implement ADR-0018: one Ollama server for both GPUs, port 11434 only, ngrok rejected.
 - Several agents in parallel: follow `tasks/PARALLEL-PLAN.md` (one task = one worktree = one PR; shared files
   only as your own hunk in the last commit; GPU steps under `pruefstand-lock` (`/var/lib/pruefstand/gpu.lock`),
   compose stacks under `stack.lock`; each worktree gets `.env` copied or symlinked by the lead agent, never committed,

@@ -1,6 +1,7 @@
 # 0009 — All LLM calls via LiteLLM; provider set; judge ≠ generator family
 
 - Status: Accepted (revised 2026-10-28: free providers only, external-provider data guard; revised 2026-10-31: round 8 family plan, no hosted generator, no CPU judge; round 9 judge pass rule, reviewer roles, input cap, weekend datagen; revised round 10 (D198, D204, D209): all tier-2 serving is Ollama, provider `ollama` replaces `hosted_vllm`, vLLM and TEI rejected; revised round 11 (D219–D221, D224): native Ollama API only, catalogue options enforced, fallback judge informational)
+- Amended by: [ADR-0018](0018-single-ollama-server.md) (2026-10-31: one Ollama server for both GPUs, port 11434 only)
 - Date: 2026-10-27
 - Tasks: T1.2, T1.4, T1.13, T3.1a, T3.1b, T5.1
 
@@ -19,7 +20,7 @@ and no systemd linger, so the planned vLLM + TEI containers cannot run there.
 
 | Provider | LiteLLM prefix | Use |
 | --- | --- | --- |
-| **Ollama on the A40s** (two servers: `ollama-gpu0` `:11434`, `ollama-gpu1` `:11435`, reached from the VM through `autossh` tunnels) | `ollama/<tag>` in configs and the catalogue (D209, D221); `LiteLLMBackend` translates it to LiteLLM's native `ollama_chat/<tag>` (`/api/chat`, `/api/embed`; D219), never Ollama's `/v1/*`; base URL from `infra/gpu/endpoints.yaml`: `OLLAMA_GPU0_URL` / `OLLAMA_GPU1_URL` | generator `qwen3.8:27b-q8_0` and `bge-m3` embeddings (GPU0), PR judge and nightly judge (gemma 27B-class) (GPU1), 70B-class datagen (`ollama-all` over both cards: test generation, perturbations, synthetic private docs; manual weekend `datagen`-mode jobs, outside the nightly window) |
+| **Ollama on the A40s** (one server on `:11434` for both GPUs, ADR-0018, reached from the VM through the `autossh` tunnel) | `ollama/<tag>` in configs and the catalogue (D209, D221); `LiteLLMBackend` translates it to LiteLLM's native `ollama_chat/<tag>` (`/api/chat`, `/api/embed`; D219), never Ollama's `/v1/*`; base URL from `infra/gpu/endpoints.yaml`: `OLLAMA_GPU0_URL` / `OLLAMA_GPU1_URL` (both the same server, ADR-0018) | generator `qwen3.8:27b-q8_0` (Ollama family `qwen35` → `qwen`, `think: false`, pinned digest `8f5fb6b7…1766039`) and `bge-m3` embeddings (generator lane), PR judge and nightly judge (gemma 27B-class) (judge lane), 70B-class datagen (loaded alone, split over both cards by Ollama: test generation, perturbations, synthetic private docs; manual weekend `datagen`-mode jobs, outside the nightly window) |
 | CPU reranker on the VM (`rerank-cpu`, sentence-transformers, TEI-compatible `POST /rerank`) | – (not an LLM; called by rag-demo through `RERANK_URL`) | `BAAI/bge-reranker-v2-m3`, tier 2 only |
 | llama.cpp server on CPU (OpenAI-compatible) | `openai/` + local `api_base` | tier-1 live CI generator (called by rag-demo's own client); laptops |
 | GitHub Models (free tier, rate-limited) | `github/` | tier-1 **informational** judge via `GITHUB_TOKEN` (`models: read`; ≤ 10 calls/PR, ≤ 60/nightly), RQ2 large free-tier judge, 10 % cross-check samples of public items |
@@ -40,7 +41,7 @@ and no systemd linger, so the planned vLLM + TEI containers cannot run there.
   tenant documents and canaries. A hosted generator would need `allow_paid` and the data guard, both off.
 - **Family plan** (SPEC §6.3, `core/data/model_families.yaml`): generator `qwen` (all tiers; all
   `role: generator` catalogue entries share it); PR judge `mistral` (`gemma` if mistral fails
-  calibration); nightly judge `gemma` (27B-class `Q4_K_M`, one A40 (GPU1); D141, D205); datagen `llama` 70B-class
+  calibration); nightly judge `gemma` (27B-class `Q4_K_M`, one A40, the other card than the generator; D141, D205); datagen `llama` 70B-class
   (datagen batch jobs only, ≠ every judge family); tier-1 informational judge
   a GitHub Models model of a non-`qwen` family. `test_catalogue.py` checks that no judge/datagen entry
   has the generator family and that no default-profile model has a non-commercial licence.
@@ -54,16 +55,16 @@ and no systemd linger, so the planned vLLM + TEI containers cannot run there.
   `temperature`, `seed`, `top_p`): generator `num_ctx` **8192**, PR judge and nightly Gemma judge both **12288** = generator 8 192 +
   rubric/answer allowance ≤ 3 072 + 1 024 output reserve (round 13, D306; T3.1b may lower it only if its VRAM
   measurement fails; if it does not fit at 4 slots, lower
-  `OLLAMA_NUM_PARALLEL` on GPU1 to 2 before `num_ctx`, AI12-09), judges `num_predict` 384. Preload
+  `OLLAMA_NUM_PARALLEL` (server-wide, ADR-0018) to 2 before `num_ctx`, AI12-09), judges `num_predict` 384. Preload
   (`switch-mode.sh`, `health.sh`) sends exactly these options, because a request with different
   options reloads the model from the NAS; `llm-proxy` enforces only `num_ctx` and `keep_alive` (the load-time
   options) plus the model allow-list, strips other load-time keys, and passes `temperature`, `seed`,
   `top_p`, `num_predict` through within the catalogue `option_bounds` (outside → 403; round 12 N2, refines D220; catalogue values
   are defaults, not overrides), so a candidate cannot reload, offload or resize the shared generator,
-  while M17 and the T6.3 churn runs really change sampling. Server env `OLLAMA_NUM_PARALLEL=4`, `OLLAMA_MAX_LOADED_MODELS=2`,
-  `OLLAMA_KEEP_ALIVE=-1` (mode switches manage residency; **verify**), `OLLAMA_NOPRUNE=1` (two servers
-  share one store; **verify**), `OLLAMA_CONTEXT_LENGTH` = the server's catalogue `num_ctx` (**verify**
-  support), `OLLAMA_FLASH_ATTENTION=1`, `OLLAMA_MODELS` on the NAS, `OLLAMA_HOST=127.0.0.1:<port>`.
+  while M17 and the T6.3 churn runs really change sampling. Server env (one server, ADR-0018) `CUDA_VISIBLE_DEVICES=0,1`, `OLLAMA_NUM_PARALLEL=4`,
+  `OLLAMA_MAX_LOADED_MODELS=3`, `OLLAMA_KEEP_ALIVE=24h` (mode switches manage residency), `OLLAMA_NOPRUNE=1`
+  (**verify**), `OLLAMA_FLASH_ATTENTION=1`, `OLLAMA_MODELS` on the NAS, `OLLAMA_HOST=127.0.0.1:11434`; no
+  server-side default context (the catalogue `num_ctx` on every request is the only control).
   Models are pinned by tag **and manifest digest** (tags are mutable). Embeddings: `bge-m3` via
   `/api/embed` (dense only; ADR-0010). Evidence, not request bodies: `test-gpu` checks
   `prompt_eval_count` on a 7 000-token prompt, and a model reload during a run (`load_duration` > 1 s
