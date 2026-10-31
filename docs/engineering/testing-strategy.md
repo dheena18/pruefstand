@@ -73,7 +73,7 @@ The doctest run (`pytest --doctest-modules packages/pruefstand/src`) is a second
 | `llm` | llama.cpp server (OpenAI-compatible, `--jinja`, `--parallel 1`), family `qwen`, ≤ 2B params instruct GGUF Q4_K_M (SPEC §6.3), **thinking disabled** (`enable_thinking=false` / `/no_think`) | file SHA-256, chosen in T1.13 |
 | `embeddings` | small multilingual embedding model on CPU (e5-small: `query: ` / `passage: ` prefixes, `truncate: true`, truncation count logged) | revision SHA, T1.13 |
 | `rag-demo` | the system under test, image built from the PR; tier-1 profile `top_k: 4`, chunk text truncated to 256 tokens in the prompt, `max_tokens: 256`, `reranker: off` | digest |
-| judge (informational) | GitHub Models through `GITHUB_TOKEN` (`permissions: models: read`), low-tier model of a non-`qwen` family, free; ≤ 10 calls per PR, ≤ 60 calls per nightly; cases whose rendered inputs contain a registered canary are excluded before counting; baseline and PR judge the same case ids (seeded by dataset version) | model id in `examples/live/pruefstand.yaml` |
+| judge (informational) | GitHub Models through `PRUEFSTAND_GH_MODELS_TOKEN: ${{ github.token }}` (`permissions: models: read`, D333), low-tier model of a non-`qwen` family, free; ≤ 10 calls per PR, ≤ 60 calls per nightly; cases whose rendered inputs contain a registered canary are excluded before counting; baseline and PR judge the same case ids (seeded by dataset version) | model id in `examples/live/pruefstand.yaml` |
 
 There is **no CPU judge** in tier 1.
 
