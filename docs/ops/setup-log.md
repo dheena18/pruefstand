@@ -308,6 +308,27 @@ tailscale status && tailscale ip -4            # shows pruefstand-exec with a 10
 Tailscale admin console: **Machines → pruefstand-exec → Disable key expiry**; **Settings → Keys → Generate auth
 key** (reusable, ephemeral, ≤ 90 days) → cloud environment secret `TS_AUTHKEY` (`docs/ops/secrets.md`).
 
+**How Claude Code cloud environments work (docs, checked 2026-10-31):** the setup script runs as root
+**before** the environment variables are set, and only what it writes to disk is cached (background processes
+are not kept). All session traffic goes through an HTTP/HTTPS proxy. So the setup script only installs
+Tailscale; the per-session connect step is `bash scripts/cloud/connect-vm.sh` (starts `tailscaled` in userspace
+mode, joins with `TS_AUTHKEY`, writes the SSH key and the `Host vm` alias, tests the VM and Ollama).
+
+Cloud environment (claude.ai/code → new-session screen → environment selector → **New environment** or the
+settings icon of an existing one):
+
+- **Network access:** **Custom**, allowed domains `*.tailscale.com` and `*.tailscale.io`, with **Also include
+  default list of common package managers** ticked (or **Full**).
+- **Environment variables** (`.env` format): `TS_AUTHKEY=…` and `VM_SSH_KEY=…`.
+- **Setup script:**
+
+```bash
+#!/bin/bash
+curl -fsSL https://tailscale.com/install.sh | sh || true
+```
+
+The older inline lines below are kept as reference; `scripts/cloud/connect-vm.sh` replaces them.
+
 Cloud environment: secrets `TS_AUTHKEY` and `VM_SSH_KEY` (the private key stored **base64-encoded on one line**,
 copied on Windows with `[Convert]::ToBase64String([IO.File]::ReadAllBytes("$env:USERPROFILE\.ssh\pruefstand_cloud")) | Set-Clipboard`;
 private key `pruefstand_cloud`, made on Windows with
