@@ -164,6 +164,9 @@ VM `.env`: `PRUEFSTAND_DATA_ROOT=/mnt/pruefstand`.
 Backups: TrueNAS **Data Protection → Periodic Snapshot Tasks** on the VM's zvol (daily, keep 14 days), plus
 the planned weekly encrypted copy to the owner's laptop.
 
+**Done (owner, 2026-10-31):** the daily Periodic Snapshot Task on the VM's zvol (keep 14) is set up, and the VM
+is set to **autostart** with the TrueNAS host. The VM `.env` uses `PRUEFSTAND_GH_MODELS_TOKEN` (D333).
+
 ### Tried and dropped: NFS share from TrueNAS to the VM
 
 A separate dataset `SSD/pruefstand` with an NFS share was created and the VM was set to mount it. The VM could
