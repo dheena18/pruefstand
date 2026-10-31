@@ -1,10 +1,12 @@
+from enum import StrEnum
+
 import pytest
 
 from pruefstand.core import enums
 from pruefstand.core.enums import Category, Difficulty, GateStatus, Lang, Split
 from pruefstand.core.models import metric
 
-TABLE: list[tuple[type, dict[str, str]]] = [
+TABLE: list[tuple[type[StrEnum], dict[str, str]]] = [
     (Lang, {"DE": "de", "EN": "en"}),
     (
         Category,
@@ -50,7 +52,7 @@ ROWS = [(cls, name, value) for cls, members in TABLE for name, value in members.
 
 
 @pytest.mark.parametrize(("cls", "name", "value"), ROWS)
-def test_serialised_value(cls: type, name: str, value: str) -> None:
+def test_serialised_value(cls: type[StrEnum], name: str, value: str) -> None:
     member = cls[name]
     assert member.value == value
     assert cls(value) is member
@@ -58,7 +60,7 @@ def test_serialised_value(cls: type, name: str, value: str) -> None:
 
 
 @pytest.mark.parametrize(("cls", "members"), TABLE)
-def test_no_member_missing_from_table(cls: type, members: dict[str, str]) -> None:
+def test_no_member_missing_from_table(cls: type[StrEnum], members: dict[str, str]) -> None:
     assert {m.name for m in cls} == set(members)
 
 

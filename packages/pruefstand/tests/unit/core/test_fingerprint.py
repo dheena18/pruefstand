@@ -6,6 +6,7 @@ import pytest
 
 from pruefstand.core.enums import Split
 from pruefstand.core.fingerprint import corpus_version, eval_fingerprint, target_fingerprint
+from pruefstand.core.hashing import stable_hash
 from pruefstand.core.models.corpus import CorpusManifest
 from pruefstand.core.models.target import TargetInfo
 
@@ -132,7 +133,7 @@ def test_eval_fingerprint_versions_matter() -> None:
 
 
 def test_tier1_empty_judges_are_stable() -> None:
-    kwargs = {"judge_models": {}, "judge_prompt_versions": {}, "judge_serving": {}}
+    kwargs: dict[str, Any] = {"judge_models": {}, "judge_prompt_versions": {}, "judge_serving": {}}
     assert efp(**kwargs) == efp(**kwargs)
 
 
@@ -158,9 +159,7 @@ def test_stratum() -> None:
 
 
 def test_stratum_all_keeps_the_pre_stratum_hash() -> None:
-    from pruefstand.core.hashing import stable_hash
-
-    legacy = stable_hash(
+    legacy_parts: list[object] = [
         "pruefstand-de",
         "v1",
         ["core", "robust_pr"],
@@ -172,5 +171,5 @@ def test_stratum_all_keeps_the_pre_stratum_hash() -> None:
         "2026-11-02.ab12cd34",
         None,
         False,
-    )
-    assert efp() == legacy
+    ]
+    assert efp() == stable_hash(*legacy_parts)

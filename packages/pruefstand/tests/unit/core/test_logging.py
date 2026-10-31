@@ -65,7 +65,8 @@ def test_token_in_exception_is_redacted(token: str, capsys: pytest.CaptureFixtur
     configure_logging(json=True, level="INFO")
     log = get_logger("t")
     try:
-        raise RuntimeError(f"upstream said {token}")  # noqa: TRY301
+        msg = f"upstream said {token}"
+        raise RuntimeError(msg)  # noqa: TRY301
     except RuntimeError:
         log.exception("failed")
     err = RuntimeError(f"again {token}")
@@ -115,5 +116,5 @@ def test_stdlib_loggers_are_redacted_too(capsys: pytest.CaptureFixture[str]) -> 
 
 
 def test_get_logger_before_configure_still_redacts(capsys: pytest.CaptureFixture[str]) -> None:
-    get_logger("early").info("x", password="hunter2")
+    get_logger("early").info("x", **{"password": "hunter2"})
     assert "hunter2" not in capsys.readouterr().err

@@ -87,7 +87,7 @@ def test_target_info_serving_round_trip() -> None:
 
 
 def test_target_info_serving_defaults_to_empty() -> None:
-    data = {
+    data: dict[str, Any] = {
         "app_version": "0.1",
         "git_sha": "abc",
         "image_digest": None,

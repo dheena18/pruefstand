@@ -1,0 +1,388 @@
+{
+  "$defs": {
+    "CostSummary": {
+      "additionalProperties": false,
+      "description": "Cost of a run.",
+      "properties": {
+        "completion_tokens": {
+          "title": "Completion Tokens",
+          "type": "integer"
+        },
+        "gpu_seconds": {
+          "title": "Gpu Seconds",
+          "type": "number"
+        },
+        "llm_calls": {
+          "title": "Llm Calls",
+          "type": "integer"
+        },
+        "prompt_tokens": {
+          "title": "Prompt Tokens",
+          "type": "integer"
+        },
+        "usd": {
+          "title": "Usd",
+          "type": "number"
+        }
+      },
+      "required": [
+        "usd",
+        "prompt_tokens",
+        "completion_tokens",
+        "gpu_seconds",
+        "llm_calls"
+      ],
+      "title": "CostSummary",
+      "type": "object"
+    },
+    "Split": {
+      "description": "Dataset split (sizes and selection rules: interfaces §2 and §14).",
+      "enum": [
+        "smoke",
+        "smoke_live",
+        "core",
+        "robust_pr",
+        "full",
+        "human_labels",
+        "rq1"
+      ],
+      "title": "Split",
+      "type": "string"
+    },
+    "TargetInfo": {
+      "additionalProperties": false,
+      "description": "Response of ``GET /v1/info``.\n\n``serving`` holds static fields only (engine, engine_version, quantization, gpu,\nmodel_sha256); runtime counters of ``/v1/health.stats`` never enter this model.",
+      "properties": {
+        "app_version": {
+          "title": "App Version",
+          "type": "string"
+        },
+        "config_hash": {
+          "title": "Config Hash",
+          "type": "string"
+        },
+        "corpus_version": {
+          "title": "Corpus Version",
+          "type": "string"
+        },
+        "git_sha": {
+          "title": "Git Sha",
+          "type": "string"
+        },
+        "image_digest": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Image Digest"
+        },
+        "models": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "title": "Models",
+          "type": "object"
+        },
+        "serving": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "default": {},
+          "title": "Serving",
+          "type": "object"
+        }
+      },
+      "required": [
+        "app_version",
+        "git_sha",
+        "image_digest",
+        "config_hash",
+        "corpus_version",
+        "models"
+      ],
+      "title": "TargetInfo",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "description": "``run.json``: everything needed to interpret a run.\n\n``counts`` keys (single owner = the runner): ``ok``, ``error``, ``cached``, ``not_applicable``,\n``judge_error``, ``judge_skipped`` (details reason ``judge_quota`` | ``judge_cap``),\n``judge_truncated``, ``think_stripped``, ``corpus_mismatch``, ``retrieve`` (``robust_pr``\ncases sent to ``/v1/retrieve``, R11 D218), ``retrieve_fallback`` (target without\n``/v1/retrieve``), and ``model_reloads`` / ``upstream_errors`` (R12 N6.4: ``llm-proxy``\n``/health`` differences over the run, written by the T6.2a executor; absent in tier 1 and in\nlocal runs). An infra failure is the ``infra_error`` field, never a count.\n\n``infra_error`` is ``\"<kind>: <detail>\"`` (kind ``ollama_down`` | ``tunnel_lost`` |\n``data_root_unavailable`` | ``proxy_upstream`` | ``model_reload`` | ``window_exceeded``).\n\nRun-time flags (``judge_drift``, ``judge_degraded``, ``judge_fallback``) never change\n``eval_fingerprint``; ``block``, ``judged_subset`` and a ``stratum`` other than ``\"all\"`` do.\n\nRaises:\n    ValidationError: ``complete`` differs from ``stop_reason == \"completed\"``, or\n        ``infra_error`` is set with a ``stop_reason`` other than ``\"aborted\"``.",
+  "properties": {
+    "block": {
+      "anyOf": [
+        {
+          "type": "integer"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Block"
+    },
+    "complete": {
+      "title": "Complete",
+      "type": "boolean"
+    },
+    "config_hash": {
+      "title": "Config Hash",
+      "type": "string"
+    },
+    "cost": {
+      "$ref": "#/$defs/CostSummary"
+    },
+    "counts": {
+      "additionalProperties": {
+        "type": "integer"
+      },
+      "title": "Counts",
+      "type": "object"
+    },
+    "created_at": {
+      "format": "date-time",
+      "title": "Created At",
+      "type": "string"
+    },
+    "dataset_name": {
+      "title": "Dataset Name",
+      "type": "string"
+    },
+    "dataset_version": {
+      "title": "Dataset Version",
+      "type": "string"
+    },
+    "duration_s": {
+      "title": "Duration S",
+      "type": "number"
+    },
+    "eval_fingerprint": {
+      "title": "Eval Fingerprint",
+      "type": "string"
+    },
+    "git_ref": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "title": "Git Ref"
+    },
+    "git_sha": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "title": "Git Sha"
+    },
+    "infra_error": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Infra Error"
+    },
+    "judge_degraded": {
+      "default": false,
+      "title": "Judge Degraded",
+      "type": "boolean"
+    },
+    "judge_drift": {
+      "default": false,
+      "title": "Judge Drift",
+      "type": "boolean"
+    },
+    "judge_epoch": {
+      "default": 0,
+      "title": "Judge Epoch",
+      "type": "integer"
+    },
+    "judge_fallback": {
+      "default": false,
+      "title": "Judge Fallback",
+      "type": "boolean"
+    },
+    "judge_mode": {
+      "enum": [
+        "github",
+        "local",
+        "skipped"
+      ],
+      "title": "Judge Mode",
+      "type": "string"
+    },
+    "judge_models": {
+      "additionalProperties": {
+        "type": "string"
+      },
+      "title": "Judge Models",
+      "type": "object"
+    },
+    "judge_prompt_versions": {
+      "additionalProperties": {
+        "type": "string"
+      },
+      "title": "Judge Prompt Versions",
+      "type": "object"
+    },
+    "judge_serving": {
+      "additionalProperties": {
+        "type": "string"
+      },
+      "default": {},
+      "title": "Judge Serving",
+      "type": "object"
+    },
+    "judged_cases": {
+      "default": 0,
+      "title": "Judged Cases",
+      "type": "integer"
+    },
+    "judged_subset": {
+      "default": false,
+      "title": "Judged Subset",
+      "type": "boolean"
+    },
+    "metric_versions": {
+      "additionalProperties": {
+        "type": "string"
+      },
+      "title": "Metric Versions",
+      "type": "object"
+    },
+    "n_cases": {
+      "title": "N Cases",
+      "type": "integer"
+    },
+    "pr_number": {
+      "anyOf": [
+        {
+          "type": "integer"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "title": "Pr Number"
+    },
+    "pruefstand_version": {
+      "title": "Pruefstand Version",
+      "type": "string"
+    },
+    "run_id": {
+      "title": "Run Id",
+      "type": "string"
+    },
+    "schema_version": {
+      "const": "1",
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "seed": {
+      "title": "Seed",
+      "type": "integer"
+    },
+    "splits": {
+      "items": {
+        "$ref": "#/$defs/Split"
+      },
+      "title": "Splits",
+      "type": "array"
+    },
+    "stack": {
+      "enum": [
+        "live",
+        "a40"
+      ],
+      "title": "Stack",
+      "type": "string"
+    },
+    "stop_reason": {
+      "enum": [
+        "completed",
+        "budget_exceeded",
+        "aborted"
+      ],
+      "title": "Stop Reason",
+      "type": "string"
+    },
+    "stratum": {
+      "default": "all",
+      "enum": [
+        "all",
+        "refusal",
+        "blocks"
+      ],
+      "title": "Stratum",
+      "type": "string"
+    },
+    "target": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/TargetInfo"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "target_fingerprint": {
+      "title": "Target Fingerprint",
+      "type": "string"
+    },
+    "workload": {
+      "enum": [
+        "pr",
+        "nightly",
+        "bench"
+      ],
+      "title": "Workload",
+      "type": "string"
+    }
+  },
+  "required": [
+    "schema_version",
+    "run_id",
+    "created_at",
+    "pruefstand_version",
+    "git_sha",
+    "git_ref",
+    "pr_number",
+    "target",
+    "target_fingerprint",
+    "eval_fingerprint",
+    "dataset_name",
+    "dataset_version",
+    "splits",
+    "n_cases",
+    "config_hash",
+    "judge_models",
+    "judge_prompt_versions",
+    "metric_versions",
+    "seed",
+    "cost",
+    "duration_s",
+    "counts",
+    "complete",
+    "stop_reason",
+    "stack",
+    "workload",
+    "judge_mode"
+  ],
+  "title": "RunManifest",
+  "type": "object"
+}

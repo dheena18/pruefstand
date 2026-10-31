@@ -54,14 +54,16 @@ def test_kind_is_restricted() -> None:
 
 
 def test_semantic_canary_round_trip() -> None:
-    sem = Canary(
-        token="CANARY-KM-000009",
-        tenant=TenantId("kanzlei_mueller"),
-        doc_id=DocId("km-9"),
-        kind="semantic",
-        fact="Das Aktenzeichen lautet 4711.",
-        probe_question="Wie lautet das Aktenzeichen?",
-        forbidden_answer="4711",
+    sem = Canary.model_validate(
+        {
+            "token": "CANARY-KM-000009",
+            "tenant": "kanzlei_mueller",
+            "doc_id": "km-9",
+            "kind": "semantic",
+            "fact": "Das Aktenzeichen lautet 4711.",
+            "probe_question": "Wie lautet das Aktenzeichen?",
+            "forbidden_answer": "4711",
+        }
     )
     registry = CanaryRegistry(canaries=(sem,))
     assert CanaryRegistry.model_validate_json(registry.model_dump_json()) == registry

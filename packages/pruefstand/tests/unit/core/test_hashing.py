@@ -63,8 +63,9 @@ def test_path_and_dates() -> None:
 
 
 def test_scalars_and_none() -> None:
-    assert len({stable_hash(None), stable_hash(0), stable_hash(False), stable_hash("")}) == 4
-    assert len(stable_hash(1.5, True, None)) == 16
+    scalars = (None, 0, False, "")
+    assert len({stable_hash(x) for x in scalars}) == 4
+    assert len(stable_hash(*(1.5, True, None))) == 16
 
 
 def test_unsupported_type_raises() -> None:
