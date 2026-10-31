@@ -123,6 +123,7 @@ optional alternatives: WSL2 Ubuntu 24.04, Linux, macOS (all commands are POSIX).
 all files are LF (`.gitattributes`: `* text=auto eol=lf`).
 Prerequisites (T0.0, each with a verify command): git, make, jq, uv, Python 3.12 (`uv python install`),
 Node 22 LTS (fnm) + pnpm (`corepack enable`), Docker (+ Compose, user in `docker` group), gh (HTTPS; on the VM with the public-repo-only fine-grained token, §1 rule 9).
+GitHub Models credential outside Actions = `PRUEFSTAND_GH_MODELS_TOKEN`, never `GITHUB_TOKEN` (D333); never export `.env` wholesale into a shell that runs `gh` (an exported `GITHUB_TOKEN`/`GH_TOKEN` overrides gh's stored login → 404 on `actions/runs`); if one is set, use `env -u GITHUB_TOKEN -u GH_TOKEN gh …`.
 
 | Target | Runs |
 | --- | --- |
@@ -136,7 +137,7 @@ Node 22 LTS (fnm) + pnpm (`corepack enable`), Docker (+ Compose, user in `docker
 | `make test` | `pytest -m "not integration and not e2e and not live and not gpu and not slow and not network"` plus `--doctest-modules packages/pruefstand/src` (D128) (pytest `--import-mode=importlib`; **one** root list used for both pytest `pythonpath` and mypy `mypy_path` (R9 X4.2): `packages/pruefstand/src`, `apps/rag-demo/src`, `packages/pruefstand/tests`, `apps/rag-demo/tests`, `scripts`, `data`, `experiments`, `tools`, `action`, `infra/gpu`, `benchmarks`, `infra/vm`, `infra/cluster`, `infra/gate-executor/orchestrator`, `infra/gate-executor/llm-proxy` (R11 D232) — exact TOML in `docs/engineering/coding-standards.md` §1.1; mypy `explicit_package_bases`; env `LITELLM_LOCAL_MODEL_COST_MAP=True`) |
 | `make coverage` | the `make test` set (incl. doctests) with `--cov`, then `scripts/check_coverage.py` (the gate is defined once, in §6) |
 | `make test-e2e` | `pytest -m e2e`: full pipeline against the **real** stack (`docker compose --profile live`: Qdrant + rag-demo + llama.cpp + embeddings) |
-| `make test-live` | `pytest -m live`: real model calls (llama.cpp container; GitHub Models when `GITHUB_TOKEN` has `models: read`) |
+| `make test-live` | `pytest -m live`: real model calls (llama.cpp container; GitHub Models when `PRUEFSTAND_GH_MODELS_TOKEN` (Models: read) is set, D333) |
 | `make cassettes` | re-records `tests/cassettes/` from **real** model calls (needs the `live` stack) |
 | `make test-integration` | `pytest -m integration` (Docker needed) |
 | `make test-slow` | `pytest -m slow` (PR: reduced simulation grid, 500 sims; nightly sets `PRUEFSTAND_SIM_GRID=full` for 4 000 sims, D131) |

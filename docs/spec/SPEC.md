@@ -422,7 +422,7 @@ Layering (enforced by import-linter, ADR-0016) is defined in `CLAUDE.md` §4. `g
    injection is gated in tier 2 (≥ 30 injection cases, Wilson rule). Paired statistics are
    `INSUFFICIENT_DATA` at n = 20 and the comment says so; the statistical gate is tier 2. Judged
    metrics are **informational**: at most 10 judge **calls** per PR go to GitHub Models
-   (`GITHUB_TOKEN`, `permissions: models: read`, free, a non-`qwen` family), cached. Cases whose
+   (Actions token passed as `PRUEFSTAND_GH_MODELS_TOKEN: ${{ github.token }}`, `permissions: models: read`, D333; free, a non-`qwen` family), cached. Cases whose
    rendered judge inputs contain a registered canary are excluded **before** the selection is counted,
    and the baseline and the PR judge the same case ids (selection seeded by dataset version, not by
    `eval_fingerprint`). When the quota is exhausted (or on fork PRs, which have no `models`
@@ -934,7 +934,7 @@ All calls go through `pruefstand.llm.LLMClient` → LiteLLM. Providers:
 | --- | --- | --- |
 | `ollama/<tag>` in configs (D209; replaces `hosted_vllm/`); `LLMClient` calls LiteLLM's native `ollama_chat` provider (`/api/chat`, `/api/embed`), never Ollama's `/v1` (round 11 Y3) | Local models on the A40s: Ollama at `$OLLAMA_GPU0_URL` / `$OLLAMA_GPU1_URL` (VM tunnel ends, resolved through `infra/gpu/endpoints.yaml`), with the catalogue `options` per model; counts as local for the data guard | GPU time |
 | `openai/…` with `api_base` = local llama.cpp server | Tier-1 live CI generator (via rag-demo's own client), laptops | CPU time |
-| `github/…` (GitHub Models) | Tier-1 informational judge (`GITHUB_TOKEN`, `models: read`; ≤ 10 calls/PR, ≤ 60 calls/nightly), **public-text datagen** (T4.2 questions/references, T4.5 rewrites, T5.3 `legal_hard` review; ADR-0019), public-item cross-checks, RQ2 free-tier judge arms | Free tier, rate-limited (assumed ~15 req/min, ~150 req/day, ~8 k input tokens; **verify**); limits measured in T0.6 (24-h probe); datagen runs as resumable cached batches over several days, on days apart from the CI quota where possible; check ToS before publishing outputs |
+| `github/…` (GitHub Models) | Tier-1 informational judge (`PRUEFSTAND_GH_MODELS_TOKEN`: local Models: read PAT, in Actions `PRUEFSTAND_GH_MODELS_TOKEN: ${{ github.token }}` with `models: read`, D333; ≤ 10 calls/PR, ≤ 60 calls/nightly), **public-text datagen** (T4.2 questions/references, T4.5 rewrites, T5.3 `legal_hard` review; ADR-0019), public-item cross-checks, RQ2 free-tier judge arms | Free tier, rate-limited (assumed ~15 req/min, ~150 req/day, ~8 k input tokens; **verify**); limits measured in T0.6 (24-h probe); datagen runs as resumable cached batches over several days, on days apart from the CI quota where possible; check ToS before publishing outputs |
 | Optional free tiers (opt-in per config): Mistral "Experiment", Google Gemini free tier, Groq free tier, OpenRouter `:free` models | Extra judges for RQ2 | Rate-limited; free tiers may train on inputs |
 
 **Free only.** `budget.max_usd_per_run = 0`. `LLMClient` refuses any provider not in
