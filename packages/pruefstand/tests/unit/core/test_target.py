@@ -131,3 +131,13 @@ def test_retrieve_response_from_interfaces_example() -> None:
     assert [c.rank for c in resp.chunks] == [1]
     with pytest.raises(ValidationError, match="extra"):
         RetrieveResponse.model_validate({"chunks": [], "answer": "x"})
+
+
+def test_chunk_with_absent_tenant_id_parses_through_target_response() -> None:
+    chunk = {k: v for k, v in CHUNK.items() if k != "tenant_id"}
+    resp = TargetResponse.model_validate({"answer": "x", "chunks": [chunk]})
+    assert resp.chunks is not None
+    assert resp.chunks[0].tenant_id is None
+    explicit = TargetResponse.model_validate({"answer": "x", "chunks": [{**chunk, "tenant_id": None}]})
+    assert explicit.chunks is not None
+    assert explicit.chunks[0].tenant_id is None
