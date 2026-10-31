@@ -1,12 +1,11 @@
 """Typed accessors over a parsed workflow document (used by ``check_workflows.py``)."""
 
 from collections.abc import Iterator
-from typing import Any
 
-Doc = dict[Any, Any]  # YAML keys may be booleans: PyYAML reads an unquoted `on` as True
+Doc = dict[object, object]  # YAML keys may be booleans: PyYAML reads an unquoted `on` as True
 
 
-def triggers(doc: Doc) -> dict[str, Any]:
+def triggers(doc: Doc) -> dict[object, object]:
     """Return the ``on:`` triggers as a dict (a string or list becomes keys with ``None``)."""
     raw = doc.get("on", doc.get(True))  # PyYAML reads an unquoted `on:` as the boolean True
     if isinstance(raw, str):
@@ -43,11 +42,10 @@ def strings(node: object) -> Iterator[str]:
 def all_uses(doc: Doc) -> Iterator[str]:
     """Yield every ``uses:`` value of the jobs and their steps."""
     for job in jobs(doc).values():
-        if isinstance(job.get("uses"), str):
-            yield job["uses"]
-        for step in steps(job):
-            if isinstance(step.get("uses"), str):
-                yield step["uses"]
+        for holder in [job, *steps(job)]:
+            value = holder.get("uses")
+            if isinstance(value, str):
+                yield value
 
 
 def environment(job: Doc) -> str | None:

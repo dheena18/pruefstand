@@ -12,12 +12,18 @@ on:
 permissions: {}
 
 concurrency:
-  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || format('{0}-{1}', github.event_name, github.ref) }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   codeql:
     name: codeql
+    # Dependabot and fork PRs get a read-only token that cannot upload SARIF: skip there (the
+    # `scan` aggregate tolerates exactly this skip).
+    if: >-
+      github.event_name != 'pull_request' ||
+      (github.actor != 'dependabot[bot]' &&
+      github.event.pull_request.head.repo.full_name == github.repository)
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     permissions:
@@ -159,4 +165,5 @@ jobs:
           NEEDS: ${{ toJSON(needs) }}
         run: |
           echo "$NEEDS" | jq -r 'to_entries[] | "\(.key): \(.value.result)"'
-          echo "$NEEDS" | jq -e 'all(.[]; .result == "success")' > /dev/null
+          # codeql may be skipped (Dependabot and fork PRs); every other job must be a success
+          echo "$NEEDS" | jq -e 'to_entries | all(.[]; .value.result == "success" or (.key == "codeql" and .value.result == "skipped"))' > /dev/null

@@ -429,9 +429,11 @@ Public repo:
 
 ```yaml
 concurrency:
-  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || format('{0}-{1}', github.event_name, github.ref) }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 ```
+
+The event name is part of the key for non-PR runs, so a long nightly (`schedule`) never queues behind or ahead of a `push: main` run of the same workflow (T0.2 review M2).
 
 `gate-router.yml` uses `group: gate-router-${{ github.event.pull_request.number }}`,
 `cancel-in-progress: true` (only the newest head matters; statuses are per SHA).

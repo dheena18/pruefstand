@@ -16,28 +16,26 @@ from workflow_model import Doc, all_uses, environment, jobs, steps, strings, tri
 from workflow_policy import (
     ACTIONS_READ,
     APP_TOKEN_ACTION,
+    BRACKET_NAME,
     BUILD_IMAGES,
     BUILD_IMAGES_REF,
     CONTENTS_WRITE,
+    EXPRESSION,
+    FETCH_PR_CODE,
     GATE_ROUTER,
     GATE_ROUTER_ENV,
     GATE_ROUTER_SECRETS,
     ID_TOKEN_FILES,
     MODELS_READ_FILES,
     STATUSES_WRITE,
+    UNTRUSTED,
 )
 
 SHA_USES = re.compile(r"^[\w.-]+/[\w./-]+@[0-9a-f]{40}$")
 DOCKER_USES = re.compile(r"^docker://\S+@sha256:[0-9a-f]{64}$")
 USES_LINE = re.compile(r"^\s*(?:-\s+)?uses:\s*['\"]?([^\s#'\"]+)['\"]?\s*(#.*)?$")
 VERSION_COMMENT = re.compile(r"#\s*v\d+(\.\d+)*")
-UNTRUSTED = re.compile(
-    r"\$\{\{[^}]*(github\.event\.pull_request\.(title|body|head\.ref|head_ref)|github\.head_ref)"
-)
-FETCH_PR_CODE = re.compile(
-    r"git\s+(fetch|clone)\b|gh\s+pr\s+checkout\b|gh\s+pr\s+diff\b[^\n]*--patch[^\n]*\|\s*(ba|z)?sh\b"
-)
-SECRET_REF = re.compile(r"secrets\.(\w+)")
+SECRET_REF = re.compile(r"secrets(?:\s*\.\s*|\s*\[\s*['\"])(\w+)", re.IGNORECASE)
 
 
 def _pins(doc: Doc, text: str) -> list[str]:
@@ -62,12 +60,23 @@ def _crons(doc: Doc) -> list[str]:
     out = []
     for entry in schedule if isinstance(schedule, list) else []:
         cron = str(entry.get("cron", "")) if isinstance(entry, dict) else ""
-        minutes = cron.split()[0].split(",") if cron.split() else []
-        if any(m == "0" or m.startswith("*") for m in minutes):
-            out.append(
-                f"schedule '{cron}': off-minute crons only (minute 0, * and */N are forbidden)"
-            )
+        field = cron.split()[0] if cron.split() else ""
+        if any(_busy_minute(part) for part in field.split(",")):
+            out.append(f"schedule '{cron}': off-minute crons only (minute 0, * or */N)")
     return out
+
+
+def _busy_minute(part: str) -> bool:
+    """True for `*`, `*/N` and any range, list item or step starting at minute 0."""
+    start = part.split("/", maxsplit=1)[0].split("-", maxsplit=1)[0]
+    return start.startswith("*") or (start.isdigit() and int(start) == 0)
+
+
+def _self_hosted(job: Doc) -> bool:
+    runs_on = "\n".join(strings(job.get("runs-on", "")))
+    if "${{" in runs_on:  # e.g. ${{ matrix.os }}: look at every value the matrix could take
+        runs_on += "\n" + "\n".join(strings(job.get("strategy", "")))
+    return "self-hosted" in runs_on.lower()
 
 
 def _triggers_and_runners(name: str, doc: Doc) -> list[str]:
@@ -76,7 +85,7 @@ def _triggers_and_runners(name: str, doc: Doc) -> list[str]:
         out.append(f"pull_request_target is allowed only in {GATE_ROUTER}")
     out += _crons(doc)
     for job_id, job in jobs(doc).items():
-        if "self-hosted" in str(job.get("runs-on", "")):
+        if _self_hosted(job):
             out.append(f"job {job_id}: runs-on self-hosted is forbidden in the public repo")
     return out
 
@@ -118,9 +127,9 @@ def _permissions(name: str, doc: Doc) -> list[str]:
 def _secrets_and_envs(name: str, doc: Doc) -> list[str]:
     out = []
     for ref in sorted(set(SECRET_REF.findall("\n".join(strings(doc))))):
-        if "PAT" in ref:
+        if "PAT" in ref.upper():
             out.append(f"secrets.{ref}: no PAT secret in a public workflow (security C12)")
-        elif ref.startswith("BOT_APP_") and name != GATE_ROUTER:
+        elif ref.upper().startswith("BOT_APP_") and name != GATE_ROUTER:
             out.append(f"secrets.{ref} is usable in {GATE_ROUTER} only (R13 P1.1)")
     for job_id, job in jobs(doc).items():
         if environment(job) == GATE_ROUTER_ENV and name != GATE_ROUTER:
@@ -130,17 +139,30 @@ def _secrets_and_envs(name: str, doc: Doc) -> list[str]:
     return out
 
 
+def _untrusted(code: str) -> bool:
+    """True if a ``${{ }}`` expression in ``code`` reads an attacker-controlled context value."""
+    for expression in EXPRESSION.findall(code):
+        normalised = BRACKET_NAME.sub(r".\1", expression).lower()
+        if UNTRUSTED.search(normalised):
+            return True
+    return False
+
+
 def _injection(doc: Doc) -> list[str]:
     out = []
     for job_id, job in jobs(doc).items():
         for step in steps(job):
-            code = [step.get("run")]
-            code.append(step["with"].get("script") if isinstance(step.get("with"), dict) else None)
-            if any(isinstance(c, str) and UNTRUSTED.search(c) for c in code):
+            with_ = step.get("with")
+            code = [step.get("run"), with_.get("script") if isinstance(with_, dict) else None]
+            if any(isinstance(c, str) and _untrusted(c) for c in code):
                 out.append(
                     f"job {job_id}: untrusted PR value interpolated in run/script (injection)"
                 )
     return out
+
+
+def _is_action(step: Doc, prefix: str) -> bool:
+    return str(step.get("uses", "")).lower().startswith(prefix)
 
 
 def _build_images(name: str, doc: Doc) -> list[str]:
@@ -149,8 +171,9 @@ def _build_images(name: str, doc: Doc) -> list[str]:
     out = []
     for job_id, job in jobs(doc).items():
         for step in steps(job):
-            if str(step.get("uses", "")).startswith("actions/checkout"):
-                ref = (step.get("with") or {}).get("ref")
+            if _is_action(step, "actions/checkout"):
+                with_ = step.get("with")
+                ref = with_.get("ref") if isinstance(with_, dict) else None
                 if ref != BUILD_IMAGES_REF:
                     out.append(
                         f"job {job_id}: checkout ref must be {BUILD_IMAGES_REF} (head.sha, X2.4)"
@@ -164,18 +187,22 @@ def _gate_router_job(job_id: str, job: Doc) -> list[str]:
         out.append(f"job {job_id}: permissions must be exactly {{pull-requests: read}}")
     if environment(job) != GATE_ROUTER_ENV:
         out.append(f"job {job_id}: environment must be {GATE_ROUTER_ENV}")
+    if "uses" in job:
+        out.append(f"job {job_id}: {GATE_ROUTER} must not call a reusable workflow (uses)")
     for step in steps(job):
-        uses = str(step.get("uses", ""))
-        if uses.startswith("actions/checkout"):
+        if _is_action(step, "actions/checkout"):
             out.append(f"job {job_id}: {GATE_ROUTER} must not use actions/checkout")
-        if uses.startswith("actions/download-artifact") or FETCH_PR_CODE.search(
+        if _is_action(step, "./"):
+            out.append(f"job {job_id}: {GATE_ROUTER} must not use a local action")
+        if _is_action(step, "actions/download-artifact") or FETCH_PR_CODE.search(
             str(step.get("run", ""))
         ):
             out.append(f"job {job_id}: {GATE_ROUTER} fetches PR code")
-        if "secrets.BOT_APP_" in "\n".join(strings(step)) and not uses.startswith(APP_TOKEN_ACTION):
-            out.append(
-                f"job {job_id}: secrets.BOT_APP_* only in an actions/create-github-app-token step"
-            )
+        refs = SECRET_REF.findall("\n".join(strings(step)))
+        if any(r.upper().startswith("BOT_APP_") for r in refs) and not _is_action(
+            step, APP_TOKEN_ACTION
+        ):
+            out.append(f"job {job_id}: secrets.BOT_APP_* only in a create-github-app-token step")
     return out
 
 
@@ -184,7 +211,7 @@ def _gate_router(name: str, doc: Doc) -> list[str]:
         return []
     out = [] if doc.get("permissions") == {} else ["top-level permissions must be {}"]
     for ref in sorted(set(SECRET_REF.findall("\n".join(strings(doc))))):
-        if ref not in GATE_ROUTER_SECRETS:
+        if ref.upper() not in GATE_ROUTER_SECRETS:
             out.append(f"secrets.{ref}: only BOT_APP_ID and BOT_APP_KEY may be referenced")
     for job_id, job in jobs(doc).items():
         out += _gate_router_job(job_id, job)
@@ -207,9 +234,15 @@ def check_text(name: str, text: str) -> list[str]:
         return [f"{name}: invalid YAML: {exc}"]
     if not isinstance(doc, dict):
         return [f"{name}: invalid YAML: top level is not a mapping"]
-    rules = (_pins(doc, text), _triggers_and_runners(name, doc), _permissions(name, doc),
-             _secrets_and_envs(name, doc), _injection(doc), _build_images(name, doc),
-             _gate_router(name, doc))  # fmt: skip
+    rules = [
+        _pins(doc, text),
+        _triggers_and_runners(name, doc),
+        _permissions(name, doc),
+        _secrets_and_envs(name, doc),
+        _injection(doc),
+        _build_images(name, doc),
+        _gate_router(name, doc),
+    ]
     return [f"{name}: {message}" for found in rules for message in found]
 
 
@@ -245,6 +278,9 @@ def main(argv: Sequence[str] | None = None) -> int:
         sys.stderr.write(f"error: {path} is not a directory\n")
         return 2
     count, findings = check_dir(path)
+    if count == 0:
+        sys.stderr.write(f"error: no workflows found in {path}\n")
+        return 2
     if findings:
         sys.stdout.write("\n".join(findings) + "\n")
         return 1

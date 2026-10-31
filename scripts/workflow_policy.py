@@ -4,6 +4,8 @@ Every entry carries its reason. Adding an entry is a security decision: it needs
 ``docs/decisions.md`` and a line in ``docs/engineering/ci-cd.md`` §1.
 """
 
+import re
+
 GATE_ROUTER = "gate-router.yml"
 GATE_ROUTER_ENV = "gate-router"
 GATE_ROUTER_SECRETS = frozenset({"BOT_APP_ID", "BOT_APP_KEY"})
@@ -43,3 +45,22 @@ STATUSES_WRITE: dict[tuple[str, str], str] = {
 # Jobs of build-images.yml must check out the PR head SHA, never the merge commit (R9 X2.4).
 BUILD_IMAGES = "build-images.yml"
 BUILD_IMAGES_REF = "${{ github.event.pull_request.head.sha || github.sha }}"
+
+# Expression-injection rule: `${{ }}` expressions are normalised (brackets to dots, lower case).
+EXPRESSION = re.compile(r"\$\{\{(.*?)\}\}", re.DOTALL)
+BRACKET_NAME = re.compile(r"\[\s*['\"]([^'\"]+)['\"]\s*\]")
+# Attacker-controlled context values (GitHub security hardening guide), matched on the normalised
+# (lower-case, dotted) expression.
+UNTRUSTED = re.compile(
+    r"github\.(head_ref|base_ref)\b"
+    r"|github\.event\.(pull_request|issue|discussion)\.(title|body)\b"
+    r"|github\.event\.pull_request\.head\.(ref|label|repo\.default_branch)\b"
+    r"|github\.event\.(comment|review|review_comment)\.body\b"
+    r"|github\.event\.head_commit\.(message|author\.(email|name))\b"
+    r"|github\.event\.commits[\w.\[\]*]*\.(message|author\.(email|name))\b"
+    r"|github\.event\.pages[\w.\[\]*]*\.page_name\b"
+    r"|github\.event\.workflow_run\.(head_branch|display_title|head_commit\.message)\b"
+)
+FETCH_PR_CODE = re.compile(
+    r"git\s+(fetch|clone)\b|gh\s+pr\s+checkout\b|gh\s+pr\s+diff\b[^\n]*--patch[^\n]*\|\s*(ba|z)?sh\b"
+)
