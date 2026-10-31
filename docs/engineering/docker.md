@@ -85,7 +85,7 @@ in the included file `infra/gpu/compose.gpu.yml` and `qdrant` with VM storage; t
 | `core` | `qdrant` | unit/integration dev, indexing |
 | `live` | `qdrant`, `llm` (llama.cpp CPU generator), `embed` (TEI CPU), `rag-demo` | tier-1 CI (`live-e2e.yml`, `action-selftest.yml`) and local live/e2e tests; the same real CPU stack everywhere |
 | `dev` | `rag-demo` (built from source, `--reload`), `llm-proxy` (dev instance); use together with `core`, `live` or `gpu` | owner/agent development on the VM (or a laptop); on the VM always with `PORT_OFFSET=10000` (Y1.4) |
-| `gpu` | `qdrant` (root file, storage `$PRUEFSTAND_HOME/qdrant` on the VM disk), `rerank-cpu` (from `infra/gpu/compose.gpu.yml`) | **VM only** (tier 2: the executor stack as user `pruefstand`, and the owner's dev stack with the `dev` ports); the executor attaches both to `gate-net`. The GPU models are Ollama on the cluster (no compose service; day/night/datagen modes are Ollama loads and unloads, `gpu-cluster.md` §2) |
+| `gpu` | `qdrant` (root file, storage `$PRUEFSTAND_HOME/qdrant` on the VM disk), `rerank-cpu` (from `infra/gpu/compose.gpu.yml`) | **VM only** (tier 2: the executor stack as user `pruefstand`, and the owner's dev stack with the `dev` ports); the executor attaches both to `gate-net`. The GPU models are Ollama on the cluster (no compose service; day/night modes are Ollama loads and unloads, no datagen mode since ADR-0019, `gpu-cluster.md` §2) |
 | `demo` | `qdrant`, `llm` (llama.cpp CPU), `embed` (CPU), `rag-demo` with `apps/rag-demo/configs/rag.public.yaml`, budget + rate-limit env | optional demo on the VM (`--internal` `demo-net`, 4 vCPU / 8 GB limits, `cloudflared` sidecar on `demo-net` + `demo-egress`, P2.2; ADR-0012, D92, Y7.5) |
 
 There is **no** CPU judge service (`llm-judge-cpu` was removed with the tier-1 CPU fallback judge, D97)
@@ -116,7 +116,7 @@ stacks can run at the same time; Done-when checks against internal-only services
 
 | Service | Profile(s) | Image | Host port (container); executor / laptop / CI | Dev host port on the VM (`PORT_OFFSET=10000`) | Volumes | Healthcheck |
 | --- | --- | --- | --- | --- | --- | --- |
-| `qdrant` | `core`, `live`, `demo`, `gpu` | `qdrant/qdrant:<ver>@<digest>` | `6333` (6333), `6334` (6334, gRPC) | `16333`, `16334` | `qdrant-data:/qdrant/storage` (VM, profile `gpu`: bind mount `$PRUEFSTAND_HOME/qdrant` on the **local VM disk**, never the NAS) | `GET /readyz` |
+| `qdrant` | `core`, `live`, `demo`, `gpu` | `qdrant/qdrant:<ver>@<digest>` | `6333` (6333), `6334` (6334, gRPC) | `16333`, `16334` | `qdrant-data:/qdrant/storage` (VM, profile `gpu`: bind mount `$PRUEFSTAND_HOME/qdrant` on the **local VM disk**, never in the data root) | `GET /readyz` |
 | `llm` | `live`, `demo` | `ghcr.io/ggml-org/llama.cpp:server@<digest>` (CPU) | `8080` (8080) | `18080` | `${LIVE_MODEL_DIR:-${HOME}/.cache/pruefstand/models}:/models:ro` | `GET /health` |
 | `embed` | `live`, `demo` | `ghcr.io/huggingface/text-embeddings-inference:cpu-<ver>@<digest>` | `8090` (80) | `18090` | model cache `:ro` | `GET /health` |
 | `rag-demo` | `live`, `dev`, `demo` | `ghcr.io/dheena18/rag-demo@sha256:<d>` or build | `8000` (8000); the executor's **candidate** has no host port (`gate-net` only) | `18000` | `./corpus:/corpus:ro`; `RAG_CONFIG` env selects `apps/rag-demo/configs/rag*.yaml` (`rag.yaml` tier 1 / CPU, `rag.gpu.yaml` tier 2 / A40, X3.15; `rag.public.yaml` demo, T8.4); never a canary-registry mount (X2.5) | `GET /v1/health` |
@@ -151,7 +151,7 @@ the only demo container that reaches the internet (outbound to Cloudflare). `pru
 `DOCKER-USER` rules that drop traffic from `demo-egress` to `10.0.0.0/8`, `172.16.0.0/12`, `192.168.0.0/16`
 (`demo-net` needs none: it is `--internal`), and `PRUEFSTAND-INPUT` drops both subnets → the VM's own addresses
 and host ports. So no demo container
-reaches the LAN, the NAS (NFS/SMB/web UI), `cairo-s101lp:22`, `gate-net` or the tunnel ports (`security.md` D4).
+reaches the LAN, the TrueNAS host (NFS/SMB/web UI), `cairo-s101lp:22`, `gate-net` or the tunnel ports (`security.md` D4).
 
 `depends_on` uses `condition: service_healthy`. Config comes from `.env` (git-ignored) with
 `.env.example` committed (every name: `docs/ops/secrets.md`). Every service has `restart: unless-stopped` (except in CI), `mem_limit` and
@@ -179,7 +179,7 @@ and `llm-proxy` (the only container on `proxy-egress`) is the only path to Ollam
 ```
 
 **No GPU reservation exists anywhere in compose**: the VM has no GPU, and the cluster runs no Docker.
-GPU placement is Ollama's: one server with `CUDA_VISIBLE_DEVICES=0,1` on port `11434` and `OLLAMA_MODELS` on the NAS
+GPU placement is Ollama's: one server with `CUDA_VISIBLE_DEVICES=0,1` on port `11434` and `OLLAMA_MODELS=/data/dheena/Models` on the cluster disk (ADR-0019)
 (the existing server is reused, else started by `infra/cluster/start-ollama.sh`; `gpu-cluster.md` §4, ADR-0018);
 `health.sh` checks via `/api/ps` that each model is fully on a card. The candidate rag-demo in a gate job gets a
 read-only root fs, `--cap-drop ALL` and only the `--internal` network `gate-net` (no internet egress),

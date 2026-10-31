@@ -31,7 +31,7 @@ user `pruefstand`, `/var/lib/pruefstand/gpu.lock` + `pruefstand-lock`, rootful D
 subset, infra errors → `error`, `setsid nohup`, GitHub Pages), binding round-12 decisions D248–D283 (source:
 `docs/planning/reviews/round12-resolution.md` N1–N7: `TestCase.block` / `judged_subset`, `pruefstand run --split full
 --block auto` and `--judged-subset`, baseline refs `nightly-b<k>`, `llm-proxy` option policy and `/health` counters,
-drift rule `max(3, ceil(0.1·n))`, NAS/firewall units, fine-grained VM token, per-root typecheck, `scripts/dashboard/derive.py`),
+drift rule `max(3, ceil(0.1·n))`, firewall units (NAS mount dropped by ADR-0019), fine-grained VM token, per-root typecheck, `scripts/dashboard/derive.py`),
 binding round-13 decisions D287–D323 (D319–D323 from the round-13 integration) (source: `docs/planning/reviews/round13-resolution.md` P1–P5: App-token
 `gate-router.yml` + App-pinned `pruefstand/gate`, tier 2 only by owner `workflow_dispatch` (no `run-gate` label),
 `full` quota and `Split.RQ1`, judged subset on generation + judging, `post_status`, `--stratum`,
@@ -54,8 +54,8 @@ Support files: [`_TEMPLATE.md`](_TEMPLATE.md) (structure every prompt follows) �
 | T0.3 | [T0.3-docker-compose.md](T0.3-docker-compose.md) | Dockerfile template, compose profiles, image build + Trivy in `build-images.yml` | AI | core |
 | T0.4 | [T0.4-docs-site.md](T0.4-docs-site.md) | mkdocs site, Mermaid, module graph, Pages deploy | AI | core |
 | T0.5 | [T0.5-github-setup.md](T0.5-github-setup.md) | Branch protection (0 approvals), required checks, GitHub App `pruefstand-bot`, Pages (checklist) | H | core |
-| T0.6 | [T0.6-cluster-feasibility.md](T0.6-cluster-feasibility.md) | Cluster + NAS facts check (Ollama, model metadata, NAS read throughput, tunnel API with `think: false`) + GitHub Models quota with a 24-hour probe, go/no-go (week 1) | AI+H | core |
-| T0.7 | [T0.7-truenas-vm-setup.md](T0.7-truenas-vm-setup.md) | TrueNAS VM `pruefstand-exec`: Remote-SSH dev host, service user `pruefstand`, `/var/lib/pruefstand` + `pruefstand-lock`, NAS automount unit, VM→cluster SSH key, `pruefstand-tunnel.service`, `vm_check.sh` (R11) | AI+H | core |
+| T0.6 | [T0.6-cluster-feasibility.md](T0.6-cluster-feasibility.md) | Cluster facts check (Ollama, model metadata, free model disk and cold load time, tunnel API with `think: false`) + GitHub Models quota with a 24-hour probe, go/no-go (week 1) | AI+H | core |
+| T0.7 | [T0.7-truenas-vm-setup.md](T0.7-truenas-vm-setup.md) | TrueNAS VM `pruefstand-exec`: Remote-SSH dev host, service user `pruefstand`, `/var/lib/pruefstand` + `pruefstand-lock`, data root on the VM disk (ADR-0019), VM→cluster SSH key, `pruefstand-tunnel.service`, `vm_check.sh` (R11) | AI+H | core |
 | T1.1 | [T1.1-core-models.md](T1.1-core-models.md) | `core`: ids, enums, shared models, protocols, hashing, fingerprint, logging, schemas | AI | core |
 | T1.2 | [T1.2-config.md](T1.2-config.md) | `core.config` package (`run`/`target`/`gate`/`build`, R13 D313): typed config, loader, validators, settings | AI | core |
 | T1.3 | [T1.3-adapters.md](T1.3-adapters.md) | HTTP adapter, target API v1 contract tests (against the real rag-demo) | AI | core |
@@ -76,7 +76,7 @@ Support files: [`_TEMPLATE.md`](_TEMPLATE.md) (structure every prompt follows) �
 | T2.4 | [T2.4-eurlex-loader.md](T2.4-eurlex-loader.md) | EUR-Lex DE/EN loader + article chunker + alignment | AI | core |
 | T2.5 | [T2.5-tenants-ingest.md](T2.5-tenants-ingest.md) | Tenant plan, `pruefstand ingest`, corpus versioning | AI | core |
 | T2.6 | [T2.6-private-docs-canaries.md](T2.6-private-docs-canaries.md) | Synthetic private docs, canaries, held-out canary set | AI+H | core |
-| T3.1a | [T3.1a-gpu-cluster-services.md](T3.1a-gpu-cluster-services.md) | One Ollama server on the cluster for both GPUs (ADR-0018; reused, else `setsid nohup`; models on the NAS, `cluster.env`), `infra/cluster/` scripts, VM-side `switch-mode.sh` / `health.sh --repair` / `fetch-model.sh` (D151, D207, D208), catalogue, endpoints, `rerank-cpu` | AI+H | core |
+| T3.1a | [T3.1a-gpu-cluster-services.md](T3.1a-gpu-cluster-services.md) | One Ollama server on the cluster for both GPUs (ADR-0018/0019; reused, else the owner's `~/start-ollama.sh` via `setsid nohup`; models on the cluster disk, one judge, `cluster.env`), `infra/cluster/` scripts, VM-side `switch-mode.sh` / `health.sh --repair` / `fetch-model.sh` (D151, D207, D208), catalogue, endpoints, `rerank-cpu` | AI+H | core |
 | T3.1b | [T3.1b-model-benchmark.md](T3.1b-model-benchmark.md) | Model shortlist benchmark through Ollama (quality, tok/s, VRAM, first load), pinning by tag + digest, PR/nightly budgets | AI+H | core |
 | T3.2 | [T3.2-rag-app-skeleton.md](T3.2-rag-app-skeleton.md) | rag-demo v1 (extends T1.13): `rag_demo/models.py`, `/v1/info` serving, A40 endpoints | AI | core |
 | T3.3 | [T3.3-german-analyzer.md](T3.3-german-analyzer.md) | German analyzer + sparse encoder | AI | core |
@@ -137,7 +137,7 @@ Round 10: new **T0.7** (TrueNAS VM setup; T3.1a and T6.2a depend on it); T0.6, T
 Ollama on the cluster; T6.2a builds `llm-proxy`; changes marked **R10** in `tasks/TASKS.md`.
 Round 11: no new task IDs; changes marked **R11** in `tasks/TASKS.md` (T3.5 owns `POST /v1/retrieve`; T3.4/T3.6 own
 the bearer header, T1.13 sends it from day 1; T0.7 creates the `pruefstand` identity and lock wrapper; T8.5 deploys
-to GitHub Pages; T4.5 runs in two passes, datagen then day mode; T5.3 `legal_hard` runs day pass → datagen weekend → offline `--pass build`, D246).
+to GitHub Pages; T4.5 runs in two passes, GitHub Models rewrite then day-mode validation; T5.3 `legal_hard` runs day pass → GitHub Models review → offline `--pass build`, D246, ADR-0019).
 Round 12: no new task IDs; changes marked **R12** in `tasks/TASKS.md` (T4.1 assigns nightly blocks and the judged
 subset; T1.10 adds `--split`/`--block`/`--judged-subset`; T6.1 owns refs `nightly-b<k>` and the block-restricted
 release drift; T6.2b schedules the block rotation, the cron-string guard and the skip report; T1.3/T1.8 own the

@@ -20,7 +20,7 @@
 | Statistics, security, CI hardening, architecture-touching tasks | Claude Opus |
 | Standard implementation from a precise prompt | Claude Sonnet |
 | Second-opinion PR review | GitHub Models via `gh models run` (other model family); Copilot code review optional (not in GitHub Pro) |
-| Bulk text work (German question rewrites, labeling suggestions) | Local datagen model (`llama` 70B-class `Q4_K_M`, weekend datagen mode) on the A40s via Ollama, called from the VM |
+| Bulk text work (German question rewrites, labeling suggestions) | Public text: the pinned GitHub Models datagen model (free tier, family ≠ `qwen`, ≠ `gemma`); private docs and canaries: the local judge model `gemma3:12b` on the A40s via Ollama, called from the VM (ADR-0019) |
 
 ## Parallel sessions
 

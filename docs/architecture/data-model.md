@@ -48,7 +48,7 @@ erDiagram
         bool judged_subset "generation and judging of core answerable cases only on the 150-case subset, part of eval_fingerprint (R12 N1.3, R13 P3.4)"
         string stratum "all, refusal or blocks (R13 P4.3), in eval_fingerprint only when not all (D322)"
         string judge_mode "github, local, skipped"
-        bool judge_fallback "tier 2 only: nightly gemma judge unavailable, PR judge used"
+        bool judge_fallback "tier 2 only: a judge other than the configured one was used"
         bool judge_degraded "judge errors on more than 5 % of judged cases"
         bool judge_drift "at least max(3, ceil(0.1 n)) anchor verdicts changed (R12 N3)"
         int judged_cases "tier 1: at most 10 per PR"
@@ -299,7 +299,7 @@ datasets/fixtures/                  hand-written + synthetic_v1 cases committed 
 data/sources.yaml  data/manifests/  data/raw/ (git-ignored)
 runs/<run_id>/                      local; on the executor VM: $PRUEFSTAND_HOME/runs/<run_id>/ (VM disk)
   run.json  results.parquet  responses.jsonl  llm_calls.parquet  gate.json  report.html
-NAS $PRUEFSTAND_DATA_ROOT/baselines/ (= /mnt/pruefstand/baselines on the VM; baseline FILES, X2.7, D209;
+data root $PRUEFSTAND_DATA_ROOT/baselines/ (= /mnt/pruefstand/baselines, plain dir on the VM disk, ADR-0019; baseline FILES, X2.7, D209;
   written only by baseline-promote.yml, write-then-rename):
   <eval_fingerprint>/<ref>/run.json                            ref = main | nightly-b0..b2 | release-b0..b2 (current baseline; R12 N1.4, R13 D305 block-wise release anchor)
   <eval_fingerprint>/<ref>/results.parquet
@@ -311,9 +311,9 @@ private repo pruefstand-gate, branch baselines (protected, no force-push; INDEX 
 private repo pruefstand-gate, branch executor-state:
   state/processed.jsonl             one line per dispatched gated run: pr, head_sha, dispatch_run_id, result, run_id, at (D102; a record, not a trigger, R13 P1.2)
   state/nightly_counter             one integer, block = counter mod 3, incremented only after a completed nightly (R13 P4.4, D299)
-NAS $PRUEFSTAND_DATA_ROOT/backups/<date>/:
+data root $PRUEFSTAND_DATA_ROOT/backups/<date>/ (inside the TrueNAS zvol snapshots, ADR-0019):
   pruefstand-gate.bundle.tar.age    weekly: git bundle --all of the private repo + tar of baselines/, age-encrypted as a whole (X2.6)
-NAS $PRUEFSTAND_DATA_ROOT/backups/laptop-receipt.json  {bundle, sha256, copied_at}, written over ssh into the VM as the owner user after each weekly copy (Y5.5, A13-M10)
+data root $PRUEFSTAND_DATA_ROOT/backups/laptop-receipt.json  {bundle, sha256, copied_at}, written over ssh into the VM as the owner user after each weekly copy (Y5.5, A13-M10)
 public repo pruefstand-dashboard-data, branch main (sanitised, D108, layout per interfaces.md "Exported layout"):
   runs/index.json                   DashboardRunIndex (RunIndexEntry rows)
   runs/<run_id>/run.json  gate.json  slices.json  report.html
@@ -321,7 +321,7 @@ public repo pruefstand-dashboard-data, branch main (sanitised, D108, layout per 
   manifest.json                     sha256 per file, verified by deploy.yml
                                     (whole tree rewritten by push_dashboard_data on every push: newest 200 runs, cases + report.html for the newest 20; push fails above 1 GB repo size, R13 P5.1, D300)
 public repo pruefstand-dashboard-data, branch heartbeat (single commit, force-pushed every 15 min during jobs, Y5.1):
-  heartbeat.json                    timestamp, current/last job (D109), tunnel_ok, ollama_gpu0_ok, ollama_gpu1_ok, nas_mounted (each with
+  heartbeat.json                    timestamp, current/last job (D109), tunnel_ok, ollama_gpu0_ok, ollama_gpu1_ok, data_root_ok (each with
                                     <field>_false_since), last_nightly_at, last_nightly_status (ok, failed, aborted: window_exceeded, skipped: maintenance,
                                     skipped: runner busy, skipped: preflight REASON), maintenance, drift_no_release_baseline, runner_version,
                                     laptop_backup_age_days (R12 A12-M2, N4.3, R13 D311);
@@ -332,7 +332,7 @@ public repo pruefstand-dashboard-data, branch heartbeat (single commit, force-pu
 
 Public artefacts and the dashboard only get sanitised copies (run.json, gate.json, results without
 answer or chunk text) through the dashboard-data repo. Full responses stay in the VM run dirs and the
-NAS baseline files; the held-out canaries stay in the private repo and its encrypted backups, and the
+baseline files in the data root; the held-out canaries stay in the private repo and its encrypted backups, and the
 canary registry is never mounted into a candidate container (X2.5).
 
 Tier-1 baselines are GitHub Actions artefacts of the public repo (X1.4): `live-baseline` (written only
@@ -343,16 +343,16 @@ by `push: main` runs of the 20-case `smoke_live` PR shape; the only one PRs comp
 
 | Data | Where | Retention | Backup |
 | --- | --- | --- | --- |
-| Raw corpora / model weights | local / NAS (`data/`, `corpus/`, `ollama-models/`); never on the cluster's local disk | never in git; re-downloadable from pinned manifests | none needed (pinned downloads) |
+| Raw corpora / model weights | local / data root (`data/`, `corpus/`); model weights only in the cluster's model store `/data/dheena/Models` (ADR-0019) | never in git; re-downloadable from pinned manifests | none needed (pinned downloads) |
 | Corpus + dataset versions | local, HF (dataset) | keep every released version; drafts deleted after release | HF + git tags |
 | PR run dirs (incl. `responses.jsonl`) | VM `$PRUEFSTAND_HOME/runs/` | 14 days (nightly `runs-prune`) | none |
 | PR / promote artefacts (`run.json`, `gate.json`, `comment.md`) | private-repo Actions artefacts | 14 days (`retention-days: 14`, D110) | none |
 | Nightly run dirs | VM `$PRUEFSTAND_HOME/runs/` + sanitised copy in the dashboard-data repo | last 90 runs (`runs-prune`, count-based) | dashboard copy only |
-| Baselines (X2.7) | files on the NAS `$PRUEFSTAND_DATA_ROOT/baselines/`; private branch `baselines` holds only `index.json` | current baseline per fingerprint and ref (`main`, `nightly-b<k>`, `release-b<k>`); last 20 `history/` entries per fingerprint (monthly `baseline-prune` in `baseline-promote.yml`, D110); fingerprints unused for 90 days deleted; release anchors (`release-b<k>`) kept; no branch rollover (ADR-0004). Measured per-promotion sizes (T6.3): _pending_ | weekly encrypted bundle (X2.6) |
+| Baselines (X2.7) | files in the data root `$PRUEFSTAND_DATA_ROOT/baselines/` (VM disk); private branch `baselines` holds only `index.json` | current baseline per fingerprint and ref (`main`, `nightly-b<k>`, `release-b<k>`); last 20 `history/` entries per fingerprint (monthly `baseline-prune` in `baseline-promote.yml`, D110); fingerprints unused for 90 days deleted; release anchors (`release-b<k>`) kept; no branch rollover (ADR-0004). Measured per-promotion sizes (T6.3): _pending_ | weekly encrypted bundle (X2.6) + TrueNAS zvol snapshots (daily, keep 14) |
 | Tier-1 baselines (X1.4) | public Actions artefacts `live-baseline`, `live-baseline-nightly` | 90 days | none (re-created by the next `main` push / nightly) |
 | Processed-work state and nightly block counter | private branch `executor-state` | kept (small) | weekly encrypted bundle |
 | Dashboard data + heartbeat | public repo `pruefstand-dashboard-data` (`main`; heartbeat on branch `heartbeat`) | `push_dashboard_data` (T6.1) rewrites the **whole** tree on every push: newest 200 runs in `runs/index.json`, case shards + `report.html` only for the newest 20, everything older deleted (R13 P5.1, D300); the push **fails above 1 GB** repo size (checked before pushing), so the data repo stays bounded; heartbeat force-pushed as one commit (no history growth) | re-exportable from run dirs and baselines |
-| Backups (X2.6) | NAS `$PRUEFSTAND_DATA_ROOT/backups/<date>/pruefstand-gate.bundle.tar.age` + owner's laptop | 8 on the NAS; a **mandatory** weekly laptop copy, confirmed by `backups/laptop-receipt.json` and checked by `backup-check` (> 8 days → issue `backup-stale`, Y5.5) | the whole bundle is `age`-encrypted; the private key exists only on the owner's laptop |
+| Backups (X2.6) | data root `$PRUEFSTAND_DATA_ROOT/backups/<date>/pruefstand-gate.bundle.tar.age` + owner's laptop | 8 in the data root; a **mandatory** weekly laptop copy, confirmed by `backups/laptop-receipt.json` and checked by `backup-check` (> 8 days → issue `backup-stale`, Y5.5) | the whole bundle is `age`-encrypted; the private key exists only on the owner's laptop |
 | Caches | VM disk (`$PRUEFSTAND_HOME/pruefstand-cache/`) | shared cache evicted at 5 GB (LRU); PR overlays deleted after each job | none (caches only save time) |
 | RunIndex | derived | rebuild any time | none |
-| Canary registries | public set with the dataset version; held-out set in the private repo only, never mounted into a candidate container (X2.5) | never in the demo image, the HF dataset or public logs | held-out: inside the weekly encrypted bundle (X2.6), on the NAS and the owner's laptop |
+| Canary registries | public set with the dataset version; held-out set in the private repo only, never mounted into a candidate container (X2.5) | never in the demo image, the HF dataset or public logs | held-out: inside the weekly encrypted bundle (X2.6), in the data root and on the owner's laptop |

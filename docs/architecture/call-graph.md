@@ -63,7 +63,7 @@ flowchart TB
     rg --> bs{{"--baseline given?"}}
     bs -->|"yes"| rb["ArtifactStore.read_run(baseline)"]
     bs -->|"no"| get["BaselineStore.get(eval_fingerprint, ref='main')<br/>plain files, sha256 manifest checked"]
-    get -.-> gbs["GitBranchBaselineStore (index.json on private branch baselines, files on the NAS)"]
+    get -.-> gbs["GitBranchBaselineStore (index.json on private branch baselines, files in the data root on the VM disk)"]
     get -.-> lbs["LocalDirBaselineStore"]
     rc & rb & get --> chk{{"both complete, same eval_fingerprint,<br/>baseline error_rate <= 0.02?"}}
     chk ==>|"no"| err["raise GateInputError, exit 3"]

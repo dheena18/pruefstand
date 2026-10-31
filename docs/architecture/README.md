@@ -14,7 +14,7 @@ is a bug.
 | 4 | [call-graph.md](call-graph.md) | How functions call each other for every CLI command and the RAG query path |
 | 5 | [sequences.md](sequences.md) | Time-ordered flows: tier-1 live gate, PR gate (owner dispatches the private executor), fork PR via `gate/pr-N`, baseline promotion, nightly + drift, dataset build, calibration, demo |
 | 6 | [data-model.md](data-model.md) | Every persisted structure: run artefacts, DuckDB index, corpus, dataset, caches, Qdrant |
-| 7 | [deployment.md](deployment.md) | Where things run: dev VM / laptop, hosted CI, private executor repo, executor VM `pruefstand-exec`, A40 cluster (Ollama only), NAS, dashboard-data repo, GitHub Pages dashboard, optional demo on the VM (Cloudflare Tunnel) |
+| 7 | [deployment.md](deployment.md) | Where things run: dev VM / laptop, hosted CI, private executor repo, executor VM `pruefstand-exec`, A40 cluster (Ollama only, models on its own disk), data root on the VM disk, dashboard-data repo, GitHub Pages dashboard, optional demo on the VM (Cloudflare Tunnel) |
 | 8 | [../engineering/ci-cd.md](../engineering/ci-cd.md) | CI/CD pipelines (owned by the engineering docs); operations in [../ops/runbook.md](../ops/runbook.md) |
 | – | `generated/` | Import graph rendered by `pydeps` in the docs build (T0.4); only a README is committed here, never edit by hand |
 

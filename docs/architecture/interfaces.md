@@ -39,7 +39,7 @@ uses it. Modules only implement behaviour. Concretely, these live in `core`:
 | `core.fingerprint` | `corpus_version`, `target_fingerprint`, `eval_fingerprint` (the only place fingerprints are computed) |
 | `core.hashing` | `stable_hash` |
 | `core.models.attacks` | `Canary`, `CanaryRegistry` (created in T1.1) |
-| `core.data` | `law_aliases.yaml` (T1.5a; incl. English statute names, D123), `model_families.yaml` (T1.2; the only model-family table; ADR-0018: the generator tag `qwen3.8:27b-q8_0`, which Ollama reports as family `qwen35`, maps to `qwen` (a pattern row for `qwen3.8` / `qwen35`); it also records the **family plan** (D112): generator = `qwen`; A40 PR judge = `mistral` (`gemma` if mistral fails calibration); A40 nightly judge = `gemma` (27B-class int4, one A40; D141); datagen = `llama` 70B-class (≠ generator and ≠ every judge family; datagen batch jobs only, run as manual weekend jobs, R9 D172; the PR judge never writes or rewrites references, R9 D168); tier-1 informational judge = a GitHub Models model of a non-`qwen` family; exact versions pinned by benchmark in T1.13/T3.1b) |
+| `core.data` | `law_aliases.yaml` (T1.5a; incl. English statute names, D123), `model_families.yaml` (T1.2; the only model-family table; ADR-0018: the generator tag `qwen3.8:27b-q8_0`, which Ollama reports as family `qwen35`, maps to `qwen` (a pattern row for `qwen3.8` / `qwen35`); ADR-0019: Ollama family `gemma3` maps to `gemma`; it also records the **family plan** (D112, ADR-0019): generator = `qwen`; **one** A40 judge for PR and nightly = `gemma` (`gemma3:12b`); public-text datagen = a GitHub Models family ≠ `qwen`, ≠ `gemma` (pinned in T4.2); private-doc/canary datagen = the local `gemma` judge model; the judge reviews in reject-only mode and never writes or rewrites references; tier-1 informational judge = a GitHub Models model of a non-`qwen` family; exact versions pinned by benchmark in T1.13/T3.1b) |
 | `core.models.llm` | `LLMRole`, `Message`, `LLMRequest`, `LLMResponse`, `PromptTemplate` |
 | `core.models.judge` | `JudgeTask`, `JudgeVerdict` (created in T1.8) |
 | `core.models.dashboard` | `RunIndexEntry`, `DashboardRunIndex`, `DashboardSliceRow`, `DashboardSlices`, `DashboardCase`, `DashboardCases`, `LabelsDocument` (T8.1; `LabelsDocument` created in T1.9; fields in §10.1; R9 X5.3) |
@@ -156,10 +156,14 @@ Ollama on `cairo-s101lp` and reached from the VM `pruefstand-exec` through the `
 **ADR-0018 (2026-10-31): one Ollama server (`127.0.0.1:11434`, both GPUs) serves every model**; there is no
 second port, no per-GPU server and no datagen server; generator/judge separation is by model (the `llm-proxy`
 allow-list), GPU placement is Ollama's and is checked by `health.sh` through `/api/ps`.
+**ADR-0019 (2026-10-31):** models on the cluster's own disk (`OLLAMA_MODELS=/data/dheena/Models`), one judge
+(`gemma3:12b`) for PR and nightly, no `datagen` mode, data root a plain directory on the VM disk
+(`infra_error` kind `data_root_unavailable` replaces `nas_unavailable`), cluster scripts copied over SSH to
+`/data/dheena/pruefstand-bin`.
 Round 11 (`round11-resolution.md` Y1–Y5, D211–D231) fixes the VM identity, ports, the `llm-proxy` reach method,
 the native Ollama API and the unattended-operation rules below. Round 12 (`round12-resolution.md` N2, N4, N6.4, N7;
-D252–D257, D267, D270, D274–D276, D280, D282) adds the `llm-proxy` option policy and `/health` counters, the NAS and
-firewall units, the night-window stop, the fine-grained VM token and the cluster-wrapper lock rule.
+D252–D257, D267, D270, D274–D276, D280, D282) adds the `llm-proxy` option policy and `/health` counters, the
+firewall units (the R12 NAS mount unit is dropped by ADR-0019), the night-window stop, the fine-grained VM token and the cluster-wrapper lock rule.
 
 ```text
 VM identity and coordination files (R11 Y1, D211-D213)
@@ -223,8 +227,8 @@ ports (R11 Y1.4, D214)
                     rule can name it; external in compose): llm-proxy only (executor and dev instance)
 
 endpoints (VM .env / runner.env, D203)
-  OLLAMA_GPU0_URL = http://127.0.0.1:11434  generator lane: generator + bge-m3 (day + night); llama 70B in datagen
-  OLLAMA_GPU1_URL = http://127.0.0.1:11434  judge lane: PR judge (day) | gemma nightly judge (night); unused in datagen
+  OLLAMA_GPU0_URL = http://127.0.0.1:11434  generator lane: generator + bge-m3 (day + night)
+  OLLAMA_GPU1_URL = http://127.0.0.1:11434  judge lane: the one judge gemma3:12b (day + night, ADR-0019)
                     Both URLs name the SAME server (ADR-0018); they stay two settings so a later split is a .env
                     change only. Which card holds a model is Ollama's choice, reported by health.sh
   RERANK_URL      = http://rerank-cpu:8201   rerank-cpu on gate-net, container port 8201 (dev: localhost:18201)
@@ -251,8 +255,8 @@ Ollama request rules (every client: rag-demo, LLMClient, the T3.1b bench; R11 D2
                    rag-demo (candidate) sends num_ctx = catalogue value and its sampling options from rag.gpu.yaml
                    (generation.temperature, generation.seed, generation.max_tokens -> num_predict), which are in
                    config_hash and so in target_fingerprint.
-                   num_ctx: generator 8192; judges = 12288 (generator 8192 + allowance <= 3072 + 1024 reserve, D306) for the PR
-                   judge and the gemma nightly judge (R12 N7, D270; T3.1b verifies gemma's sliding-window KV at 12288); if a
+                   num_ctx: generator 8192; judge = 12288 (generator 8192 + allowance <= 3072 + 1024 reserve, D306) for the
+                   one judge gemma3:12b (R12 N7, D270, ADR-0019; T3.1b verifies gemma's sliding-window KV at 12288); if a
                    judge does not fit at 4 slots, OLLAMA_NUM_PARALLEL (server-wide since ADR-0018) drops to 2 before
                    num_ctx is lowered (AI12-09). Embed entries: num_ctx = max_input_tokens (max chunk tokens, e.g. 1024-2048,
                    never the model's 8192 default; AI12-08). Judge input cap = num_ctx - 1024 (D169)
@@ -268,7 +272,7 @@ llm-proxy (trusted, T6.2a; module infra/gate-executor/llm-proxy/llm_proxy.py; D2
   LLM_PROXY_UPSTREAM = http://172.17.0.1:11434 over proxy-egress (D242; the one server, ADR-0018)
   allowed: POST /api/chat, POST /api/embed, GET /api/tags; only the run's catalogue generator + embedding tags
   (passed by the orchestrator). Judges run on the same server, so this allow-list IS the generator/judge
-  separation (ADR-0018): every judge / nightly_judge / large tag -> 403
+  separation (ADR-0018): every judge tag (and any other non-allowed tag) -> 403
   auth: Authorization: Bearer $PRUEFSTAND_CANDIDATE_API_KEY (sent by rag-demo: T3.4 embeddings client, T3.6
   generator client, T1.13 tier-1 client from day 1; D216)
   option policy (R12 N2, D252; supersedes the D220 "overwrite all options" rule): the proxy enforces ONLY
@@ -305,74 +309,77 @@ check line format (T0.6 probe.sh / tunnel_check.sh, T0.7 vm_check.sh)
   summarise.py (infra/cluster/feasibility/): stdin = probe output; stdout = Markdown table + conditions +
                "VERDICT: go|go-with-conditions|no-go"; the go set includes detached-survives-logout (D228)
 
-cluster scripts (infra/cluster/, copied to $CLUSTER_NAS_ROOT/bin/, run as
-                 ssh $CLUSTER_SSH_HOST bash $CLUSTER_NAS_ROOT/bin/<script>.sh)
-  cluster.env                      generated by T3.1a from infra/cluster/cluster.env.template, written to NAS bin/
-                                   with the scripts and listed in SHA256SUMS (D231); sourced by start-ollama.sh,
-                                   which derives the NAS root from its own path (dirname of $0, then ..)
-  start-ollama.sh                  ADR-0018: if an Ollama server already answers /api/tags on 127.0.0.1:11434,
-                                   it is reused and nothing is started (exit 0); only if none runs it starts ONE
-                                   server detached with setsid nohup (never tmux; D228), pid + log under
-                                   <nas>/run/ollama.{pid,log} (the only pid/log dir; gpu-cluster §9), exporting
-                                   CUDA_VISIBLE_DEVICES=0,1, OLLAMA_HOST=127.0.0.1:11434,
-                                   OLLAMA_MODELS=<nas>/ollama-models and the cluster.env values (Z7); never a
-                                   second server; refuses if the NAS path is not mounted
-  stop-ollama.sh                   stops only a server whose pid file the scripts wrote (the pre-existing server
-                                   is stopped by the owner, runbook §2a)
-  status.sh                        CSV check,status,detail: server pid (pid file or pgrep + listener on :11434),
+cluster scripts (infra/cluster/, copied over SSH to /data/dheena/pruefstand-bin/ on the cluster (ADR-0019), run as
+                 ssh $CLUSTER_SSH_HOST bash /data/dheena/pruefstand-bin/<script>.sh)
+  cluster.env                      generated by T3.1a from infra/cluster/cluster.env.template, copied with the
+                                   scripts and listed in SHA256SUMS (D231); holds the expected server values
+                                   (setup log §7) and the paths OLLAMA_START_SCRIPT=$HOME/start-ollama.sh,
+                                   OLLAMA_LOG=/data/dheena/ollama.log, OLLAMA_MODELS=/data/dheena/Models; sourced by
+                                   start-ollama.sh and status.sh, which derive the bin dir from their own path
+  start-ollama.sh                  ADR-0018/0019: if an Ollama server already answers /api/tags on 127.0.0.1:11434,
+                                   it is reused and nothing is started (exit 0); only if none runs it starts the
+                                   owner's start script of record detached:
+                                   setsid nohup $OLLAMA_START_SCRIPT > $OLLAMA_LOG 2>&1 < /dev/null & (never tmux;
+                                   D228); never a second server, never its own server env; refuses (exit 1) if
+                                   $OLLAMA_START_SCRIPT is missing
+  stop-ollama.sh                   stops the one server (pid found as below), only under the lock via the wrapper;
+                                   normally the owner restarts it by hand (runbook §2a)
+  status.sh                        CSV check,status,detail: server pid (pgrep -u $USER -x ollama + listener on :11434),
+                                   free space on /data (< 2 GB -> WARN, ADR-0019),
                                    its OLLAMA_* env from /proc/<pid>/environ (WARN on a difference from
                                    cluster.env), /api/tags, /api/ps (size, size_vram), nvidia-smi per card, and the
                                    card(s) of each resident model (compute-apps pid/gpu_uuid joined with the
                                    model's runner process; verify in T3.1a);
                                    R12 (A12-M3, D276): before acting on a pid stop-ollama.sh and status.sh check
-                                   that /proc/<pid>/cmdline is `ollama serve` and that :11434 is listening;
-                                   a stale pid file is removed and reported, never killed
+                                   that /proc/<pid>/cmdline is `ollama serve` and that :11434 is listening
+                                   (no pid file since ADR-0019)
 
 VM scripts (infra/gpu/; never take the lock; exit 2 unless PRUEFSTAND_LOCK_HELD=1; D151)
-  MAINTENANCE rule (D230): while /var/lib/pruefstand/MAINTENANCE exists only mode datagen is allowed;
-            switch-mode.sh datagen creates the file itself, switch-mode.sh day removes it; the orchestrator
-            skips gated work while it exists
-  switch-mode.sh day|night|datagen   API loads/unloads only (keep_alive 0 to unload), never a server start/stop
-                                     (ADR-0018); night unloads the PR judge before loading gemma, generator and
-                                     bge-m3 untouched; datagen unloads all, then loads llama 70B; preload with
-                                     the catalogue options (D220)
+  MAINTENANCE rule (ADR-0019, replaces D230): the owner (or a task whose prompt says so) sets
+            /var/lib/pruefstand/MAINTENANCE for model swaps (swap rule: ollama rm a non-generator model, pull the
+            new one, restore the set); the orchestrator skips gated work while it exists. There is no datagen mode
+  switch-mode.sh day|night           API loads/unloads only (keep_alive 0 to unload), never a server start/stop
+                                     (ADR-0018); since ADR-0019 both modes load the same set (generator, bge-m3,
+                                     the one judge); preload with the catalogue options (D220)
   health.sh [--repair]               CSV check,status,detail; exit 0 ok, 10 free VRAM below threshold, 11 endpoint
                                      down, 12 status.sh unreachable (SSH), 13 resident digest != catalogue,
-                                     14 NAS bin/ out of date, 15 a resident model not fully on the GPU (/api/ps
-                                     size_vram < size, AI11-06) or, outside datagen, spread over both cards
-                                     (ADR-0018; the CSV reports the card of every model), 16 NAS mount missing
-                                     (D227); --repair runs start-ollama.sh when no server answers (it reuses a
+                                     14 cluster bin dir (/data/dheena/pruefstand-bin) out of date, 15 a resident
+                                     model not fully on the GPU (/api/ps size_vram < size, AI11-06) or spread over
+                                     both cards (ADR-0018; the CSV reports the card of every model), 16 data root
+                                     unavailable (ADR-0019: $PRUEFSTAND_DATA_ROOT missing, not writable by
+                                     pruefstand or < 20 GB free); --repair runs start-ollama.sh when no server answers (it reuses a
                                      running one, <= 5 min) and NORMALISES the server to exactly the mode's model
                                      set: catalogue models not in the mode are unloaded first (keep_alive 0), then
-                                     missing ones are preloaded (D208; R12 A12-M12, D276: a killed nightly that left
-                                     gemma, or a datagen that left llama 70B, is cleaned by the next day-mode
+                                     missing ones are preloaded (D208; R12 A12-M12, D276: a killed job that left an
+                                     extra catalogue model (e5, an RQ2 candidate) is cleaned by the next day-mode
                                      --repair); non-catalogue models are reported (WARN) and left alone
                                      embedding swap (R12 AI12-08, D280): a run whose rag.gpu.yaml selects another
                                      catalogue embed model -> the orchestrator unloads bge-m3, preloads that model
                                      with its catalogue options before indexing, and restores bge-m3 in `finally`
                                      (same rule as the generator swap)
-  fetch-model.sh <models.yaml id>    ollama pull <tag> via the one server into the NAS store, then manifest-digest
-                                     check; mismatch -> ollama rm <tag>, exit 1 (D207)
-deploy-cluster-bin.sh [--check]      (infra/gpu/; needs no lock) infra/cluster/*.sh + cluster.env ->
-                                     $PRUEFSTAND_DATA_ROOT/bin/ (*.partial + mv) + SHA256SUMS
+  fetch-model.sh <models.yaml id>    ollama pull <tag> via the one server into /data/dheena/Models, then
+                                     manifest-digest check; mismatch -> ollama rm <tag>, exit 1 (D207); refuses
+                                     (exit 1) if /data would keep < 2 GB free; --rm <id> removes a non-generator
+                                     model, only while MAINTENANCE exists (swap rule, ADR-0019)
+deploy-cluster-bin.sh [--check]      (infra/gpu/; needs no lock) infra/cluster/*.sh + cluster.env -> over SSH to
+                                     /data/dheena/pruefstand-bin/ on the cluster (*.partial + mv) + SHA256SUMS
+                                     (ADR-0019)
 
 unattended operation (R11 Y5, D225-D229)
   heartbeat         refreshed every 15 min during long jobs (background thread of the orchestrator)
-  infra error       Ollama down / tunnel lost / NAS unavailable mid-run (or llm-proxy /health model_reloads or
+  infra error       Ollama down / tunnel lost / data root unavailable mid-run (or llm-proxy /health model_reloads or
                     upstream_errors grew during the run) ->
                     RunManifest.stop_reason = "aborted" and RunManifest.infra_error = "<kind>: <detail>"
-                    (str | None, §2; kind ollama_down|tunnel_lost|nas_unavailable|proxy_upstream|model_reload|
+                    (str | None, §2; kind ollama_down|tunnel_lost|data_root_unavailable|proxy_upstream|model_reload|
                     window_exceeded), commit status `error` (not `failure`), one automatic retry after
                     health.sh --repair. R12 (A12-M1, D274): the first failure is not recorded as processed (the
                     retry runs in the same job); after the SECOND infra failure the orchestrator writes a
                     processed.jsonl line with result "error", so it is not re-run automatically; the status text
                     ends "re-dispatch to retry" (R13 P1.2, D288); only a new owner dispatch runs it again
-  NAS mount         R12 (N4.1, A12-01, D254; supersedes D227's Requires=): one unit name everywhere,
-                    mnt-pruefstand.automount (fstab x-systemd.automount,nofail,x-systemd.mount-timeout=30).
-                    pruefstand-runner.service: Wants=mnt-pruefstand.automount + After=mnt-pruefstand.automount
-                    (never Requires=); pruefstand-tunnel.service has NO dependency on the NAS mount. Mount loss is
-                    handled only by the preflight (`timeout 10 mountpoint -q /mnt/pruefstand`, health.sh exit 16):
-                    the job ends with stop_reason="aborted", infra_error="nas_unavailable: <detail>", status `error`
+  data root         ADR-0019 (supersedes the R12 mount unit, D254): /mnt/pruefstand is a plain directory on the VM
+                    disk; no mount unit, no service dependency. The preflight (health.sh exit 16) checks that it
+                    exists, is writable by pruefstand and has >= 20 GB free; otherwise the job ends with
+                    stop_reason="aborted", infra_error="data_root_unavailable: <detail>", status `error`
   night window      R12 (N4.3, D256): before each nightly phase the job compares the remaining time to 06:00
                     Europe/Berlin with the phase's budget; if it does not fit it stops gracefully:
                     stop_reason="aborted", infra_error="window_exceeded: <phase>" (no retry, nothing promoted). A
@@ -390,13 +397,14 @@ unattended operation (R11 Y5, D225-D229)
                     counter mod 3; incremented (commit on executor-state) ONLY after a completed nightly (the gate
                     phase's run has complete == True); a skipped, late or aborted night leaves it unchanged, so
                     the next night repeats that block. Never derived from the date
-  backups           NAS copy + mandatory weekly laptop copy; the laptop writes
+  backups           TrueNAS periodic snapshots of the VM zvol + the weekly encrypted bundle in the data root +
+                    mandatory weekly laptop copy (ADR-0019); the laptop writes
                     $PRUEFSTAND_DATA_ROOT/backups/laptop-receipt.json; job backup-check warns when it is > 8 days old
 
 catalogue (infra/gpu/models.yaml, validated by infra/gpu/catalogue_schema.py)
   per entry: id (ollama/<tag> for engine ollama), engine (ollama|cpu), tag (bare), digest (64-hex manifest
-             sha256), quantization, family, role (generator|judge|nightly_judge|large|embed|rerank),
-             server (gpu0|gpu1|all|vm: the lane / URL setting, not a card or port, ADR-0018),
+             sha256), quantization, family, role (generator|judge|embed|rerank; ADR-0019: one judge entry, no
+             nightly_judge or large role), server (gpu0|gpu1|vm: the lane / URL setting, not a card or port, ADR-0018),
              options {num_ctx, num_predict, temperature, seed, top_p} (defaults), think (false for every entry whose
              Ollama capabilities include `thinking`, e.g. the generator qwen3.8:27b-q8_0, D95),
              option_bounds {temperature: [min, max], top_p: [min, max], num_predict: [1, max]} (R12 D252; chat
@@ -542,7 +550,7 @@ class RunManifest(BaseModel):    # (schema) -> run.json
     #   (no infra_error count: the infra failure is the field below, R11 integration D245)
     complete: bool; stop_reason: Literal["completed", "budget_exceeded", "aborted"]
     infra_error: str | None = None    # R11 D226/D245: "<kind>: <detail>" (kind ollama_down | tunnel_lost |
-                                      # nas_unavailable | proxy_upstream | model_reload | window_exceeded (R12 N4.3,
+                                      # data_root_unavailable (ADR-0019; was nas_unavailable) | proxy_upstream | model_reload | window_exceeded (R12 N4.3,
                                       # D256: nightly stopped before 06:00 Berlin; no retry)); set only together with
                                       # stop_reason="aborted" (validator: infra_error set => stop_reason == "aborted")
     stack: Literal["live", "a40"]     # where it ran: live = tier 1 (GitHub-hosted CPU), a40 = tier 2 executor
@@ -552,7 +560,7 @@ class RunManifest(BaseModel):    # (schema) -> run.json
                                       # skipped = no judge ran (tier-1 quota exhausted, fork PR without `models`
                                       # permission, retrieval-only run). There is no CPU judge in any tier (D97).
     judge_fallback: bool = False      # tier 2 only: True if any judgment came from a judge other than the configured one
-                                      # (nightly gemma judge unavailable -> PR judge); shown in the PR comment, never silent.
+                                      # (a judge other than the configured one, ADR-0019: one judge for PR and nightly); shown in the PR comment, never silent.
                                       # R11 D224: then EVERY judged metric is informational ("judge_fallback") and the run
                                       # is never promoted (R13 D321); never a cross-judge comparison
     judge_degraded: bool = False      # D120: judge errors on > 5 % of judged cases -> judged metrics informational
@@ -859,7 +867,7 @@ class LocalDirBaselineStore(BaselineStore); class GitBranchBaselineStore(Baselin
 # store/canary_source.py (T6.1; reused by T8.1): load_canary_registry() -> CanaryRegistry — registry source of
 #   `baseline export-public` and `export-dashboard`: slice corpus/*/canaries.public.json + T2.6 registries + held-out
 #   via PRUEFSTAND_HELDOUT_DIR; none found -> StoreError
-    # GitBranchBaselineStore (R9 X2.7, supersedes the D145 layout; R10 D209: on the NAS): the run FILES live under
+    # GitBranchBaselineStore (R9 X2.7, supersedes the D145 layout; ADR-0019: in the data root on the VM disk): the run FILES live under
     # BaselineStoreConfig.data_root (default $PRUEFSTAND_DATA_ROOT/baselines, else $PRUEFSTAND_HOME/baselines): <data_root>/<eval_fingerprint>/<ref>/ (current
     # baseline: run.json, results.parquet, responses.jsonl.zst, manifest.json with sha256 per file) plus one
     # <data_root>/<eval_fingerprint>/history/<run_id>/ per promotion (run.json, results.parquet, manifest.json; last 20
@@ -875,7 +883,7 @@ class LocalDirBaselineStore(BaselineStore); class GitBranchBaselineStore(Baselin
     # (incl. "release") -> StoreError. Promotion (R13 D309/D321, AI13-08): a run with judge_fallback, judge_drift,
     # judge_degraded, a judged metric informational for "judge_truncated", or infra_error / complete=False is NEVER
     # promoted to any ref (StoreError, store unchanged; same rule as D224); plain files, no signatures: write access to
-    # the private repo and the VM account (NAS dataset) is the trust boundary (D63, R10). NAS writes go to
+    # the private repo and the VM account (data root on the VM disk) is the trust boundary (D63, R10). Data-root writes go to
     # <dir>.partial first and are renamed when complete; index.json is pushed only after the rename (gpu-cluster §9). Baselines are written only by the private
     # baseline-promote.yml: PR-tier runs of main/release, and nightly-tier runs under the nightly eval_fingerprint found by
     # its poll (no dispatch input; R9 X2.10; R12: a block-k nightly is promoted to ref nightly-b<k>; R13 D321: the release run of all
@@ -901,10 +909,10 @@ def push_heartbeat(repo: str, payload: Mapping[str, str], *, token_env: str = "D
     # store/dashboard_repo.py (T6.1, R9 R9-21): writes heartbeat.json as a single force-pushed commit on branch
     # `heartbeat` of the dashboard-data repo (executor-health.yml reads it there); the caller (T6.2a) pushes every
     # 15 min while a job runs or waits on the lock (R11 D225) and at job end; never touches `main`; returns the commit sha.
-    # payload keys (R11): ts, last_job, last_result, tunnel_ok, ollama_gpu0_ok, ollama_gpu1_ok, nas_mounted,
+    # payload keys (R11): ts, last_job, last_result, tunnel_ok, ollama_gpu0_ok, ollama_gpu1_ok, data_root_ok,
     # disk_free_gb, last_nightly_result, laptop_backup_age_days (D229);
     # R12 (A12-M2, N4.3; D275, D256): <field>_false_since for each boolean health field (tunnel_ok_false_since,
-    # ollama_gpu0_ok_false_since, ollama_gpu1_ok_false_since, nas_mounted_false_since: ISO time of the first push that
+    # ollama_gpu0_ok_false_since, ollama_gpu1_ok_false_since, data_root_ok_false_since: ISO time of the first push that
     # saw it false, "" while true; the orchestrator carries it over from its last pushed payload in state/),
     # last_nightly_at (ISO start time of the last nightly that ran, "" if none) and last_nightly_status.
     # R13 (A13-M3, D311; the single value set, supersedes the R12 list): last_nightly_status in
@@ -913,7 +921,7 @@ def push_heartbeat(repo: str, payload: Mapping[str, str], *, token_env: str = "D
     # issue nightly-skipped closes on "ok". A skip does NOT
     # update last_nightly_at (so the 26-h watchdog still fires for a series of skips).
     # R13 (A13-M4, D311): payload key `maintenance` ("true" | "false": /var/lib/pruefstand/MAINTENANCE present);
-    # while "true" check_heartbeat.py suppresses the health-field alerts (tunnel/ollama/nas *_false_since) but still
+    # while "true" check_heartbeat.py suppresses the health-field alerts (tunnel/ollama/data_root *_false_since) but still
     # alerts on a stale ts. R13 (D305): `drift_no_release_baseline` ("true" | "false"), reported once by
     # executor-health.yml. check_heartbeat.py (T6.2b) stays a
     # pure function of now + payload: alert when now - <field>_false_since > 2 h or now - last_nightly_at > 26 h
@@ -964,7 +972,7 @@ Order per case: query target (R11 D218/D222: `robust_pr` cases call `adapter.ret
 metrics are computed and every answer metric is `not_applicable`; `retrieve()` returning `None` falls back to
 `query` and counts `retrieve_fallback`). Target errors/timeouts after retries are recorded, never dropped: the
 case gets `error_rate = 1` and the worst value for every other metric (decision D26). Executor infra failures
-(Ollama / tunnel / NAS, §1.5) are **not** candidate errors: the run stops with `stop_reason="aborted"` and
+(Ollama / tunnel / data root, §1.5) are **not** candidate errors: the run stops with `stop_reason="aborted"` and
 `RunManifest.infra_error = "<kind>: <detail>"`, and the executor posts `error` and retries once (R11 D226, D245). Then (cache key = `stable_hash(target_fingerprint, case.id, case.question, case.tenant)`)
 → deterministic metrics → **if any hard-fail metric fired, mark and skip judges for that case** →
 judged metrics (each call behind `Budget.reserve(2)` / `release`, R9 X4.5) → `finalise_refusal` (R9 D9-15). The judge cache lives **only** in `LLMClient` (namespace `llm`, key =
@@ -1186,7 +1194,7 @@ Descriptions are truncated to GitHub's 140-character limit.
 | --- | --- | --- | --- |
 | executor, lock wait (T6.2a) | `pruefstand/gate` | `pending` | `"executor busy (GPU lock held)"` |
 | executor, job start (T6.2a) | `pruefstand/gate` | `pending` | `"tier-2 run started"` |
-| executor, preflight failure (T6.2a) | `pruefstand/gate` | `error` | `"executor unhealthy: <reason>"` (e.g. `"executor unhealthy: NAS not mounted"`) |
+| executor, preflight failure (T6.2a) | `pruefstand/gate` | `error` | `"executor unhealthy: <reason>"` (e.g. `"executor unhealthy: data root unavailable"`) |
 | nightly gate phase (T6.2b) | `pruefstand/nightly` | `success` / `failure` | `"<GateStatus>: <summary>"` (non-blocking, D91) |
 | nightly skipped (T6.2b) | `pruefstand/nightly` | `error` | `"skipped: <reason>"` (the §7 heartbeat vocabulary) |
 | `gate-router.yml` (T6.2b; workflow step, App token, not `GitHubPublisher`) | `pruefstand/gate` | `success` / `pending` | `"not gated"`, `"not gated (release version bump)"` / `"gated: awaiting tier-2 dispatch"` |
@@ -1382,20 +1390,20 @@ def export_hf(dir: Path, repo_id: str, private: bool, *, dry_run: bool = False) 
 class TargetConfig(BaseModel): type: Literal["http"] = "http"; url: str; auth_env: str | None = None
                                timeout_s: float = 60
 class HttpTargetConfig(TargetConfig): type: Literal["http"]; url: str
-class ModelRef(BaseModel):     id: str; family: str          # e.g. {id: "ollama/<pinned-tag>", family: "mistral"} (R10)
+class ModelRef(BaseModel):     id: str; family: str          # e.g. {id: "ollama/gemma3:12b", family: "gemma"} (R10, ADR-0019)
 class JudgeConfig(BaseModel):  pr: ModelRef; nightly: ModelRef; per_metric: dict[str, ModelRef] = {}
 class BudgetConfig(BaseModel): max_usd_per_run: float | None = 0.0; max_tokens_per_run: int | None = None
                                max_requests_per_run: int | None = None        # free-tier quotas (GitHub Models)
 class LLMPolicyConfig(BaseModel):  # free-only by default
     allowed_providers: tuple[str, ...] = ("openai_compatible_local", "ollama", "github")   # R10 D209: ollama replaces hosted_vllm
     allow_paid: bool = False
-    fallback_judge: ModelRef | None = None    # tier 2 only (nightly gemma judge unavailable -> PR judge). Tier 1 has no
+    fallback_judge: ModelRef | None = None    # tier 2 only (normally unset since ADR-0019: one judge for PR and nightly). Tier 1 has no
                                               # fallback: quota exhausted / no `models` permission -> judge_mode=skipped (D97)
 class BaselineStoreConfig(BaseModel): type: Literal["local_dir", "git_branch"] = "git_branch"
                                       path: Path | None = None; repo: str | None = None   # private executor repo for git_branch
                                       branch: str = "baselines"
                                       data_root: Path | None = None   # R9 X2.7: run files for git_branch; None ->
-                                                                      # $PRUEFSTAND_DATA_ROOT/baselines (NAS, R10 D209);
+                                                                      # $PRUEFSTAND_DATA_ROOT/baselines (VM disk, ADR-0019);
                                                                       # $PRUEFSTAND_HOME/baselines if PRUEFSTAND_DATA_ROOT unset
 class PruefstandConfig(BaseModel):   # (schema) pruefstand.yaml
     version: Literal[1]; target: TargetConfig; dataset: str; splits: tuple[Split, ...]

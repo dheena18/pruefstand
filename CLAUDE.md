@@ -22,7 +22,7 @@ work around it.
 7. Update `docs/decisions.md` (one line per decision) and any diagram your change affects.
 8. On the VM, never read, write or delete anything under `/var/lib/pruefstand/**` or `/home/pruefstand/**` (the
    executor's lock, state, key and secrets; R11 D213). GPU work goes through `pruefstand-lock <cmd>`; never edit
-   or remove `/var/lib/pruefstand/MAINTENANCE` by hand unless your prompt is a datagen task that says so.
+   or remove `/var/lib/pruefstand/MAINTENANCE` by hand unless your prompt is a model-swap task that says so (ADR-0019).
 9. GitHub from the VM (R12 N4.4, D257): `gh`/git on the VM authenticate with the owner's **fine-grained token limited
    to the public repo** (contents + pull requests + workflows write; Workflows is required to push `.github/workflows/**`, D284; no administration, no access to `pruefstand-gate` or
    `pruefstand-dashboard-data`), never `gh auth login --web`. What this token can do is exactly (R13 P1.3, D289):
@@ -49,9 +49,10 @@ infra/                                docker, compose, deploy configs
 infra/gpu/                            VM-side GPU tooling: models.yaml, endpoints.yaml, switch-mode/health/fetch-model,
                                       rerank-cpu, compose.gpu.yml (T3.1a); all run on the VM
 infra/cluster/                        scripts for cairo-s101lp (start/stop/status Ollama, feasibility probe); copied
-                                      by the VM to NAS bin/ and run over SSH, never edited on the cluster (R10 Z2)
+                                      by the VM over SSH to /data/dheena/pruefstand-bin and run over SSH, never edited
+                                      on the cluster (ADR-0019)
 infra/vm/                             TrueNAS VM setup (T0.7): user `pruefstand`, `/var/lib/pruefstand`, `pruefstand-lock`,
-                                      NAS mount unit, SSH key, `pruefstand-tunnel.service`, vm_check.sh (R11 D211–D213, D227)
+                                      data root dir check, SSH key, `pruefstand-tunnel.service`, vm_check.sh (R11 D211–D213, ADR-0019)
 infra/gate-executor/                  orchestrator + `llm-proxy` (T6.2a); synced to the private executor repo
 tools/                                dev-only tools (review/labeling apps); may read datasets/
 scripts/                              repo scripts (e.g. mirror_fork_pr.sh for fork PRs)
@@ -70,8 +71,8 @@ tests/                                repo-level tests only (CI workflows, data 
 
 | Machine | Role |
 | --- | --- |
-| TrueNAS VM `pruefstand-exec` (Ubuntu 24.04, 64 GB) | **primary**: development (VS Code on Windows → Remote-SSH; every coding-agent command runs here, as the owner user) **and** execution as system user **`pruefstand`** (runner, orchestrator, cluster key `/home/pruefstand/.ssh/id_ed25519_cluster`, system unit `pruefstand-tunnel.service`, state; R11 D211). Rootful Docker (group `docker` = `pruefstand` + owner; D213), Qdrant, candidates, `rerank-cpu`, `llm-proxy` (normal container on `gate-net` + `proxy-egress`, candidates use `http://llm-proxy:11500`; tunnel also bound on `172.17.0.1`, firewalled to `proxy-egress`; D242); lock `/var/lib/pruefstand/gpu.lock` and the file `/var/lib/pruefstand/MAINTENANCE` (group `pruefstand`; D212); NAS dataset at `/mnt/pruefstand` (`mnt-pruefstand.automount`; the runner unit only `Wants=`/`After=` it, the tunnel unit has no NAS dependency, preflight fails the job with `infra_error="nas_unavailable"`; R12 N4.1, D254); `autossh` tunnels to the cluster; firewall rules in Docker's `DOCKER-USER` chain and the own `PRUEFSTAND-INPUT` chain hooked from `INPUT` (container -> `172.17.0.1` hits `INPUT`), both via `pruefstand-firewall.service`, never flushing the ruleset (R12 N4.2, D255, D285) |
-| Cluster `cairo-s101lp` (2 × A40) | **Ollama only**: **one** server on `127.0.0.1:11434` for both GPUs (ADR-0018; the running server is reused, started detached with `setsid nohup` only if none runs, never a second one, never `tmux`, R11 D228; GPU placement by Ollama, checked via `/api/ps`; generator/judge separation by the `llm-proxy` model allow-list), models on the NAS; native `/api/*` only (D219); no checkout, Docker, data, caches or state; reached only by SSH from the VM with the `pruefstand` key (alias `cairo-s101lp`, non-default `Port`; already set up, `docs/ops/setup-log.md`) |
+| TrueNAS VM `pruefstand-exec` (Ubuntu 24.04, 64 GB) | **primary**: development (VS Code on Windows → Remote-SSH; every coding-agent command runs here, as the owner user) **and** execution as system user **`pruefstand`** (runner, orchestrator, cluster key `/home/pruefstand/.ssh/id_ed25519_cluster`, system unit `pruefstand-tunnel.service`, state; R11 D211). Rootful Docker (group `docker` = `pruefstand` + owner; D213), Qdrant, candidates, `rerank-cpu`, `llm-proxy` (normal container on `gate-net` + `proxy-egress`, candidates use `http://llm-proxy:11500`; tunnel also bound on `172.17.0.1`, firewalled to `proxy-egress`; D242); lock `/var/lib/pruefstand/gpu.lock` and the file `/var/lib/pruefstand/MAINTENANCE` (group `pruefstand`; D212); data root `/mnt/pruefstand` = a plain directory on the VM disk (500 GB zvol on TrueNAS; no NFS, no mount unit; preflight requires it to exist, be writable by `pruefstand` and have ≥ 20 GB free, else `infra_error="data_root_unavailable"`; backups = TrueNAS zvol snapshots + weekly encrypted laptop copy; ADR-0019); `autossh` tunnels to the cluster; firewall rules in Docker's `DOCKER-USER` chain and the own `PRUEFSTAND-INPUT` chain hooked from `INPUT` (container -> `172.17.0.1` hits `INPUT`), both via `pruefstand-firewall.service`, never flushing the ruleset (R12 N4.2, D255, D285) |
+| Cluster `cairo-s101lp` (2 × A40) | **Ollama only**: **one** server on `127.0.0.1:11434` for both GPUs (ADR-0018; the running server is reused, started detached with `setsid nohup` only if none runs, never a second one, never `tmux`, R11 D228; GPU placement by Ollama, checked via `/api/ps`; generator/judge separation by the `llm-proxy` model allow-list); start script of record = the owner's `~/start-ollama.sh`; models on the cluster's own disk `/data/dheena/Models` (~14 GB free: generator `qwen3.8:27b-q8_0`, `bge-m3`, **one** judge `gemma3:12b` for PR and nightly, ≥ 2 GB kept free; other models only by the swap rule under `MAINTENANCE`; ADR-0019); Prüfstand scripts in `/data/dheena/pruefstand-bin` (copied over SSH); native `/api/*` only (D219); no checkout, Docker, data, caches or state; reached only by SSH from the VM with the `pruefstand` key (alias `cairo-s101lp`, non-default `Port`; already set up, `docs/ops/setup-log.md`) |
 | Windows laptop | VS Code client; WSL2 Ubuntu 24.04 is an **optional** alternative dev shell |
 
 A second, **private** repository `dheena18/pruefstand-gate` (the *gate executor*) holds the
@@ -96,13 +97,13 @@ processed work recorded in `state/processed.jsonl` (pr, head sha, dispatch run i
 baseline** for its `eval_fingerprint` gets `failure` "no baseline for <fp>; run baseline-promote" (never pass);
 fork PRs are gated from branch `gate/pr-N` (pushed by the owner after review) only when its head SHA equals the fork
 head SHA at dispatch time, and the status goes to that SHA only; the candidate never sees the held-out canary registry; baselines live on
-the NAS (`$PRUEFSTAND_DATA_ROOT/baselines/`, last 20 per fingerprint; R10 D209) with only `index.json` in the private repo;
+the data root on the VM disk (`$PRUEFSTAND_DATA_ROOT/baselines/`, last 20 per fingerprint; ADR-0019) with only `index.json` in the private repo;
 the candidate reaches GPU models only through the trusted `llm-proxy` (generator + embedding models only, judges blocked by its allow-list; R10 D206, ADR-0018);
-the weekly backup bundle is `age`-encrypted as a whole and copied weekly to the owner's laptop as well (receipt file on
-the NAS, `backup-check` warns after 8 days; R11 D229); sanitised dashboard data and `heartbeat.json` (refreshed every
+the weekly backup bundle is `age`-encrypted as a whole and copied weekly to the owner's laptop as well (receipt file in
+the data root, `backup-check` warns after 8 days; R11 D229); sanitised dashboard data and `heartbeat.json` (refreshed every
 15 min during long jobs, D225) go to the public repo `dheena18/pruefstand-dashboard-data` (repo-scoped PAT kept in
 the private repo; no private-repo token in the public repo); the dashboard itself is served by **GitHub Pages**
-(R11 D235). An infra failure during a run (Ollama, tunnel, NAS) posts `error`, never `failure`, and retries once
+(R11 D235). An infra failure during a run (Ollama, tunnel, data root) posts `error`, never `failure`, and retries once
 after `health.sh --repair` (D226); after a second infra failure it is recorded as processed with result `error`
 and runs again only on a new owner dispatch ("…; re-dispatch to retry", R12 D274, R13 D288). Night window 22:00–06:00
 Europe/Berlin; nightly = refusal stratum + block *k* of `full` (`pruefstand run --split full --stratum all --block auto`,
@@ -293,6 +294,9 @@ Modules in the same row never import each other. All shared types live in `core`
   binding round-12 decisions are D248–D283 (source: `docs/planning/reviews/round12-resolution.md`, N1–N7, plus the reviewers' exact minor fixes in `round12-{dev,ai,ui,arch}.md`; D284–D286 from `round12-integration.md`);
   binding round-13 decisions are D287–D323 (D319–D323: round-13 integration) (source: `docs/planning/reviews/round13-resolution.md`, P1–P5, plus the reviewers' exact minor fixes in `round13-{dev,ai,ui,arch}.md`).
   D324–D327 (2026-10-31, owner-verified cluster facts, `docs/ops/setup-log.md`) implement ADR-0018: one Ollama server for both GPUs, port 11434 only, ngrok rejected.
+  D328–D332 (2026-10-31, owner decision, setup log §6–§7) implement ADR-0019: models on the cluster's own disk, one judge
+  `gemma3:12b` for PR and nightly, no local datagen model (public text via GitHub Models, private docs/canaries via the
+  local judge model), data root a plain directory on the VM disk, cluster scripts copied over SSH.
 - Several agents in parallel: follow `tasks/PARALLEL-PLAN.md` (one task = one worktree = one PR; shared files
   only as your own hunk in the last commit; GPU steps under `pruefstand-lock` (`/var/lib/pruefstand/gpu.lock`),
   compose stacks under `stack.lock`; each worktree gets `.env` copied or symlinked by the lead agent, never committed,

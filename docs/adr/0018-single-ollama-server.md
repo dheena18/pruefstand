@@ -1,6 +1,7 @@
 # 0018 — One Ollama server on the cluster for both A40s
 
-- Status: Accepted
+- Status: Accepted (amended by [ADR-0019](0019-local-model-storage-small-disk.md), 2026-10-31: model dir on the
+  cluster disk, `OLLAMA_KV_CACHE_TYPE=q8_0`, the owner's `~/start-ollama.sh` as start script, one judge, no datagen mode)
 - Date: 2026-10-31
 - Tasks: T0.6, T0.7, T3.1a, T3.1b, T5.1, T5.2a, T6.2a, T6.2b
 - Supersedes: the two-server part of D196, D198 (server env), D203 (`OLLAMA_GPU1_URL` value), D206/D242/D285
@@ -32,9 +33,9 @@ only when it does not fit on one.
 
 1. **One Ollama server** on the cluster serves both GPUs: `CUDA_VISIBLE_DEVICES=0,1`,
    `OLLAMA_HOST=127.0.0.1:11434`, `OLLAMA_MAX_LOADED_MODELS=3`, `OLLAMA_NUM_PARALLEL=4`,
-   `OLLAMA_KEEP_ALIVE=24h`, `OLLAMA_MODELS` on the NAS (`$CLUSTER_NAS_ROOT/ollama-models`; T0.6 records which
-   model dir the existing server really uses), plus the unchanged `OLLAMA_NOPRUNE=1`,
-   `OLLAMA_KV_CACHE_TYPE=f16`, `OLLAMA_FLASH_ATTENTION=1`. There is no second port, no per-GPU server,
+   `OLLAMA_KEEP_ALIVE=24h`, `OLLAMA_MODELS=/data/dheena/Models` on the cluster's own disk (ADR-0019; the NAS
+   path is rejected), plus `OLLAMA_NOPRUNE=1`, `OLLAMA_KV_CACHE_TYPE=q8_0` (ADR-0019; was `f16`),
+   `OLLAMA_CONTEXT_LENGTH=8192` (default only), `OLLAMA_FLASH_ATTENTION=1`. There is no second port, no per-GPU server,
    no datagen server and no `OLLAMA_SCHED_SPREAD`.
 2. **Settings stay two names.** `OLLAMA_GPU0_URL` and `OLLAMA_GPU1_URL` remain separate settings (code and
    `endpoints.yaml` unchanged); on the VM both are `http://127.0.0.1:11434`. They name logical lanes
@@ -44,15 +45,14 @@ only when it does not fit on one.
    that every resident model is fully in VRAM (`size_vram == size`, else the existing exit **15**) and
    reports which GPU holds it (`status.sh`: `nvidia-smi --query-compute-apps=pid,gpu_uuid,used_memory`
    joined with the Ollama runner process of each model; **verify** the join on the pinned version in
-   T3.1a). In `day`/`night` a model spread over both cards is also exit 15; in `datagen` the 70B model
-   may span both cards (it does not fit on one).
+   T3.1a). A model spread over both cards is also exit 15 (there is no `datagen` mode since ADR-0019).
 4. **Generator/judge separation is logical**, by model, not by port: `llm-proxy` lets candidates call
    only the run's catalogue generator and embedding tags (403 for any judge tag, `/api/generate`,
    `/api/ps`, `/api/pull`, …) and strips `keep_alive`, so a candidate cannot load, unload or query a
    judge.
 5. **Cluster scripts (T3.1a)** reuse the running server when it is healthy (`/api/tags` answers on
    `127.0.0.1:11434`); only if none runs does `start-ollama.sh` start **one** server with `setsid nohup`
-   from `cluster.env`. Nothing ever starts a second server. Mode switches (`day`, `night`, `datagen`)
+   through the owner's `~/start-ollama.sh` (ADR-0019). Nothing ever starts a second server. Mode switches (`day`, `night`)
    only load and unload models through the API (`keep_alive: 0` to unload); no server restart, no
    per-GPU server. A running server whose environment differs from `cluster.env` (read from
    `/proc/<pid>/environ`) is reported as WARN; restarting it is an owner step (runbook).
@@ -68,11 +68,10 @@ only when it does not fit on one.
 ## Consequences
 
 - Fewer moving parts: one process, one port, one log and pid file, one forward per bind address.
-- `MAX_LOADED_MODELS=3` fits every mode: day = generator + `bge-m3` + PR judge; night = generator +
-  `bge-m3` + gemma (PR judge unloaded first); embedding swap = generator + e5 + judge; datagen = llama 70B
-  alone. A fourth model would evict one, which the run counts as `model_reload`.
+- `MAX_LOADED_MODELS=3` fits every mode: day = night = generator + `bge-m3` + the one judge `gemma3:12b`
+  (ADR-0019); embedding swap = generator + e5 + judge. A fourth model would evict one, which the run counts as `model_reload`.
 - Placement is not guaranteed: two models could land on one card. `health.sh` makes that visible; the
-  memory plan (gpu-cluster.md §3) means the generator (≈ 40 GB) and a judge (≥ 23 GB) never fit one card
+  memory plan (gpu-cluster.md §3) means the generator (≈ 35 GB with KV) and the judge do not fit one card
   together, so Ollama puts them on different cards. The overlap of nightly generation and judging still
   holds.
 - `OLLAMA_NUM_PARALLEL` is server-wide, so "lower parallel to 2 for the judge" (D270/D306) lowers it for

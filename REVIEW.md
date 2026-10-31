@@ -414,3 +414,19 @@ judged subset **with** injection (AI13-11 rejected), test reset via `docker comp
 6. **Minors.** Judge context rule 12 288 = 8 192 + 3 072 + 1 024; generator tokenizer + `prompt_overflow`;
    per-judge drift threshold; `judge-drift` before the nightly gate; compose rule (`make ports-env`); heartbeat
    vocabulary + `maintenance`; `core/config/` package; `labels.schema.json` owned by T1.9; new env rows.
+
+### Owner decision 2026-10-31: ADR-0019 "manage with whatever we have"
+
+After the setup log (§6–§7) showed ~14 GB free on the cluster's `/data`, ~6 MB/s from the NAS and no NFS route from
+the VM to its TrueNAS host, ADR-0019 (D328–D332) amends rounds 10–13 (items above that name the NAS, two judges or a
+70B datagen model are history):
+
+1. **Models** live on the cluster's own disk (`OLLAMA_MODELS=/data/dheena/Models`): generator `qwen3.8:27b-q8_0`,
+   `bge-m3`, and **one judge** `gemma3:12b` for PR and nightly; ≥ 2 GB stay free; any other model is a swap under
+   `MAINTENANCE`. The owner's `~/start-ollama.sh` is the start script of record (`KV_CACHE_TYPE=q8_0`).
+2. **Datagen**: public law/EUR-Lex text through a pinned GitHub Models free-tier model (family ≠ `qwen`, ≠
+   `gemma`); private docs, canaries and held-out data locally with the judge model; the judge reviews in
+   reject-only mode. No `datagen` mode.
+3. **Data root** `/mnt/pruefstand` is a plain directory on the VM's zvol (no NFS, no automount); unusable →
+   `infra_error="data_root_unavailable"`; backups = TrueNAS zvol snapshots + weekly encrypted laptop copy.
+4. **Cluster scripts** are copied over SSH to `/data/dheena/pruefstand-bin`.

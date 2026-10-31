@@ -6,7 +6,7 @@ commands and paths: `docs/engineering/gpu-cluster.md` §1, §4, §8, §9 (round 
 D211–D239; round 12 N1–N5 and the `round12-arch.md` minors; round 13 P1–P5 and the `round13-arch.md` minors). This is the
 **single** runbook (D145): first-time install of the VM and runner is §0 (T0.7, T6.2a); cluster and
 Ollama operations are §2a (T3.1a); the dashboard deploy, the optional demo and their rollback are §9 (T8.5). Owners of the steps
-below: T0.7 (VM, NAS mount, SSH key, tunnel), T3.1a (cluster scripts, models), T6.2a (runner,
+below: T0.7 (VM, data root, SSH key, tunnel), T3.1a (cluster scripts, models), T6.2a (runner,
 orchestrator, `llm-proxy`), T6.2b (workflows, health, backups), T8.5 (dashboard-data consumer).
 
 **Where things run (Z1) and as whom (Y1).** Every command below runs **on the VM `pruefstand-exec`**
@@ -18,15 +18,16 @@ command of yours that needs the cluster goes through the sudo wrapper** (T3.1a, 
 `sudo -n -u pruefstand /usr/local/bin/pruefstand-cluster <op>` (ops `start-ollama`,
 `stop-ollama`, `status`, `pull|rm|show <tag>`; anything else exits 64). The cluster
 `cairo-s101lp` runs only **one** Ollama server for both GPUs (ADR-0018; `127.0.0.1:11434`); it is reached from the VM by key-only SSH as
-`pruefstand`, which calls the scripts as `ssh "$CLUSTER_SSH_HOST" bash "$CLUSTER_NAS_ROOT/bin/<script>.sh"`
-(the wrapper does exactly that for you). Nothing is stored on the cluster outside the NAS mount.
+`pruefstand`, which calls the scripts as `ssh "$CLUSTER_SSH_HOST" bash /data/dheena/pruefstand-bin/<script>.sh`
+(the wrapper does exactly that for you). On the cluster only the models (`/data/dheena/Models`), these scripts and
+`/data/dheena/ollama.log` are stored (ADR-0019); the server is started by your `~/start-ollama.sh` (setup log §7).
 
 | Variable (VM `.env`) | Value |
 | --- | --- |
 | lock dir (fixed, not a variable) | `/var/lib/pruefstand/` (mode 2770, group `pruefstand`): `gpu.lock` (0660), `MAINTENANCE` |
 | `PRUEFSTAND_HOME` | executor: `/home/pruefstand/pruefstand` (`runner.env` of user `pruefstand`) on the **local VM disk**: `state/`, `runner/`, `runs/`, `qdrant/`, `pruefstand-cache/`; your own `.env`: `~/pruefstand` (dev state only) |
-| `PRUEFSTAND_DATA_ROOT` | `/mnt/pruefstand` (NAS dataset): `ollama-models/`, `bin/`, `data/`, `corpus/`, `datasets/`, `baselines/`, `backups/` |
-| `CLUSTER_SSH_HOST` / `CLUSTER_NAS_ROOT` | `cairo-s101lp` / `/data/dheena/truenas-ollama` (the same NAS dataset seen from the cluster) |
+| `PRUEFSTAND_DATA_ROOT` | `/mnt/pruefstand` (plain directory on the VM disk, ADR-0019, setup log §6): `data/`, `corpus/`, `datasets/`, `baselines/`, `backups/`, `cache/`, `logs/` |
+| `CLUSTER_SSH_HOST` | `cairo-s101lp`; cluster paths are fixed: `/data/dheena/Models`, `/data/dheena/pruefstand-bin`, `/data/dheena/ollama.log` |
 | `OLLAMA_GPU0_URL` / `OLLAMA_GPU1_URL` | both `http://127.0.0.1:11434` (the one tunnel end; generator lane / judge lane, ADR-0018) |
 | `PORT_OFFSET` | your `.env` only: `10000` (dev stack ports, `docker.md` §3); never set for `pruefstand` |
 
@@ -47,30 +48,29 @@ half). Re-run those steps only to rebuild the VM.
    run `systemctl restart pruefstand-tunnel`, and the wrapper line for you (`pruefstand-cluster`, with
    `Defaults env_keep += PRUEFSTAND_LOCK_HELD`, so its mutating ops can prove you hold the GPU lock, A12-M5);
    firewall: inbound SSH only; the tunnel port on `172.17.0.1` (`11434`) accepts connections only
-   from the `proxy-egress` subnet (step 3); `llm-proxy` has **no** host port (A12-M6). NAS: `/etc/fstab`
-   entry for `/mnt/pruefstand` with `x-systemd.automount,nofail,x-systemd.mount-timeout=30` (Y5.3), unit
-   name **`mnt-pruefstand.automount`** everywhere; check `timeout 10 mountpoint -q /mnt/pruefstand` after a
-   reboot. **GitHub on the VM** (N4.4, `security.md` C18), [owner]: create a fine-grained token in the
+   from the `proxy-egress` subnet (step 3); `llm-proxy` has **no** host port (A12-M6). Data root (ADR-0019,
+   **done**, setup log §6): `/mnt/pruefstand/{data,corpus,datasets,baselines,backups,cache,logs}` as a plain
+   directory on the VM disk, owner `pruefstand`, mode 2775, no NFS and no mount unit; TrueNAS **Data Protection →
+   Periodic Snapshot Tasks** on the VM zvol (daily, keep 14). **GitHub on the VM** (N4.4, `security.md` C18), [owner]: create a fine-grained token in the
    GitHub UI limited to `dheena18/pruefstand` (contents + pull requests + workflows write, nothing else; Workflows is required to push `.github/workflows/**`, D284; no access
    to `pruefstand-gate` or `pruefstand-dashboard-data`), `gh auth login --with-token` + `gh auth setup-git`,
    never `gh auth login --web`; check `gh api repos/dheena18/pruefstand-gate` → 404. Tier-2 dispatches, bypasses,
    merges and private-repo actions: only from your browser or the GitHub mobile app (what the token can do: §2 step 7).
-   Run the bypass drill of §2 step 7 once. Group-based NAS permissions for `pruefstand`, you and the cluster
-   user (record them).
+   Run the bypass drill of §2 step 7 once.
 2. **SSH key to the cluster** (T0.7 V5, Z7, Y1.1; **done**, setup log §2), [pruefstand]:
    `ssh-keygen -t ed25519 -N '' -f /home/pruefstand/.ssh/id_ed25519_cluster`, then
    `ssh-copy-id -i /home/pruefstand/.ssh/id_ed25519_cluster.pub -p <cluster-ssh-port> <cluster-user>@<cluster-ssh-host>`
    and the alias `cairo-s101lp` in `/home/pruefstand/.ssh/config` (`HostName`, non-default `Port`, `User`,
    `IdentityFile`; placeholders in git, real values only on the VM). If the cluster's home folder is
    group-writable, sshd ignores `authorized_keys`: `chmod g-w ~` on the cluster (setup log §2). You type the cluster
-   password **once, interactively**; it is never written to `.env`, a file, GitHub or the NAS. Check:
+   password **once, interactively**; it is never written to `.env`, a file, GitHub or a NAS share. Check:
    `ssh -o BatchMode=yes cairo-s101lp true` succeeds. The private key stays only in
    `/home/pruefstand/.ssh` (mode 600).
 3. **Tunnel** (T0.7 S5; the unit with the `127.0.0.1` forward already runs, setup log §3), [root]:
    `infra/vm/install-tunnel.sh` rewrites the **system** unit `pruefstand-tunnel.service` (`User=pruefstand`,
    `autossh -M 0 -N -o ExitOnForwardFailure=yes -L 127.0.0.1:11434:localhost:11434
    -L 172.17.0.1:11434:localhost:11434 cairo-s101lp`, port 11434 only, ADR-0018; `Wants=` and `After=network-online.target
-   docker.service`, `Restart=always`, `RestartSec=10`; **no** dependency on the NAS mount, N4.1; D242).
+   docker.service`, `Restart=always`, `RestartSec=10`; no storage dependency, ADR-0019; D242).
    [root] `infra/vm/setup-proxy-net.sh` creates the Docker network `proxy-egress` (`10.231.0.0/24`) and
    installs the oneshot **`pruefstand-firewall.service`** (`After=docker.service`, `PartOf=docker.service`
    so it is re-applied on every Docker restart), which inserts into Docker's **`DOCKER-USER`** chain (container-to-container and egress) **and** into the
@@ -89,9 +89,9 @@ half). Re-run those steps only to rebuild the VM.
    (`10.232.0.2`) is also on `demo-egress` (`10.233.0.0/24`), `DOCKER-USER` drops `demo-egress` → `10.0.0.0/8`,
    `172.16.0.0/12`, `192.168.0.0/16`, and `PRUEFSTAND-INPUT` drops both subnets → the VM's own addresses and ports.
 4. **Cluster scripts and models** (T3.1a), [pruefstand] from its trusted `main` checkout:
-   `infra/gpu/deploy-cluster-bin.sh` copies `infra/cluster/*.sh` and the rendered `cluster.env` (Y6.3) to
-   `$PRUEFSTAND_DATA_ROOT/bin/` (+ `SHA256SUMS`); move or re-pull `qwen3.8:27b-q8_0` into
-   `ollama-models/` once if T0.6 C4 found another model dir (§2a.4); reuse or start the one server (§2a.1).
+   `infra/gpu/deploy-cluster-bin.sh` copies `infra/cluster/*.sh` and the rendered `cluster.env` (Y6.3) over SSH to
+   `/data/dheena/pruefstand-bin/` on the cluster (+ `SHA256SUMS`; ADR-0019); `fetch-model.sh` pulls `bge-m3` and the
+   judge `gemma3:12b` into `/data/dheena/Models` (§2a.4; ≥ 2 GB must stay free); reuse or start the one server (§2a.1).
 5. Private repo `dheena18/pruefstand-gate`, secrets `BOT_APP_ID`, `BOT_APP_KEY`, `DASHBOARD_DATA_PAT`. Public repo
    (round 13 P1.1), in your browser: environment **`gate-router`** (deployment branches: `main` only, no reviewer) with
    the same `BOT_APP_ID` / `BOT_APP_KEY`, used only by `gate-router.yml`; the `main` ruleset requires
@@ -99,7 +99,7 @@ half). Re-run those steps only to rebuild the VM.
    `main` only (A13-M2).
 6. Persistent runner registered **once** on the VM under `/home/pruefstand/pruefstand/runner` (label
    `a40`), hook scripts in its `.env`, **system** service `pruefstand-runner.service` (`User=pruefstand`,
-   `Wants=` + `After=mnt-pruefstand.automount`, never `Requires=`, N4.1) (D100, Y1.1). Never on the cluster.
+   no storage dependency, ADR-0019) (D100, Y1.1). Never on the cluster.
 7. `llm-proxy` (`gate-net` + `proxy-egress`, `http://llm-proxy:11500`, D242), `rerank-cpu` and Qdrant (profile `gpu`) on the VM as
    `pruefstand` (T3.1a, T6.2a); ports in `docker.md` §3. Your dev stack uses `PORT_OFFSET=10000`; run
    `make ports-env` once so even a raw `docker compose … up` binds the dev ports, and `make check-ports`
@@ -112,23 +112,24 @@ half). Re-run those steps only to rebuild the VM.
 | --- | --- | --- |
 | Persistent runner (D100) | VM: `/home/pruefstand/pruefstand/runner`, system service `pruefstand-runner` (user `pruefstand`) | runner "Idle"/"Active" in the private repo settings; `heartbeat.json` age |
 | Tunnel (T0.7) | VM: system unit `pruefstand-tunnel` (`autossh`, user `pruefstand`, port 11434 only) | `curl -s 127.0.0.1:11434/api/tags` |
-| Ollama server (T3.1a, ADR-0018) | cluster: **one** server on `127.0.0.1:11434` for both GPUs (the pre-existing server is reused; only if none runs the scripts start one detached with `setsid nohup`, pid + log in NAS `run/`, pid checked against `/proc/<pid>/cmdline` and `:11434` before use, A12-M3); every mode is API loads/unloads on it; `OLLAMA_MODELS` on the NAS | [owner] `sudo -n -u pruefstand /usr/local/bin/pruefstand-cluster status` (CSV: server env, card per model), `/api/ps` through the tunnel (`size_vram == size`) |
+| Ollama server (T3.1a, ADR-0018) | cluster: **one** server on `127.0.0.1:11434` for both GPUs (the running server is reused; only if none runs the scripts start your `~/start-ollama.sh` detached with `setsid nohup`, log `/data/dheena/ollama.log`, pid found by `pgrep` and checked against `/proc/<pid>/cmdline` and `:11434`, A12-M3); every mode is API loads/unloads on it; `OLLAMA_MODELS=/data/dheena/Models` on the cluster disk (ADR-0019) | [owner] `sudo -n -u pruefstand /usr/local/bin/pruefstand-cluster status` (CSV: server env, card per model), `/api/ps` through the tunnel (`size_vram == size`) |
 | VM services | rootful Docker on the VM, executor stack (user `pruefstand`): `qdrant` (`:6333`), `rerank-cpu` (`gate-net` only, no host port), `llm-proxy` (`gate-net` + `proxy-egress`, no host port; upstream `172.17.0.1:11434`, firewalled to `proxy-egress`); your dev stack on `+10000` ports | `docker ps`; `GET /readyz`, `GET /health` (proxy: also upstream error counters) |
-| NAS dataset | VM `/mnt/pruefstand` (`mnt-pruefstand.automount`, `nofail`; the runner only `Wants=` it, the tunnel does not depend on it), cluster `/data/dheena/truenas-ollama` | `timeout 10 mountpoint -q /mnt/pruefstand`; sentinel `.pruefstand-data-root` |
+| Data root (ADR-0019) | VM `/mnt/pruefstand`, a plain directory on the VM disk (zvol, TrueNAS snapshots) | `sudo -u pruefstand test -w /mnt/pruefstand && df -h /mnt/pruefstand` (≥ 20 GB free); sentinel `.pruefstand-data-root` |
+| Cluster model disk (ADR-0019) | `/data/dheena/Models`: generator, `bge-m3`, `gemma3:12b` | `$C status` (free space on `/data`, ≥ 2 GB) |
 | Executor workflows | private repo `dheena18/pruefstand-gate`: `gate-executor.yml` (**dispatch only**, input `pr`; you start it from the browser or the GitHub mobile app, P1.2), `baseline-promote.yml`, `nightly.yml` (hosted job `guard` with output `run` + one orchestrator job `nightly` with `if: needs.guard.outputs.run == 'true'`, 06:00 deadline of the fired night, P2.1), `backup.yml`, optional `demo-nightly.yml` (one concurrency group each, dispatches per PR, D101) | Actions tab of the private repo; heartbeat `last_nightly_at`, `last_nightly_status` |
 | Firewall (N4.2) | VM: oneshot `pruefstand-firewall.service` (rules in Docker's `DOCKER-USER` chain + own `PRUEFSTAND-INPUT` chain from `INPUT`, D285) | `systemctl status pruefstand-firewall`; `iptables -S DOCKER-USER`; `iptables -S PRUEFSTAND-INPUT`; `infra/vm/vm_check.sh firewall` |
 | Gate router (X2.2, P1.1) | public `gate-router.yml` (hosted, `pull_request_target`, no checkout, environment `gate-router`) posts with the `pruefstand-bot` App token: "not gated" for non-gated PRs, `pending` "gated: awaiting tier-2 dispatch" for gated ones | Actions tab of the public repo |
 | GPU lock (X2.1, D200, D211) | `/var/lib/pruefstand/gpu.lock` (`flock`) on the **VM disk**, one file for every user, taken once per job by the orchestrator or by `pruefstand-lock <cmd>`; `switch-mode.sh` / `health.sh` / `fetch-model.sh` refuse to run without `PRUEFSTAND_LOCK_HELD=1` | `sudo fuser -v /var/lib/pruefstand/gpu.lock` shows the holder |
 | Processed state (D102) and block counter (P4.4) | branch `executor-state`: `state/processed.jsonl` (a record of dispatched runs, not a trigger) and `state/nightly_counter` (block = counter mod 3, incremented only after a completed nightly) | last line = last gated run; counter grows by one per completed nightly |
-| Baselines (X2.7, D209) | files on the NAS `$PRUEFSTAND_DATA_ROOT/baselines/<fp>/{main,nightly-b<k>,release-b<k>,history/<run_id>}/`; branch `baselines` holds only `baselines/index.json` (ADR-0004) | `index.json` newest entry matches a directory on the NAS |
+| Baselines (X2.7, D209) | files in the data root `$PRUEFSTAND_DATA_ROOT/baselines/<fp>/{main,nightly-b<k>,release-b<k>,history/<run_id>}/`; branch `baselines` holds only `baselines/index.json` (ADR-0004) | `index.json` newest entry matches a directory in the data root |
 | Dashboard data + heartbeat (D108, D109) | public repo `dheena18/pruefstand-dashboard-data` (`main`: data; branch `heartbeat`: `heartbeat.json`) | `heartbeat.json` timestamp (refreshed every 15 min during jobs), `<field>_false_since`, `last_nightly_at`, `last_nightly_status`, `maintenance`, `drift_no_release_baseline`, `runner_version`; `executor-health.yml` issues `executor-down`, `backup-stale`, `nightly skipped`, `nightly-failed` |
-| Backups (X2.6, Y5.5) | NAS `$PRUEFSTAND_DATA_ROOT/backups/<date>/pruefstand-gate.bundle.tar.age` + your laptop (mandatory weekly, receipt `backups/laptop-receipt.json`) | `backup.yml` run status; `backup-check` / heartbeat `laptop_backup_age_days` ≤ 8 |
+| Backups (X2.6, Y5.5) | data root `$PRUEFSTAND_DATA_ROOT/backups/<date>/pruefstand-gate.bundle.tar.age` (inside the TrueNAS zvol snapshots) + your laptop (mandatory weekly, receipt `backups/laptop-receipt.json`) | `backup.yml` run status; `backup-check` / heartbeat `laptop_backup_age_days` ≤ 8 |
 
-## 2. Executor outage (VM, runner, tunnel, NAS or cluster)
+## 2. Executor outage (VM, runner, tunnel, data root or cluster)
 
 Symptoms: issue `executor-down` opened by `executor-health.yml` (heartbeat older than 2 h, or a health
 flag false for more than 2 h by its `<field>_false_since`; health-field alerts are suppressed while the heartbeat
-says `maintenance: true`, e.g. a datagen weekend, A13-M4), issue `nightly skipped` (no nightly for
+says `maintenance: true`, e.g. a model swap, A13-M4), issue `nightly skipped` (no nightly for
 > 26 h, or `last_nightly_status` = `skipped: …` / `aborted: window_exceeded`), gated PRs stuck at
 `pending` (incl. "executor busy (GPU lock held); re-dispatch"), or `pruefstand/gate` = `error` "executor unhealthy:
 <reason>" / "executor infra error: <summary>; retrying once" (an infra failure mid-run, Y5.2), or
@@ -136,10 +137,10 @@ says `maintenance: true`, e.g. a datagen weekend, A13-M4), issue `nightly skippe
 Non-gated PRs are not affected: `gate-router.yml` posts their status on a hosted
 runner.
 
-1. [owner] On the VM: `systemctl status pruefstand-runner pruefstand-tunnel mnt-pruefstand.automount`;
+1. [owner] On the VM: `systemctl status pruefstand-runner pruefstand-tunnel`;
    `journalctl -u pruefstand-runner -n 200` (both are system units).
 2. `sudo fuser -v /var/lib/pruefstand/gpu.lock` (who holds the lock?); `df -h /home/pruefstand`;
-   `timeout 10 mountpoint -q /mnt/pruefstand && echo nas-ok`; `curl -s 127.0.0.1:11434/api/tags`; GPU use: [owner] `sudo -n -u pruefstand /usr/local/bin/pruefstand-cluster status`
+   `sudo -u pruefstand test -w /mnt/pruefstand && df -h /mnt/pruefstand`; `curl -s 127.0.0.1:11434/api/tags`; GPU use: [owner] `sudo -n -u pruefstand /usr/local/bin/pruefstand-cluster status`
    (someone else on the cards?). If the lock is free, run the preflight in report mode, [pruefstand]:
    `pruefstand-lock infra/gpu/health.sh` (from the executor's trusted checkout)
    (exit codes 10–16, incl. 15 = a resident model not fully on the GPU, `interfaces.md` §1.5).
@@ -152,18 +153,18 @@ runner.
      §2a.1. If it dies again after you log out, check `KillUserProcesses` (T0.6 C4) and ask the admins;
    - resident digest ≠ catalogue (exit 13; someone pulled or replaced a tag on the shared store,
      `security.md` C14): re-run `fetch-model.sh <id>` under the lock (§2a.4);
-   - NAS mount dropped: the automount remounts on the next access; if not, [root]
-     `systemctl restart mnt-pruefstand.automount`. Runner and tunnel keep running (no `Requires=`, N4.1);
-     jobs fail in the preflight with `error` `infra_error="nas_unavailable"`, mid-run drops give `error` +
-     one retry; nothing to restart once the share is back;
-   - **TrueNAS host rebooted** (update): the VM autostarts, the automount, tunnel and runner come up on
-     their own, also when the share is exported only minutes after the VM booted (T0.7 V7, V7b); check
+   - data root unusable (exit 16, `infra_error="data_root_unavailable"`, ADR-0019): `/mnt/pruefstand` missing,
+     not writable by `pruefstand` or < 20 GB free. Fix ownership (`sudo chown -R pruefstand:pruefstand
+     /mnt/pruefstand`) or free space (`runs-prune`, old `backups/`, `cache/`); nothing to restart afterwards;
+   - cluster model disk nearly full (`$C status` WARN, < 2 GB free on `/data`): an extra model is left over
+     (RQ2 candidate, someone else's pull); remove it with the swap rule (§2a.4), never the generator;
+   - **TrueNAS host rebooted** (update): the VM autostarts, tunnel and runner come up on their own (T0.7 V7); check
      step 1, then run `infra/vm/vm_check.sh` (it never restarts Docker; `--restart-drill` is a separate,
      lock-guarded flag, A13-M11);
    - **Docker restarted or the firewall looks wrong**: `systemctl status pruefstand-firewall` (it re-runs
      after every Docker start); never fix it with `nftables.service` (step §0.3);
-   - **the wrong judge is resident** (a nightly was killed before its `finally`, so gemma is still
-     loaded): nothing to do; the next preflight's `health.sh --repair day` unloads every non-mode model first
+   - **an extra model is resident** (a job was killed before its `finally`, e.g. an e5 or RQ2 candidate is
+     still loaded): nothing to do; the next preflight's `health.sh --repair day` unloads every non-mode model first
      (A12-M12). By hand: `pruefstand-lock infra/gpu/switch-mode.sh day`;
    - **nightly skipped or stopped at the deadline** (`nightly skipped` issue): read the reason in
      `last_nightly_status` (the one value set, A13-M3: `ok`, `failed`, `aborted: window_exceeded`,
@@ -192,8 +193,8 @@ runner.
 4. Planned work: [owner] `touch /var/lib/pruefstand/MAINTENANCE` first (dispatched gates then post `pending`
    "executor in maintenance; re-dispatch later", the nightly posts success "skipped: maintenance", and
    `executor-health.yml` suppresses the health-field alerts), `rm` it afterwards.
-   Datagen weekend jobs (X3.12) need no manual step: `switch-mode.sh datagen` creates the file itself and
-   `switch-mode.sh day` removes it (Y6.2). Note every skipped nightly in the PR or issue that caused it.
+   Model swaps (ADR-0019 swap rule, §2a.4) always run inside such a window. Note every skipped nightly in the PR
+   or issue that caused it.
 5. If `heartbeat.json` is stale but the runner is fine, check the PAT (§7): an expired
    `DASHBOARD_DATA_PAT` stops heartbeat pushes.
 6. Back to normal: nothing re-runs by itself (there is no PR poll, P1.2). Re-dispatch every gated PR that is
@@ -222,54 +223,53 @@ runner.
 ## 2a. Cluster and Ollama operations (T3.1a scripts; all started from the VM)
 
 Shorthand for you [owner]: `C="sudo -n -u pruefstand /usr/local/bin/pruefstand-cluster"` (the T3.1a sudo
-wrapper; it runs the fixed NAS `bin/` scripts over SSH with the cluster key of `pruefstand`, D247). As
-[pruefstand] the scripts may also be called directly as `ssh $CLUSTER_SSH_HOST bash $CLUSTER_NAS_ROOT/bin/<script>.sh`.
+wrapper; it runs the fixed scripts in `/data/dheena/pruefstand-bin` over SSH with the cluster key of `pruefstand`,
+D247). As [pruefstand] the scripts may also be called directly as
+`ssh $CLUSTER_SSH_HOST bash /data/dheena/pruefstand-bin/<script>.sh`.
 Every step that loads, unloads or pulls models runs under the GPU lock: `pruefstand-lock <cmd>` (waits on
 `/var/lib/pruefstand/gpu.lock`).
 
 1. **Start Ollama** (ADR-0018; idempotent): `pruefstand-lock $C start-ollama`. If a server already answers on
-   `127.0.0.1:11434` (the pre-existing one), nothing is started. Only if none runs does the script start **one**
-   server, `setsid nohup ollama serve … &` (Y5.4; settings from `bin/cluster.env`, Y6.3), with
-   `CUDA_VISIBLE_DEVICES=0,1`, `OLLAMA_HOST=127.0.0.1:11434`,
-   `OLLAMA_MODELS=/data/dheena/truenas-ollama/ollama-models` (models load from the NAS; without it
-   Ollama would use `~/.ollama` on the full local disk), `OLLAMA_NUM_PARALLEL=4`,
-   `OLLAMA_MAX_LOADED_MODELS=3`, `OLLAMA_KEEP_ALIVE=24h`, `OLLAMA_NOPRUNE=1`,
-   `OLLAMA_KV_CACHE_TYPE=f16`, `OLLAMA_FLASH_ATTENTION=1` (AI12-04; source `infra/cluster/cluster.env.template`).
-   It never starts a second server and refuses to start if the NAS path is not mounted.
-   **Pre-existing server with other settings** (`$C status` shows WARN for `OLLAMA_*` env ≠ `cluster.env`, e.g.
-   another model dir or `MAX_LOADED_MODELS`): decide once, outside any gate run, under the lock: on the cluster,
-   stop it yourself (`kill <pid>` of `ollama serve`, as the cluster user), then `pruefstand-lock $C start-ollama`
-   starts the one server with the template env; record the decision in `docs/decisions.md`. The wrapper's mutating ops (`start-ollama`,
+   `127.0.0.1:11434`, nothing is started. Only if none runs does the script start **your** start script of record
+   (ADR-0019, setup log §7): `setsid nohup ~/start-ollama.sh > /data/dheena/ollama.log 2>&1 < /dev/null &` (Y5.4).
+   Its settings: `CUDA_VISIBLE_DEVICES=0,1`, `OLLAMA_HOST=127.0.0.1:11434`, `OLLAMA_MODELS=/data/dheena/Models`,
+   `OLLAMA_NUM_PARALLEL=4`, `OLLAMA_MAX_LOADED_MODELS=3`, `OLLAMA_KEEP_ALIVE=24h`, `OLLAMA_CONTEXT_LENGTH=8192`,
+   `OLLAMA_NOPRUNE=1`, `OLLAMA_KV_CACHE_TYPE=q8_0`, `OLLAMA_FLASH_ATTENTION=1`. It never starts a second server
+   and refuses if `~/start-ollama.sh` is missing.
+   **Server with other settings** (`$C status` shows WARN for `OLLAMA_*` env ≠ `cluster.env`): decide once,
+   outside any gate run, under the lock: fix `~/start-ollama.sh`, then restart by hand on the cluster
+   (`pkill -x ollama; sleep 3; setsid nohup ~/start-ollama.sh > /data/dheena/ollama.log 2>&1 < /dev/null &`,
+   setup log §7); record the decision in `docs/decisions.md`. The wrapper's mutating ops (`start-ollama`,
    `stop-ollama`, `pull`, `rm`) refuse unless you hold the GPU lock (`pruefstand-lock …`, A12-M5);
    `status` and `show` work without it. Check: `$C status`; `curl -s localhost:11434/api/tags`.
 2. **Stop**: normally not needed (unload models instead: `switch-mode.sh` or `keep_alive: 0`).
-   `pruefstand-lock $C stop-ollama` stops only a server the scripts started (pid file in NAS `run/`; a pid is
-   used only if `/proc/<pid>/cmdline` is `ollama serve` and `:11434` listens, so stale pids after a cluster
-   reboot never hit another process, A12-M3). **Logs** (on the NAS, nothing on the cluster disk):
-   `tail -n 200 /mnt/pruefstand/run/ollama.log` (only for a server the scripts started).
-3. **Mode switch** (`gpu-cluster.md` §2): `infra/gpu/switch-mode.sh day|night|datagen` under the lock.
+   `pruefstand-lock $C stop-ollama` stops the one server (pid from `pgrep -u <cluster-user> -x ollama`, used only
+   if `/proc/<pid>/cmdline` is `ollama serve` and `:11434` listens, A12-M3). **Logs**: [pruefstand]
+   `ssh $CLUSTER_SSH_HOST tail -n 200 /data/dheena/ollama.log`.
+3. **Mode switch** (`gpu-cluster.md` §2): `infra/gpu/switch-mode.sh day|night` under the lock.
    Every mode only unloads/loads through the Ollama API on the one server (`keep_alive: 0` / `"24h"`, loads always
    with the catalogue `options` so the first real request does not reload; no server start or stop, ADR-0018);
-   the PR judge is unloaded before the gemma nightly judge is loaded at `num_ctx` 12288 (both judges, D306: generator 8 192 + allowance ≤ 3 072
-   + 1 024 reserve; lower only if T3.1b's VRAM measurement failed; the catalogue entry is the value used). `datagen` unloads every model and
-   loads llama 70B, which Ollama splits over both cards; it creates `MAINTENANCE` itself, and
-   `switch-mode.sh day` removes it afterwards (Y6.2). The first load per mode comes from the NAS and is
-   slow; it is excluded from the budgets.
+   since ADR-0019 both modes load the same set (generator, `bge-m3`, the one judge `gemma3:12b` at `num_ctx`
+   12288, D306: generator 8 192 + allowance ≤ 3 072 + 1 024 reserve; lower only if T3.1b's VRAM measurement
+   failed). There is no `datagen` mode. The first load per mode comes from the cluster disk and is excluded
+   from the budgets.
 4. **Pull or update a model**: `infra/gpu/fetch-model.sh <models.yaml id>` under the lock:
-   `ollama pull <tag>` on the cluster against the one server (store on the NAS), then the manifest digest
-   is compared with `infra/gpu/models.yaml`; a mismatch removes the tag and exits 1 (D207). One pull at a
-   time. One-time migration of the existing `qwen3.8:27b-q8_0` (digest `8f5fb6b7…1766039`) into
-   `ollama-models/` (T3.1a S2b; only if T0.6 C4 found the server using another model dir): re-pull with `fetch-model.sh`, then check `ollama list` on the cluster
-   shows the same digest as `models.yaml`.
+   `ollama pull <tag>` on the cluster against the one server (store `/data/dheena/Models`), then the manifest
+   digest is compared with `infra/gpu/models.yaml`; a mismatch removes the tag and exits 1 (D207). One pull at
+   a time; it refuses when `/data` would keep < 2 GB free. **Swap rule** (ADR-0019; e.g. an RQ2 judge candidate):
+   `pruefstand-lock touch /var/lib/pruefstand/MAINTENANCE`; `pruefstand-lock infra/gpu/fetch-model.sh --rm <id>`
+   of a **non-generator** model; `pruefstand-lock infra/gpu/fetch-model.sh <new id>`; measure; remove it again and
+   re-pull the standard model; `pruefstand-lock rm /var/lib/pruefstand/MAINTENANCE`. Never remove the generator.
 5. **Card placement** (ADR-0018): `$C status` lists the card(s) of every resident model; `health.sh` exit 15 =
-   a model not fully in VRAM (`size_vram < size`) or, outside datagen, spread over both cards. Usually another
+   a model not fully in VRAM (`size_vram < size`) or spread over both cards. Usually another
    process holds VRAM (`nvidia-smi` foreign pids) or a fourth model was loaded: unload the extra models with
    `switch-mode.sh <mode>` and re-run `health.sh --repair`.
 6. **ngrok URL to Ollama** (rejected, `security.md` C19, setup log §5): Prüfstand never uses it. If it still runs
    on the cluster, stop it, or protect it (basic auth or an IP allow-list in its traffic policy) and rotate the URL.
 7. **Deploy cluster scripts** after a change to `infra/cluster/**` on `main`, [pruefstand] from the
-   trusted checkout only (development uses `bin-dev/`): `infra/gpu/deploy-cluster-bin.sh` (writes `*.partial`, then `mv`, plus `bin/SHA256SUMS`; the
-   orchestrator also runs it). `health.sh` exit 14 = `bin/` stale.
+   trusted checkout only (development uses `/data/dheena/pruefstand-bin-dev/`): `infra/gpu/deploy-cluster-bin.sh`
+   (copies over SSH, writes `*.partial`, then `mv`, plus `SHA256SUMS`; the orchestrator also runs it). `health.sh`
+   exit 14 = `/data/dheena/pruefstand-bin` stale.
 8. **Shared-cluster checks** (accepted risk `security.md` C14): `$C status` shows other processes on
    our cards; a resident digest that is not in the catalogue fails the preflight. Ask the cluster admins
    once whether per-user network namespaces or a loopback firewall exist and record the answer in
@@ -297,16 +297,17 @@ new Ollama model digest, D103). In the browser (or the GitHub mobile app) run `b
 
 ## 5. Backups and restore drill (weekly / quarterly)
 
-`backup.yml` runs every Sunday at about 06:00 UTC on the VM and writes **one** file to the NAS,
+`backup.yml` runs every Sunday at about 06:00 UTC on the VM and writes **one** file to the data root,
 `$PRUEFSTAND_DATA_ROOT/backups/<date>/pruefstand-gate.bundle.tar.age` (8 kept; written as `*.partial`,
 then renamed): a tar of the `git bundle --all` of `pruefstand-gate` (incl. the held-out canaries) and of
 `$PRUEFSTAND_DATA_ROOT/baselines/`, piped through `age -r <your public key>` (X2.6). There is no
-plaintext copy and no separate canary file; the private key exists **only** on your laptop.
+plaintext copy and no separate canary file; the private key exists **only** on your laptop. The data root
+itself is on the VM zvol, covered by the TrueNAS periodic snapshots (daily, keep 14; ADR-0019).
 
 Weekly [HUMAN], on your **Windows** laptop in PowerShell (**mandatory**, Y5.5; `backup-check` opens the
 `backup-stale` issue when the receipt is older than 8 days). Uses the built-in OpenSSH client (`scp`, `ssh`);
 no WSL needed (A13-M10). The receipt has one path: written **over `ssh` into the VM as your owner user** (group
-`pruefstand`), never through an SMB share of the NAS:
+`pruefstand`), never through an SMB share:
 
 ```powershell
 $dst = "$HOME\pruefstand-backup"; New-Item -ItemType Directory -Force $dst | Out-Null
@@ -320,7 +321,7 @@ $t = (Get-Date).ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ssZ")
   ssh <user>@pruefstand-exec "cat > /mnt/pruefstand/backups/laptop-receipt.json"   # receipt
 ```
 
-Keep the `age` private key off the VM, the NAS and the cluster (password manager + offline copy).
+Keep the `age` private key off the VM, TrueNAS and the cluster (password manager + offline copy).
 
 Quarterly restore drill [HUMAN] (also the T6.2b Done-when), on your laptop in a Linux shell (WSL, or copy the
 bundle to the VM's owner home and run it there; `age` and `uv` are needed):
@@ -347,8 +348,8 @@ file ~/pruefstand-backup/<date>/pruefstand-gate.bundle.tar.age                  
 | Private repo size | `gh api repos/dheena18/pruefstand-gate --jq .size` | small and flat (index-only baselines, X2.7); the nightly `repo-size` guard fails above 1 GB |
 | Baseline prune ran | first `baseline-promote.yml` run after 00:00 UTC on the 1st, step `baseline-prune` | success; ≤ 20 `history/` entries per fingerprint (D110): `ls $PRUEFSTAND_DATA_ROOT/baselines/*/history \| wc -l` |
 | VM disk | `df -h /home/pruefstand` | runs + caches + Qdrant well below the disk size |
-| NAS dataset | `df -h /mnt/pruefstand`; `ls /mnt/pruefstand/backups \| wc -l` | baselines + backups + models within the quota; ≤ 8 backups |
-| Cluster local disk untouched | [pruefstand] `ssh $CLUSTER_SSH_HOST 'du -sh ~/.ollama 2>/dev/null; df -h / /data'` | no model store outside the NAS (Z7) |
+| Data root | `df -h /mnt/pruefstand`; `ls /mnt/pruefstand/backups \| wc -l` | ≥ 20 GB free; ≤ 8 backups; TrueNAS snapshot task ran (ADR-0019) |
+| Cluster model disk | [pruefstand] `ssh $CLUSTER_SSH_HOST 'ollama list; du -sh ~/.ollama 2>/dev/null; df -h / /data'` | only the ADR-0019 set in `/data/dheena/Models`, ≥ 2 GB free on `/data`, no store in `~/.ollama` |
 | SSH key login | [pruefstand] `ssh -o BatchMode=yes cairo-s101lp true` | succeeds without a prompt (C15) |
 | VM identities (C18) | `getent group docker pruefstand`; `stat -c '%a %U' /home/pruefstand /var/lib/pruefstand` | `docker` = `pruefstand` + you only; `700 pruefstand`, `2770 pruefstand` |
 | Laptop backup | heartbeat `laptop_backup_age_days` | ≤ 8 |
@@ -368,7 +369,7 @@ All secrets with their locations and scopes: `docs/ops/secrets.md` (this table c
 | --- | --- | --- | --- |
 | `DASHBOARD_DATA_PAT` (fine-grained, `contents: write` on `pruefstand-dashboard-data` only) | private repo secret | ≤ 1 year (expiry set at creation) | create the new token with the same single-repo scope → `gh secret set DASHBOARD_DATA_PAT -R dheena18/pruefstand-gate` → next run pushes a fresh heartbeat → delete the old token |
 | `pruefstand-bot` App key | private repo secret `BOT_APP_KEY` **and** public environment secret `gate-router` / `BOT_APP_KEY` (P1.1) | yearly or on suspicion | generate a new key in the App settings → set it in both places (browser, or `gh secret set BOT_APP_KEY -R dheena18/pruefstand-gate` and `gh secret set BOT_APP_KEY --env gate-router -R dheena18/pruefstand` from your laptop) → wait for one `gate-router.yml` run and one executor run to post statuses → delete the old key |
-| VM → cluster SSH key | VM `/home/pruefstand/.ssh/id_ed25519_cluster` only (never GitHub, NAS, an image or your home) | on suspicion or when the VM is rebuilt | [pruefstand] `ssh-keygen` a new key → `ssh-copy-id` (password typed once, never stored) → `ssh -o BatchMode=yes cairo-s101lp true` → remove the old line from the cluster's `~/.ssh/authorized_keys` → `sudo systemctl restart pruefstand-tunnel` |
+| VM → cluster SSH key | VM `/home/pruefstand/.ssh/id_ed25519_cluster` only (never GitHub, a NAS share, an image or your home) | on suspicion or when the VM is rebuilt | [pruefstand] `ssh-keygen` a new key → `ssh-copy-id` (password typed once, never stored) → `ssh -o BatchMode=yes cairo-s101lp true` → remove the old line from the cluster's `~/.ssh/authorized_keys` → `sudo systemctl restart pruefstand-tunnel` |
 | `PRUEFSTAND_CANDIDATE_API_KEY` | `runner.env` of user `pruefstand` (set by the orchestrator per job; your dev stack has its own value in `.env`) | on suspicion | new random value in `.env`; not a security boundary (`gate-net` + `llm-proxy` are) |
 | Your VM `gh` token (fine-grained, `dheena18/pruefstand` only, contents + pull requests + workflows write; N4.4, D284) | `gh` config of your user on the VM | ≤ 90 days (expiry set at creation) | create the new token in the browser with the same single-repo scope → `gh auth login --with-token` on the VM → `gh api repos/dheena18/pruefstand-gate` → 404 → delete the old token |
 | Runner registration | runner config on the VM | only when moving hosts | persistent runner, registered once (D100); to move: `./config.sh remove`, then register on the new host |
@@ -376,10 +377,10 @@ All secrets with their locations and scopes: `docs/ops/secrets.md` (this table c
 
 ## 8. Baselines storage (no rollover)
 
-Baseline files live on the NAS (`$PRUEFSTAND_DATA_ROOT/baselines/`, last 20 per fingerprint, single
+Baseline files live in the data root on the VM disk (`$PRUEFSTAND_DATA_ROOT/baselines/`, last 20 per fingerprint, single
 writer `baseline-promote.yml`) and in the encrypted weekly backups; the private repo's `baselines`
-branch holds only `index.json` (X2.7, ADR-0004), so there is no yearly branch rollover. If the NAS
-dataset is lost: restore the newest bundle (§5, from your laptop) into `$PRUEFSTAND_DATA_ROOT/baselines/`,
+branch holds only `index.json` (X2.7, ADR-0004), so there is no yearly branch rollover. If the data root
+is lost: roll back the TrueNAS snapshot of the VM zvol, or restore the newest bundle (§5, from your laptop) into `$PRUEFSTAND_DATA_ROOT/baselines/`,
 or run `baseline-promote.yml` once to re-promote `main`. If the `repo-size` guard ever fails, find the
 large blobs (`git rev-list --objects --all | git cat-file --batch-check | sort -k3 -n | tail`) and fix
 the writer; never force-push `baselines`.

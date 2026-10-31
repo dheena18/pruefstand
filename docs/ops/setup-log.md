@@ -144,7 +144,116 @@ authentication, so a public URL lets anyone use the GPUs and call `/api/delete` 
 plans also limit requests and bandwidth. The SSH tunnel above replaces it. If ngrok stays running for
 other purposes, protect it (basic auth or IP allow-list in its traffic policy) and rotate the URL.
 
-## 6. Notes
+## 6. VM data folder (`PRUEFSTAND_DATA_ROOT`) — on the VM's own disk
+
+The VM's system disk is a 500 GB zvol on the TrueNAS pool (`df -h /` → 491 G, 450 G free), so the data
+folder is a plain directory on it. No network mount.
+
+```bash
+# VM
+df -h /
+sudo mkdir -p /mnt/pruefstand/{data,corpus,datasets,baselines,backups,cache,logs}
+sudo chown -R pruefstand:pruefstand /mnt/pruefstand
+sudo chmod -R 2775 /mnt/pruefstand
+sudo usermod -aG pruefstand $USER            # takes effect at the next login
+sudo -u pruefstand touch /mnt/pruefstand/cache/.t && sudo -u pruefstand rm /mnt/pruefstand/cache/.t && echo "write ok"
+```
+
+VM `.env`: `PRUEFSTAND_DATA_ROOT=/mnt/pruefstand`.
+
+Backups: TrueNAS **Data Protection → Periodic Snapshot Tasks** on the VM's zvol (daily, keep 14 days), plus
+the planned weekly encrypted copy to the owner's laptop.
+
+### Tried and dropped: NFS share from TrueNAS to the VM
+
+A separate dataset `SSD/pruefstand` with an NFS share was created and the VM was set to mount it. The VM could
+not reach its own TrueNAS host (`ping` → "Destination Host Unreachable"): the VM's NIC is attached directly to
+the physical NIC, and such a VM cannot talk to its host. The fix would be a bridge (`br0`) in TrueNAS
+networking; it did not work on the first try, and the VM disk is large enough, so NFS was dropped.
+
+```bash
+# commands used, kept for reference (TrueNAS shell; truenas_admin needs sudo for chown)
+cd /mnt/SDD/SSD/pruefstand && sudo chown -R <pruefstand-uid>:<pruefstand-gid> . && sudo chmod -R 2775 .
+# VM: the fstab line was removed again
+sudo sed -i '\#<truenas-ip>:/mnt/SDD/SSD/pruefstand#d' /etc/fstab && sudo systemctl daemon-reload
+```
+
+The unused dataset `SSD/pruefstand` and its NFS share can be deleted in TrueNAS.
+
+## 7. Cluster Ollama: settings and model storage
+
+### Start script on the cluster (owner's `~/start-ollama.sh`)
+
+```bash
+#!/usr/bin/env bash
+set -e
+export OLLAMA_HOST=127.0.0.1:11434          # only reachable through the SSH tunnel
+export CUDA_VISIBLE_DEVICES=0,1             # one server, both A40s (ADR-0018)
+export OLLAMA_CONTEXT_LENGTH=8192           # safe default; Prüfstand always sends num_ctx itself
+export OLLAMA_FLASH_ATTENTION=1
+export OLLAMA_KV_CACHE_TYPE=q8_0            # half-size KV cache
+export OLLAMA_KEEP_ALIVE=24h                # models stay loaded
+export OLLAMA_NUM_PARALLEL=4                # 4 parallel requests per model
+export OLLAMA_MAX_LOADED_MODELS=3           # generator + embeddings + judge
+export OLLAMA_NOPRUNE=1                     # never auto-delete model files
+export PATH="$HOME/ollama-local/bin:$PATH"
+export LD_LIBRARY_PATH="$HOME/ollama-local/lib:$LD_LIBRARY_PATH"
+export OLLAMA_MODELS="/data/dheena/Models"  # cluster's own disk (ADR-0019)
+exec "$HOME/ollama-local/bin/ollama" serve
+```
+
+Start / restart (detached, survives logout):
+
+```bash
+# cluster
+pkill -x ollama; sleep 3
+setsid nohup ~/start-ollama.sh > /data/dheena/ollama.log 2>&1 < /dev/null &
+sleep 5; tail -5 /data/dheena/ollama.log
+```
+
+Check from the VM:
+
+```bash
+time curl -s http://127.0.0.1:11434/api/generate -d '{"model":"qwen3.8:27b-q8_0","prompt":"Sag Hallo.","think":false,"stream":false,"options":{"num_ctx":8192}}' | head -c 300; echo
+curl -s http://127.0.0.1:11434/api/ps
+```
+
+Result (2026-10-31, model already loaded): German answer "Hallo! Wie kann ich dir heute helfen?" in **1.0 s**.
+
+### Tried and dropped: loading models from the NAS (rclone WebDAV mount)
+
+The NAS dataset `/mnt/SDD/SSD/Ollama` (subfolder `models`) is mounted read-only on the cluster at
+`/data/dheena/truenas-ollama` with rclone. Setting `OLLAMA_MODELS` to it worked, but the link between the
+cluster and the NAS gave **~6 MB/s** (≈ 80 min for the 29 GB generator, after every Ollama restart). Models
+therefore stay on the cluster's own disk (ADR-0019).
+
+```bash
+# cluster: how fast is the network while a model loads?
+IF=$(ip route get 1.1.1.1 | awk '{for(i=1;i<=NF;i++) if($i=="dev") print $(i+1)}'); a=$(cat /sys/class/net/$IF/statistics/rx_bytes); sleep 10; b=$(cat /sys/class/net/$IF/statistics/rx_bytes); echo "$IF: $(( (b-a)/10/1024/1024 )) MB/s"
+
+# cluster: the rclone mount (kept, not used by Ollama); options that are valid with rclone 1.63.1
+/home/<cluster-user>/bin/rclone mount nas: /data/dheena/truenas-ollama --read-only --vfs-cache-mode off \
+  --buffer-size 256M --vfs-read-chunk-size 64M --vfs-read-chunk-size-limit 1G --dir-cache-time 1h \
+  --attr-timeout 1h --timeout 10m --contimeout 60s --retries 5 --low-level-retries 20 \
+  --daemon --log-file /data/dheena/rclone
+# remounting needs Ollama stopped and no shell inside the folder, else "Device or resource busy":
+#   pkill -x ollama; cd ~; fuser -vm /data/dheena/truenas-ollama; fusermount3 -u /data/dheena/truenas-ollama
+```
+
+Note: the NAS folder `/mnt/SDD/SSD/Ollama` also contained an SSH private key (`id_ed25519`); it should be
+moved out of the share (and replaced if it was ever exposed).
+
+### Adding or swapping a model (disk is small: ~14 GB free next to the generator)
+
+```bash
+# cluster
+df -h /data                                   # check space first; keep ≥ 2 GB free
+ollama list
+ollama rm <model-tag>                         # free space if needed (never the generator)
+ollama pull <model-tag>
+```
+
+## 8. Notes
 
 - If the cluster's public SSH endpoint gets a new port, change only `Port` in `/home/pruefstand/.ssh/config`
   and run `sudo systemctl restart pruefstand-tunnel`.

@@ -17,7 +17,7 @@ server, and the VM has spare CPU for one small demo instance, so no paid host is
 - Demo API (optional, T8.4): the rag-demo image on the **executor VM** `pruefstand-exec`, reachable from the
   internet only through a free **Cloudflare Tunnel** (`cloudflared`, outbound only; no inbound port, no
   host port). It runs as user `pruefstand` on its own **`--internal`** Docker network `demo-net` (never `gate-net` or `proxy-egress`, no
-  host-gateway entry, firewalled from the tunnel ports on `172.17.0.1` (D242), no NAS or home mount); only
+  host-gateway entry, firewalled from the tunnel ports on `172.17.0.1` (D242), no data-root or home mount); only
   `cloudflared` (`10.232.0.2`) is also on the egress network `demo-egress` (`10.233.0.0/24`), `DOCKER-USER` drops
   `demo-egress` → `10.0.0.0/8`, `172.16.0.0/12`, `192.168.0.0/16` and `PRUEFSTAND-INPUT` drops both subnets → the
   VM's own addresses (round 13 P2.2, `security.md` D4) with its own Qdrant (demo corpus snapshot), CPU embeddings and

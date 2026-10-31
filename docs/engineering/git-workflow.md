@@ -19,7 +19,7 @@ Baselines are **not** in this repo. Other repos and branches:
 | Repo / branch | Purpose | Who writes |
 | --- | --- | --- |
 | `pruefstand-gate` (private) `main` | executor workflows + orchestrator, synced at `executor-<YYYYMMDD>` tags | maintainer (`scripts/sync_executor.sh`) |
-| `pruefstand-gate` `baselines` (protected, no force-push) | baseline `index.json` only; the baseline files live on the NAS `$PRUEFSTAND_DATA_ROOT/baselines/` (ADR-0004, X2.7, D209) | `baseline-promote.yml` only (incl. the monthly prune) |
+| `pruefstand-gate` `baselines` (protected, no force-push) | baseline `index.json` only; the baseline files live in the data root `$PRUEFSTAND_DATA_ROOT/baselines/` (VM disk, ADR-0019) (ADR-0004, X2.7, D209) | `baseline-promote.yml` only (incl. the monthly prune) |
 | `pruefstand-gate` `executor-state` | `state/processed.jsonl` (D102; a record of dispatched runs), `state/nightly_counter` (block rotation, P4.4) | `gate-executor.yml` (processed), `nightly.yml` (counter) |
 | `pruefstand-dashboard-data` (public) `main` | sanitised dashboard data + sha256 manifest (D108) | executor, with a repo-scoped PAT |
 | `pruefstand-dashboard-data` (public) `heartbeat` | `heartbeat.json`, one force-pushed commit (D109) | executor, with a repo-scoped PAT |

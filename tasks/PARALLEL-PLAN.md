@@ -86,12 +86,12 @@ Checkpoint: `make check` green on `main`; `pruefstand version`.
 | T0.3 | `chore/T0.3-docker-compose` | `infra/docker/**`, `docker-compose.yml` (creates it), `build-images.yml` | DOCKER | 3 |
 | T1.1 | `feat/T1.1-core-models` | `packages/pruefstand/src/pruefstand/core/**` (not `config/`, `citations/`), schemas export | – | 4 |
 | T2.1 | `feat/T2.1-data-downloads` | `data/**`, `scripts/check_no_raw_data.py` | NET | 3 |
-| T0.7 | `chore/T0.7-truenas-vm-setup` | `infra/vm/**` (user `pruefstand`, `/var/lib/pruefstand`, `pruefstand-lock`, system tunnel unit, NAS automount), gpu-cluster.md §0.2 rows V1–V7 | HUMAN, NET | 3 |
+| T0.7 | `chore/T0.7-truenas-vm-setup` | `infra/vm/**` (user `pruefstand`, `/var/lib/pruefstand`, `pruefstand-lock`, system tunnel unit, data root dir (ADR-0019)), gpu-cluster.md §0.2 rows V1–V7 | HUMAN, NET | 3 |
 
 Shared hunks: `.env.example` (T0.3, T0.7), `DATA_LICENSES.md` (T2.1), `docs/ops/secrets.md` (T0.7).
 Merge order: T0.2 → T1.1 → T2.1 → T0.3 → T0.7.
 Checkpoint: `make check`; `make stack-run CMD="curl -sf localhost:16333/readyz"` (with `PROFILES="core dev"`; DEV13-08: never a raw `docker compose up` here); `infra/vm/vm_check.sh` (never restarts Docker, A13-M11).
-Human: T0.7 S3–S7 (NAS automount with sudo, `ssh-copy-id` as `pruefstand` with the cluster password once,
+Human: T0.7 S3–S7 (data root check + TrueNAS zvol snapshot task, `ssh-copy-id` as `pruefstand` with the cluster password once,
 VM reboot test, TrueNAS host reboot test V7).
 
 ### Wave 3 (4 agents + T0.5 human)
@@ -121,7 +121,7 @@ Human: T0.5; T0.6 probe over SSH + admin questions; after merge, the 24-hour quo
 
 Merge: T1.6 → T1.5b → T1.3 → T1.4 → T2.2 → T3.1a.
 Checkpoint: `make check`; `make test-live` (llama.cpp container, under `stack.lock`); `pruefstand-lock make test-gpu`.
-Human: T3.1a S2b (move/re-pull the qwen model into `ollama-models/`) and S8 bring-up in day/night/datagen.
+Human: T3.1a S2b (pull `bge-m3` and `gemma3:12b` into `/data/dheena/Models`, ≥ 2 GB free, ADR-0019) and S8 bring-up in day/night.
 
 ### Wave 5 (6 agents)
 
@@ -136,7 +136,7 @@ Human: T3.1a S2b (move/re-pull the qwen model into `ollama-models/`) and S8 brin
 
 Merge: T1.7 → T1.8 → T2.3 → T2.4 → T1.13 → T3.1b.
 Checkpoint: `make check`; `make stack-run CMD="curl -sf localhost:18000/v1/health"` (with `PROFILES="core live dev"`; DEV13-08) → rag-demo `/v1/health`; `pruefstand-lock make test-gpu`.
-Human: T3.1b benchmark runs + scoring 10 items; datagen scoring needs a **weekend** (`switch-mode.sh datagen` sets `MAINTENANCE` itself, Y6.2).
+Human: T3.1b benchmark runs + scoring 10 items; judge candidates are swapped one at a time under `MAINTENANCE` (swap rule, ADR-0019); scoring by the GitHub Models datagen model needs no GPU window.
 
 ### Wave 6 (3 agents)
 
@@ -193,11 +193,11 @@ PRs (M1). Human: review private docs + canaries (T2.6).
 | T4.5 | `feat/T4.5-perturb-llm` | `perturb/llm/**`; hunk `record_cassettes.sh` | GPU or NET | 4 |
 | T5.2b | `feat/T5.2b-judged-metrics` | `metrics/judged/**`; hunks `pipeline/run.py`, `examples/live/pruefstand.yaml`, `record_cassettes.sh` | – | 3 |
 | T5.3 (PR 1: sets 1–5) | `feat/T5.3-calibration-sets` | `datasets/calibration/**` (not `legal_hard`), data card | NET | 2 |
-| T4.2 | `feat/T4.2-qa-generation` | `dataset/generate*`, prompts; hunk `record_cassettes.sh` | GPU (datagen weekend) | 4 |
+| T4.2 | `feat/T4.2-qa-generation` | `dataset/generate*`, prompts; hunk `record_cassettes.sh` | NET (GitHub Models datagen, ADR-0019) + GPU (pass 2) | 4 |
 
 Merge: T3.5 → T4.6 → T4.5 → T5.2b → T5.3 PR 1 → T4.2.
-Checkpoint: `make check`; `pruefstand-lock make test-gpu`. Human: datagen **weekend** for T4.2 (and T4.5
-if run in datagen mode); `switch-mode.sh datagen` sets `MAINTENANCE`, `switch-mode.sh day` removes it.
+Checkpoint: `make check`; `pruefstand-lock make test-gpu`. Human: none for datagen (ADR-0019: T4.2/T4.5
+generate through GitHub Models in resumable batches within the daily quota; validation runs in day mode under the lock).
 
 ### Wave 11 (3 agents)
 
@@ -232,11 +232,11 @@ Merge: T8.2a → T4.7b. Checkpoint: `make check`, `make ui-check`; HF dataset v1
 
 | Task | Branch | Owns | Env | Est. |
 | --- | --- | --- | --- | --- |
-| T5.3 (PR 2: `legal_hard`) | `feat/T5.3-legal-hard` | `datasets/calibration/legal_hard/**`; passes (D230, D246): day pass (answers) → datagen weekend (llama review) → offline `--pass build` | GPU, HUMAN (weekend) | 1 |
+| T5.3 (PR 2: `legal_hard`) | `feat/T5.3-legal-hard` | `datasets/calibration/legal_hard/**`; passes (D246, ADR-0019): day pass (answers) → review pass (GitHub Models datagen model) → offline `--pass build` | GPU, NET | 1 |
 | T6.2a | `feat/T6.2a-gate-executor` | private repo `pruefstand-gate`, orchestrator, `llm-proxy`, runner on the VM | GPU, HUMAN | 4 |
 | T8.2b | `feat/T8.2b-dashboard-diff` | dashboard diff, slices, cases pages | – | 3 |
 
-Merge: T5.3 PR 2 → T8.2b → T6.2a. Human: datagen weekend for T5.3 PR 2; register the persistent runner on
+Merge: T5.3 PR 2 → T8.2b → T6.2a. Human: register the persistent runner on
 the VM as user `pruefstand`, create `pruefstand-dashboard-data` + scoped PAT (T6.2a [HUMAN]).
 
 ### Wave 15 (2 agents)
@@ -302,9 +302,9 @@ A red checkpoint blocks the next wave; the fix is its own `fix/` PR.
 | --- | --- | --- |
 | AI hours | ≈ 231 h (sum of TASKS.md estimates, core, incl. T0.7) | ≈ 84 h on the wave critical path (sum of each wave's longest task) |
 | Owner time | review ≈ 30 h + human steps ≈ 27 h | same review + human steps, plus ≈ 1 h checkpoint × 23 waves |
-| Fixed waits | datagen weekends, 24-h quota probe, several nights for T6.3, 8 h dataset review | same, but overlapped with other lanes where the plan allows |
+| Fixed waits | GitHub Models daily quota for datagen (ADR-0019), 24-h quota probe, several nights for T6.3, 8 h dataset review | same, but overlapped with other lanes where the plan allows |
 | Calendar (part-time owner, ~10–12 h/week) | **20–26 weeks** (TASKS.md), M4 ≈ week 12–14 | **≈ 12–15 weeks**, M1 ≈ week 4, M4 ≈ week 8–10 |
 
 The bottleneck moves from AI time to **owner review and owner-only steps**: ≈ 70 PRs still need a
 review each (15–60 min). Waves with 6 PRs need a review block of 3–5 h. GPU-heavy waves (10, 15–17, 20)
-serialise on the lock and on weekend datagen, so they gain least.
+serialise on the lock and on the datagen quota, so they gain least.

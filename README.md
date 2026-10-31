@@ -26,7 +26,7 @@ Timeline: 20–26 weeks part-time with one session at a time; MVP (real gate blo
 around week 12–14. With the parallel wave plan (`tasks/PARALLEL-PLAN.md`, ≤ 6 agents, owner review as the
 bottleneck): **≈ 12–15 weeks**, M1 ≈ week 4, MVP ≈ week 8–10 (planning estimate, not a promise).
 First weeks: create the TrueNAS VM and connect VS Code Remote-SSH (T0.7 S1–S2), T0.0 bootstrap on the VM, then
-T0.7 (service user `pruefstand`, lock dir, NAS automount, SSH key, tunnel unit) and the T0.6 cluster + NAS facts
+T0.7 (service user `pruefstand`, lock dir, data root on the VM disk, SSH key, tunnel unit) and the T0.6 cluster facts
 check (go/no-go).
 
 Machines: all development and execution happens on the TrueNAS VM `pruefstand-exec`; the A40 cluster

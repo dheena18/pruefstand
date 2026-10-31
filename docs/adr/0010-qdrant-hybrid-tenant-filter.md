@@ -2,6 +2,7 @@
 
 - Status: Accepted (revised 2026-10-31: round 8 AI-13/29/35, W3.10; round 9 X3.13; round 10 D198: `bge-m3` via Ollama, reranker on the VM CPU; round 11 D219/D220/D222: native Ollama API with catalogue options, reranker top 10 x 256 tokens)
 - Amended by: [ADR-0018](0018-single-ollama-server.md) (2026-10-31: one Ollama server for both GPUs, port 11434 only)
+- Amended by: [ADR-0019](0019-local-model-storage-small-disk.md) (2026-10-31: `bge-m3` lives on the cluster's small model disk; another embedding model (e5 for RQ1/M3) needs space next to the standard set or the swap rule)
 - Date: 2026-10-27
 - Tasks: T3.3, T3.4, T3.5, T7.1a
 
@@ -15,7 +16,7 @@ cut is the classic leak bug (mutation M8). A separate BM25 engine would mean two
   BM25 TF weights, `modifier: idf`). In tier 2 the dense vectors come from the Ollama model `bge-m3` on
   the cluster's one Ollama server (ADR-0018; `/api/embed`, dense only; T3.1b verifies cosine ≥ 0.99 against the reference checkpoint on 20
   passages); the sparse side is always our own analyzer. Qdrant runs on the executor VM with storage
-  on the local VM disk (`$PRUEFSTAND_HOME/qdrant`), never on the NAS.
+  on the local VM disk (`$PRUEFSTAND_HOME/qdrant`), never in the data root or on a network share.
 - Payload index on `tenant_id` (`is_tenant: true`), plus `doc_id`, `lang` and `is_attack`.
 - The Query API runs two `prefetch` branches (dense, sparse). **Each** branch carries the filter
   `tenant_id ∈ {tenant, "shared_public"}`. The branches are fused with RRF, then the optional reranker

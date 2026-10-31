@@ -82,7 +82,7 @@ sequenceDiagram
     participant Priv as Private repo pruefstand-gate
     participant Exec as Executor runner (VM pruefstand-exec)
     participant RAG as candidate rag-demo (VM, no GPU, no egress)
-    participant Oll as Ollama (cluster, one server via the tunnel: generator + bge-m3, PR judge)
+    participant Oll as Ollama (cluster, one server via the tunnel: generator + bge-m3, judge gemma3:12b)
     participant App as pruefstand-bot App
     participant DD as pruefstand-dashboard-data
 
@@ -111,11 +111,11 @@ sequenceDiagram
     else gated
         Exec->>Exec: flock /var/lib/pruefstand/gpu.lock once (wait up to 2 h, heartbeat every 15 min, timeout gives pending "executor busy, re-dispatch")
         Exec->>Oll: preflight under the lock: health.sh --repair (tunnel, start-ollama.sh over SSH with setsid nohup only if no server runs, day-mode models resident with catalogue digests)
-        Exec->>Exec: NAS mounted (else error, infra_error nas_unavailable), df, GPU memory via bin/status.sh, failure gives error "executor unhealthy"
+        Exec->>Exec: data root writable with at least 20 GB free (else error, infra_error data_root_unavailable), df, GPU memory via status.sh, failure gives error "executor unhealthy"
         Exec->>Exec: load pruefstand.yaml, dataset, judge config, pruefstand package from public main (never from the PR)
         Exec->>Pub: read PR rag.gpu.yaml + image digest from status pruefstand/image
         Exec->>GHCR: anonymous pull by digest, cosign verify (origin only)
-        Exec->>Priv: read baselines/index.json (branch baselines), then baseline files from the NAS /mnt/pruefstand/baselines (sha256 checked)
+        Exec->>Priv: read baselines/index.json (branch baselines), then baseline files from the data root /mnt/pruefstand/baselines (sha256 checked)
         alt no baseline for eval_fingerprint
             Exec->>App: status pruefstand/gate = failure "no baseline for FP, run baseline-promote"
             Exec->>Priv: append (pr, head sha, dispatch run id, failure) to state/processed.jsonl
@@ -125,10 +125,10 @@ sequenceDiagram
             Exec->>RAG: GET /v1/info (models + serving + corpus_version to target_fingerprint)
             Exec->>RAG: pruefstand run --tier pr (smoke + core via /v1/query, robust_pr via /v1/retrieve only, at most 90 min, --judged-subset limits generation and judging of core answerable cases only if the fallback is on)
             RAG->>Oll: generation + bge-m3 embeddings via llm-proxy (generator + embed tags only, native API, num_ctx and keep_alive enforced, sampling options within catalogue bounds)
-            Exec->>Oll: judged metrics with the PR judge on the judge card (pipelined with generation)
+            Exec->>Oll: judged metrics with the judge on the judge card (pipelined with generation)
             Exec->>Exec: pruefstand gate --from-store --ref main (one Holm family over all testable gated pairs)
             Exec->>Exec: keep the full run dir on the VM disk, upload run.json, gate.json, comment.md (14 days)
-            alt infra failure during the run (Ollama down, tunnel lost, NAS unavailable, model reload)
+            alt infra failure during the run (Ollama down, tunnel lost, data root unavailable, model reload)
                 Exec->>Exec: stop_reason aborted with infra_error, health.sh --repair, one automatic retry
                 Exec->>App: status pruefstand/gate = error "executor infra error: SUMMARY, retrying once" (never failure, not recorded)
                 opt the retry also hits an infra failure
@@ -204,7 +204,7 @@ sequenceDiagram
     participant Priv as Private repo pruefstand-gate
     participant Exec as Executor runner (VM pruefstand-exec)
     participant RAG as rag-demo (main image)
-    participant Disk as NAS PRUEFSTAND_DATA_ROOT/baselines
+    participant Disk as Data root PRUEFSTAND_DATA_ROOT/baselines (VM disk)
     participant Base as Private branch baselines (index.json only)
     participant DD as pruefstand-dashboard-data
 
@@ -227,10 +227,10 @@ sequenceDiagram
     Exec->>DD: force-push heartbeat.json to branch heartbeat
 ```
 
-Only this private workflow writes baselines (including the monthly prune). Baseline files live on the
-NAS (single writer, write-then-rename) and in the encrypted weekly backup; the private repo's `baselines` branch holds only a
+Only this private workflow writes baselines (including the monthly prune). Baseline files live in the
+data root on the VM disk (single writer, write-then-rename) and in the encrypted weekly backup; the private repo's `baselines` branch holds only a
 small `index.json` (X2.7), so the repo no longer grows with every promotion. Baselines are plain files
-(no signatures): write access to the VM runner user, the NAS dataset and the private repo is the trust boundary,
+(no signatures): write access to the VM runner user, the data root and the private repo is the trust boundary,
 and the sha256 manifest is checked on every read. Nightly runs are promoted by this poll, never by a dispatch from
 `nightly.yml`, so a pending run can never be dropped. A block-*k* nightly is promoted to ref `nightly-b<k>`
 (round 12 N1.4). The release anchor is per block (AI13-09, A13-M5, D321): the **release run of all of `full`** (the newest
@@ -248,8 +248,8 @@ sequenceDiagram
     participant Cron as schedule 20:07 and 21:07 UTC, hosted guard by the cron that fired (22:07 local)
     participant Exec as Executor runner (VM pruefstand-exec)
     participant RAG as rag-demo (main, rag.gpu.yaml, generator on Ollama, generator lane)
-    participant Big as nightly judge (gemma 27B-class on Ollama, judge lane, else PR judge)
-    participant Base as Baseline store (NAS files + index.json)
+    participant Big as judge gemma3:12b (same as PR, ADR-0019; Ollama, judge lane)
+    participant Base as Baseline store (data-root files + index.json)
     participant Pub as Public repo
     participant DD as pruefstand-dashboard-data
 
@@ -263,9 +263,9 @@ sequenceDiagram
         Exec->>DD: heartbeat last_nightly_status = "skipped: REASON" (last_nightly_at unchanged), executor-health opens issue "nightly skipped"
     else normal night (one orchestrator job, deadline 06:00 Berlin checked before every phase)
         Exec->>Exec: flock /var/lib/pruefstand/gpu.lock once (until the deadline), export PRUEFSTAND_LOCK_HELD=1, heartbeat every 15 min
-        Exec->>Exec: preflight under the lock (health.sh --repair, NAS mount, df, GPU memory)
-        Exec->>Exec: switch-mode.sh night (no new lock: unload PR judge on the judge card, load gemma at its catalogue num_ctx 12288, generator stays on the generator card)
-        Exec->>Big: judge-drift night judge first: 50 anchors (a judge that drifted tonight never gates tonight)
+        Exec->>Exec: preflight under the lock (health.sh --repair incl. data root check, df, GPU memory)
+        Exec->>Exec: switch-mode.sh night (no new lock: same models as day, nothing swapped, ADR-0019)
+        Exec->>Big: judge-drift first: 50 anchors (a judge that drifted tonight never gates tonight)
         Exec->>Exec: read state/nightly_counter, k = counter mod 3
         par generation (generator card)
             Exec->>RAG: pruefstand run --split full --stratum all --block auto (refusal stratum + block k, at most 600 cases), responses into target cache
@@ -281,8 +281,7 @@ sequenceDiagram
         Exec->>Base: BaselineStore.get(eval_fingerprint, release-b(k))
         Exec->>Exec: drift gate block k vs release-b(k), or report drift no release baseline once
         Exec->>Exec: contamination probe, cause-switches (Sundays only, judge_mode skipped except the refusal row with --stratum refusal)
-        Exec->>Exec: switch-mode.sh day (no new lock: unload gemma, reload PR judge on the judge card), also in finally
-        Exec->>Big: judge-drift PR judge: 50 anchors
+        Exec->>Exec: switch-mode.sh day (no new lock; restores the day set if a phase changed it), also in finally
         Exec->>Exec: runs and cache prune, repo-size guard
         opt a phase does not fit before 06:00
             Exec->>Exec: stop: stop_reason aborted, infra_error "window_exceeded: PHASE", no retry, nothing promoted
@@ -300,9 +299,9 @@ The nightly tier runs `pruefstand run --split full --stratum all --block auto`: 
 advanced only after a completed nightly, P4.4), at most 600 cases, so `full` is covered every 3 completed
 nightlies (SPEC §6.2, Y4.3, round 12 N1); it gates against baseline ref `nightly-b<k>` and checks drift against
 the release anchor `release-b<k>` (N1.4, AI13-09),
-with the nightly judge (`gemma` 27B-class on the judge card, D141, D205;
+with the same judge as the PR tier (`gemma3:12b` on the judge card, ADR-0019;
 generation on the generator card and judging on the judge card overlap;
-the PR judge with `judge_fallback=true` if it is unavailable, which makes judged metrics informational,
+any other judge sets `judge_fallback=true`, which makes judged metrics informational,
 Y4.4), so it has its own `eval_fingerprint` and baseline line. Comparing against
 the last release baseline catches slow drift that per-merge baselines hide. The status is posted every
 night, so a missing nightly is visible; a night that cannot start or is stopped at the deadline is
@@ -321,8 +320,8 @@ sequenceDiagram
     autonumber
     actor O as Owner (50-item spot-check)
     participant CLI as pruefstand build-dataset
-    participant Gen as Datagen LLM (llama 70B-class, the one Ollama server split over 2x A40, datagen mode, manual weekend job)
-    participant RM as Review model (gemma nightly judge, batch job, never the PR judge)
+    participant Gen as Datagen LLM (public text: GitHub Models free tier, family not qwen or gemma; private docs: local judge model, ADR-0019)
+    participant RM as Review model (local judge gemma3:12b, batch job, reject-only)
     participant Sup as Support check (LLMClient + support_check_de_v1)
     participant Rev as Review tool (tools/review_app)
     participant HF as Hugging Face
@@ -333,7 +332,7 @@ sequenceDiagram
     CLI->>CLI: check_overlap, dedupe, perturb_case(_async), attack cases from pipeline, refusal cases
     CLI->>CLI: assign_splits (cluster_id-aware, incl. SMOKE_LIVE and ROBUST_PR), validate_dataset
     CLI->>RM: review 100 % of smoke and core, seeded 20 % sample of full
-    RM-->>CLI: ok / bad per item (deterministic checks override, the PR judge never writes or rewrites references)
+    RM-->>CLI: ok / bad per item (deterministic checks override, the judge never writes or rewrites references)
     CLI->>Rev: 50-item spot-check with side-by-side source §
     O->>Rev: citation correct? answer plausible?
     Rev-->>CLI: ReviewRound (sampled, bad, error_rate = model review)
@@ -358,7 +357,7 @@ sequenceDiagram
     participant BCS as build_calibration_sets (T5.3)
     participant Src as MEMERAG-DE / GermanQuAD / GermanRAG
     participant Exp as experiments/rq2
-    participant J as Judges (A40 mistral PR / gemma nightly, optional llama 70B RQ2 arm, GitHub Models non-qwen)
+    participant J as Judges (A40 gemma3:12b, gemma3:4b size contrast pulled one at a time, GitHub Models non-qwen)
     participant Cal as judges.calibration
 
     BCS->>Src: download (MEMERAG download-only, never redistributed)
@@ -382,7 +381,7 @@ sequenceDiagram
 Calibration is offline and scripted with a fixed seed. κ is never computed on a single-label subset
 (X1.1); the in-domain `legal_hard` set is built in T5.3 (X3.1). Hard negatives (D119) are same-paragraph wrong
 spans, number/date swaps, negation flips, partially correct answers and MEMERAG "Not Supported" items.
-The chosen PR judge goes into config and the decision log, and changing a judge prompt version means
+The chosen gating judge goes into config and the decision log, and changing a judge prompt version means
 re-running this sequence.
 
 ## 7. Demo "Try it" query

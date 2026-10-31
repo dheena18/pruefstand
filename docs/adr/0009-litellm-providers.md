@@ -2,6 +2,7 @@
 
 - Status: Accepted (revised 2026-10-28: free providers only, external-provider data guard; revised 2026-10-31: round 8 family plan, no hosted generator, no CPU judge; round 9 judge pass rule, reviewer roles, input cap, weekend datagen; revised round 10 (D198, D204, D209): all tier-2 serving is Ollama, provider `ollama` replaces `hosted_vllm`, vLLM and TEI rejected; revised round 11 (D219–D221, D224): native Ollama API only, catalogue options enforced, fallback judge informational)
 - Amended by: [ADR-0018](0018-single-ollama-server.md) (2026-10-31: one Ollama server for both GPUs, port 11434 only)
+- Amended by: [ADR-0019](0019-local-model-storage-small-disk.md) (2026-10-31: one judge `gemma3:12b`, public-text datagen on GitHub Models, private-doc datagen on the local judge model, models on the cluster disk)
 - Date: 2026-10-27
 - Tasks: T1.2, T1.4, T1.13, T3.1a, T3.1b, T5.1
 
@@ -20,10 +21,10 @@ and no systemd linger, so the planned vLLM + TEI containers cannot run there.
 
 | Provider | LiteLLM prefix | Use |
 | --- | --- | --- |
-| **Ollama on the A40s** (one server on `:11434` for both GPUs, ADR-0018, reached from the VM through the `autossh` tunnel) | `ollama/<tag>` in configs and the catalogue (D209, D221); `LiteLLMBackend` translates it to LiteLLM's native `ollama_chat/<tag>` (`/api/chat`, `/api/embed`; D219), never Ollama's `/v1/*`; base URL from `infra/gpu/endpoints.yaml`: `OLLAMA_GPU0_URL` / `OLLAMA_GPU1_URL` (both the same server, ADR-0018) | generator `qwen3.8:27b-q8_0` (Ollama family `qwen35` → `qwen`, `think: false`, pinned digest `8f5fb6b7…1766039`) and `bge-m3` embeddings (generator lane), PR judge and nightly judge (gemma 27B-class) (judge lane), 70B-class datagen (loaded alone, split over both cards by Ollama: test generation, perturbations, synthetic private docs; manual weekend `datagen`-mode jobs, outside the nightly window) |
+| **Ollama on the A40s** (one server on `:11434` for both GPUs, ADR-0018, reached from the VM through the `autossh` tunnel) | `ollama/<tag>` in configs and the catalogue (D209, D221); `LiteLLMBackend` translates it to LiteLLM's native `ollama_chat/<tag>` (`/api/chat`, `/api/embed`; D219), never Ollama's `/v1/*`; base URL from `infra/gpu/endpoints.yaml`: `OLLAMA_GPU0_URL` / `OLLAMA_GPU1_URL` (both the same server, ADR-0018) | generator `qwen3.8:27b-q8_0` (Ollama family `qwen35` → `qwen`, `think: false`, pinned digest `8f5fb6b7…1766039`) and `bge-m3` embeddings (generator lane), the one judge `gemma3:12b` for PR and nightly (judge lane; also writes synthetic private docs, canaries and held-out data locally, role `DATAGEN`; ADR-0019); models on the cluster's own disk `/data/dheena/Models` |
 | CPU reranker on the VM (`rerank-cpu`, sentence-transformers, TEI-compatible `POST /rerank`) | – (not an LLM; called by rag-demo through `RERANK_URL`) | `BAAI/bge-reranker-v2-m3`, tier 2 only |
 | llama.cpp server on CPU (OpenAI-compatible) | `openai/` + local `api_base` | tier-1 live CI generator (called by rag-demo's own client); laptops |
-| GitHub Models (free tier, rate-limited) | `github/` | tier-1 **informational** judge via `GITHUB_TOKEN` (`models: read`; ≤ 10 calls/PR, ≤ 60/nightly), RQ2 large free-tier judge, 10 % cross-check samples of public items |
+| GitHub Models (free tier, rate-limited) | `github/` | tier-1 **informational** judge via `GITHUB_TOKEN` (`models: read`; ≤ 10 calls/PR, ≤ 60/nightly), **public-text datagen** (T4.2 questions/references, T4.5 rewrites, T5.3 `legal_hard` review; ADR-0019), RQ2 large free-tier judges, cross-check samples of public items |
 | Optional free tiers, opt-in per config: Mistral "Experiment", Google Gemini free tier, Groq free tier, OpenRouter `:free` | their LiteLLM prefixes | extra RQ2 judges only |
 
 - **Free only (owner decision 2026-10-28).** `budget.max_usd_per_run = 0`. `LLMClient` refuses any
@@ -40,31 +41,33 @@ and no systemd linger, so the planned vLLM + TEI containers cannot run there.
   resolve to the executor's internal network or localhost (T3.2 test), because retrieved chunks carry
   tenant documents and canaries. A hosted generator would need `allow_paid` and the data guard, both off.
 - **Family plan** (SPEC §6.3, `core/data/model_families.yaml`): generator `qwen` (all tiers; all
-  `role: generator` catalogue entries share it); PR judge `mistral` (`gemma` if mistral fails
-  calibration); nightly judge `gemma` (27B-class `Q4_K_M`, one A40, the other card than the generator; D141, D205); datagen `llama` 70B-class
-  (datagen batch jobs only, ≠ every judge family); tier-1 informational judge
-  a GitHub Models model of a non-`qwen` family. `test_catalogue.py` checks that no judge/datagen entry
+  `role: generator` catalogue entries share it); **one** A40 judge `gemma` (`gemma3:12b`, PR and
+  nightly, the other card than the generator; ADR-0019); public-text datagen = a pinned GitHub Models family ≠ `qwen`,
+  ≠ `gemma` (T4.2); private docs, canaries and held-out data = the local judge model (never external); tier-1
+  informational judge a GitHub Models model of a non-`qwen` family. `core/data/model_families.yaml` maps Ollama
+  family `qwen35` → `qwen`, `gemma3` → `gemma`. `test_catalogue.py` checks that no judge entry
   has the generator family and that no default-profile model has a non-commercial licence.
 - **Qwen3 thinking** is disabled for every Qwen call in every tier (`enable_thinking=false` /
   `/no_think` on llama.cpp; on Ollama `"think": false` on native `/api/chat`; D204, D219);
-  `LLMClient` applies it to any Qwen judge, datagen or perturbation call.
+  `LLMClient` applies it to any Qwen call in any role.
 - **Ollama serving rules** (`gpu-cluster.md` §2.1; round 11 Y3, AI11-01). Only the **native** API
   is used: Ollama ignores `options` (incl. `num_ctx`) on its OpenAI-compatible `/v1` routes and falls
   back to a short server default, which silently truncates prompts (**verify** on the pinned
   version). Each model has fixed `options` in `infra/gpu/models.yaml` (`num_ctx`, `num_predict`,
-  `temperature`, `seed`, `top_p`): generator `num_ctx` **8192**, PR judge and nightly Gemma judge both **12288** = generator 8 192 +
+  `temperature`, `seed`, `top_p`): generator `num_ctx` **8192**, the one judge `gemma3:12b` **12288** = generator 8 192 +
   rubric/answer allowance ≤ 3 072 + 1 024 output reserve (round 13, D306; T3.1b may lower it only if its VRAM
   measurement fails; if it does not fit at 4 slots, lower
   `OLLAMA_NUM_PARALLEL` (server-wide, ADR-0018) to 2 before `num_ctx`, AI12-09), judges `num_predict` 384. Preload
   (`switch-mode.sh`, `health.sh`) sends exactly these options, because a request with different
-  options reloads the model from the NAS; `llm-proxy` enforces only `num_ctx` and `keep_alive` (the load-time
+  options reloads the model; `llm-proxy` enforces only `num_ctx` and `keep_alive` (the load-time
   options) plus the model allow-list, strips other load-time keys, and passes `temperature`, `seed`,
   `top_p`, `num_predict` through within the catalogue `option_bounds` (outside → 403; round 12 N2, refines D220; catalogue values
   are defaults, not overrides), so a candidate cannot reload, offload or resize the shared generator,
   while M17 and the T6.3 churn runs really change sampling. Server env (one server, ADR-0018) `CUDA_VISIBLE_DEVICES=0,1`, `OLLAMA_NUM_PARALLEL=4`,
   `OLLAMA_MAX_LOADED_MODELS=3`, `OLLAMA_KEEP_ALIVE=24h` (mode switches manage residency), `OLLAMA_NOPRUNE=1`
-  (**verify**), `OLLAMA_FLASH_ATTENTION=1`, `OLLAMA_MODELS` on the NAS, `OLLAMA_HOST=127.0.0.1:11434`; no
-  server-side default context (the catalogue `num_ctx` on every request is the only control).
+  (**verify**), `OLLAMA_FLASH_ATTENTION=1`, `OLLAMA_KV_CACHE_TYPE=q8_0`, `OLLAMA_MODELS=/data/dheena/Models` (the
+  cluster's own disk, ADR-0019), `OLLAMA_HOST=127.0.0.1:11434`, `OLLAMA_CONTEXT_LENGTH=8192` as a default only (the
+  catalogue `num_ctx` on every request is the control); source of record: the owner's `~/start-ollama.sh`.
   Models are pinned by tag **and manifest digest** (tags are mutable). Embeddings: `bge-m3` via
   `/api/embed` (dense only; ADR-0010). Evidence, not request bodies: `test-gpu` checks
   `prompt_eval_count` on a 7 000-token prompt, and a model reload during a run (`load_duration` > 1 s
@@ -85,9 +88,9 @@ and no systemd linger, so the planned vLLM + TEI containers cannot run there.
   **and** specificity (true-negative rate) ≥ 0.80 on the hard-negative subset with a 95 % Wilson lower
   bound ≥ 0.70; κ is never computed on a single-label subset. Otherwise its judged metrics are
   informational in every tier.
-- **Judge roles in dataset review** (SPEC §3.5): reviewers are cross-assigned; the PR judge (`mistral`)
-  never writes or rewrites references; `core` review and reference rewrites use the nightly `gemma`
-  judge as a batch job.
+- **Judge roles in dataset review** (SPEC §3.5, ADR-0019): the one judge `gemma3:12b` reviews every split as a
+  batch job in **reject-only** mode and never writes or rewrites references; rejected items are regenerated by
+  the public-text datagen model (another family).
 - **Judge input cap** = the judge's context window minus 1 024 tokens, counted with the judge's
   tokenizer; over-cap inputs are truncated (lowest-ranked chunks first, `details["truncated"]`), logged,
   counted (`counts["judge_truncated"]`) and listed in the report; > 5 % truncated → the metric is
@@ -97,9 +100,9 @@ and no systemd linger, so the planned vLLM + TEI containers cannot run there.
 - **Fallback judge** (D224): a run that uses any judge other than the configured one
   (`judge_fallback=true`) reports all judged metrics as informational and is not promoted as a judged
   baseline; verdicts of two judges are never compared.
-- **Family separation in fallbacks** (AI11-12): if `gemma` becomes the PR judge, `mistral` re-reviews
-  the gemma-touched `core` references in reject-only mode; private-tenant documents are written by
-  the datagen model only (fallback: a small non-`qwen`, non-judge-family local GGUF).
+- **Family separation** (AI11-12, ADR-0019): the gating judge's family (`gemma`) never wrote a reference it
+  grades (references come from the GitHub Models datagen family); private-tenant documents are written locally
+  by the judge model (they are contexts for deterministic leak checks; fallback: a small non-`qwen` local GGUF).
 
 ## Alternatives considered
 | Option | Why not |
@@ -117,4 +120,4 @@ and no systemd linger, so the planned vLLM + TEI containers cannot run there.
 - Negative (round 10): GGUF quantisations (`Q8_0`, `Q4_K_M`) differ from the AWQ checkpoints planned
   before; Ollama has fewer serving knobs than vLLM (no guided-decoding backends, no Prometheus
   metrics), and parallel slots are not bit-deterministic. The first model load per mode comes from the
-  NAS and is excluded from timing budgets.
+  cluster's own disk (ADR-0019) and is excluded from timing budgets.

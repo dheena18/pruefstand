@@ -17,8 +17,8 @@ flowchart LR
 
     sys["Prüfstand<br/>release gate for German RAG"]
 
-    llm(["LLM providers (free only)<br/>Ollama on the A40 cluster (one server, via the VM tunnel), llama.cpp on CPU,<br/>GitHub Models free tier (tier-1 informational judge)"])
-    nas[("TrueNAS dataset<br/>models, baselines, backups, datasets")]
+    llm(["LLM providers (free only)<br/>Ollama on the A40 cluster (one server, via the VM tunnel), llama.cpp on CPU,<br/>GitHub Models free tier (tier-1 informational judge, public-text datagen)"])
+    nas[("Data root on the VM disk (zvol, TrueNAS snapshots)<br/>baselines, backups, datasets")]
     hf(["Hugging Face Hub<br/>datasets + public corpora"])
     src(["Public sources<br/>Gesetze im Internet, EUR-Lex,<br/>Open Legal Data"])
     pypi(["PyPI"])
@@ -34,7 +34,7 @@ flowchart LR
     priv --> sys
     ghcr -->|"anonymous pull by digest"| sys
     sys -->|"redacted PR comment + status pruefstand/gate (pruefstand-bot)"| repo
-    sys <-->|"read / update baseline index.json (files on the NAS)"| priv
+    sys <-->|"read / update baseline index.json (files in the data root)"| priv
     sys <-->|"baseline files, backups (VM /mnt/pruefstand)"| nas
     sys -->|"sanitised export + heartbeat (repo-scoped PAT)"| dd
     dd -->|"anonymous read"| repo
@@ -50,7 +50,7 @@ and holds no secret that reaches the executor; the private executor repo runs ga
 dispatches them (round 13 P1.2; coding agents cannot), polls `main` for baselines, executes them on
 its persistent runner on the TrueNAS VM `pruefstand-exec` (GPU models: one Ollama server for both A40s,
 ADR-0018, reached through the `pruefstand-tunnel.service` tunnel; executor user `pruefstand`), keeps the baseline index and the held-out canaries
-(baseline files and backups live on the NAS), and posts a redacted result back to the PR. PRs that
+(baseline files and backups live in the data root on the VM disk, ADR-0019), and posts a redacted result back to the PR. PRs that
 touch no gated path get their "not gated" status from the public `gate-router.yml` on a hosted runner
 (no checkout; it posts with the `pruefstand-bot` App token from environment `gate-router`, and marks gated PRs
 `pending` until the owner dispatches tier 2), so they never wait for the executor; the ruleset pins
@@ -95,12 +95,12 @@ flowchart TB
     end
 
     subgraph CLU["TRUST: shared A40 cluster cairo-s101lp (Ollama only)"]
-        oll["one Ollama server 127.0.0.1:11434 (GPU0 + GPU1, ADR-0018)<br/>generator qwen3.8:27b-q8_0 + bge-m3, PR judge (day) / gemma nightly judge (night);<br/>llama 70B alone in datagen weekends only"]
+        oll["one Ollama server 127.0.0.1:11434 (GPU0 + GPU1, ADR-0018)<br/>generator qwen3.8:27b-q8_0 + bge-m3 + one judge gemma3:12b (PR and nightly, ADR-0019)"]
+        models[("/data/dheena/Models (cluster disk)")]
     end
 
-    subgraph NASX["TRUST: TrueNAS dataset (VM /mnt/pruefstand)"]
+    subgraph DRX["TRUST: data root on the VM disk (/mnt/pruefstand)"]
         bfiles[("baseline files<br/>baselines/FP/history/")]
-        models[("ollama-models/")]
     end
 
     dd[("pruefstand-dashboard-data<br/>sanitised export, sha256 manifest, heartbeat.json")]
@@ -151,7 +151,7 @@ judges with the Ollama judge on the judge card and applies the statistical gate.
 artefacts from the dashboard-data repo and never computes metrics; it is published on GitHub Pages. The
 optional demo API runs on the VM on its own `--internal` network `demo-net` (only `cloudflared` is also on
 `demo-egress`; RFC 1918 and VM addresses dropped, P2.2), reachable only through a Cloudflare Tunnel, and never
-touches the gate network, the LAN, the NAS, the GPU lock or the cluster. Ports: `docs/engineering/docker.md` §3.
+touches the gate network, the LAN, the TrueNAS host, the GPU lock or the cluster. Ports: `docs/engineering/docker.md` §3.
 
 ## 3. Container responsibilities
 
@@ -165,7 +165,7 @@ touches the gate network, the LAN, the NAS, the GPU lock or the cluster. Ports: 
 | `gate_orchestrator` | Selects jobs, takes `/var/lib/pruefstand/gpu.lock` once per job, runs the preflight under it (starts the Ollama server over SSH only if none runs, checks digests and GPU placement), switches Ollama modes, runs and reports, refreshes the heartbeat every 15 min, turns infra failures into `error` + one retry (T6.2a) | Python (`infra/gate-executor/orchestrator`) | GitHub API, Ollama via the tunnel, cluster `bin/` scripts over SSH |
 | rag-demo | System under test, multi-tenant German RAG | FastAPI, Qdrant client, httpx | Qdrant; tier 1: llama.cpp + TEI (CPU); tier 2: `llm-proxy` (Ollama, generator lane) + `rerank-cpu` |
 | Qdrant | Dense + sparse vectors, tenant payload filter, PR-scoped collections | Qdrant | – |
-| Ollama server (cluster, one for both GPUs, ADR-0018) | Tier-2 LLM + embedding serving: generator + `bge-m3` and the judge on the two cards (placed by Ollama, checked via `/api/ps`), llama 70B alone for datagen (catalogue models only, pinned by digest) | Ollama (existing server reused, else started with `setsid nohup`), models on the NAS | – (reached only through the VM tunnel) |
+| Ollama server (cluster, one for both GPUs, ADR-0018) | Tier-2 LLM + embedding serving: generator + `bge-m3` and the one judge `gemma3:12b` on the two cards (placed by Ollama, checked via `/api/ps`; catalogue models only, pinned by digest; ADR-0019) | Ollama (existing server reused, else the owner's `~/start-ollama.sh` with `setsid nohup`), models on the cluster disk `/data/dheena/Models` | – (reached only through the VM tunnel) |
 | `llm-proxy` | Candidate's only route to Ollama: normal container on `gate-net` + `proxy-egress` (`http://llm-proxy:11500`, upstream `172.17.0.1:11434` firewalled to `proxy-egress`), bearer key, generator + embed tags only (no judge), native `/api/chat`, `/api/embed`, `/api/tags`, catalogue tags; enforces `num_ctx`/`keep_alive`, sampling options pass within the catalogue `option_bounds` (403 outside, R12 N2); no admin API (D206, D242, D220) | Python (T6.2a) | the Ollama server via the tunnel |
 | `rerank-cpu` | `bge-reranker-v2-m3` on the VM CPU, TEI-compatible `/rerank` (tier 2) | sentence-transformers (T3.1a) | – |
 | TEI (CPU) | CPU embeddings (tier 1, demo) | text-embeddings-inference | – |

@@ -2,6 +2,7 @@
 
 - Status: Accepted (revised 2026-10-28: round-1 R2, round-2 Q2, round-4 real-stack tier 1; revised 2026-10-31: round-8 W1 tier-1 shape, W2 executor operations; revised round 9: X2.1–X2.8 lock order, `gate-router.yml`, fork SHA check, head-SHA builds, registry isolation, encrypted backups, cluster-disk baselines; X1.4/X3.11/X5.6 tier-1 decision scope; revised round 10 (D196–D208): executor on the TrueNAS VM `pruefstand-exec`, the cluster runs only Ollama reached through an `autossh` tunnel (one server for both GPUs since ADR-0018), `llm-proxy`, tier-2 budgets PR ≤ 90 min / nightly ≤ 5 h with generator/judge overlap; revised round 11 (D211–D229): one service user `pruefstand` with the host-wide lock `/var/lib/pruefstand/gpu.lock`, rootful Docker with accepted risk C18, `llm-proxy` on `gate-net` + `proxy-egress` reached as `http://llm-proxy:11500` (D242), night window 22:00–06:00 with a refusal stratum + 1 of 3 stratified blocks (≤ 600 cases), 15-min heartbeat, infra failure ⇒ `error` + one retry, NAS automount, laptop backup receipt; revised round 13 (P1, D287–D289): `pruefstand/gate` pinned to the `pruefstand-bot` App, `gate-router.yml` posts with the App token from environment `gate-router`, the only tier-2 PR trigger is the owner's `workflow_dispatch`, the `run-gate` label and PR poll are removed; P2 (D290): nightly guard output + `if:`)
 - Amended by: [ADR-0018](0018-single-ollama-server.md) (2026-10-31: one Ollama server for both GPUs, port 11434 only)
+- Amended by: [ADR-0019](0019-local-model-storage-small-disk.md) (2026-10-31: models on the cluster disk, one judge, no datagen mode, data root on the VM disk, cluster scripts over SSH)
 - Date: 2026-10-27
 - Tasks: T0.2, T0.5, T0.6, T0.7, T1.11, T1.12, T1.13, T3.1a, T6.2a, T6.2b
 
@@ -20,8 +21,8 @@ whenever the runner is busy or offline, (e) scripts that re-take the GPU lock in
 deadlock, and (f) a fork result posted on the fork's *current* head can land on unreviewed code.
 Round 10 (owner facts 2026-10-31, `docs/planning/reviews/round10-resolution.md`) found that the A40
 cluster `cairo-s101lp` has a nearly full local disk, no confirmed Docker or vLLM, and no systemd linger,
-and that the owner can run a TrueNAS VM that mounts the same NAS dataset as the cluster and can SSH to
-it. So the cluster can host GPU inference but not the runner, containers or state.
+and that the owner can run a TrueNAS VM that can SSH to it (since ADR-0019 the VM keeps its data root on its
+own disk and the cluster keeps its models on its own disk; no shared NAS path). So the cluster can host GPU inference but not the runner, containers or state.
 Round 11 (`round11-resolution.md` Y1, Y4, Y5) found that the per-user lock, SSH key and tunnel unit did
 not exclude anything across the VM's two users (executor and owner/agents), that the 5-h nightly plus
 its extra jobs overran the night, and that an infrastructure fault during a run became a candidate
@@ -90,21 +91,21 @@ that a guard job which merely exits 0 still lets its dependent nightly job run.
    that repo only and stored in the private repo.
 7. **Runner:** persistent, on the VM (never on the cluster), registered once by the owner, run as the
    system service `pruefstand-runner.service` as the system user **`pruefstand`** (Y1.1, D211), which also
-   owns the cluster SSH key and the system unit `pruefstand-tunnel.service`; the runner service has
-   `Wants=` + `After=mnt-pruefstand.automount` (never `Requires=`), the tunnel unit has no NAS dependency,
-   and a missing mount fails the job in the preflight with `infra_error="nas_unavailable"` (round 12 N4.1). `ACTIONS_RUNNER_HOOK_JOB_STARTED` / `_COMPLETED` scripts
+   owns the cluster SSH key and the system unit `pruefstand-tunnel.service`; neither the runner nor the
+   tunnel unit has a storage dependency (the data root is a plain directory on the VM disk, ADR-0019), and an
+   unusable data root fails the job in the preflight with `infra_error="data_root_unavailable"`. `ACTIONS_RUNNER_HOOK_JOB_STARTED` / `_COMPLETED` scripts
    wipe the workspace, remove job containers/networks/volumes and drop PR-scoped Qdrant collections and
    cache overlays.
 8. **Concurrency and lock (X2.1):** one group per private workflow (`cancel-in-progress: false`), plus
    one group per dispatched PR. GPU mutual exclusion: the orchestrator takes
-   `flock /var/lib/pruefstand/gpu.lock` (one host-wide path on the **VM's local disk**, never the NAS;
+   `flock /var/lib/pruefstand/gpu.lock` (one host-wide path on the **VM's local disk**, never a network share;
    D200, D211) **once per job** and exports `PRUEFSTAND_LOCK_HELD=1`; the owner and agents use the
    wrapper `pruefstand-lock <cmd>` on the same file (D212);
    `switch-mode.sh`, `health.sh` and `fetch-model.sh` (created by T3.1a) never take the lock and refuse
    to run without that variable. Order: `MAINTENANCE` check (file `/var/lib/pruefstand/MAINTENANCE`) → job selection → lock → **preflight**
    (`health.sh --repair`: tunnel ports, restart of a down Ollama server over SSH with `start-ollama.sh`,
-   resident model digests, NAS mount; D208) → serve; lock timeout → `pending` "executor busy", preflight failure → `error` "executor unhealthy".
-   An infrastructure failure **during** a run (Ollama down, tunnel lost, NAS unavailable, a model reload) → run
+   resident model digests, data root check; D208, ADR-0019) → serve; lock timeout → `pending` "executor busy", preflight failure → `error` "executor unhealthy".
+   An infrastructure failure **during** a run (Ollama down, tunnel lost, data root unavailable, a model reload) → run
    `stop_reason="aborted"` with `infra_error`, status `error` (never `failure`), not recorded as
    processed, one automatic retry after `health.sh --repair` (Y5.2, D226).
    `nightly.yml` never dispatches `baseline-promote.yml`; the promote poll picks up the newest complete
@@ -119,15 +120,15 @@ that a guard job which merely exits 0 still lets its dependent nightly job run.
 10. **Health:** the orchestrator refreshes `heartbeat.json` every **15 min** while a job runs or waits on
     the lock (Y5.1, D225), on branch `heartbeat` of the dashboard-data repo; the public, hosted
     `executor-health.yml` (hourly) opens or updates an issue when it is older than 2 h. Weekly backup:
-    one bundle (private repo + NAS baseline files, X2.7) `age`-encrypted **as a whole**, written to
-    the NAS `backups/`, plus a mandatory weekly copy on the owner's laptop, confirmed by a receipt file
+    one bundle (private repo + baseline files, X2.7) `age`-encrypted **as a whole**, written to
+    the data root `backups/` (inside the TrueNAS zvol snapshots, ADR-0019), plus a mandatory weekly copy on the owner's laptop, confirmed by a receipt file
     that `backup-check` watches (> 8 days → issue `backup-stale`, Y5.5); the key lives only on the
     owner's laptop (X2.6, `docs/ops/runbook.md`).
 11. **Budgets (round 10 Z4, D199; round 11 Y4, D222–D224):** tier-2 PR run ≤ 90 min (`robust_pr` via
     `/v1/retrieve` only, reranker top 10); nightly ≤ 8 h in the window 22:00–06:00 Europe/Berlin (two UTC
     cron entries; a hosted guard accepts the cron that matches the current Berlin offset, and one orchestrator job stops at the 06:00 deadline, round 12 N4.3), a fixed refusal stratum (all unanswerable cases, ≥ 100 clusters) plus one of 3 stratified blocks of
     `full` (≤ 600 cases; `full` covered every 3 nights, SPEC §6.2), cause-switches
-    weekly; judge fallback ⇒ judged metrics informational; the first model load per mode from the NAS is
+    weekly; judge fallback ⇒ judged metrics informational; the first model load per mode is
     excluded. If T3.1b measures more, PR runs pass `--judged-subset`: generation **and** judging of the
     `core` answerable cases on the fixed seeded 150-case judged subset (`TestCase.judged_subset`; retrieval
     metrics on all of `core`, deterministic security cases in full; round 13 P3.4; SPEC §7.2 MDE rows).
@@ -136,8 +137,8 @@ that a guard job which merely exits 0 still lets its dependent nightly job run.
     `run=true|false` and the nightly job runs only `if: needs.guard.outputs.run == 'true'` (P2.1); a hard
     06:00 Berlin deadline of the fired night is checked at start and before each phase (`window_exceeded`)
     and skipped nights are reported (round 12 N1, N4.3).
-    The nightly judge runs on the other card than the generator (one server, ADR-0018), so nightly generation and judging
-    overlap (D205).
+    The judge (one `gemma3:12b` for PR and nightly, ADR-0019) runs on the other card than the generator (one server,
+    ADR-0018), so nightly generation and judging overlap.
 
 Tier 1 needs no secret: `GITHUB_TOKEN` with `models: read` is the only credential, and GitHub gives
 fork PRs none (their judged metrics are skipped, `judge_mode=skipped`). There is no CPU fallback judge:
@@ -159,8 +160,8 @@ from small CPU models; **tier 2 is the authoritative statistical gate** for merg
 | Separate `gate-runner` user with per-user lock, key and user tunnel unit (round-10 design) | Two lock files exclude nothing; the runner user could not use the owner's key or user unit (round 11 A11-01/-02) |
 | Rootless Docker for the executor user | `llm-proxy` cannot reach the host tunnel through RootlessKit's namespace without host-loopback tricks (A11-05); the VM is dedicated, so rootful Docker + accepted risk C18 is simpler |
 | Full `full` split every night, cause-switches nightly | 10–14 h per night on one runner; overruns the window and blocks the working day (A11-06) |
-| Runner, Docker and Qdrant on the A40 cluster (round-9 design) | Cluster local disk nearly full, Docker/vLLM not available, `Linger=no` (round 10); the VM has Docker, systemd and the NAS |
-| vLLM/TEI containers on the cluster | No Docker on the cluster; Ollama is installed and serves GGUF models from the NAS (ADR-0009, D198) |
+| Runner, Docker and Qdrant on the A40 cluster (round-9 design) | Cluster local disk nearly full, Docker/vLLM not available, `Linger=no` (round 10); the VM has Docker, systemd and a large disk |
+| vLLM/TEI containers on the cluster | No Docker on the cluster; Ollama is installed and serves GGUF models from the cluster's own disk (ADR-0009, ADR-0019) |
 | Expose Ollama on a cluster network port | Ollama has no authentication; loopback + SSH tunnel keeps it off the network (`security.md` C14) |
 | JIT runner config with an `administration: write` PAT | A long-lived admin credential on the executor host; the hook-based persistent runner is enough for private trusted workflows |
 | One shared `gpu-cluster` concurrency group (round-7 design) | A newer queued run cancels the pending one: nightly and promotion runs are silently lost |
@@ -180,9 +181,8 @@ from small CPU models; **tier 2 is the authoritative statistical gate** for merg
 - Negative: every tier-2 PR gate needs an owner action (a dispatch from the browser or the mobile app); two repos
   plus a public data repo to maintain; one PAT to rotate yearly; executor code synced at a maintainer tag
   `executor-<YYYYMMDD>` (`scripts/sync_executor.sh`; `v*` tags are reserved for the release App and
-  trigger `release.yml`). Tier 1 no longer gates judged quality. Three machines (cluster, VM, NAS)
+  trigger `release.yml`). Tier 1 no longer gates judged quality. Two machines (cluster, VM on TrueNAS)
   and one SSH tunnel (port 11434, ADR-0018) must be up; the preflight repairs a down Ollama server (`setsid nohup`), a dropped
-  tunnel is restarted by `autossh`/systemd, a TrueNAS reboot is recovered by VM autostart and the NAS
-  automount. Development agents share the executor VM and are root-equivalent there (accepted, C18). On the shared cluster, Ollama on loopback is reachable by other local
+  tunnel is restarted by `autossh`/systemd, a TrueNAS reboot is recovered by VM autostart (the data root is on the VM disk, ADR-0019). Development agents share the executor VM and are root-equivalent there (accepted, C18). On the shared cluster, Ollama on loopback is reachable by other local
   users (accepted risk, `security.md` C14). If the T0.6/T0.7 feasibility check is no-go, the same
   VM-side design runs against a rented 48 GB GPU host with one Ollama server.

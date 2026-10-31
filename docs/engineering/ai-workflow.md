@@ -11,7 +11,7 @@ that the result stays consistent. The step-by-step playbook for one task is `pro
 | **Claude Code** (Sonnet) | standard implementation from a precise prompt; most tasks in `tasks/TASKS.md` | changing contracts |
 | **GitHub Models via `gh models run`** (any GitHub account, free tier) | **default second-opinion reviewer** from a different model family than the implementer, fed `prompts/_review.md` + the diff (§3) | being the only reviewer; very large diffs (split per file) |
 | **GitHub Copilot code review** (*optional*) | extra automatic review if you have a Copilot plan (Copilot is **not** included in GitHub Pro; it is a separate plan, free for verified students via GitHub Education) | being required anywhere |
-| **Local models on the A40s** (Ollama, reached from the VM through the tunnels; provider `ollama`) | German text work at volume: dataset generation (llama 70B-class, manual weekend `datagen` jobs, X3.12), question rewrites, colloquial perturbations, labeling suggestions, PR judging (`mistral`) and nightly judging (`gemma`) (family plan: `gpu-cluster.md` §2) | code |
+| **Local models on the A40s** (Ollama, reached from the VM through the tunnels; provider `ollama`) | German text work at volume: synthetic private docs and canaries (the local judge model, never external), labeling suggestions, PR and nightly judging (the one judge `gemma3:12b`, ADR-0019; family plan: `gpu-cluster.md` §2) | code |
 | **GitHub Models** (in CI) | the tier-1 **informational** judge only (≤ 10 calls per PR, ≤ 60 per nightly run plus 50 drift anchors, `ci-cd.md` §1.1a); the `gh models run` second-family reviews may share the same quota (**verify**, T0.6) | datagen, a hosted generator (D126), any required check, anything that needs guaranteed throughput |
 
 ## 2. Session rules
@@ -87,7 +87,7 @@ git worktree add ../pruefstand-T1.5b -b feat/T1.5b-deterministic-metrics origin/
 - All work happens on the **TrueNAS VM `pruefstand-exec`** (Ubuntu 24.04, 64 GB) through **VS Code on
   Windows with Remote-SSH** (round 10 Z7, D202): the repo is cloned on the VM (`~/code/pruefstand`), and
   every coding-agent command runs in the VM terminal **as the owner login user** (Y1). The VM has rootful
-  Docker, the NAS at `/mnt/pruefstand` and the tunnels of the system unit `pruefstand-tunnel.service` to
+  Docker, the data root `/mnt/pruefstand` (VM disk) and the tunnels of the system unit `pruefstand-tunnel.service` to
   the cluster's one Ollama server (`127.0.0.1:11434`, ADR-0018), so `make test-gpu` and tier-2 experiments run
   from the same shell. Never run code or keep a checkout on the cluster.
 - **Sharing the VM with the executor (Y1, binding).** The executor runs as the system user `pruefstand`.

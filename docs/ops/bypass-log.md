@@ -2,7 +2,7 @@
 
 Every merge that used the `main` ruleset bypass is recorded here (D106, `ci-cd.md` §5). The bypass list
 holds only the role *Repository admin* (the owner), mode "pull requests only", and is used **only when
-the private executor cannot post `pruefstand/gate`** (VM, runner, tunnel, NAS or cluster outage, including a gated PR left at `error` "executor unhealthy
+the private executor cannot post `pruefstand/gate`** (VM, runner, tunnel, data root or cluster outage, including a gated PR left at `error` "executor unhealthy
 during run" / "executor infra error: <summary>; re-dispatch to retry" after the automatic infra
 retry, Y5.2, A12-M1, once a re-dispatch did not help). The bypass is done from the owner's browser; the VM's
 `gh` token has no admin rights (N4.4), and the runbook §2 step 7 drill verifies that it cannot use the bypass

@@ -38,12 +38,11 @@ HF dataset `<HF_USER>/pruefstand-de` with these configs:
   attribution notices too (`DATA_LICENSES.md` §4).
 - LLM-generated dataset text records the generating **checkpoint** and its output terms in the dataset
   card; licences are checked per checkpoint, not per family (`DATA_LICENSES.md` §5). Datagen uses the
-  pinned `llama` 70B-class entry (SPEC §6.3, manual weekend `datagen` jobs) with the Llama attribution;
-  Qwen2.5-3B and Qwen2.5-72B are excluded. `core` reference rewrites come from the nightly `gemma` judge
-  (SPEC §3.5), so the dataset card also carries the Gemma notice; the PR judge (`mistral`) never writes
-  reference text (if `gemma` becomes the PR judge, `mistral` re-reviews the gemma-touched `core`
-  references in reject-only mode; AI11-12). Synthetic private documents come from the datagen model
-  only, never from a `qwen` model. `legal_hard` (built in T5.3) consists of A40 generator answers (the
+  pinned GitHub Models datagen model for public text (SPEC §6.3, ADR-0019; its output terms are checked before
+  publishing) with its attribution; Qwen2.5-3B and Qwen2.5-72B are excluded. The gating judge `gemma3:12b`
+  reviews in reject-only mode and never writes reference text (SPEC §3.5, AI11-12). Synthetic private documents
+  are drafted locally by the judge model (so the dataset card also carries the Gemma notice), never by a `qwen`
+  model and never by an external provider. `legal_hard` (built in T5.3) consists of A40 generator answers (the
   pinned tier-2 `qwen` generator, `qwen3.8:27b-q8_0` if its licence verifies, else a named Qwen3
   fallback, Apache-2.0, **verify**) edited deterministically. It is publishable under `own` **only if**
   T0.6 C3 finds an allowlisted licence for that checkpoint; otherwise it stays local like MEMERAG
