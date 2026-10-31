@@ -38,7 +38,7 @@ sequenceDiagram
     Run->>Stack: docker compose --profile live up (rag-demo built from this SHA)
     Run->>Stack: pruefstand run --config examples/live/pruefstand.yaml --tier pr, split smoke_live (20 cases, POST /v1/query)
     alt same-repo PR or main, quota left
-        Run->>GHM: at most 10 judge calls (cache misses only, canary cases excluded, GITHUB_TOKEN)
+        Run->>GHM: at most 10 judge calls (cache misses only, canary cases excluded, PRUEFSTAND_GH_MODELS_TOKEN from github.token)
         alt HTTP 429
             Run->>Run: judged metrics skipped, judge_mode=skipped
         end

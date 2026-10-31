@@ -82,7 +82,7 @@ owning module's unit test dir (`pt/unit/<module>/`, `rd/unit/…`).
 | Committed-config rule (R9 X1.5) | `core.config` | T1.2 | `test_committed_configs.py` | every config under `examples/**`, `apps/**/configs/**` loads and has `min_clusters ≥ 30`; files under `pt/fixtures/configs/` are exempt | covered |
 | `load_config` | `core.config_loader` | T1.2 | `test_config_loader.py` | example + SPEC §5.6 block load; YAML path in error; 2 MB; `!!python/object` | covered |
 | `model_family`, `known_families` | `core.models_family` | T1.2 | `test_models_family.py` | provider ids → family; `foo/bar` → `unknown`; patterns compile | covered |
-| `PruefstandSettings` | `core.settings` | T1.2 | `test_settings.py` | `GITHUB_TOKEN` read; `repr` hides it | covered |
+| `PruefstandSettings` | `core.settings` | T1.2 | `test_settings.py` | `PRUEFSTAND_GH_MODELS_TOKEN` read into `gh_models_token` (a bare `GITHUB_TOKEN` never reaches it, D333); `repr` hides both tokens | covered |
 | `Citation`, `extract_citations` | `core.citations` | T1.5a | `test_citations.py`, `test_citation_props.py` | table rows incl. „Bürgerlichen Gesetzbuchs“, `§§ 1–3`, `i.V.m.`; English forms (D123); Hypothesis never raises | covered |
 | `normalise` | `core.citations` | T1.5a | `test_citations.py` | default vs full granularity; idempotence | covered |
 | `citations_match` | `core.citations` | T1.5a | `test_citations.py` | Abs. subsumption, Abs. mismatch, GDPR → DSGVO, other law | covered |
