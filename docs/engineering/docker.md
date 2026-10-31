@@ -42,13 +42,13 @@ syntax only (no BuildKit-only features), so it also builds on the VM, whose Dock
 | --- | --- | --- |
 | `PKG` | `pruefstand` | uv workspace member installed with `uv sync --frozen --no-dev --no-editable --package $PKG` |
 | `ENTRYPOINT_BIN` | `pruefstand` | console script (or command line, e.g. `uvicorn rag_demo.api:app --host 0.0.0.0`) run by the entrypoint; arguments of `docker run` are appended |
-| `HEALTHCHECK_CMD` | `NONE` | shell command that exits 0 when healthy; `NONE` = no service to probe (CLI/Action images) |
+| `HEALTHCHECK_CMD` | `NONE` | shell command that exits 0 when healthy; `NONE` = placeholder for images with no service to probe (CLI/Action images): the image `HEALTHCHECK` then always passes and claims no check |
 | `GIT_SHA` | `unknown` | label `org.opencontainers.image.revision` and env `GIT_SHA` (PR head SHA in CI, X2.4) |
 
 Stages: `base` (`python:3.12-slim-bookworm@sha256:...`), `builder` (uv from `ghcr.io/astral-sh/uv:<ver>@sha256:...`,
 venv in `/app/.venv`), `runtime` (venv only, `USER 10001`, OCI labels). Base and uv digests are in
 `decisions.md` ("Pinned versions"); hadolint (`.hadolint.yaml`, threshold `warning`) and Trivy gate them in
-`build-images.yml`. Smoke test: `make image-smoke && docker run --rm pruefstand-smoke --help`. The sketch below
+`build-images.yml`. Smoke test: `make image-smoke && docker run --rm pruefstand-smoke --help` (parallel worktrees: `SMOKE_TAG=<tag>`). The sketch below
 shows the shape with a service healthcheck (rag-demo, T1.13):
 
 ```dockerfile
@@ -103,6 +103,10 @@ There is **no** CPU judge service (`llm-judge-cpu` was removed with the tier-1 C
 and no `ollama` service in compose: Ollama runs only on the cluster, outside Docker. The former
 `gpu-night` and `gpu-large` profiles and the `vllm-*`, `tei-embed` and `tei-rerank` services are removed
 (round 10).
+Named volumes such as `qdrant_data` survive `make down`; `make down VOLUMES=1` removes them. `make stack-run CMD="…"`
+runs `up`, the command (in a subshell) and `down` under one `stack.lock` hold; an EXIT trap tears the stack down
+whatever the command does and the command's exit code is kept (`STACK_LOCK_WAIT=<s>` bounds the wait for the lock,
+default: wait). The `llm` service's llama.cpp image is a placeholder pin (`server`): T1.13 re-pins it to `server-<version>`.
 Tier-2 VM services (`rerank-cpu`, `llm-proxy`) are added by T3.1a and T6.2a; GPU serving is Ollama on the cluster (`gpu-cluster.md`), never a compose service.
 
 **Port table (single source).** Every host port binds to `127.0.0.1` (no exception; the only non-loopback
@@ -121,8 +125,11 @@ variables (`QDRANT_HTTP_PORT=$((6333+PORT_OFFSET))`, `QDRANT_GRPC_PORT`, `RERANK
 exported name). Because raw `docker compose` never sees what `make` exports, **`make ports-env`** writes
 the effective values once, literally, into the owner's VM `.env` (`QDRANT_HTTP_PORT=16333`, …), so a plain
 `docker compose --profile core|live up` binds the dev ports as well (prefer `make up PROFILES="…"`; raw compose
-only after `make ports-env`, verified by `make check-ports`; A13-M6, D310); **`make check-ports`** (and a `vm_check` warning) flags any container of the
-`pruefstand-dev` project bound to a default port (R12 A12-M4). Both
+only after `make ports-env`, verified by `make check-ports`; A13-M6, D310); **`make check-ports`** (and a `vm_check` warning) flags any container of a compose project
+other than the executor's `pruefstand-exec` that is bound to a default port, and names the project (R12 A12-M4).
+With `PORT_OFFSET` != 0, `mk/docker.mk` also defaults `COMPOSE_PROJECT_NAME` to the shared dev project
+`pruefstand-dev` (an explicit value in the environment or `.env` wins), so all worktrees share one dev stack, one
+at a time under `stack.lock` (`PARALLEL-PLAN.md` §7, A13-M8). Both
 stacks can run at the same time; Done-when checks against internal-only services use
 `docker compose exec` or the dev ports, never the executor's `localhost` ports (Y6.5).
 
