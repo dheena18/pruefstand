@@ -14,11 +14,11 @@ owner's normal login user on the VM; `pruefstand` = the system user that owns th
 
 | Item | Value |
 | --- | --- |
-| Hypervisor | TrueNAS (host 128 GB RAM); the VM autostarts with the host (boot order recorded in `docs/decisions.md`) |
+| Hypervisor | TrueNAS (host 128 GB RAM); the VM autostarts with the host (**done**, `docs/ops/setup-log.md` section 6) |
 | OS | Ubuntu Server; **26.04.1** on the real VM (the prompts assume 24.04; `vm_check os` accepts 24.04 and later, 26.04 as WARN) |
 | Size | 64 GB RAM, >= 8 vCPU, 500 GB system disk (a zvol on the TrueNAS pool) |
 | Docker | **rootful**, Ubuntu packages `docker.io` + `docker-compose-v2` (no `docker-ce` candidate for 26.04) |
-| Backups | TrueNAS **Periodic Snapshot Task** on the VM zvol (daily, keep 14) + the weekly encrypted laptop copy (T6.2b) |
+| Backups | TrueNAS **Periodic Snapshot Task** on the VM zvol (daily, keep 14; **done**, setup log section 6) + the weekly encrypted laptop copy (T6.2b) |
 
 ## Identities (Y1)
 
@@ -119,13 +119,24 @@ this folder publishes a port; SSH is the only inbound port from the LAN.
 infra/vm/vm_check.sh                       # all checks, exit 1 on any FAIL
 infra/vm/vm_check.sh firewall tunnel       # selected ids
 infra/vm/vm_check.sh --confirm vscode      # record an owner-confirmed check (tunnel-reboot | host-reboot | vscode)
-infra/vm/vm_check.sh --strict              # WARN counts as failure: use for the S7 evidence run
+infra/vm/vm_check.sh --strict              # WARN counts as failure (not for the S7 evidence run, see below)
 infra/vm/vm_check.sh --restart-drill       # N4.2: restarts Docker ONCE; refuses (exit 75) while gpu.lock is held, (exit 2) with running containers unless --yes
 ```
 
 `vm_check.sh` never restarts Docker and refuses to run as root. The cluster SSH endpoint is a public address, so the demo probes cannot expect it to be blocked by the RFC 1918 rules: `firewall` reports WARN "cluster endpoint is public; not blockable by RFC1918 rules" (a deviation from the prompt's Done-when for `cairo-s101lp:22`; only a private endpoint is probed). A DNS failure or a probe that cannot run is a WARN, never a PASS; only a connect timeout proves a DROP. The probe image is `curlimages/curl:8.11.1`; pin it by digest for the Done-when
 run: `PROBE_IMAGE=curlimages/curl@sha256:<digest> infra/vm/vm_check.sh firewall`. The demo probes use `TRUENAS_HOST_IP`
 (the TrueNAS host's LAN address, never committed) when set.
+
+### The S7 evidence run
+
+The evidence file is a **plain** `vm_check.sh` run (not `--strict`) with exactly one expected WARN: `firewall` ->
+"cluster endpoint is public; not blockable by RFC1918 rules". The file starts with a comment line that says so:
+
+```bash
+{ echo "# expected WARN: firewall: cluster endpoint is public; not blockable by RFC1918 rules"; infra/vm/vm_check.sh; } | tee infra/vm/vm-check-$(date +%F).out
+```
+
+Any other WARN or FAIL must be explained or fixed before the file is committed.
 
 ## Recovery
 
