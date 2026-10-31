@@ -1,0 +1,31 @@
+#!/usr/bin/env bash
+# pruefstand-lock <cmd> [args...]: run <cmd> while holding the host GPU lock (Y1, D211/D212).
+#
+# Installed to /usr/local/bin/pruefstand-lock by setup-users.sh. The owner, coding agents and the
+# executor's orchestrator all use the same file, so dev GPU work and gate jobs exclude each other.
+# The lock is held until <cmd> (and anything inheriting fd 9) exits.
+#   exit 75 "gpu.lock busy"   no lock within ${GPU_LOCK_TIMEOUT_S:-7200} seconds
+#   exit 64                   no command given
+#   exit 2                    gpu.lock missing (run infra/vm/setup-users.sh)
+#   otherwise                 the exit code of <cmd>
+# PRUEFSTAND_LOCK_DIR exists only so tests can point at a temp dir; production never sets it.
+set -euo pipefail
+
+lock="${PRUEFSTAND_LOCK_DIR:-/var/lib/pruefstand}/gpu.lock"
+
+if [ "$#" -lt 1 ]; then
+  echo "usage: pruefstand-lock <cmd> [args...]" >&2
+  exit 64
+fi
+if [ ! -e "$lock" ]; then
+  echo "pruefstand-lock: $lock does not exist; run infra/vm/setup-users.sh first" >&2
+  exit 2
+fi
+
+# Read-only open is enough for flock(2) and never needs write access to the file.
+exec 9<"$lock"
+if ! flock -w "${GPU_LOCK_TIMEOUT_S:-7200}" 9; then
+  echo "pruefstand-lock: gpu.lock busy (waited ${GPU_LOCK_TIMEOUT_S:-7200}s)" >&2
+  exit 75
+fi
+exec env PRUEFSTAND_LOCK_HELD=1 "$@"
