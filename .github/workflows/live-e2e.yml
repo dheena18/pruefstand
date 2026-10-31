@@ -1,0 +1,38 @@
+name: live-e2e
+
+# Tier 1 (live) SKELETON: the real stack arrives in T1.12. The permissions are fixed here so that
+# they are reviewed early (docs/engineering/ci-cd.md section 1.1). Not a required check yet.
+on:
+  pull_request:
+  push:
+    branches: [main]
+  schedule:
+    - cron: "37 2 * * *"
+  workflow_dispatch:
+
+permissions: {}
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  live:
+    name: live
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      actions: read  # download the main baseline artefact by run id
+      models: read  # GitHub Models judge through GITHUB_TOKEN (forks get none)
+    env:
+      # Fork PRs have no `models` permission: judged metrics are skipped there (no CPU fallback judge).
+      IS_FORK: ${{ github.event.pull_request.head.repo.full_name != github.repository && github.event_name == 'pull_request' }}
+    steps:
+      - name: Judge mode
+        run: |
+          if [ "$IS_FORK" = "true" ]; then
+            echo "PRUEFSTAND_JUDGE_MODE=skipped" >> "$GITHUB_ENV"
+          fi
+      - name: Placeholder
+        run: echo "live-e2e arrives in T1.12"

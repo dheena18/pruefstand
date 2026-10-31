@@ -1,0 +1,327 @@
+name: ci
+
+# Tier 0 (ADR-0005, docs/engineering/ci-cd.md section 1.1): hosted runners only, no secrets, no path
+# filters (every job here is part of the required check `ci / check`).
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, edited]  # `edited` re-checks a corrected PR title
+  push:
+    branches: [main]
+  schedule:
+    - cron: "13 1 * * *"  # nightly: only the schedule-only jobs run
+
+permissions: {}
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  lint:
+    name: lint
+    if: github.event_name != 'schedule'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
+        with:
+          version: "0.13.6"
+          enable-cache: true
+      - name: Install
+        run: make install
+      - name: lint
+        run: make lint
+
+  typecheck:
+    name: typecheck
+    if: github.event_name != 'schedule'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
+        with:
+          version: "0.13.6"
+          enable-cache: true
+      - name: Install
+        run: make install
+      - name: typecheck
+        run: make typecheck
+
+  arch:
+    name: arch
+    if: github.event_name != 'schedule'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
+        with:
+          version: "0.13.6"
+          enable-cache: true
+      - name: Install
+        run: make install
+      - name: arch
+        run: make arch
+
+  file-size:
+    name: file-size
+    if: github.event_name != 'schedule'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
+        with:
+          version: "0.13.6"
+          enable-cache: true
+      - name: Install
+        run: make install
+      - name: file-size
+        run: make file-size
+
+  test:
+    name: test
+    if: github.event_name != 'schedule'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
+        with:
+          version: "0.13.6"
+          enable-cache: true
+      - name: Install
+        run: make install
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: .hypothesis
+          key: hypothesis-${{ github.ref_name }}-${{ github.run_id }}
+          restore-keys: |
+            hypothesis-${{ github.ref_name }}-
+            hypothesis-main-
+      - name: Unit, property, contract and doctests with coverage gates
+        run: make coverage
+
+  test-slow:
+    name: test-slow
+    if: github.event_name != 'schedule'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
+        with:
+          version: "0.13.6"
+          enable-cache: true
+      - name: Install
+        run: make install
+      - name: Statistical validation (reduced PR grid)
+        env:
+          PRUEFSTAND_SIM_GRID: reduced
+        run: make test-slow
+
+  test-integration:
+    name: test-integration
+    if: github.event_name != 'schedule'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
+        with:
+          version: "0.13.6"
+          enable-cache: true
+      - name: Install
+        run: make install
+      - name: test-integration
+        run: make test-integration
+
+  schemas-fresh:
+    name: schemas-fresh
+    if: github.event_name != 'schedule'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
+        with:
+          version: "0.13.6"
+          enable-cache: true
+      - name: Install
+        run: make install
+      - name: schemas-fresh
+        run: make schemas-fresh
+
+  commitlint:
+    name: commitlint
+    if: github.event_name != 'schedule'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      pull-requests: read  # reads the PR title
+    steps:
+      - name: PR title is a Conventional Commit
+        if: github.event_name == 'pull_request'
+        uses: amannn/action-semantic-pull-request@48f256284bd46cdaab1048c3721360e808335d50 # v6.1.1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  workflow-guards:
+    name: workflow-guards
+    if: github.event_name != 'schedule'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
+        with:
+          version: "0.13.6"
+          enable-cache: true
+      - name: Install
+        run: make install
+      - name: workflows
+        run: make workflows
+
+  check:
+    name: check
+    if: always()
+    needs:
+      - lint
+      - typecheck
+      - arch
+      - file-size
+      - test
+      - test-slow
+      - test-integration
+      - schemas-fresh
+      - commitlint
+      - workflow-guards
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions: {}
+    steps:
+      - name: Every job succeeded
+        env:
+          NEEDS: ${{ toJSON(needs) }}
+          EVENT: ${{ github.event_name }}
+        run: |
+          if [ "$EVENT" = "schedule" ]; then
+            echo "nightly run: the PR jobs are skipped by design"
+            exit 0
+          fi
+          echo "$NEEDS" | jq -r 'to_entries[] | "\(.key): \(.value.result)"'
+          echo "$NEEDS" | jq -e 'all(.[]; .result == "success")' > /dev/null
+
+  # Schedule-only jobs: informational, not in `check`'s needs (R9-13), free hosted minutes.
+  simulation-full:
+    name: simulation-full
+    if: github.event_name == 'schedule'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
+        with:
+          version: "0.13.6"
+          enable-cache: true
+      - name: Install
+        run: make install
+      - name: Full simulation grids (4 000 sims)
+        env:
+          PRUEFSTAND_SIM_GRID: full
+        run: make test-slow
+
+  hypothesis-full:
+    name: hypothesis-full
+    if: github.event_name == 'schedule'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
+        with:
+          version: "0.13.6"
+          enable-cache: true
+      - name: Install
+        run: make install
+      - name: Property tests with the nightly Hypothesis profile
+        env:
+          HYPOTHESIS_PROFILE: nightly
+        run: make test
+
+  mutmut:
+    name: mutmut
+    if: github.event_name == 'schedule'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 300
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
+        with:
+          version: "0.13.6"
+          enable-cache: true
+      - name: Install
+        run: make install
+      - name: Mutation testing of gate/ and metrics/
+        run: |
+          src=packages/pruefstand/src/pruefstand
+          if [ -z "$(find "$src/gate" "$src/metrics" -name '*.py' ! -name '__init__.py' 2> /dev/null)" ]; then
+            echo "mutmut: gate/ and metrics/ have no code yet, nothing to mutate"
+            exit 0
+          fi
+          if ! grep -q '^\[tool\.mutmut\]' pyproject.toml; then
+            echo "mutmut: no [tool.mutmut] section in pyproject.toml yet, nothing to run"
+            exit 0
+          fi
+          uv run --with mutmut==3.8.1 mutmut run
