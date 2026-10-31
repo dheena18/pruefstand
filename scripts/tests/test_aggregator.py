@@ -25,9 +25,9 @@ def test_ci_check_needs_every_other_job() -> None:
 
 def test_ci_has_the_interface_jobs() -> None:
     expected = {
-        "lint", "typecheck", "arch", "file-size", "test", "test-slow", "test-integration",
-        "schemas-fresh", "commitlint", "workflow-guards", "check",
-    }  # fmt: skip
+        *("lint", "typecheck", "arch", "file-size", "test", "test-slow", "test-integration"),
+        *("schemas-fresh", "commitlint", "workflow-guards", "check"),
+    }
     assert expected | SCHEDULE_ONLY == set(_jobs("ci.yml"))
 
 
