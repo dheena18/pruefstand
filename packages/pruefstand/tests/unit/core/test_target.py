@@ -138,6 +138,8 @@ def test_chunk_with_absent_tenant_id_parses_through_target_response() -> None:
     resp = TargetResponse.model_validate({"answer": "x", "chunks": [chunk]})
     assert resp.chunks is not None
     assert resp.chunks[0].tenant_id is None
-    explicit = TargetResponse.model_validate({"answer": "x", "chunks": [{**chunk, "tenant_id": None}]})
+    explicit = TargetResponse.model_validate(
+        {"answer": "x", "chunks": [{**chunk, "tenant_id": None}]}
+    )
     assert explicit.chunks is not None
     assert explicit.chunks[0].tenant_id is None

@@ -22,14 +22,15 @@ class RetrievedChunk(BaseModel):
     """One retrieved chunk as reported by the target.
 
     ``used_in_prompt`` (API v1, backward compatible) is ``True`` when the chunk was in the
-    generator prompt; ``None`` when the target does not say.
+    generator prompt; ``None`` when the target does not say. ``tenant_id`` may be omitted by
+    third-party targets (interfaces §1.1).
     """
 
     model_config = ConfigDict(frozen=True, extra="forbid")
 
     chunk_id: ChunkId
     doc_id: DocId
-    tenant_id: TenantId | None
+    tenant_id: TenantId | None = None
     text: str
     score: float
     rank: int
