@@ -253,7 +253,83 @@ ollama rm <model-tag>                         # free space if needed (never the 
 ollama pull <model-tag>
 ```
 
-## 8. Notes
+## 8. Owner access to the VM (Windows → VM, key only)
+
+```bash
+# VM: SSH server was not installed
+sudo apt update && sudo apt install -y openssh-server && sudo systemctl enable --now ssh
+hostname -I                                  # VM LAN address
+```
+
+```powershell
+# Windows PowerShell (not on the VM!)
+ssh-keygen -t ed25519 -C "windows-to-pruefstand-exec"
+type $env:USERPROFILE\.ssh\id_ed25519.pub | ssh <vm-user>@<vm-lan-ip> "mkdir -p ~/.ssh && cat >> ~/.ssh/authorized_keys && chmod 600 ~/.ssh/authorized_keys"
+ssh <vm-user>@<vm-lan-ip> hostname           # works without a password
+```
+
+Optional `C:\Users\<user>\.ssh\config` entry for VS Code Remote-SSH:
+
+```
+Host pruefstand-exec
+    HostName <vm-lan-ip>
+    User <vm-user>
+    IdentityFile ~/.ssh/id_ed25519
+```
+
+Then password login off and fail2ban on (VM; Ubuntu 24.04 reads `sshd_config.d/`):
+
+```bash
+printf 'PasswordAuthentication no\nKbdInteractiveAuthentication no\nPermitRootLogin no\n' | sudo tee /etc/ssh/sshd_config.d/10-pruefstand.conf && sudo sshd -t && sudo systemctl restart ssh
+sudo apt install -y fail2ban && sudo systemctl enable --now fail2ban
+```
+
+## 9. Remote access for Claude Code cloud sessions: Tailscale
+
+The VM is not exposed on a public port. Cloud sessions join the owner's tailnet with an auth key and reach the
+VM by its tailnet name.
+
+Tried and dropped first: **telebit** (`curl https://get.telebit.io/ | bash`): the relay first reset the
+connection, then the installed daemon failed (`status=218/CAPABILITIES`, bundled 2018-era Node.js crash; project
+unmaintained since 2020). Removed again:
+
+```bash
+systemctl --user disable --now telebit 2>/dev/null; rm -rf ~/Applications/telebit ~/.config/telebit ~/.config/systemd/user/telebit.service && systemctl --user daemon-reload
+```
+
+VM side (done 2026-10-31; one-time browser login with the owner's account):
+
+```bash
+curl -fsSL https://tailscale.com/install.sh | sh
+sudo tailscale up --hostname=pruefstand-exec   # open the printed login link once
+tailscale status && tailscale ip -4            # shows pruefstand-exec with a 100.x address
+```
+
+Tailscale admin console: **Machines → pruefstand-exec → Disable key expiry**; **Settings → Keys → Generate auth
+key** (reusable, ephemeral, ≤ 90 days) → cloud environment secret `TS_AUTHKEY` (`docs/ops/secrets.md`).
+
+Cloud environment: secrets `TS_AUTHKEY` and `VM_SSH_KEY` (private key `pruefstand_cloud`, made on Windows with
+`ssh-keygen -t ed25519 -N "" -f $env:USERPROFILE\.ssh\pruefstand_cloud -C "claude-cloud-to-vm"`; its `.pub` is
+appended to the VM user's `authorized_keys`). Setup script:
+
+```bash
+curl -fsSL https://tailscale.com/install.sh | sh
+(tailscaled --tun=userspace-networking --state=mem: > /tmp/tailscaled.log 2>&1 &) ; sleep 3 && tailscale up --authkey="$TS_AUTHKEY" --hostname=claude-cloud --accept-dns=false
+mkdir -p ~/.ssh && printf '%s\n' "$VM_SSH_KEY" > ~/.ssh/id_vm && chmod 600 ~/.ssh/id_vm
+printf 'Host vm\n  HostName pruefstand-exec\n  User <vm-user>\n  IdentityFile ~/.ssh/id_vm\n  IdentitiesOnly yes\n  ProxyCommand tailscale nc %%h %%p\n  ServerAliveInterval 30\n' >> ~/.ssh/config
+```
+
+The cloud environment's network access must allow Tailscale (`*.tailscale.com`, `*.tailscale.io`).
+Test from a cloud session:
+
+```bash
+ssh -o StrictHostKeyChecking=accept-new vm 'hostname && curl -s http://127.0.0.1:11434/api/tags | head -c 100'
+```
+
+Working split: pure code tasks run in the cloud session's own checkout; VM / GPU / Docker tasks run as
+`ssh vm '…'` in `~/code/pruefstand` on the VM.
+
+## 10. Notes
 
 - If the cluster's public SSH endpoint gets a new port, change only `Port` in `/home/pruefstand/.ssh/config`
   and run `sudo systemctl restart pruefstand-tunnel`.
