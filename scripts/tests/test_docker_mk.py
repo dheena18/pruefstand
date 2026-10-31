@@ -1,0 +1,113 @@
+import os
+import shutil
+import subprocess
+from pathlib import Path
+
+REPO = Path(__file__).resolve().parents[2]
+MAKE = shutil.which("make") or "make"
+
+
+def _make(
+    *args: str, offset: str | None = "0", env_file: Path | None = None
+) -> subprocess.CompletedProcess[str]:
+    env = {k: v for k, v in os.environ.items() if k != "PORT_OFFSET"}
+    if offset is not None:
+        env["PORT_OFFSET"] = offset
+    extra = [f"ENV_FILE={env_file}"] if env_file else []
+    return subprocess.run(  # noqa: S603
+        [MAKE, "-C", str(REPO), *extra, *args],
+        capture_output=True,
+        text=True,
+        check=False,
+        env=env,
+    )
+
+
+def _ports(offset: str) -> dict[str, int]:
+    out = _make("-s", "ports", offset=offset).stdout.split()
+    return {name: int(port) for name, port in zip(out[::2], out[1::2], strict=True)}
+
+
+def test_ports_defaults_with_zero_offset() -> None:
+    assert _ports("0") == {
+        "qdrant": 6333,
+        "qdrant-grpc": 6334,
+        "llm": 8080,
+        "embed": 8090,
+        "rag-demo": 8000,
+        "rerank-cpu": 8201,
+        "llm-proxy": 11500,
+    }
+
+
+def test_ports_add_the_offset() -> None:
+    ports = _ports("10000")
+    assert ports["qdrant"] == 16333
+    assert ports["rag-demo"] == 18000
+    assert ports["rerank-cpu"] == 18201
+    assert ports["llm-proxy"] == 21500
+
+
+def test_invalid_offset_is_rejected() -> None:
+    result = _make("-s", "ports", offset="ten")
+    assert result.returncode != 0
+    assert "PORT_OFFSET" in result.stderr
+
+
+def test_up_command_line() -> None:
+    result = _make(
+        "-n",
+        "up",
+        "PROFILES=live dev",
+        "SERVICES=llm",
+        "WAIT=1",
+        "COMPOSE_FILES=x.yml",
+    )
+    assert (
+        "docker compose -f docker-compose.yml -f x.yml --profile live --profile dev "
+        "up -d --wait llm" in result.stdout
+    )
+
+
+def test_stack_run_holds_one_lock_around_up_command_and_down(tmp_path: Path) -> None:
+    lock = f"STACK_LOCK={tmp_path}/stack.lock"
+    line = next(
+        ln for ln in _make("-n", "stack-run", "CMD=true", lock).stdout.splitlines() if "flock" in ln
+    )
+    assert "stack.lock" in line
+    assert line.index("up") < line.index("true") < line.index("down")
+
+
+def test_ports_env_writes_one_idempotent_block(tmp_path: Path) -> None:
+    env_file = tmp_path / ".env"
+    env_file.write_text("FOO=bar\nPORT_OFFSET=0\n\n# note\nBAZ=qux", encoding="utf-8")
+    for _ in range(2):
+        assert _make("ports-env", offset="10000", env_file=env_file).returncode == 0
+    text = env_file.read_text(encoding="utf-8")
+    assert text.count("# >>> ports (make ports-env)") == 1
+    assert text.count("# <<< ports") == 1
+    assert "QDRANT_HTTP_PORT=16333\n" in text
+    assert text.startswith("FOO=bar\nPORT_OFFSET=0\n\n# note\nBAZ=qux\n")
+
+
+def test_offset_is_read_from_the_env_file(tmp_path: Path) -> None:
+    env_file = tmp_path / "env"
+    env_file.write_text("PORT_OFFSET=10000\n", encoding="utf-8")
+    out = _make("-s", "ports", offset=None, env_file=env_file).stdout
+    assert "qdrant 16333" in out
+
+
+def test_check_ports_warns_on_default_port_and_fails_when_strict() -> None:
+    stub = "printf 'proj-qdrant-1 127.0.0.1:6333->6333/tcp, 127.0.0.1:16334->6334/tcp\\n'"
+    warn = _make("check-ports", f"CHECK_PORTS_PS={stub}")
+    assert warn.returncode == 0
+    assert "6333" in warn.stderr
+    assert "16334" not in warn.stderr
+    assert _make("check-ports", "STRICT=1", f"CHECK_PORTS_PS={stub}").returncode != 0
+
+
+def test_check_ports_is_quiet_for_dev_ports() -> None:
+    stub = "printf 'proj-qdrant-1 127.0.0.1:16333->6333/tcp\\n'"
+    result = _make("check-ports", "STRICT=1", f"CHECK_PORTS_PS={stub}")
+    assert result.returncode == 0
+    assert result.stderr == ""

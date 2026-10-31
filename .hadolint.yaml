@@ -1,0 +1,2 @@
+# hadolint configuration (T0.3): any warning or worse fails; rule exceptions go inline with a reason.
+failure-threshold: warning

@@ -1,0 +1,27 @@
+# Keep the build context small and free of secrets and data (CLAUDE.md sections 8-9).
+.git
+.github
+.venv
+**/.venv
+**/__pycache__
+**/.pytest_cache
+**/.mypy_cache
+**/.ruff_cache
+**/node_modules
+**/.next
+.env
+.env.*
+!.env.example
+datasets
+runs
+data/raw
+corpus
+results
+site
+htmlcov
+.coverage*
+coverage.json
+docs
+tasks
+prompts
+**/tests
