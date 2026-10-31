@@ -18,6 +18,7 @@ def _net_stubs(stubs: Stubs, *, exists: bool, routes: str = ROUTES) -> None:
         "docker",
         [
             ("info*", "ok", 0),
+            ("network inspect proxy-egress*bridge.name*", "pfproxy0", inspect_rc),
             ("network inspect proxy-egress*", "10.231.0.0/24", inspect_rc),
             ("network inspect demo-egress*", "10.233.0.0/24", inspect_rc),
         ],
@@ -37,7 +38,8 @@ def test_proxy_net_dry_run_creates_both_networks_once(
     assert res.rc == 0, res.err
     creates = [p for p in _plans(res.out) if p.startswith("docker network create")]
     assert creates == [
-        "docker network create --driver bridge --subnet 10.231.0.0/24 proxy-egress",
+        "docker network create --driver bridge --subnet 10.231.0.0/24 "
+        "-o com.docker.network.bridge.name=pfproxy0 proxy-egress",
         "docker network create --driver bridge --subnet 10.233.0.0/24 demo-egress",
     ]
     assert not any("--internal" in c for c in creates), (
@@ -106,3 +108,20 @@ def test_proxy_net_plans_no_ownership_flags_it_cannot_set(
     assert (
         "pruefstand-firewall.service" in run_script("setup-proxy-net.sh", *_net_args(tmp_path)).out
     )
+
+
+def test_proxy_net_refuses_an_existing_network_without_the_fixed_bridge(
+    run_script: Runner, stubs: Stubs, tmp_path: Path
+) -> None:
+    _net_stubs(stubs, exists=True)
+    stubs.add(
+        "docker",
+        [
+            ("info*", "ok", 0),
+            ("network inspect proxy-egress*bridge.name*", "br-abc123", 0),
+            ("network inspect*", "10.231.0.0/24", 0),
+        ],
+    )
+    res = run_script("setup-proxy-net.sh", *_net_args(tmp_path))
+    assert res.rc == 3
+    assert "pfproxy0" in res.err

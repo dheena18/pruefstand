@@ -134,8 +134,8 @@ check_docker_gw() {
 check_proxy_net() {
   begin proxy-net
   local info
-  if info="$(docker network inspect proxy-egress -f '{{(index .IPAM.Config 0).Subnet}} {{.Internal}}' 2>/dev/null)"; then
-    if [ "$info" = "10.231.0.0/24 false" ]; then ok "proxy-egress 10.231.0.0/24, not internal"; else note FAIL "proxy-egress is [$info]"; fi
+  if info="$(docker network inspect proxy-egress -f '{{(index .IPAM.Config 0).Subnet}} {{.Internal}} {{index .Options "com.docker.network.bridge.name"}}' 2>/dev/null)"; then
+    if [ "$info" = "10.231.0.0/24 false pfproxy0" ]; then ok "proxy-egress 10.231.0.0/24 on bridge pfproxy0, not internal"; else note FAIL "proxy-egress is [$info]"; fi
   else
     note FAIL "network proxy-egress missing (run setup-proxy-net.sh)"
   fi
@@ -150,7 +150,7 @@ check_proxy_net() {
 # ---- firewall (N4.2, D242, P2.2) ------------------------------------------------------------------
 accept_before_drop() {
   local accept drop
-  accept="$(grep -nE -- "-s 10\.231\.0\.0/24 .*-d 172\.17\.0\.1(/32)? .*--dport 11434 .*-j ACCEPT" <<<"$1" | head -1 | cut -d: -f1 || true)"
+  accept="$(grep -nE -- "-s 10\.231\.0\.0/24 .*-d 172\.17\.0\.1(/32)? .*-i pfproxy0 .*--dport 11434 .*-j ACCEPT" <<<"$1" | head -1 | cut -d: -f1 || true)"
   drop="$(grep -nE -- "^-A [A-Z-]+ -d 172\.17\.0\.1(/32)? .*--dport 11434 .*-j DROP" <<<"$1" | head -1 | cut -d: -f1 || true)"
   [ -n "$accept" ] && [ -n "$drop" ] && [ "$accept" -lt "$drop" ]
 }
@@ -158,7 +158,9 @@ fw_rules() {
   local user input net
   user="$(as_root iptables -w -S DOCKER-USER 2>&1 || true)"
   input="$(as_root iptables -w -S PRUEFSTAND-INPUT 2>&1 || true)"
-  accept_before_drop "$user" || note FAIL "DOCKER-USER lacks accept(10.231.0.0/24) before drop for $GW:11434"
+  accept_before_drop "$user" || note FAIL "DOCKER-USER lacks accept(pfproxy0, 10.231.0.0/24) before drop for $GW:11434"
+  grep -qE -- "-s 10\.233\.0\.0/24 .*--ctstate (RELATED,ESTABLISHED|ESTABLISHED,RELATED) .*-j RETURN" <<<"$user" ||
+    note FAIL "DOCKER-USER lacks the conntrack RETURN for 10.233.0.0/24 above its drops"
   accept_before_drop "$input" || note FAIL "PRUEFSTAND-INPUT lacks accept(10.231.0.0/24) before drop for $GW:11434"
   for net in 10.0.0.0/8 172.16.0.0/12 192.168.0.0/16; do
     grep -qE -- "-s 10\.233\.0\.0/24 -d ${net//./\\.} -j DROP" <<<"$user" || note FAIL "DOCKER-USER lacks the drop 10.233.0.0/24 -> $net"
@@ -245,6 +247,9 @@ fw_demo_probes() {
   PROBE_CONTAINERS+=("$cf")
   if docker run -d --name "$cf" --network "$net" --ip 10.232.0.2 --entrypoint sleep "$PROBE_IMAGE" 120 >/dev/null 2>&1 &&
     docker network connect demo-egress "$cf" >/dev/null 2>&1; then
+    if ! docker exec "$cf" nslookup example.com >/dev/null 2>&1; then
+      note WARN "a demo-egress container cannot resolve names; set dns: (e.g. 1.1.1.1) on the cloudflared service"
+    fi
     expect reached "$(probe_exec "$cf" https://example.com)" "cloudflared-like container -> internet"
     while IFS='|' read -r label host port; do
       expect drop "$(probe_exec "$cf" "http://$host:$port/")" "cloudflared-like container -> $label"

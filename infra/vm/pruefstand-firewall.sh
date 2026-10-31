@@ -16,7 +16,12 @@
 #     connections the VM itself opened to the demo networks are let through (conntrack RETURN) before their drops.
 #   * aborts (exit 3) when a non-Docker route overlaps 10.232.0.0/24 or 10.233.0.0/24: Docker's bridge route would
 #     shadow it and could cut SSH.
-# Options: --dry-run (print "PLAN ..." for every change), --check (exit 1 if a rule is missing).
+# Gateway rules first: the gateway pair, the PRUEFSTAND-INPUT chain and its jump are installed BEFORE the demo-subnet
+# gate (route guard) is evaluated; a failing guard exits 3 only after the gateway drop is in place.
+# Options: --dry-run (print "PLAN ..." for every change),
+#          --check (exit 1 if a rule is missing or misordered; exit 3 if all gateway rules are fine but the demo gate is closed),
+#          --check-gateway (exit 1 unless the INPUT jump and the gateway accept-before-drop pair exist in
+#          PRUEFSTAND-INPUT and DOCKER-USER; used as ExecStartPre of pruefstand-tunnel.service, fail closed).
 set -euo pipefail
 
 GW=172.17.0.1
@@ -24,12 +29,14 @@ PORT=11434
 INPUT_CHAIN=PRUEFSTAND-INPUT
 DRY=0
 CHECK=0
+CHECK_GW=0
 
 while [ "$#" -gt 0 ]; do
   case "$1" in
     --dry-run) DRY=1; shift ;;
     --check) CHECK=1; shift ;;
-    -h | --help) sed -n '2,22p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
+    --check-gateway) CHECK_GW=1; CHECK=1; shift ;;
+    -h | --help) sed -n '2,28p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
     *) echo "unknown argument: $1" >&2; exit 2 ;;
   esac
 done
@@ -43,18 +50,19 @@ run() {
   if [ "$DRY" -eq 1 ]; then echo "PLAN iptables -w $*"; else echo "DO   iptables -w $*"; ipt "$@"; fi
 }
 
-GW_ACCEPT="-s 10.231.0.0/24 -d $GW -p tcp --dport $PORT -j ACCEPT"
+BRIDGE=pfproxy0
+GW_ACCEPT="-i $BRIDGE -s 10.231.0.0/24 -d $GW -p tcp --dport $PORT -j ACCEPT"
 GW_DROP="-d $GW -p tcp --dport $PORT -j DROP"
-DOCKER_USER_RULES=(
-  "$GW_ACCEPT"
-  "$GW_DROP"
+CT_DEMO="-s 10.233.0.0/24 -m conntrack --ctstate ESTABLISHED,RELATED -j RETURN"
+GW_USER_RULES=("$GW_ACCEPT" "$GW_DROP")
+GW_INPUT_RULES=("$GW_ACCEPT" "$GW_DROP")
+DEMO_USER_RULES=(
+  "$CT_DEMO"
   "-s 10.233.0.0/24 -d 10.0.0.0/8 -j DROP"
   "-s 10.233.0.0/24 -d 172.16.0.0/12 -j DROP"
   "-s 10.233.0.0/24 -d 192.168.0.0/16 -j DROP"
 )
-INPUT_RULES=(
-  "$GW_ACCEPT"
-  "$GW_DROP"
+DEMO_INPUT_RULES=(
   "-m conntrack --ctstate ESTABLISHED,RELATED -j RETURN"
   "-s 10.232.0.0/24 -j DROP"
   "-s 10.233.0.0/24 -j DROP"
@@ -71,8 +79,9 @@ overlaps() {
   mask=$((prefix == 0 ? 0 : (0xFFFFFFFF << (32 - prefix)) & 0xFFFFFFFF))
   [ $(($(ip2int "${1%/*}") & mask)) -eq $(($(ip2int "${2%/*}") & mask)) ]
 }
-# refuse_foreign_routes: a route of anything but a Docker bridge overlapping a demo subnet would be shadowed
-refuse_foreign_routes() {
+# foreign_routes: return 1 (with a message) when a route of anything but a Docker bridge overlaps a demo subnet:
+# Docker's bridge route would be shadowed and could cut SSH. Only the demo rules wait for this gate.
+foreign_routes() {
   command -v ip >/dev/null || return 0
   local subnet route rest
   while read -r route rest; do
@@ -81,12 +90,12 @@ refuse_foreign_routes() {
       blackhole | unreachable | prohibit | throw) read -r route rest <<<"$rest" ;;
     esac
     [[ "$route" =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+(/[0-9]+)?$ ]] || continue
-    case " $rest " in *" dev docker0 "* | *" dev br-"*) continue ;; esac
+    case " $rest " in *" dev docker0 "* | *" dev br-"* | *" dev pfproxy0 "*) continue ;; esac
     case "$route" in */*) ;; *) route="$route/32" ;; esac
     for subnet in 10.232.0.0/24 10.233.0.0/24; do
       if overlaps "$subnet" "$route"; then
-        echo "pruefstand-firewall: route $route overlaps $subnet; Docker's bridge route would shadow it and could cut SSH. Fix the route first." >&2
-        exit 3
+        echo "pruefstand-firewall: route $route overlaps $subnet; Docker's bridge route would shadow it and could cut SSH. Fix the route first. Demo rules NOT installed." >&2
+        return 1
       fi
     done
   done < <(ip -4 route show)
@@ -110,10 +119,19 @@ missing() {
 gw_order_ok() {
   local listing accept drop
   listing="$(ipt -S "$1" 2>/dev/null || true)"
-  accept="$(grep -nE -- "-s 10\.231\.0\.0/24 .*-d 172\.17\.0\.1(/32)? .*--dport 11434 .*-j ACCEPT" <<<"$listing" | head -1 | cut -d: -f1 || true)"
+  accept="$(grep -nE -- "-s 10\.231\.0\.0/24 .*-d 172\.17\.0\.1(/32)? .*-i pfproxy0 .*--dport 11434 .*-j ACCEPT" <<<"$listing" | head -1 | cut -d: -f1 || true)"
   drop="$(grep -nE -- "^-A [A-Z-]+ -d 172\.17\.0\.1(/32)? .*--dport 11434 .*-j DROP" <<<"$listing" | head -1 | cut -d: -f1 || true)"
   [ -n "$accept" ] && [ -n "$drop" ] && [ "$accept" -lt "$drop" ]
 }
+DEMO_OK=1
+foreign_routes || DEMO_OK=0
+DOCKER_USER_RULES=("${GW_USER_RULES[@]}")
+INPUT_RULES=("${GW_INPUT_RULES[@]}")
+if [ "$DEMO_OK" -eq 1 ]; then
+  DOCKER_USER_RULES+=("${DEMO_USER_RULES[@]}")
+  INPUT_RULES+=("${DEMO_INPUT_RULES[@]}")
+fi
+
 # problems: print every missing rule / wrong order
 problems() {
   missing DOCKER-USER "${DOCKER_USER_RULES[@]}"
@@ -158,10 +176,17 @@ input_apply() {
   } | iptables-restore -w --noflush
 }
 
-refuse_foreign_routes
+if [ "$CHECK_GW" -eq 1 ]; then
+  DOCKER_USER_RULES=("${GW_USER_RULES[@]}")
+  INPUT_RULES=("${GW_INPUT_RULES[@]}")
+fi
 if [ "$CHECK" -eq 1 ]; then
   gone="$(problems | sed '/^$/d')"
   if [ -n "$gone" ]; then echo "missing or wrong rules:"; echo "$gone"; exit 1; fi
+  if [ "$CHECK_GW" -eq 0 ] && [ "$DEMO_OK" -eq 0 ]; then
+    echo "gateway rules present, in order; demo rules not checked (route guard closed)"
+    exit 3
+  fi
   echo "all Pruefstand firewall rules present, in order"
   exit 0
 fi
@@ -179,4 +204,5 @@ if ! ipt -C INPUT -j "$INPUT_CHAIN" 2>/dev/null; then
   changes=1
 fi
 docker_user_apply
+if [ "$DEMO_OK" -eq 0 ]; then exit 3; fi
 if [ "$changes" -eq 0 ]; then echo "no changes needed"; fi

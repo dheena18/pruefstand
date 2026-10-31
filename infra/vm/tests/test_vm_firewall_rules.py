@@ -7,7 +7,7 @@ import pytest
 from vm_testkit import Runner, Stubs
 from vm_world import IPT_INPUT, IPT_USER
 
-ACCEPT = "-s 10.231.0.0/24 -d 172.17.0.1 -p tcp --dport 11434 -j ACCEPT"
+ACCEPT = "-i pfproxy0 -s 10.231.0.0/24 -d 172.17.0.1 -p tcp --dport 11434 -j ACCEPT"
 DROP = "-d 172.17.0.1 -p tcp --dport 11434 -j DROP"
 EMPTY_USER = "-N DOCKER-USER\n-A DOCKER-USER -j RETURN"
 
@@ -80,11 +80,15 @@ def test_demo_rules_and_conntrack_return(run_script: Runner, stubs: Stubs) -> No
     for net in ("10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16"):
         assert f"-s 10.233.0.0/24 -d {net} -j DROP" in user
     assert "10.232.0.0/24" not in user, "demo-net is --internal: no DOCKER-USER rule for it"
-    assert "RETURN" not in user
+    ret = "-s 10.233.0.0/24 -m conntrack --ctstate ESTABLISHED,RELATED -j RETURN"
+    final = _simulate_docker_user(plans)
+    assert final.index(ret) < final.index("-s 10.233.0.0/24 -d 10.0.0.0/8 -j DROP")
     inp = _rules(plans, "PRUEFSTAND-INPUT")
     texts = [r.split("PRUEFSTAND-INPUT ", 1)[1] for r in inp if "-j PRUEFSTAND-INPUT" not in r]
-    ret = texts.index("-m conntrack --ctstate ESTABLISHED,RELATED -j RETURN")
-    assert ret < texts.index("-s 10.232.0.0/24 -j DROP") < texts.index("-s 10.233.0.0/24 -j DROP")
+    ret_at = texts.index("-m conntrack --ctstate ESTABLISHED,RELATED -j RETURN")
+    assert (
+        ret_at < texts.index("-s 10.232.0.0/24 -j DROP") < texts.index("-s 10.233.0.0/24 -j DROP")
+    )
 
 
 def test_second_run_changes_nothing(run_script: Runner, stubs: Stubs) -> None:
@@ -123,24 +127,8 @@ def test_check_mode_reports_missing_and_misordered(run_script: Runner, stubs: St
     assert "order" in res.out
 
 
-def test_aborts_when_a_non_docker_route_overlaps_the_demo_networks(
-    run_script: Runner, stubs: Stubs
-) -> None:
+def test_a_docker_bridge_route_is_not_a_clash(run_script: Runner, stubs: Stubs) -> None:
     _iptables(stubs, present=False)
-    stubs.add(
-        "ip",
-        [
-            (
-                "*route*",
-                "default via 192.168.1.1 dev ens3\n10.233.0.0/16 via 192.168.1.9 dev ens3",
-                0,
-            )
-        ],
-    )
-    res = run_script("pruefstand-firewall.sh", "--dry-run")
-    assert res.rc == 3
-    assert "10.233.0.0/24" in res.err
-    assert "SSH" in res.err
     stubs.add(
         "ip",
         [("*route*", "default via 192.168.1.1 dev ens3\n10.233.0.0/24 dev br-1a2b scope link", 0)],
@@ -155,3 +143,55 @@ def test_real_run_needs_root(run_script: Runner, stubs: Stubs) -> None:
     assert run_script("pruefstand-firewall.sh").rc == 2
     assert all("-I" not in c and "-A" not in c for c in stubs.calls("iptables"))
     assert not stubs.calls("iptables-restore")
+
+
+ROUTE_CLASH = "default via 192.168.1.1 dev ens3\n10.233.0.0/16 via 192.168.1.9 dev ens3"
+
+
+def test_route_guard_still_installs_the_gateway_drop_first(
+    run_script: Runner, stubs: Stubs
+) -> None:
+    _iptables(stubs, present=False)
+    stubs.add("ip", [("*route*", ROUTE_CLASH, 0)])
+    res = run_script("pruefstand-firewall.sh", "--dry-run")
+    assert res.rc == 3
+    assert "Demo rules NOT installed" in res.err
+    plans = _plans(res.out)
+    user = _simulate_docker_user(plans)
+    assert user.index(ACCEPT) < user.index(DROP)
+    inp = _rules(plans, "PRUEFSTAND-INPUT")
+    assert any(r.endswith(DROP) for r in inp)
+    assert any(r.endswith(ACCEPT) for r in inp)
+    assert any("-I INPUT 1" in p and "-j PRUEFSTAND-INPUT" in p for p in plans)
+    assert not [p for p in plans if "10.233.0.0/24" in p or "10.232.0.0/24" in p], "no demo rules"
+
+
+def test_check_gateway_needs_jump_and_ordered_pairs(run_script: Runner, stubs: Stubs) -> None:
+    _iptables(stubs, present=True)
+    assert run_script("pruefstand-firewall.sh", "--check-gateway").rc == 0
+    _iptables(stubs, present=False)
+    assert run_script("pruefstand-firewall.sh", "--check-gateway").rc == 1
+    lines = IPT_USER.splitlines()
+    swapped = "\n".join([lines[0], lines[2], lines[1], *lines[3:]])
+    _iptables(stubs, present=True, user=swapped)
+    assert run_script("pruefstand-firewall.sh", "--check-gateway").rc == 1
+    _iptables(stubs, present=True)
+    no_jump = [("*-C INPUT*", "", 1), ("*-C *", "", 0), ("*-S DOCKER-USER", IPT_USER, 0)]
+    stubs.add("iptables", [*no_jump, ("*-S PRUEFSTAND-INPUT", IPT_INPUT, 0), ("*", "", 0)])
+    assert run_script("pruefstand-firewall.sh", "--check-gateway").rc == 1, "missing INPUT jump"
+
+
+def test_check_gateway_ignores_the_demo_route_guard(run_script: Runner, stubs: Stubs) -> None:
+    _iptables(stubs, present=True)
+    stubs.add("ip", [("*route*", ROUTE_CLASH, 0)])
+    assert run_script("pruefstand-firewall.sh", "--check-gateway").rc == 0
+
+
+def test_check_with_closed_demo_gate_is_3_only_when_the_gateway_is_fine(
+    run_script: Runner, stubs: Stubs
+) -> None:
+    _iptables(stubs, present=True)
+    stubs.add("ip", [("*route*", ROUTE_CLASH, 0)])
+    assert run_script("pruefstand-firewall.sh", "--check").rc == 3
+    _iptables(stubs, present=False)
+    assert run_script("pruefstand-firewall.sh", "--check").rc == 1

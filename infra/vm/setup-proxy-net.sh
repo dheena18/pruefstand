@@ -2,7 +2,8 @@
 # setup-proxy-net.sh: Docker egress networks and the firewall unit (S5b, D242, R12 N4.2, R13 P2.2).
 #
 # Run once by the owner: sudo infra/vm/setup-proxy-net.sh [--dry-run]   (idempotent)
-#   * docker network create --driver bridge --subnet 10.231.0.0/24 proxy-egress   (llm-proxy -> tunnel)
+#   * docker network create --driver bridge --subnet 10.231.0.0/24 -o com.docker.network.bridge.name=pfproxy0 proxy-egress
+#     (llm-proxy -> tunnel; the fixed bridge name lets the firewall match the interface, `-i pfproxy0`)
 #   * docker network create --driver bridge --subnet 10.233.0.0/24 demo-egress    (cloudflared's internet side)
 #     (demo-net 10.232.0.0/24 is created --internal by the demo compose file, T8.4/T8.5, not here)
 #     A network is only created if missing; a subnet that clashes with an existing route is refused (exit 3).
@@ -69,16 +70,23 @@ refuse_clashing_route() {
   done < <(ip -4 route show)
 }
 
-# ensure_network NAME SUBNET
+# ensure_network NAME SUBNET [BRIDGE]: create when missing; BRIDGE fixes the Linux bridge name
 ensure_network() {
-  local name="$1" subnet="$2" current
+  local name="$1" subnet="$2" bridge="${3:-}" current have_bridge
+  local -a opts=()
+  [ -z "$bridge" ] || opts=(-o "com.docker.network.bridge.name=$bridge")
   if current="$(docker network inspect "$name" -f '{{(index .IPAM.Config 0).Subnet}}' 2>/dev/null)"; then
     [ "$current" = "$subnet" ] || die "network $name exists with subnet $current, expected $subnet"
+    if [ -n "$bridge" ]; then
+      have_bridge="$(docker network inspect "$name" -f '{{index .Options "com.docker.network.bridge.name"}}' 2>/dev/null || true)"
+      [ "$have_bridge" = "$bridge" ] ||
+        die "network $name has bridge name '${have_bridge}', expected $bridge; remove it (docker network rm $name, no containers attached) and run this script again"
+    fi
     echo "OK   network $name ($subnet) exists"
     return
   fi
   refuse_clashing_route "$subnet"
-  run docker network create --driver bridge --subnet "$subnet" "$name"
+  run docker network create --driver bridge --subnet "$subnet" ${opts[@]+"${opts[@]}"} "$name"
 }
 
 # install_file MODE SRC DEST: copy only when different; sets `changed`.
@@ -91,7 +99,7 @@ install_file() {
 }
 
 refuse_clashing_route 10.232.0.0/24   # demo-net is created by the demo compose file, but must not clash either
-ensure_network proxy-egress 10.231.0.0/24
+ensure_network proxy-egress 10.231.0.0/24 pfproxy0
 ensure_network demo-egress 10.233.0.0/24
 install_file 0755 "$HERE/pruefstand-firewall.sh" "$BIN_DIR/pruefstand-firewall.sh"
 install_file 0644 "$HERE/pruefstand-firewall.service" "$UNIT_DIR/pruefstand-firewall.service"

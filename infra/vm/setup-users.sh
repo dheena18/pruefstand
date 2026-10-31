@@ -120,10 +120,16 @@ ensure_lock() {
   fi
   if [ ! -e "$lock" ]; then
     run install -o "$SVC" -g "$SVC" -m 0660 /dev/null "$lock"
-  elif [ "$(stat -c '%a %U:%G' "$lock")" != "660 $SVC:$SVC" ]; then
-    run chown -h "$SVC:$SVC" "$lock"
-    run chmod 0660 "$lock"
+    return
   fi
+  # Open first, then verify and change through the descriptor: no window to swap in a symlink.
+  exec 8<"$lock"
+  [ -f /proc/self/fd/8 ] || die "$lock is not a regular file"
+  if [ "$(stat -L -c '%a %U:%G' /proc/self/fd/8)" != "660 $SVC:$SVC" ]; then
+    run chown "$SVC:$SVC" /proc/self/fd/8
+    run chmod 0660 /proc/self/fd/8
+  fi
+  exec 8<&-
 }
 
 ensure_wrapper() {

@@ -10,6 +10,10 @@
 #   exit 2                    gpu.lock missing (run infra/vm/setup-users.sh)
 #   otherwise                 the exit code of <cmd>
 # PRUEFSTAND_LOCK_DIR exists only so tests can point at a temp dir; production never sets it.
+# Limits (advisory lock, not a security boundary): PRUEFSTAND_LOCK_HELD and PRUEFSTAND_LOCK_DIR are unauthenticated
+# environment variables, so any process of the owner can skip or redirect the lock; fd 9 is inherited by daemons
+# started under the lock, which then keep it held after <cmd> returns; the exit codes 64, 75 and 2 can also be
+# returned by the wrapped command itself.
 set -euo pipefail
 
 lock="${PRUEFSTAND_LOCK_DIR:-/var/lib/pruefstand}/gpu.lock"

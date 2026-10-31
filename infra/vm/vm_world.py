@@ -12,14 +12,16 @@ from vm_testkit import VM_DIR, Result, Rule, Runner, Stubs
 PF = "pruefstand:pruefstand"
 UNIT = (VM_DIR / "pruefstand-tunnel.service").read_text(encoding="utf-8")
 IPT_USER = """-P DOCKER-USER ACCEPT
--A DOCKER-USER -s 10.231.0.0/24 -d 172.17.0.1/32 -p tcp -m tcp --dport 11434 -j ACCEPT
+-A DOCKER-USER -s 10.231.0.0/24 -d 172.17.0.1/32 -i pfproxy0 -p tcp -m tcp --dport 11434 -j ACCEPT
 -A DOCKER-USER -d 172.17.0.1/32 -p tcp -m tcp --dport 11434 -j DROP
+-A DOCKER-USER -s 10.233.0.0/24 -m conntrack --ctstate RELATED,ESTABLISHED -j RETURN
 -A DOCKER-USER -s 10.233.0.0/24 -d 10.0.0.0/8 -j DROP
 -A DOCKER-USER -s 10.233.0.0/24 -d 172.16.0.0/12 -j DROP
 -A DOCKER-USER -s 10.233.0.0/24 -d 192.168.0.0/16 -j DROP
 -A DOCKER-USER -j RETURN"""
-IPT_INPUT = """-N PRUEFSTAND-INPUT
--A PRUEFSTAND-INPUT -s 10.231.0.0/24 -d 172.17.0.1/32 -p tcp -m tcp --dport 11434 -j ACCEPT
+ACCEPT_RULE = "-s 10.231.0.0/24 -d 172.17.0.1/32 -i pfproxy0 -p tcp -m tcp --dport 11434 -j ACCEPT"
+IPT_INPUT = f"""-N PRUEFSTAND-INPUT
+-A PRUEFSTAND-INPUT {ACCEPT_RULE}
 -A PRUEFSTAND-INPUT -d 172.17.0.1/32 -p tcp -m tcp --dport 11434 -j DROP
 -A PRUEFSTAND-INPUT -m conntrack --ctstate RELATED,ESTABLISHED -j RETURN
 -A PRUEFSTAND-INPUT -s 10.232.0.0/24 -j DROP
@@ -153,7 +155,7 @@ def _docker_stubs(world: World) -> None:
             ("info -f*", "[name=apparmor name=seccomp,profile=builtin name=cgroupns]", 0),
             ("info*", "ok", 0),
             ("ps -q*", "", 0),
-            ("network inspect proxy-egress*", "10.231.0.0/24 false", 0),
+            ("network inspect proxy-egress*", "10.231.0.0/24 false pfproxy0", 0),
             ("network inspect demo-egress*", "10.233.0.0/24", 0),
             ("network inspect*", "", 1),
             ("network create*", "id", 0),
@@ -161,7 +163,8 @@ def _docker_stubs(world: World) -> None:
             ("network connect*", "", 0),
             ("rm -f*", "", 0),
             ("run -d*", "cid", 0),
-            ("exec*example.com*", "200", 0), ("exec*", "000", 28),
+            ("exec*example.com*", "200", 0), ("exec*nslookup*", "", 0),
+            ("exec*", "000", 28),
             ("run*--network proxy-egress*", "200", 0),
             ("run*--network bridge*", "000", 28),
             ("run*", "000", 28),

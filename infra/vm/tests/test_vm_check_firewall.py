@@ -158,3 +158,30 @@ def test_restart_drill_fails_when_the_firewall_unit_did_not_restart(
     assert res.rc == 1
     assert "CHECK firewall FAIL" in res.out
     assert "did not restart" in res.out
+
+
+def test_missing_conntrack_return_in_docker_user_fails(world: World, run_script: Runner) -> None:
+    no_ret = "\n".join(
+        ln for ln in IPT_USER.splitlines() if "RETURN" not in ln or "ctstate" not in ln
+    )
+    world.override("iptables", ("*-S DOCKER-USER", no_ret, 0))
+    status, detail = check(world, run_script, "firewall")["firewall"]
+    assert status == "FAIL"
+    assert "conntrack" in detail
+
+
+def test_accept_without_the_fixed_bridge_fails(world: World, run_script: Runner) -> None:
+    world.override("iptables", ("*-S DOCKER-USER", IPT_USER.replace(" -i pfproxy0", ""), 0))
+    assert check(world, run_script, "firewall")["firewall"][0] == "FAIL"
+
+
+def test_demo_egress_without_dns_warns_with_the_hint(world: World, run_script: Runner) -> None:
+    world.override("docker", ("exec*nslookup*", "", 1))
+    status, detail = check(world, run_script, "firewall")["firewall"]
+    assert status == "WARN"
+    assert "dns:" in detail
+
+
+def test_proxy_net_wants_the_fixed_bridge_name(world: World, run_script: Runner) -> None:
+    world.override("docker", ("network inspect proxy-egress*", "10.231.0.0/24 false br-abc", 0))
+    assert check(world, run_script, "proxy-net")["proxy-net"][0] == "FAIL"

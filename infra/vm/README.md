@@ -48,6 +48,12 @@ secret and no `systemctl --user`. `vm-check-<date>.out` is real output saved aft
 
 ## The lock and `MAINTENANCE`
 
+Limits of `pruefstand-lock`: it is an advisory lock between cooperating processes of the same machine, not a security
+boundary. `PRUEFSTAND_LOCK_HELD` and `PRUEFSTAND_LOCK_DIR` are unauthenticated environment variables (any process of the
+owner can skip or redirect the lock), fd 9 is inherited by daemons started under the lock (they keep it held), and the
+exit codes 64, 75 and 2 can collide with those of the wrapped command.
+
+
 `/var/lib/pruefstand/gpu.lock` is the **one** GPU lock of the host. The orchestrator takes it once per job; the owner
 and agents take it through `pruefstand-lock`, so dev GPU work and gate jobs exclude each other:
 
@@ -96,13 +102,15 @@ sudo systemctl restart pruefstand-tunnel
 ## How `llm-proxy` reaches the tunnel (D242)
 
 Candidates are only on the internal network `gate-net` and call `http://llm-proxy:11500`. `llm-proxy` (T6.2a) is on
-`gate-net` **and** the small non-internal bridge `proxy-egress` (10.231.0.0/24, created by `setup-proxy-net.sh`) and
+`gate-net` **and** the small non-internal bridge `proxy-egress` (10.231.0.0/24, created by `setup-proxy-net.sh` on the fixed Linux bridge `pfproxy0`, so the firewall matches `-i pfproxy0`; an existing `proxy-egress` with another bridge name is refused: remove it and run the script again) and
 reaches Ollama at `172.17.0.1:11434`, the tunnel's second listener. `pruefstand-firewall.sh` accepts TCP 11434 to
 `172.17.0.1` only from 10.231.0.0/24 and drops it from everything else, in **both** `DOCKER-USER` and `PRUEFSTAND-INPUT`
 (container -> host traffic is delivered locally and passes `INPUT`, not `FORWARD`). The demo networks (R13 P2.2):
 `demo-net` 10.232.0.0/24 is `--internal`; `demo-egress` 10.233.0.0/24 (cloudflared's internet side) may not reach
 RFC 1918 addresses, and neither demo network may reach a VM address. The rules live in `pruefstand-firewall.service`
-(a oneshot with `PartOf=docker.service`, so they are re-applied whenever Docker restarts). `PRUEFSTAND-INPUT` is replaced in one `iptables-restore --noflush` transaction and the `DOCKER-USER` rules are inserted (drop first, accept above it), so the gateway drop is never absent while rules are re-applied. Replies to connections the VM itself opened to the demo networks pass first (`conntrack ESTABLISHED,RELATED -j RETURN`, before the demo drops). The script aborts if a non-Docker route overlaps 10.232.0.0/24 or 10.233.0.0/24. It touches only its
+(a oneshot with `PartOf=docker.service`, so they are re-applied whenever Docker restarts). `PRUEFSTAND-INPUT` is replaced in one `iptables-restore --noflush` transaction and the `DOCKER-USER` rules are inserted (drop first, accept above it), so the gateway drop is never absent while rules are re-applied. Replies to connections the VM itself opened to the demo networks pass first (`conntrack ESTABLISHED,RELATED -j RETURN`, before the demo drops). The gateway rules (INPUT chain, its jump, the gateway accept/drop pair) are applied FIRST; only the demo rules wait for a route guard that refuses non-Docker routes overlapping 10.232.0.0/24 or 10.233.0.0/24 (the script then exits 3 after the gateway drop is in place). `DOCKER-USER` also returns established/related traffic of 10.233.0.0/24 before its RFC 1918 drops. A cloudflared container on `demo-egress` may not resolve names through Docker's embedded DNS on an `--internal` network: set `dns:` (for example `1.1.1.1`) on that service; `vm_check firewall` warns when a demo-egress container cannot resolve.
+
+**Fail closed:** `pruefstand-tunnel.service` has `Requires=pruefstand-firewall.service` and `ExecStartPre=+/usr/local/sbin/pruefstand-firewall.sh --check-gateway`, which fails unless the INPUT jump and the ordered gateway pair exist in `PRUEFSTAND-INPUT` and `DOCKER-USER`; `Restart=always` retries, so the 172.17.0.1 listener never exists without its drop. `install-tunnel.sh` runs the same check first. The firewall script touches only its
 own chain and rules; it never flushes the ruleset or enables the distro nftables unit (that would delete Docker's
 NAT and isolation rules).
 

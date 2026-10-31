@@ -104,10 +104,18 @@ def test_install_tunnel_second_run_with_same_unit_only_enables(
     assert "systemctl enable --now pruefstand-tunnel" in res.out
 
 
-def test_tunnel_starts_after_the_firewall() -> None:
+def test_tunnel_fails_closed_without_the_firewall() -> None:
     unit = _section(TUNNEL, "Unit")
     assert "pruefstand-firewall.service" in unit["After"][0]
-    assert "pruefstand-firewall.service" in unit["Wants"][0]
+    assert unit["Requires"] == ["pruefstand-firewall.service"]
+    pre = _section(TUNNEL, "Service")["ExecStartPre"]
+    assert pre == ["+/usr/local/sbin/pruefstand-firewall.sh --check-gateway"]
+
+
+def test_tunnel_notices_dead_connections() -> None:
+    exec_start = _section(TUNNEL, "Service")["ExecStart"][0]
+    assert "-o ServerAliveInterval=30" in exec_start
+    assert "-o ServerAliveCountMax=3" in exec_start
 
 
 def test_tunnel_is_hardened_without_breaking_autossh() -> None:

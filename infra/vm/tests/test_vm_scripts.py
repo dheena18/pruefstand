@@ -282,3 +282,18 @@ def test_ssh_key_detects_an_indented_host_line_and_uses_n_for_the_login_test(
     assert res.rc == 0, res.err
     assert (ssh / "config").read_text(encoding="utf-8").count("Host cairo-s101lp") == 1
     assert any(" -n " in f" {c} " for c in stubs.calls("ssh"))
+
+
+def test_users_fixes_an_existing_lock_file_through_the_descriptor(
+    run_script: Runner, stubs: Stubs, tmp_path: Path
+) -> None:
+    _user_stubs(stubs, user_exists=True, docker_members="alice,pruefstand", pf_members="alice")
+    (tmp_path / "lib").mkdir()
+    (tmp_path / "lib" / "gpu.lock").touch()
+    (tmp_path / "lib" / "gpu.lock").chmod(0o644)
+    res = run_script("setup-users.sh", *_users_args(tmp_path))
+    assert res.rc == 0, res.err
+    assert "chmod 0660 /proc/self/fd/8" in res.out
+    assert str(tmp_path / "lib" / "gpu.lock") not in "".join(
+        ln for ln in res.out.splitlines() if "chmod" in ln or "chown" in ln
+    )
