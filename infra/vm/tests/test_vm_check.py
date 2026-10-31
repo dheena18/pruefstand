@@ -1,7 +1,9 @@
 """T0.7 CPU tests: ``vm_check.sh`` host, docker, tunnel, lock and data-root checks (stubs only)."""
 
+import os
 from pathlib import Path
 
+import pytest
 from vm_testkit import Runner
 from vm_world import LISTEN, PF, World, check, raw
 
@@ -137,3 +139,38 @@ def test_ssh_key_checks(world: World, run_script: Runner, tmp_path: Path) -> Non
     assert check(world, run_script, "ssh-key")["ssh-key"][0] == "PASS"
     (tmp_path / "ownerhome" / ".ssh" / "id_ed25519_cluster").touch()
     assert check(world, run_script, "ssh-key")["ssh-key"][0] == "FAIL"
+
+
+def test_strict_turns_warnings_into_failures(world: World, run_script: Runner) -> None:
+    assert raw(world, run_script).rc == 0
+    assert raw(world, run_script, "--strict").rc == 1
+
+
+def test_refuses_to_run_as_root(world: World, run_script: Runner) -> None:
+    if os.geteuid() != 0:
+        pytest.skip("only observable when the tests themselves run as root")
+    res = raw(world, run_script, env={"PRUEFSTAND_ALLOW_ROOT": ""})
+    assert res.rc == 2
+    assert "root" in res.err
+
+
+def test_busy_lock_is_only_a_warning(world: World, run_script: Runner) -> None:
+    world.stubs.add("pruefstand-lock", [("*", "", 75)])
+    status, detail = check(world, run_script, "lock-dir")["lock-dir"]
+    assert status == "WARN"
+    assert "busy" in detail
+
+
+def test_credentials_in_urls_are_redacted(world: World, run_script: Runner, tmp_path: Path) -> None:
+    (tmp_path / "env").write_text(
+        "OLLAMA_GPU0_URL=http://user:s3cret@public.example.org:11434\nOLLAMA_GPU1_URL=http://x\n",
+        encoding="utf-8",
+    )
+    res = raw(world, run_script, "tunnel")
+    assert "s3cret" not in res.out + res.err
+    assert "FAIL" in res.out
+
+
+def test_listeners_are_read_with_root_when_sudo_works(world: World, run_script: Runner) -> None:
+    raw(world, run_script, "tunnel")
+    assert any(c.startswith("sudo") and " ss " in c + " " for c in world.stubs.calls("sudo"))

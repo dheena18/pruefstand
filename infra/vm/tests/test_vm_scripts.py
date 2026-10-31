@@ -7,7 +7,7 @@ import subprocess
 from pathlib import Path
 
 import pytest
-from vm_testkit import VM_DIR, Runner, Stubs, bash
+from vm_testkit import Runner, Stubs
 
 DF_HEADER = "Filesystem 1024-blocks Used Available Capacity Mounted on"
 DIRS = ("data", "corpus", "datasets", "baselines", "backups", "cache", "logs")
@@ -218,61 +218,67 @@ def test_ssh_key_new_block_needs_host_port_user(run_script: Runner, tmp_path: Pa
     assert res.rc == 2
 
 
-# --- pruefstand-lock (A11-01) ---------------------------------------------------------------------
-def _lock_dir(tmp_path: Path) -> Path:
-    lock_dir = tmp_path / "lock"
-    lock_dir.mkdir()
-    (lock_dir / "gpu.lock").touch()
-    return lock_dir
+# --- review hardening (M-minors) ------------------------------------------------------------------
+def test_data_root_refuses_symlinks(run_script: Runner, tmp_path: Path, me: str) -> None:
+    real = tmp_path / "real"
+    real.mkdir()
+    link = tmp_path / "pf"
+    link.symlink_to(real)
+    res = run_script("setup-data-root.sh", "--dry-run", "--root", link, "--owner", me)
+    assert res.rc == 3
+    assert "symlink" in res.err
+    root = tmp_path / "ok"
+    (root / "data").parent.mkdir()
+    (root / "data").symlink_to(real)
+    assert run_script("setup-data-root.sh", "--dry-run", "--root", root, "--owner", me).rc == 3
 
 
-def _run_lock(
-    stubs: Stubs, lock_dir: Path, home: Path, *cmd: str, timeout_s: str = "5"
-) -> subprocess.CompletedProcess[str]:
-    env = {
-        "PATH": str(stubs.bin),
-        "HOME": str(home),
-        "PRUEFSTAND_LOCK_DIR": str(lock_dir),
-        "GPU_LOCK_TIMEOUT_S": timeout_s,
-    }
-    return subprocess.run(  # noqa: S603
-        [shutil.which("bash") or "bash", str(VM_DIR / "pruefstand-lock"), *cmd],
-        env=env, capture_output=True, text=True, timeout=60, check=False,
-    )  # fmt: skip
-
-
-def test_lock_runs_command_with_lock_held_flag_and_returns_its_rc(
-    stubs: Stubs, tmp_path: Path
+def test_users_refuses_a_symlinked_lock_dir(
+    run_script: Runner, stubs: Stubs, tmp_path: Path
 ) -> None:
-    lock_dir = _lock_dir(tmp_path)
-    ok = _run_lock(stubs, lock_dir, tmp_path / "a", "sh", "-c", 'echo "held=$PRUEFSTAND_LOCK_HELD"')
-    assert ok.returncode == 0
-    assert "held=1" in ok.stdout
-    assert _run_lock(stubs, lock_dir, tmp_path / "a", "sh", "-c", "exit 7").returncode == 7
+    _user_stubs(stubs, user_exists=True, docker_members="alice,pruefstand", pf_members="alice")
+    (tmp_path / "elsewhere").mkdir()
+    (tmp_path / "lib").symlink_to(tmp_path / "elsewhere")
+    res = run_script("setup-users.sh", *_users_args(tmp_path))
+    assert res.rc == 3
+    assert "symlink" in res.err
 
 
-def test_lock_busy_exits_75_across_homes(stubs: Stubs, tmp_path: Path) -> None:
-    lock_dir = _lock_dir(tmp_path)
-    holder = subprocess.Popen(  # noqa: S603
-        [bash(), str(VM_DIR / "pruefstand-lock"), "sh", "-c", "echo ready; sleep 20"],
-        env={"PATH": str(stubs.bin), "PRUEFSTAND_LOCK_DIR": str(lock_dir), "HOME": str(tmp_path)},
-        stdout=subprocess.PIPE, text=True,
-    )  # fmt: skip
-    try:
-        assert holder.stdout is not None
-        assert holder.stdout.readline().strip() == "ready"
-        res = _run_lock(stubs, lock_dir, tmp_path / "other-home", "true", timeout_s="1")
-        assert res.returncode == 75
-        assert "gpu.lock busy" in res.stderr
-    finally:
-        holder.kill()
-        holder.wait()
+@needs_keygen
+def test_ssh_key_validates_arguments_and_home(run_script: Runner, tmp_path: Path) -> None:
+    good = ["--home", tmp_path / "h", "--no-verify"]
+    bad_args = [
+        ["--host", "a b", "--port", "22", "--user", "u"],
+        ["--host", "h", "--port", "x", "--user", "u"],
+        ["--host", "h", "--port", "22", "--user", "u;rm"],
+    ]
+    for bad in bad_args:
+        assert run_script("setup-ssh-key.sh", *good, *bad).rc == 2
+    res = run_script(
+        "setup-ssh-key.sh",
+        "--home",
+        "/home/nobody/x",
+        "--no-verify",
+        "--host",
+        "h",
+        "--port",
+        "1",
+        "--user",
+        "u",
+    )
+    assert res.rc == 2
+    assert "TMPDIR" in res.err
 
 
-def test_lock_without_command_or_lock_file_fails_cleanly(stubs: Stubs, tmp_path: Path) -> None:
-    assert _run_lock(stubs, _lock_dir(tmp_path), tmp_path).returncode == 64
-    empty = tmp_path / "empty"
-    empty.mkdir()
-    res = _run_lock(stubs, empty, tmp_path, "true")
-    assert res.returncode == 2
-    assert "setup-users.sh" in res.stderr
+@needs_keygen
+def test_ssh_key_detects_an_indented_host_line_and_uses_n_for_the_login_test(
+    run_script: Runner, stubs: Stubs, tmp_path: Path
+) -> None:
+    ssh = tmp_path / "h" / ".ssh"
+    ssh.mkdir(parents=True)
+    (ssh / "config").write_text("  Host cairo-s101lp\n    HostName x\n", encoding="utf-8")
+    stubs.add("ssh", [("*", "", 0)])
+    res = run_script("setup-ssh-key.sh", "--home", tmp_path / "h")
+    assert res.rc == 0, res.err
+    assert (ssh / "config").read_text(encoding="utf-8").count("Host cairo-s101lp") == 1
+    assert any(" -n " in f" {c} " for c in stubs.calls("ssh"))

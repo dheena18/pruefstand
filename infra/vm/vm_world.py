@@ -21,6 +21,7 @@ IPT_USER = """-P DOCKER-USER ACCEPT
 IPT_INPUT = """-N PRUEFSTAND-INPUT
 -A PRUEFSTAND-INPUT -s 10.231.0.0/24 -d 172.17.0.1/32 -p tcp -m tcp --dport 11434 -j ACCEPT
 -A PRUEFSTAND-INPUT -d 172.17.0.1/32 -p tcp -m tcp --dport 11434 -j DROP
+-A PRUEFSTAND-INPUT -m conntrack --ctstate RELATED,ESTABLISHED -j RETURN
 -A PRUEFSTAND-INPUT -s 10.232.0.0/24 -j DROP
 -A PRUEFSTAND-INPUT -s 10.233.0.0/24 -j DROP"""
 LISTEN = (
@@ -66,10 +67,12 @@ def _files(tmp_path: Path) -> tuple[dict[str, str], Path]:
     )
     env = {
         "OS_RELEASE_FILE": str(tmp_path / "os-release"), "MEMINFO_FILE": str(tmp_path / "meminfo"),
-        "FSTAB_FILE": str(tmp_path / "fstab"), "ENV_FILE": str(tmp_path / "env"),
+        "FSTAB_FILE": str(tmp_path / "fstab"), "PRUEFSTAND_ENV_FILE": str(tmp_path / "env"),
         "PRUEFSTAND_LOCK_DIR": str(lock),
         "PRUEFSTAND_DATA_ROOT": str(data),
         "TRUENAS_HOST_IP": "10.0.0.2",
+        "PROBE_IMAGE": "curlimages/curl@sha256:" + "ab" * 32,
+        "PRUEFSTAND_ALLOW_ROOT": "1",
         "PRUEFSTAND_CONFIRM_FILE": str(tmp_path / "confirmed"),
         "DRILL_WAIT_S": "0",
         "HOME": str(tmp_path / "h"),
@@ -95,6 +98,7 @@ def _host_stubs(world: World, ownerhome: Path) -> None:
         [
             ("passwd pruefstand", "pruefstand:x:998:998::/home/pruefstand:/bin/bash", 0),
             ("passwd alice", f"alice:x:1000:1000::{ownerhome}:/bin/bash", 0),
+            ("ahostsv4 cluster.invalid", "192.168.77.5 STREAM cluster.invalid", 0),
             ("group docker", "docker:x:999:alice,pruefstand", 0),
             ("group pruefstand", "pruefstand:x:998:alice", 0),
         ],
@@ -128,11 +132,13 @@ def _service_stubs(world: World) -> None:
             ),
             ("cat pruefstand-tunnel", UNIT, 0),
             ("restart docker", "", 0),
+            ("show -p ActiveEnterTimestampMonotonic --value pruefstand-firewall", "{n}00", 0),
         ],
     )
     world.put(
         "iptables",
         [
+            ("*-C INPUT*", "", 0),
             ("*-S DOCKER-USER", IPT_USER, 0), ("*-S PRUEFSTAND-INPUT", IPT_INPUT, 0),
             ("*-S DOCKER-ISOLATION-STAGE-1", "-N DOCKER-ISOLATION-STAGE-1", 0),
             ("*-t nat -S DOCKER", "-N DOCKER", 0),
@@ -146,6 +152,7 @@ def _docker_stubs(world: World) -> None:
         [
             ("info -f*", "[name=apparmor name=seccomp,profile=builtin name=cgroupns]", 0),
             ("info*", "ok", 0),
+            ("ps -q*", "", 0),
             ("network inspect proxy-egress*", "10.231.0.0/24 false", 0),
             ("network inspect demo-egress*", "10.233.0.0/24", 0),
             ("network inspect*", "", 1),

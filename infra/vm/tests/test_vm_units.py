@@ -102,3 +102,22 @@ def test_install_tunnel_second_run_with_same_unit_only_enables(
     assert "install " not in res.out
     assert "systemctl restart" not in res.out
     assert "systemctl enable --now pruefstand-tunnel" in res.out
+
+
+def test_tunnel_starts_after_the_firewall() -> None:
+    unit = _section(TUNNEL, "Unit")
+    assert "pruefstand-firewall.service" in unit["After"][0]
+    assert "pruefstand-firewall.service" in unit["Wants"][0]
+
+
+def test_tunnel_is_hardened_without_breaking_autossh() -> None:
+    service = _section(TUNNEL, "Service")
+    assert service["NoNewPrivileges"] == ["yes"]
+    assert service["PrivateTmp"] == ["yes"]
+    assert service["ProtectSystem"] == ["full"]
+
+
+def test_firewall_unit_retries_on_failure() -> None:
+    service = _section(FIREWALL, "Service")
+    assert service["Restart"] == ["on-failure"]
+    assert service["RestartSec"] == ["5"]

@@ -108,7 +108,16 @@ class Stubs:
             err = rule[3] if len(rule) == 4 else ""
             glob = "*".join(shlex.quote(part) if part else "" for part in pattern.split("*"))
             lines.append(f"  {glob})")
-            if out:
+            if "{n}" in out:
+                counter = shlex.quote(str(self.root / f"count-{name}"))
+                lines.append(
+                    f"    n=$(( $(cat {counter} 2>/dev/null || echo 0) + 1 )); echo $n > {counter}"
+                )
+                lines.append(
+                    f"    printf '%s\\n' {shlex.quote(out.replace('{n}', '@N@'))}"
+                    f' | sed "s/@N@/$n/"'
+                )
+            elif out:
                 lines.append(f"    printf '%s\\n' {shlex.quote(out)}")
             if err:
                 lines.append(f"    printf '%s\\n' {shlex.quote(err)} >&2")

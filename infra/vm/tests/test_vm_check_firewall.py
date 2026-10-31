@@ -4,7 +4,7 @@ import fcntl
 from pathlib import Path
 
 from vm_testkit import VM_DIR, Runner
-from vm_world import IPT_USER, World, check, raw
+from vm_world import IPT_INPUT, IPT_USER, World, check, raw
 
 
 def test_gh_scope(world: World, run_script: Runner) -> None:
@@ -80,3 +80,81 @@ def test_restart_drill_restarts_docker_once_and_rechecks_firewall(
 def test_docker_is_restarted_in_exactly_one_place() -> None:
     text = (VM_DIR / "vm_check.sh").read_text(encoding="utf-8")
     assert text.count("restart docker") == 1
+
+
+def test_public_cluster_endpoint_is_a_warning_not_a_blocked_expectation(
+    world: World, run_script: Runner
+) -> None:
+    world.override("getent", ("ahostsv4 cluster.invalid", "203.0.113.5 STREAM cluster.invalid", 0))
+    status, detail = check(world, run_script, "firewall")["firewall"]
+    assert status == "WARN"
+    assert "cluster endpoint is public; not blockable by RFC1918 rules" in detail
+    world.override("docker", ("run*203.0.113.5*", "000", 0))  # would be "reached" if it were probed
+    assert check(world, run_script, "firewall")["firewall"][0] == "WARN"
+
+
+def test_dns_failure_is_not_proof_of_a_drop(world: World, run_script: Runner) -> None:
+    world.override("docker", ("run*--network bridge*", "000", 6))
+    status, detail = check(world, run_script, "firewall")["firewall"]
+    assert status != "PASS"
+    assert "bridge" in detail
+
+
+def test_only_a_timeout_proves_a_drop(world: World, run_script: Runner) -> None:
+    world.override("docker", ("run*--network bridge*", "000", 7))
+    assert check(world, run_script, "firewall")["firewall"][0] == "FAIL"
+
+
+def test_probe_image_by_tag_warns(world: World, run_script: Runner) -> None:
+    status, detail = check(
+        world, run_script, "firewall", env={"PROBE_IMAGE": "curlimages/curl:8.11.1"}
+    )["firewall"]
+    assert status == "WARN"
+    assert "digest" in detail
+
+
+def test_missing_input_jump_and_misordered_input_chain_fail(
+    world: World, run_script: Runner
+) -> None:
+    world.override("iptables", ("*-C INPUT*", "", 1))
+    status, detail = check(world, run_script, "firewall")["firewall"]
+    assert status == "FAIL"
+    assert "jump" in detail
+    lines = IPT_INPUT.splitlines()
+    swapped = "\n".join([lines[0], lines[3], lines[2], *lines[1:2], *lines[4:]])
+    world.override("iptables", ("*-C INPUT*", "", 0), ("*-S PRUEFSTAND-INPUT", swapped, 0))
+    assert check(world, run_script, "firewall")["firewall"][0] == "FAIL"
+
+
+def test_probe_containers_and_networks_are_cleaned_up(world: World, run_script: Runner) -> None:
+    raw(world, run_script, "firewall")
+    docker = world.stubs.calls("docker")
+    assert any(c.startswith("docker rm -f pf-probe-cf") for c in docker)
+    created = [c.split()[-1] for c in docker if c.startswith("docker network create")]
+    removed = [c.split()[-1] for c in docker if c.startswith("docker network rm")]
+    assert created
+    assert sorted(created) == sorted(removed)
+
+
+def test_restart_drill_refuses_with_running_containers_unless_yes(
+    world: World, run_script: Runner
+) -> None:
+    world.override("docker", ("ps -q*", "abc123", 0))
+    res = raw(world, run_script, "--restart-drill")
+    assert res.rc == 2
+    assert "running containers" in res.err
+    assert not [c for c in world.stubs.calls("systemctl") if "restart docker" in c]
+    assert raw(world, run_script, "--restart-drill", "--yes").rc == 0
+
+
+def test_restart_drill_fails_when_the_firewall_unit_did_not_restart(
+    world: World, run_script: Runner
+) -> None:
+    world.override(
+        "systemctl",
+        ("show -p ActiveEnterTimestampMonotonic --value pruefstand-firewall", "12345", 0),
+    )
+    res = raw(world, run_script, "--restart-drill")
+    assert res.rc == 1
+    assert "CHECK firewall FAIL" in res.out
+    assert "did not restart" in res.out
