@@ -1,0 +1,521 @@
+# Test matrix: public symbols vs "Tests to write first"
+
+Every public function, class and method in `docs/architecture/interfaces.md` (§1–§17, rag-demo §16 included),
+plus every script / experiment symbol that a prompt's "Done when" line names, with the task that implements it and
+the concrete test the task's prompt asks for (`prompts/<ID>-*.md`, section "Tests to write first").
+
+**Round-9 rebuild (D182, X4.7).** Rebuilt on 2026-10-31 from interfaces.md (round-9 revision) and the prompts as they
+are after the round-9 resolution: every symbol has a row, the test file names are the ones the prompts use, and every
+status was re-derived from the prompt's test table instead of being carried over. Rows marked **R9** are new or
+changed in round 9; their cases are the binding minimum the owning prompt must contain.
+
+**Round-11 refresh (D240, Y6.1).** Rows for the round-10 topology and the round-11 decisions (D211–D239) were rebuilt
+from the T0.6, T0.7, T3.1a, T3.2, T3.4, T3.5, T3.6, T6.2a and T6.2b test tables (same method as D182): T0.7 VM
+scripts and `pruefstand-lock`, cluster scripts (`setsid nohup`, `cluster.env`), `deploy-cluster-bin.sh`,
+`rerank-cpu`, `llm-proxy`, `POST /v1/retrieve`, the bearer header, native Ollama options, infra errors, the 15-min
+heartbeat and the laptop backup receipt. Paths corrected (`infra/cluster/feasibility/`, `infra/cluster/tests/`,
+`infra/vm/tests/`, `infra/gate-executor/llm-proxy/tests/`). Rows marked **R11** are new or changed; `open` R11 rows
+name the case the owning prompt must contain.
+
+**Round-12 refresh (D269, N6.6 = DEV12-07 applied exactly).** The 13 `open` R11 rows were re-checked against the
+prompts: 7 are `covered` (`RetrieveResponse`/`CaseRecord.mode` → T1.1 only; judge fallback; `RagConfig` R10/R11 fields
+without the `endpoint_env` load-time case; `OllamaDenseEncoder`; generator bearer header with the real file names;
+`/v1/retrieve` endpoint; nightly helpers with the 3-block wording); `HttpTargetAdapter.retrieve` moves to **T1.3** and
+the runner retrieve routing to **T1.8** (+ T5.2b, T6.2a), each with its missing case added to that prompt; Ollama
+translation (T5.1), `set_check(infra_error)` (T1.9), renderers `base=None` (T6.4 part) and fixture derivation (T8.1, now
+`scripts/dashboard/derive.py`) were left for the owning prompts. Rows marked **R12** are new or changed by
+`round12-resolution.md` (N1–N7, D248–D283).
+
+**Round-13 refresh (D296, P4.1 = DEV13-01, DEV13-10, DEV13-11).** One status meaning, one owner per row. The 29 former
+`open` rows were checked against their prompts (round13-dev.md table) and are `covered`, except where round 13 changed
+the case (then `planned`). Every row that named several tasks is split into one row per owner (`<symbol> (Tx part)`),
+so no task waits for another task's merge. The `run_gate` drift / `nightly-b<k>` row's file is `pt/unit/pipeline/test_gate_refs.py`. Prompts and the
+lead agent refer to rows **by symbol name only**, never by line number. Rows marked **R13** are new or changed by
+`round13-resolution.md` (P1–P5, D287–D318) and are `planned` until the owning task merges.
+
+**Maintenance (D133).** This file is maintained, not a one-off report. A task that adds, changes or tests a public
+symbol updates its row in the same PR, and the task finishes only when **its own** rows are `covered`; rows of
+other tasks (whatever their status) never block it (D296).
+
+Status:
+
+- **covered**: the owning prompt has a concrete case (input → expected output), including the relevant edge cases
+  (empty, German Unicode ä/ö/ü/ß or NFC/NFD, error path, timeout where the symbol does I/O).
+- **weak**: tested only indirectly, only on the happy path, or a relevant edge case is missing. The fix is named.
+- **planned**: the test is specified in this row, but the owning task is not merged yet (or its prompt does not yet
+  carry the R13 case). Informational only: it never blocks the merge of another task. The owning task adds the case
+  (row text = the binding minimum), flips its own row to `covered` and cannot finish while its own row is `planned`.
+  There is no `open` status any more (R13 D296).
+
+Paths: `pt/` = `packages/pruefstand/tests/`, `rd/` = `apps/rag-demo/tests/`. A file name alone lives in the
+owning module's unit test dir (`pt/unit/<module>/`, `rd/unit/…`).
+
+## core (interfaces §2, "Where types live")
+
+| Symbol | Module | Task | Test file | Test cases (short) | Status |
+| --- | --- | --- | --- | --- | --- |
+| `CaseId`, `TenantId`, `DocId`, `ChunkId`, `RunId` | `core.ids` | T1.1 | – | NewType aliases; no behaviour | covered |
+| `Lang`, `Category`, `Difficulty`, `Split` (incl. `SMOKE_LIVE`), `MetricStatus`, `GateStatus`, `MetricKind` | `core.enums`, `core.models.metric` | T1.1 | `pt/unit/core/test_enums.py` | serialised values (`smoke_live`, `robust_pr`, `insufficient_data`, `unsupported_config`, `human_labels`, `multi_hop`) parse and round-trip; unknown value → error | covered |
+| `Split.RQ1` (**R13** P3.2, D293) | `core.enums` | T1.1 | `pt/unit/core/test_enums.py` | `Split("rq1") is Split.RQ1`; round-trips; existing values unchanged | planned |
+| `TestCase` (+ `evidence_span`, `__test__ = False`, R9) | `core.models.testcase` | T1.1 | `pt/unit/core/test_testcase.py` | SPEC §3.3 row with „Kündigungsfrist“; `cluster_id` defaults; validators; extra field; frozen; **R9:** `evidence_span` optional, round trip with umlauts; collecting a module that imports `TestCase` emits no `PytestCollectionWarning` | covered |
+| `TestCase.block`, `TestCase.judged_subset` (**R12** N1.1, D248) | `core.models.testcase` | T1.1 | `pt/unit/core/test_testcase.py` | defaults `block is None`, `judged_subset is False`; `block=2` and `judged_subset=True` round-trip; `block="x"` → error; old JSON without both fields parses | covered |
+| `TargetRequest`, `RetrievedChunk` (+ `used_in_prompt`, R9), `Usage`, `TargetResponse`, `TargetInfo`, `CaseRecord` | `core.models.target` | T1.1 | `pt/unit/core/test_target.py` | interfaces §1.1 JSON with `chunks: null` → `None`; `RetrievedChunk(tenant_id=None)` ok; extra field → error; **R9:** chunk without `used_in_prompt` → `None`, with `true` round-trips | covered |
+| `RetrieveResponse`, `CaseRecord.mode` (**R11** D218) | `core.models.target` | T1.1 | `pt/unit/core/test_target.py` | `/v1/retrieve` JSON `{"chunks": [...]}` parses; `{"chunks": [], "answer": "x"}` → error (extra field); `CaseRecord` without `mode` → `"answer"`; `mode="retrieve"` round-trips; `mode="other"` → error | covered |
+| `MetricValue` | `core.models.metric` | T1.1 | `pt/unit/core/test_metric.py` | 1.2 → error; `latency_ms` 834 ok; `not_applicable` with value → error | covered |
+| `CostSummary`, `RunManifest` (+ `judge_serving`, `judge_epoch`, R9), `ScoredCase`, `RunResults`, `RunArtifacts` | `core.models.run` | T1.1 | `pt/unit/core/test_run.py` | `complete` ⇔ `stop_reason`; JSON round trip; `judge_mode` rejects `cpu`; flags default `False`; **R9:** `judge_epoch` default 0, `judge_serving` default `{}` | covered |
+| `RunManifest.block`, `.judged_subset`, `infra_error` kind `window_exceeded`, counts `model_reloads`/`upstream_errors` (**R12** D250, D256, D267) | `core.models.run` | T1.1 | `pt/unit/core/test_run.py` | defaults `None`/`False`; `block=1` round-trips; `infra_error="window_exceeded: judge"` with `stop_reason="aborted"` valid, with `"completed"` → error; `counts={"model_reloads": 0, "upstream_errors": 2}` round-trips | covered |
+| `RunManifest.stratum` (**R13** P4.3, D298) | `core.models.run` | T1.1 | `pt/unit/core/test_run.py` | default `"all"`; `"refusal"` and `"blocks"` round-trip; `"x"` → error; old JSON without the field parses | planned |
+| `stable_hash` | `core.hashing` | T1.1 | `test_hashing.py`, `test_hashing_props.py` | exact sha of `{"a":"ä"}`; variadic ≠ concat; NFC ≠ NFD „Kündigung“; bytes; `object()` → `TypeError`; Hypothesis | covered |
+| `corpus_version` | `core.fingerprint` | T1.1 | `pt/unit/core/test_fingerprint.py` | format regex; key-order invariance; `created_at` ignored; bad `date_tag` → `ValueError` | covered |
+| `target_fingerprint` (T1.1 part) | `core.fingerprint` | T1.1 | `test_fingerprint.py` | digest vs `git_sha` fallback; static `serving`/`models` change → new fp; `info=None` → run-id based | covered |
+| `target_fingerprint` (T6.1 part) | `core.fingerprint` | T6.1 | `test_target_cache.py` | target cache key = `target_fingerprint`: same fingerprint twice → 0 target calls; `/v1/health.stats` change → same fp | covered |
+| `eval_fingerprint` (R9 signature; T1.1 part) | `core.fingerprint` | T1.1 | `test_fingerprint.py` | prompt/metric version changes fp; split order irrelevant; empty `judge_models` stable whether the judge ran or not; **R9 X3.3:** `judge_serving` change → new fp; `judge_epoch` 0 → 1 → new fp; no run-time flag is a parameter | covered |
+| `eval_fingerprint` (T6.1 part: store keying) | `core.fingerprint` | T6.1 | `test_baselines_local.py` | baselines are keyed by the run's `eval_fingerprint`; a run with another fingerprint is not returned for that key | covered |
+| `eval_fingerprint(..., block, judged_subset)` (**R12** N1.3, D250) | `core.fingerprint` | T1.1 | `test_fingerprint.py` | `block=None` vs `block=0` → different fp; `block=0` vs `block=1` → different; `judged_subset=False` vs `True` → different; same inputs twice → same fp; `judge_serving` value with `digest[:12]` changed → new fp (D279) | covered |
+| `eval_fingerprint(..., stratum)` (**R13** P4.3, D298) | `core.fingerprint` | T1.1 | `test_fingerprint.py` | `stratum="all"` vs `"refusal"` → different fp; default equals explicit `"all"`, and both equal the fp computed before `stratum` existed (hashed only when not `"all"`, D322); same inputs twice → same fp | planned |
+| `PruefstandError` hierarchy (incl. `PolicyViolation`, `QuotaExhausted` R9) | `core.errors` | T1.1 | `pt/unit/core/test_errors.py` | parametrised: every class subclasses `PruefstandError`; `PolicyViolation`, `QuotaExhausted` ⊂ `LLMError` | covered |
+| `get_logger`, `configure_logging` | `core.logging` | T1.1 | `test_logging.py` | `api_key` redacted, tenant kept, secret never printed | covered |
+| `export_schemas`, `register_schema` | `core.schema` | T1.1 | `test_schema.py` | files exported, byte-identical rerun, `additionalProperties: false` | covered |
+| `Canary`, `CanaryRegistry.foreign_to` | `core.models.attacks` | T1.1 | `test_attacks.py` | order kept, foreign only, extra field, round trip | covered |
+| `ModelRef`, `TargetConfig`, `HttpTargetConfig`, `JudgeConfig`, `BudgetConfig`, `BaselineStoreConfig` (+ `data_root`, R9), `LLMPolicyConfig`, `PruefstandConfig`, `GatePolicy`, `MetricPolicy`, `RunnerConfig` | `core.config` | T1.2 | `pt/unit/core/test_config.py` | family clash, mislabel, unknown family, typo metric, `confidence: 1.0`, store validators, gated slices, alpha/warn_p order; `max_drop` on `system_prompt_similarity` → `ConfigError` (R9) | covered |
+| Family plan in `model_families.yaml` | `core.data` | T1.2 | `test_family_plan.py` | generator `qwen`, PR judge `mistral`, nightly `gemma`, datagen `llama`; datagen ≠ every judge family | covered |
+| Committed-config rule (R9 X1.5) | `core.config` | T1.2 | `test_committed_configs.py` | every config under `examples/**`, `apps/**/configs/**` loads and has `min_clusters ≥ 30`; files under `pt/fixtures/configs/` are exempt | covered |
+| `load_config` | `core.config_loader` | T1.2 | `test_config_loader.py` | example + SPEC §5.6 block load; YAML path in error; 2 MB; `!!python/object` | covered |
+| `model_family`, `known_families` | `core.models_family` | T1.2 | `test_models_family.py` | provider ids → family; `foo/bar` → `unknown`; patterns compile | covered |
+| `PruefstandSettings` | `core.settings` | T1.2 | `test_settings.py` | `GITHUB_TOKEN` read; `repr` hides it | covered |
+| `Citation`, `extract_citations` | `core.citations` | T1.5a | `test_citations.py`, `test_citation_props.py` | table rows incl. „Bürgerlichen Gesetzbuchs“, `§§ 1–3`, `i.V.m.`; English forms (D123); Hypothesis never raises | covered |
+| `normalise` | `core.citations` | T1.5a | `test_citations.py` | default vs full granularity; idempotence | covered |
+| `citations_match` | `core.citations` | T1.5a | `test_citations.py` | Abs. subsumption, Abs. mismatch, GDPR → DSGVO, other law | covered |
+| `citation_credit` (R9) | `core.citations` | T1.5a | `test_citations.py` (credit rows) | full match → 1.0; gold `§ 622 Abs. 2 BGB` vs pred `§ 622 BGB` → 0.5; other § → 0.0 | covered |
+| `parse_one` | `core.citations` | T1.5a | `test_citations.py`, `test_citation_props.py` | two citations → `None`; „Gebühren“ → `None`; `Art. 6 DSGVO` parsed | covered |
+| `TenantPlan`, `CorpusBuildConfig` | `core.config` | T2.5 | `pt/unit/ingest/test_tenants.py` | unmatched doc / overlapping rules → `ConfigError`; repo plan covers 30 + 20 ids | covered |
+| `SplitPlan`, `DatasetBuildConfig` | `core.config` | T4.1 | `pt/unit/dataset/test_config_models.py` | defaults equal the plan table (`core` 220/50/30, R9 X3.7); negative size → error; extra field → error; JSON round trip | covered |
+| `DatasetManifest`, `ReviewRound` | `core.models.dataset` | T1.10 | `pt/unit/core/test_dataset_models.py` | JSON round trip; extra field → error; inconsistent `error_rate` → error | covered |
+| `DatasetManifest.blocks`, `.judged_subset`, `.assignment_seed` (**R12** D248; T1.10 part: model) | `core.models.dataset` | T1.10 | `pt/unit/core/test_dataset_models.py` | defaults `{}` / 0 / 0; `blocks={"refusal": 120, "0": 460, "1": 455, "2": 458}` round-trips; extra key → error | covered |
+| `DatasetManifest` R12 fields (T4.1 part: filled by `build_dataset`, verify only, DEV13-03) | `core.models.dataset` | T4.1 | `test_validate.py` | manifest `blocks` equals the case counts per block; `judged_subset == 150`; `assignment_seed` equals the seed passed to `assign_splits` | covered |
+| `QACandidate` | `core.models.dataset` | T4.2 | `test_generate.py` | parsed from a recorded real response | covered |
+| `FilterResult` | `core.models.dataset` | T4.3 | `test_filters.py` | `kept`/`reasons` asserted per filter | covered |
+| `LLMRole`, `Message`, `LLMRequest`, `LLMResponse` | `core.models.llm` | T1.4 | `pt/unit/core/test_llm_models.py` | defaults `temperature 0.0`, `seed 0`; extra field; frozen; „Kündigung“ round trip; `model_version` default `None` | covered |
+| `PromptTemplate.render` | `core.models.llm` | T1.4 | `pt/unit/llm/test_prompts.py` | `word="Müller"`; missing / extra var → `PromptError`; sha256 | covered |
+| `JudgeTask`, `JudgeVerdict` | `core.models.judge` | T1.8 | `pt/unit/core/test_judge_models.py` | round trip with „Kündigung“; extra field; frozen; `raw_score="2"` → error (strict int) | covered |
+| `KVCache`, `TargetAdapter`, `BaselineStore`, `Loader`, `Chunker`, `Metric`, `DeterministicMetric` | `core.protocols` | T1.1 | `test_protocols.py` | dummy classes satisfy the protocols under `isinstance` | covered |
+| `LLMBackend`, `LLMClientLike` (T1.4 part) | `core.protocols` | T1.4 | `test_factory.py` | `isinstance(LLMClient(...), LLMClientLike)` | covered |
+| `JudgeLike`, `JudgePoolLike`, `JudgedMetric` (T1.8 part) | `core.protocols` | T1.8 | `test_runner.py` | spy pool in the hard-fail test satisfies `JudgePoolLike` | covered |
+| `Perturbation` (T4.4 part) | `core.protocols` | T4.4 | `pt/unit/perturb/test_*.py` | every deterministic perturbation implements it | covered |
+| `LLMPerturbation` (T4.5 part) | `core.protocols` | T4.5 | `pt/unit/perturb/test_*.py` | every LLM perturbation implements it | covered |
+| `EvidenceRecord` | `core.models.evidence` | T6.4 | `pt/unit/report/test_evidence.py` | validates against exported schema; hashes; no "konform" | covered |
+| `ScoreTable` (T1.6 part: model) | `core.models.gate` | T1.6 | `pt/unit/gate/test_gate_models.py` | 3 aligned tuples + `slices` valid; mismatched lengths → `ValidationError` | covered |
+| `ScoreTable` (T1.7 part: `pair_runs`) | `core.models.gate` | T1.7 | `pt/unit/gate/test_tables.py` | `pair_runs` equals hand-paired tables, cases in one run only dropped | covered |
+| `BootstrapResult` | `core.models.gate` | T1.6 | `test_bootstrap.py` | every field asserted in cases (a)–(j) | covered |
+| `HardFailFinding`, `SliceDecision`, `GateReport` (R9: `baseline_run_id: RunId \| None`), `CauseCode`, `CAUSE_MESSAGES` | `core.models.gate` | T1.7 | `test_policy.py`, `test_cause.py`, `test_hard_fail.py` | R1–R18; every code has a message; evidence ≤ 200 chars, canary masked; `max_drop`/`max_value`/`n_clusters`; `not_applicable_counts`; **R9:** `informational_reason` set ⇒ `gated is False` (validator); `no_baseline=True` with `baseline_run_id=None` valid | covered |
+| `PerturbResult` | `core.models.perturb` | T4.4 | `pt/unit/perturb/test_*.py` | `changed`/`text` asserted per perturbation | covered |
+| `InjectionPlacement` | `core.models.attacks` | T4.6 | `test_injection.py` | 6 placements, BASE64 and METADATA specifics | covered |
+| `RunIndexEntry` (+ `no_baseline`, R9), `DashboardRunIndex` | `core.models.dashboard` | T8.1 | `test_dashboard_export.py` | `runs/index.json` values equal source `run.json`/`gate.json`; run without `gate.json` → `status is None`; sorted by `created_at` desc; **R9:** no-baseline gate → `no_baseline is True`, `baseline_run_id is None` | covered |
+| `RunIndexEntry.block`, `.judged_subset`; `MAX_INDEX_RUNS`, `MAX_CASE_RUNS` (**R13** UI13-19, P5.1; D300, D315) | `core.models.dashboard` | T8.1 | `test_dashboard_export.py` | nightly run with `block=2` → index entry `block == 2`; PR run with `judged_subset=True` → copied; run without the fields → `None`/`False`; export uses the shared constants (200 / 20) | planned |
+| `DashboardSliceRow`, `DashboardSlices` (R9 X5.3) | `core.models.dashboard` | T8.1 | `test_dashboard_export.py` | one case per `kind` (absolute / informational / decision) by the kind rule; CI fields `None` when `result is None`; `schema_version`, `run_id`; schema exported | covered |
+| `DashboardCase`, `DashboardCases` | `core.models.dashboard` | T8.1 | `test_dashboard_export.py`, `data.test.ts` | `citations` without `CANARY-`; `metric_status`; `retrieved_chunk_ids` + tenant ids; `error` = class name; shards ≤ 500, union = all cases, failing first | covered |
+| `LabelsDocument` (R9 X5.3; **R12** D273; T1.9 part: model, builder, schema) | `core.models.dashboard` | T1.9 | `pt/unit/report/test_labels.py` | `labels_document()` validates as `LabelsDocument`; every `KNOWN_METRICS` name, every `CauseCode`, every §9 `informational_reason` code has a label; validates against the committed `schemas/labels.schema.json` (T1.9 registers it in `core/schema.py`, D314); **R12:** `hard_fail_rules` is a dict with an en label for `canary_leak`, `tenant_leak`, `system_prompt_leak` | covered |
+| `LabelsDocument` (T8.1 part: export copy) | `core.models.dashboard` | T8.1 | `test_dashboard_export.py` | `export-dashboard` writes `labels.json` equal to `labels_document()`; `make schemas-fresh` clean | covered |
+| `ProductionRecord`, `DriftReport` (optional) | `core.models.drift` | T10.4 | `pt/unit/core/test_drift_models.py` | JSONL line with umlauts round-trips; extra field → error; schema equals model | covered |
+
+## llm (§3)
+
+| Symbol | Module | Task | Test file | Test cases (short) | Status |
+| --- | --- | --- | --- | --- | --- |
+| `LiteLLMBackend.acomplete` (T1.4 part) | `llm.backends.litellm` | T1.4 | `test_litellm_cassette.py`, `test_litellm_live.py` | replayed echo: `usage` mapped, `cost_usd == 0`; replayed 503 → `LLMError(transient=True)`; live echo; `max_tokens=1` | covered |
+| `LiteLLMBackend.acomplete` (T5.1 part) | `llm.backends.litellm` | T5.1 | `test_llamacpp_live.py` | `timeout_s` exceeded → transient error | covered |
+| Ollama translation (**R11** D219–D221; **R12** D252, D272) | `llm.backends.litellm` | T5.1 | `pt/unit/llm/test_qwen_thinking.py` | `ModelRef(id="ollama/qwen3.8:27b-q8_0")` → LiteLLM model `ollama_chat/qwen3.8:27b-q8_0`; `/api/chat` with `think: false`; catalogue options of that id sent (five keys); a request-level `num_ctx` override is replaced by the catalogue value; no `keep_alive`; `openai/<tag>` for an Ollama endpoint → `ConfigError`. Missing cases T5.1 adds (DEV12-07, DEV12-11): `api_base` from `endpoints.yaml` without `/v1`; an `ollama/` id absent from the catalogue → `ConfigError` **at request time** (`build_backend` succeeds; `test_factory.py` uses a catalogue id); a non-Qwen Ollama model (e.g. `ollama/mistral-small…`) gets no `think` key handling beyond `think: false` and its own catalogue options; catalogue path from `PRUEFSTAND_GPU_CATALOGUE` (temp file) | covered |
+| `LLMClient.complete` (T1.4 part) | `llm.client` | T1.4 | `test_client.py`, `test_client_cache.py` | cache hit; 400 no retry; 503; key includes `model_version`; same answer, different context → miss | covered |
+| `LLMClient.complete` (T5.1 part) | `llm.client` | T5.1 | `test_retries.py` | recorded 429 + `Retry-After` twice then OK → 3 calls; timeout → transient after retries | covered |
+| `LLMClient.complete_json` (T1.4 part) | `llm.client` | T1.4 | `test_client.py` | fenced JSON; umlauts kept | covered |
+| `LLMClient.complete_json` (T5.1 part) | `llm.client` | T5.1 | `test_complete_json.py` | recorded real output with prose before the JSON → parsed; invalid → valid after 2 calls; invalid twice → `LLMError` | covered |
+| Quota → `QuotaExhausted` (R9) | `llm.client` | T5.1 | `test_retries.py`, `test_judge_mode.py` | exhausted `github/…` → `QuotaExhausted`, next call to the same model raises without a network call | covered |
+| `Budget.charge` (T1.4 part) | `llm.budget` | T1.4 | `test_budget.py` | USD, tokens, requests limits; all `None` | covered |
+| `Budget.charge` (T5.1 part) | `llm.budget` | T5.1 | `test_costs_quotas.py` | every configured provider → `cost_usd == 0`; `ollama/*` → `gpu_seconds > 0`; `max_requests_per_run=3`: 4th `reserve()` refused | covered |
+| `Budget.reserve`, `Budget.release` (R9 X4.5) | `llm.budget` | T1.4 | `test_budget.py` | `max_requests=2`: `reserve(2)` → True, `reserve(1)` → False; `release(1)` then `reserve(1)` → True; `release` more than reserved → `ValueError`; 8 concurrent `reserve(2)` with cap 4 → exactly 2 succeed | covered |
+| `Budget.requests_remaining` (T1.4 part) | `llm.budget` | T1.4 | `test_budget.py` | = cap − charged − reserved; `None` without cap | covered |
+| `Budget.requests_remaining` (T1.8 part) | `llm.budget` | T1.8 | `test_judge_errors.py` | read by the runner for information only (never raises, never blocks) | covered |
+| `CallRecorder.record`, `.to_parquet` (T1.4 part) | `llm.recorder` | T1.4 | `test_recorder.py` | 3 rows → 13 columns; 0 records → same 13 columns with documented dtypes | covered |
+| `CallRecorder.record` (T5.1 part) | `llm.recorder` | T5.1 | `test_recorder.py` | Ollama and llama.cpp records fill the same 13 columns | covered |
+| `LLMPolicy.check` (T1.4 part) | `llm.policy` | T1.4 | `test_factory.py` | provider not allowed; paid | covered |
+| `LLMPolicy.check` (T5.1 part) | `llm.policy` | T5.1 | `test_policy_guard.py` | canary to `github/` → `PolicyViolation`, no network call; `datagen.private_docs` prefix | covered |
+| `CassetteRecorder` | `llm.cassettes` | T1.4 | `pt/unit/llm/test_cassette_recorder.py` | record around a real llama.cpp backend (`live`) writes the pair with `Authorization` stripped; replay serves it offline; replay miss → `LLMError`, no network call | covered |
+| `build_backend` (T1.4 part) | `llm.factory` | T1.4 | `test_factory.py` | local URL from env; paid → `ConfigError` | covered |
+| `build_backend` (T5.1 part) | `llm.factory` | T5.1 | `test_factory.py` | `ollama` (D209) via `endpoints.yaml` `base_url_env` (`OLLAMA_GPU0_URL`/`OLLAMA_GPU1_URL`; unset → `ConfigError`); **R11:** endpoints file from `PRUEFSTAND_GPU_ENDPOINTS` (temp file, DEV11-22); `endpoints.yaml.model_id` must equal the `ollama/<tag>` id (D221) | covered |
+| `family_of` | `llm.families` | T5.1 | `test_families.py` | catalogue, distill pattern, unknown → `ConfigError`, family plan rows, `models.yaml` consistency | covered |
+| `invalidate_judge`, `clear_drift` (cache epoch ≠ `judge_epoch`) | `llm.cache_epochs` | T5.1 | `test_cache_epochs.py` | epoch 0 → 1; verdict cached before is a miss, other models still hit; `clear_drift` removes the flag; neither touches `eval_fingerprint` | covered |
+| Qwen3 thinking off + `<think>` strip (D95, R9 D191) | `llm.client` | T5.1 | `test_qwen_thinking.py` | `qwen3*` request has `enable_thinking: false` (llama.cpp) / `"think": false` on native `/api/chat` (Ollama, R11 D219; never `/no_think`); leading `<think>` block stripped, strip function returns `(text, True)`; counted in `RunManifest.counts["think_stripped"]` by the pipeline | covered |
+| `PromptRegistry.get` | `llm.prompts` | T1.4 | `test_prompts.py` | unknown version → `PromptError` | covered |
+
+## adapters (§4)
+
+| Symbol | Module | Task | Test file | Test cases (short) | Status |
+| --- | --- | --- | --- | --- | --- |
+| `HttpTargetAdapter.info`, `.query`, `.aclose` | `adapters.http` | T1.3 | `test_http.py`, `pt/contract/test_target_api_v1.py` | 503/400/timeout/invalid JSON; auth header not logged; info 404 → `None`; random `request_id`; contract suite; chunk with `used_in_prompt` parsed (R9) | covered |
+| `HttpTargetAdapter.retrieve` (**R11** D218) | `adapters.http` | T1.3 | `test_http.py`, `pt/contract/test_target_api_v1.py` | `POST /v1/retrieve` with the same random `request_id` rule → `RetrieveResponse`; 404 / 405 → `None` (caller falls back to `query`); 503 retried like `query`; `/v1/retrieve` path; contract suite validates against the OpenAPI file. Missing case T1.3 adds (DEV12-07): response containing `answer` → `TargetError` | covered |
+| `build_adapter` (T1.3 part) | `adapters.factory` | T1.3 | `test_factory.py` | `http`; unknown → `ConfigError`; no store/judges import | covered |
+| `build_adapter` (T10.3 part: new types) | `adapters.factory` | T10.3 | `test_factory.py` | each new adapter type resolves; unknown still → `ConfigError` | covered |
+| `LangChainAdapter`, `LlamaIndexAdapter`, `HaystackAdapter` (optional) | `adapters.*` | T10.3 | `test_langchain.py`, `test_llamaindex.py`, `test_haystack.py`, `test_adapters_contract.py` | real framework objects; missing tenant → `None`; exception → `TargetError`; extra missing → `ConfigError` | covered |
+
+## metrics (§5)
+
+| Symbol | Module | Task | Test file | Test cases (short) | Status |
+| --- | --- | --- | --- | --- | --- |
+| `MetricRegistry.default`, `.get`, `.all`, `.directions`, `KNOWN_METRICS` (T1.5b part) | `metrics.registry` | T1.5b | `test_registry.py` | deterministic names == `KNOWN_METRICS` (incl. `citation_grounded`, `system_prompt_similarity`, R9); directions for 3 metrics | covered |
+| `MetricRegistry` (T5.2b part: judged metrics) | `metrics.registry` | T5.2b | `test_registry.py` | judged metrics registered; `.all()` covers deterministic + judged names | covered |
+| `evaluate_deterministic` | `metrics.registry` | T1.5b | `test_registry.py` | factual case + response without chunks → retrieval/tenant metrics NA, one value per metric | covered |
+| `context_recall` | `metrics.deterministic.retrieval` | T1.5b | `test_retrieval.py` | 0.5; `chunks=None` → NA | covered |
+| `ndcg_at_k` | `metrics.deterministic.retrieval` | T1.5b | `test_retrieval.py` | 0.9197 worked value | covered |
+| `citation_precision`, `citation_recall`, `citation_f1` | `metrics.deterministic.citation` | T1.5b | `test_citation_metrics.py` | 1/1/1, 0.5/1/0.667, Abs. mismatch (0.5 credit, R9), none predicted, gold empty → NA | covered |
+| `citation_grounded` (R9 X3.2) | `metrics.deterministic.citation` | T1.5b | `test_citation_grounded.py` | cited § present in a retrieved chunk's `citation_key` or text → 1.0; hallucinated § → 0.0; no predicted citation → NA | covered |
+| `system_prompt_similarity` (R9 X3.2, report-only) | `metrics.deterministic.security` | T1.5b | `test_system_prompt_similarity.py` | verbatim system-prompt sentence → high overlap; unrelated answer → ≈ 0; EN paraphrase rows | covered |
+| `security_normalise`, `contains_forbidden` | `metrics.deterministic.normalise` | T1.5b | `test_normalise.py` | canary spellings; `re:` semantic form with „tägige“; invalid regex at construction | covered |
+| `canary_leak` | `metrics.deterministic.security` | T1.5b | `test_security.py` | token in chunk → 1 | covered |
+| `tenant_leak` | `metrics.deterministic.security` | T1.5b | `test_security.py` | foreign → 1, `shared_public` → 0, `None` → NA | covered |
+| `injection_success` | `metrics.deterministic.security` | T1.5b | `test_security.py` | marker → 1; factual → NA | covered |
+| `system_prompt_leak` | `metrics.deterministic.security` | T1.5b | `test_security.py` | sentence in answer → 1 | covered |
+| `refusal_correct`, `false_refusal` | `metrics.deterministic.refusal` | T1.5b | `test_refusal.py` | phrase match; factual refused; `refused=False` flag with a refusal phrase → refused (D116) | covered |
+| `language_match` | `metrics.deterministic.language` | T1.5b | `test_language.py` | DE answer for DE/EN case; "Ja." → NA | covered |
+| `ErrorRateMetric.from_record` (`error_rate`) | `metrics.deterministic.record` | T1.5b | `test_record.py` | timeout → 1.0; ok → 0.0 | covered |
+| `LatencyMetric.from_record` (`latency_ms`) | `metrics.deterministic.record` | T1.5b | `test_record.py` | 834.0 → 834.0 | covered |
+| Metric properties | `metrics.deterministic` | T1.5b | `test_metric_props.py` | values in [0, 1] (except latency); Hypothesis | covered |
+| `faithfulness` | `metrics.judged.faithfulness` | T5.2b | `test_faithfulness.py`, `test_runner_judges.py` | no chunks → NA; raw 2 → 1.0; **R9 X3.14:** context = chunks with `used_in_prompt=True` in rank order, all-`None` → first `top_k`; **R9 X3.9:** input over window − 1 024 → truncated, `details["truncated"]`, counted in `judge_truncated`; judge error → `status == "error"`; `BudgetExceeded` → `budget_exceeded` | covered |
+| `answer_correctness` | `metrics.judged.correctness` | T5.2b | `test_correctness.py` | no reference → NA; raw 1 → 0.5; judge `LLMError` → error | covered |
+| `perturbation_consistency` | `metrics.judged.consistency` | T5.2b | `test_consistency.py` | base case → NA; base answer missing → NA; raw 1 → 1.0; judge error → error | covered |
+| `refusal_judged` | `metrics.judged.refusal` | T5.2b | `test_refusal.py` (judged) | refusing answer raw 1 → 1.0; judge error → error; > 5 % errors → `judge_degraded` | covered |
+| `evidence_recall` (R9 X3.2, experiment metric) | `experiments/rq1` | T7.3 | `experiments/rq1/tests/test_evidence_recall.py`, `test_analyze.py` | containment after whitespace/NBSP/hyphen normalisation → 1 (real law text with "Kündi-⏎gungsfrist" (line-break hyphenation)); span split across two chunks → 0; `evidence_span=None` → NA; aggregation per config × perturbation with cluster resampling | covered |
+
+## judges (§6)
+
+| Symbol | Module | Task | Test file | Test cases (short) | Status |
+| --- | --- | --- | --- | --- | --- |
+| `Judge.score` | `judges.judge` | T5.2a | `test_judge.py`, `test_output.py`, `test_escaping.py` | raw → score scales; `"2"`/1.5/empty reason rejected; nonce escaping; `cached` propagated | covered |
+| `JudgePool.for_metric` | `judges.judge` | T5.2a | `test_judge.py` | per-metric judge; fallback to default; default missing → `ConfigError` | covered |
+| `check_judge_families` (T5.2a part) | `judges.family_guard` | T5.2a | `test_family_guard.py` | ok pair; generator clash; unknown id → `ConfigError` | covered |
+| `check_judge_families` (T5.2b part: run-time check) | `judges.family_guard` | T5.2b | `test_run_family_check.py` | run aborts on a clash with `/v1/info.models["generator"]` | covered |
+| `cohens_kappa` | `judges.calibration` | T5.4 | `test_calibration.py` | perfect; 0.5 example; constant raters → `nan`; quadratic 3×3; Hypothesis | covered |
+| `gwet_ac1` | `judges.calibration` | T5.4 | `test_calibration.py` | known example | covered |
+| `cluster_bootstrap_ci` | `judges.calibration` | T5.4 | `test_calibration.py` | seeded identical; contains estimate; wider than pair bootstrap | covered |
+| `spearman` | `judges.calibration` | T5.4 | `test_calibration.py` | 1.0; −1.0; ties ≈ 0.866 | covered |
+| `specificity` (R9 X1.1) | `judges.calibration` | T5.4 | `test_calibration.py` (extra rows) | 125 of 150 negatives right → (0.833, ≈ 0.766, …); labels without a negative → `ValueError` | covered |
+| `calibration_table` | `judges.calibration` | T5.4 | `test_calibration.py`, `experiments/rq2/tests/test_report_split.py` | never pools label sets; `stratum` column; κ null on single-label strata (R9); 4 hand rows → n, prevalence, accuracy | covered |
+| Pass rule (R9 X1.1) | `judges.calibration` → `calibration_status.yaml` | T5.4 | `test_pass_rule.py` | from **real label vectors**: κ 0.7 full + specificity 125/150 (lower ≥ 0.70) → passed; specificity 0.78 → not passed; required on MEMERAG and `legal_hard`; no judge passes → judged metrics informational; `refusal_judged` rule (accuracy ≥ 0.95, FPR on `hedged_answer` ≤ 0.05) | covered |
+| `anchor_agreement`, `is_drift` (R9 X3.4; **R12** N3, D253) | `judges.drift` | T5.4 | `test_drift.py`, `test_judge_drift.py` | 50 equal → 1.0; 5 of 50 differ → 0.90; length mismatch → `ValueError`; **R12 rule** (changed ≥ `max(3, ceil(0.1·n))`, hosted and local alike): `is_drift(0.92, 50)` → False (4 changed); `is_drift(0.90, 50)` → True (5); `is_drift(0.98, 50, a0=1.0)` → False (a0 ignored); `is_drift(0.75, 20)` → True; `is_drift(0.90, 20)` → False; `n=0` → `ValueError`; drift → `invalidate_judge`, `eval_fingerprint` unchanged | covered |
+| `is_drift(..., threshold)` (**R13** AI13-07, D308) | `judges.drift` | T5.4 | `test_drift.py` | `is_drift(0.86, 50, threshold=8)` → False; `is_drift(0.84, 50, threshold=8)` → True; `threshold=None` = default rule; `threshold=2` with n = 50 → `ValueError`; flip rate f = 0.06 → recorded threshold ≥ 8 | planned |
+| Re-calibration bumps `judge_epoch` (R9 X3.3) | `pipeline.judge_drift` | T5.4 | `test_recalibrate.py` | passing re-calibration → `judge_epoch` + 1 in `calibration_status.yaml`, drift flag cleared; failing → unchanged | covered |
+| Anchor set | `judges.data` | T5.4 | `test_anchors.py` | seed 1234 → the same 50 items twice; no MEMERAG item; both labels present | covered |
+
+## store (§7)
+
+| Symbol | Module | Task | Test file | Test cases (short) | Status |
+| --- | --- | --- | --- | --- | --- |
+| `DiskKVCache` (T1.8 part) | `store.kv` | T1.8 | `test_kv.py` | set/get; missing → `None`; namespaces; persistence | covered |
+| `DiskKVCache` (T6.1 part: read-only mode) | `store.kv` | T6.1 | `test_kv.py` | read-only (PR jobs) → write raises `StoreError` | covered |
+| `LayeredKVCache` | `store.kv` | T6.1 | `test_layered_cache.py` | overlay write only; shadowing; base read-only | covered |
+| `ArtifactStore.write_run`, `.read_run` | `store.artifacts` | T1.8 | `test_artifacts.py` | round trip; 13 columns; atomic; „Kündigungsschutzgesetz“; root outside → `StoreError` | covered |
+| `ArtifactStore.add_counts` (**R12** N6.4, D267) | `store.artifacts` | T1.8 | `test_artifacts.py` | `add_counts(run, {"model_reloads": 1, "upstream_errors": 0})` → `run.json` counts merged atomically, other files byte-identical; key `ok` → `StoreError`; existing counts kept | covered |
+| `LocalDirBaselineStore.get`, `.put` | `store.baselines_local` | T6.1 | `test_baselines_local.py` | refs isolated; unknown → `None`; partial write; `complete=False`; digest mismatch; **R12** (D251): refs `nightly-b0`…`nightly-b2` accepted and isolated from `main`; ref `nightly-b3` / `foo` → `StoreError` | covered |
+| Baseline refs `release-b0`…`release-b2`, promotion exclusion (**R13** D305, D309, D321) | `store.baselines_local`, `store.baselines_git`, `cli.baseline` | T6.1 | `test_baselines_local.py`, `pt/unit/cli/test_baseline_cli.py` | refs `release-b0`…`release-b2` accepted and isolated; ref `release` → `StoreError`; `promote --ref release-b1` on a block-2 run → exit 2; `promote --ref release-b1` on the release run (block `None`, stratum `all`) → stored record set = refusal stratum + block 1, `block == 1`, fingerprint equals the block-1 nightly's (D321); a run with `judge_drift=True`, `judge_fallback=True`, `judge_degraded=True`, a `judge_truncated`-informational metric or `infra_error` → not promoted (exit 1, store unchanged) | planned |
+| `GitBranchBaselineStore.get`, `.put` (R9 X2.7 layout) | `store.baselines_git` | T6.1 | `pt/integration/store/test_baselines_git.py` | temp bare repo + temp `data_root`: run files under `data_root/<fp>/<ref>/` and `history/<run_id>/`, git holds only `index.json`; file on disk changed → `StoreError`; no token on argv | covered |
+| `build_baseline_store` | `store.factory` | T6.1 | `test_baselines_local.py` | `local_dir` → `LocalDirBaselineStore`; `git_branch` → no git call at construction | covered |
+| `load_canary_registry` | `store.canary_source` | T6.1 | `test_gate_from_store.py` | none → `StoreError`; slice + held-out merged | covered |
+| `prune_baselines` | `store.retention` | T6.1 | `test_retention.py` | 23 baselines → keeps last 20; unused 90 days deleted; release kept | covered |
+| `push_dashboard_data` | `store.dashboard_repo` | T6.1 | `pt/integration/store/test_dashboard_repo.py` | local bare remote; token never on argv/URL/log; unsanitised src or `CANARY-` → refused; returns sha | covered |
+| `push_dashboard_data` whole-tree rewrite (**R13** P5.1, UI13-01, UI13-12; D300) | `store.dashboard_repo` | T6.1 | `pt/integration/store/test_dashboard_repo.py` | bare repo with 21 case-published runs + one new push → exactly 20 `cases/` dirs and 20 `report.html`, index ≤ 200 runs rebuilt from the repo's `runs/*/run.json`, `manifest.json` valid; 201 runs → oldest `runs/<id>/` deleted; repo size above 1 GB (stubbed `gh api`) → `StoreError`, nothing pushed | planned |
+| `push_heartbeat` (R9) | `store.dashboard_repo` | T6.1 | `pt/integration/store/test_dashboard_repo.py` | writes `heartbeat.json` as one force-pushed commit on branch `heartbeat`; `main` untouched | covered |
+| Heartbeat payload R12 fields (**R12** A12-M2, N4.3; D275, D256; T6.1 part: push) | `store.dashboard_repo` | T6.1 | `pt/integration/store/test_dashboard_repo.py` | payload with `tunnel_ok_false_since`, `last_nightly_at`, `last_nightly_status` pushed unchanged to branch `heartbeat` (DEV13-01: the T6.1 prompt names this case) | planned |
+| Heartbeat payload R12 fields (T6.2a part: values) | `pg/orchestrator/` | T6.2a | `pg/tests/test_health.py` | `tunnel_ok` false on two pushes → same `false_since`; true again → `""`; skipped nightly → `last_nightly_status` `"skipped: runner busy"` | covered |
+| Heartbeat vocabulary + `maintenance` (**R13** A13-M3, A13-M4; D311; T6.2a part) | `pg/orchestrator/` | T6.2a | `pg/tests/test_health.py` | MAINTENANCE file present → payload `maintenance == "true"`; a skip leaves `last_nightly_at` unchanged; every written `last_nightly_status` is in the §7 set | planned |
+| Heartbeat vocabulary + `maintenance` (T6.2b part: `check_heartbeat`) | `scripts/check_heartbeat.py` | T6.2b | `test_check_heartbeat.py` | `maintenance == "true"` + `ollama_gpu1_ok_false_since` 3 h ago → no alert; stale `ts` with maintenance → alert; `nightly-skipped` closes on `"ok"`; `drift_no_release_baseline == "true"` → one report | planned |
+| `sanitise_run` | `store.sanitise` | T6.1 | `test_sanitise.py` | chunk text gone; canary redacted; probe cases dropped; input unchanged | covered |
+| `sanitise_run` `infra_error` kind (**R13** UI13-13, D315) | `store.sanitise` | T6.1 | `test_sanitise.py` | `infra_error="tunnel_lost: host cairo-s101lp"` → sanitised `"tunnel_lost"` (no `:` detail); `None` stays `None` | planned |
+| `RunIndex.refresh`, `.query` | `store.run_index` | T6.1 | `test_run_index.py` | 3 runs → count 3; refresh idempotent | covered |
+| Target cache with PR overlay | `pipeline` / `store.kv` | T6.1 | `test_target_cache.py` | same fingerprint twice → 0 target calls; `/v1/health.stats` change does not change the fingerprint (R9 X3.13) | covered |
+
+## runner (§8)
+
+| Symbol | Module | Task | Test file | Test cases (short) | Status |
+| --- | --- | --- | --- | --- | --- |
+| `Runner.run` (T1.8 part) | `runner.runner` | T1.8 | `test_runner.py`, `test_budget_stop.py`, `test_judge_errors.py`, `pt/live/test_runner_live.py` | order; 503×2 retry; non-transient; timeout; budget stop; **R9 X4.5:** concurrency 8, `max_requests=4`, metric always needing one repair → no `BudgetExceeded`, `complete is True`, ≤ 4 requests charged, rest `judge_cap`; **R9 D9-07:** `QuotaExhausted` → `counts["judge_skipped"]`, reason `judge_quota` | covered |
+| `Runner.run` (T5.2b part) | `runner.runner` | T5.2b | `test_runner_judges.py` | hard fail skips judges; `robust_pr` no judge | covered |
+| `Runner.run` (T6.1 part) | `runner.runner` | T6.1 | `test_target_cache.py` | cache hit → no target call | covered |
+| `Runner.run(..., judged_subset=True)` generation scope (**R13** P3.4, D295) | `runner.runner` | T1.8 | `test_runner.py` | `core` factual case outside the subset → `adapter.retrieve` only, `mode == "retrieve"`, retrieval metrics computed, answer + judged metrics `not_applicable` reason `not_in_judged_subset`; `core` injection and unanswerable cases outside the subset → `query`, deterministic metrics computed; subset cases → `query` + judged metrics | planned |
+| `robust_pr` via `/v1/retrieve` (**R11** D218, D222; T1.8 part) | `runner.runner` | T1.8 | `test_runner.py`, `test_budget_stop.py` | `robust_pr` case → `adapter.retrieve` called, `query` never; `CaseRecord.mode == "retrieve"`; retrieval metrics computed, every answer metric `not_applicable` (never 0); `retrieve()` → `None` → `query` used and `counts["retrieve_fallback"] == 1`; `core` case → `query`; `mark_aborted` gives `stop_reason="aborted"`, `infra_error` set (`str`, D245) | covered |
+| `robust_pr` via `/v1/retrieve` (T5.2b part) | `runner.runner` | T5.2b | `test_runner_judges.py` | no judge call for `mode=retrieve` records | covered |
+| Infra errors in the runner (**R11** D226; T6.2a part) | `runner.runner` | T6.2a | `pg/tests/test_health.py` | infra failure → no case scored as a candidate error | covered |
+| `finalise_refusal` (R9 D9-15) | `runner.refusal` | T5.2b | `test_runner_judges.py` | ambiguous answer, refusal judge says 1, `expect_refusal` → `refusal_correct == 1.0`, `refused_source == "judge"`; phrase match → source `phrase` | covered |
+| Retry policy | `runner.retry` | T1.8 | `test_runner.py` | exponential backoff with jitter, max 3, transient only | covered |
+
+## gate (§9)
+
+| Symbol | Module | Task | Test file | Test cases (short) | Status |
+| --- | --- | --- | --- | --- | --- |
+| `paired_cluster_bootstrap` | `gate.stats` | T1.6 | `test_bootstrap.py`, `test_stats_props.py`, `test_gate_error_rates.py` | (a)–(j) incl. NaN, sign-test switch, `c_k`; simulation bounds (PR 500 sims, α + 4·SE; nightly 4 000) | covered |
+| `sign_test_p` | `gate.stats` | T1.6 | `test_sign_wilson.py` | 0.015625, 0.75, `[]` → 1.0 | covered |
+| `holm_adjust`, `bh_adjust` | `gate.correction` | T1.6 | `test_correction.py` | worked vectors; clip; `[]` | covered |
+| `wilson_interval` | `gate.stats` | T1.6 | `test_sign_wilson.py` | 0/30, 30/30, 1/50, 0/0 | covered |
+| `minimum_detectable_effect` (T1.6 part) | `gate.stats` | T1.6 | `test_power.py` | two worked values; m monotone | covered |
+| `minimum_detectable_effect` (T6.3 part) | `gate.stats` | T6.3 | `experiments/noise/tests/test_analyze.py` | σ̂_d-based check | covered |
+| `power_estimate` | `gate.stats` | T1.6 | `test_power.py` | 0.981, 0.5, n = 50 < 0.5; formula vs simulation | covered |
+| `decide` | `gate.decision` | T1.6 | `test_decision.py` | FAIL/WARN/PASS; not gated; INSUFFICIENT_DATA; doctests run | covered |
+| `decide_absolute` | `gate.decision` | T1.6 | `test_decision.py` | 0/300, 7/300, 20/300, 0/0 | covered |
+| `evaluate_gate` | `gate.policy` | T1.7 | `test_policy.py`, `test_tables.py`, `test_gate_overall_rates.py` | R1–R18; 22 applicable clusters → `applicable_clusters<30`; judge-ERROR excluded; **R9 X3.6:** perturbed cases only in `perturbed_all`, `overall` built from unperturbed cases (R14 `overall` PASS, `perturbed_all` FAIL); **R9 X5.4:** every decision with a reason has `gated=False`; **R9 X5.6/X3.11:** `informational={…: "tier1_deterministic_only", "injection_success": "tier1_injection_reported"}` → PASS rows with those reasons; `false_refusal` gated in a PR run (X3.7) | covered |
+| `likely_cause` (T1.7 part) | `gate.cause` | T1.7 | `test_cause.py` | one row per code + precedence | covered |
+| `likely_cause` (T6.3 part) | `gate.cause` | T6.3 | `test_cause_switches.py` (`gpu`) | real-stack switches | covered |
+| `likely_cause` (T7.2 part) | `gate.cause` | T7.2 | `experiments/rq3/tests/test_cause.py` | real-mutation fixtures | covered |
+| `unpaired_bootstrap` (optional) | `gate.drift` | T10.4 | `pt/unit/gate/test_drift.py` | identical → p ≥ α; shift 0.1 → significant; false-alarm simulation | covered |
+
+## report (§10)
+
+| Symbol | Module | Task | Test file | Test cases (short) | Status |
+| --- | --- | --- | --- | --- | --- |
+| `render_pr_comment` | `report.markdown` | T1.9 | `test_markdown.py`, `test_format.py` | marker; header; δ column; MDE; notable line; redaction; escaping; 60 000 truncation; snapshots; notices for `judge_mode=skipped`, fallback, degraded, drift; "Not applicable" line; **R9:** one-table rule (a tier-1 decision with `refusal_outside_nightly_full` lands on the informational line); no-baseline title ⚪ "NO BASELINE"; judge-truncated case ids listed | covered |
+| `write_gate_json` | `report.json_report` | T1.9 | `test_json_report.py` | sorted keys; 2-space indent; trailing newline; `GateReport.model_validate_json` round trip equal | covered |
+| `GitHubPublisher.upsert_pr_comment` | `report.github` | T1.9 | `test_github.py` | POST; PATCH on page 2; 403 `/user`; foreign comment; 502 retry; 401 without token | covered |
+| `GitHubPublisher.set_check(..., infra_error=True)` (**R11** D226; **R12** D264, D274; **R13** D288) | `report.github` | T1.9 | `test_github.py` | `infra_error=True` with any status → state `error`, description `"executor infra error: <summary>"`; never `failure`; `infra_error=True` + `no_baseline=True` → `error`; summary `"tunnel_lost: x; re-dispatch to retry"` kept verbatim (≤ 140 chars) | planned |
+| Renderers with `base=None` (**R11** D238; T1.9 part) | `report.markdown` | T1.9 | `test_markdown.py` | `render_pr_comment(report_no_baseline, None, cand, …)` → ⚪ NO BASELINE title, baseline ref "–", snapshot | covered |
+| Renderers with `base=None` (T6.4 part) | `report.html`, `report.evidence` | T6.4 | `test_html.py`, `test_evidence.py` | `render_html(report, None, cand)` → ⚪ state, no diff table; output contains exactly one `<meta http-equiv="Content-Security-Policy">` whose `sha256-` hash matches its inline script (D235); `build_evidence_record(report, None, cand, None)` validates | covered |
+| Judge fallback informational (**R11** D224; T5.2b part) | `pipeline` (informational map) | T5.2b | `test_informational.py` | candidate `judge_fallback=True` vs gemma-judged baseline → every judged decision `gated=False`, reason `judge_fallback`; deterministic metrics still gate; `judge_fallback=False` on both → judged metrics gate | covered |
+| Judge fallback informational (T5.1 part) | `llm` / pipeline | T5.1 | `test_judge_mode.py` | fallback judge used → `RunManifest.judge_fallback == True` | covered |
+| Judge fallback informational (T6.2b part: promotion) | `pg/scripts/` | T6.2b | `test_promote.py` | a `judge_fallback` run is not promotable as a judged baseline | covered |
+| Promotion and phase order for flagged judges (**R13** AI13-08, D309, D321) | `pg/scripts/` | T6.2b | `test_promote.py`, `test_nightly.py` | `judge_fallback`, `judge_drift`, `judge_degraded`, a `judge_truncated`-informational judged metric or `infra_error` → not promoted (no deterministic-only promotion); phase order `switch-mode night` → `judge-drift` → `nightly-gate` | planned |
+| `GitHubPublisher.set_check` (R9 X4.6 signature) | `report.github` | T1.9 | `test_github.py` | parametrised PASS / WARN / INSUFFICIENT_DATA / UNSUPPORTED_CONFIG → `success`, status word in description; FAIL → `failure`; `INSUFFICIENT_DATA` / `PASS` with `no_baseline=True` → `failure` "no baseline for …"; description ≤ 140 chars | covered |
+| `GitHubPublisher.post_status` (**R13** P4.2, D297) | `report.github` | T1.9 | `test_github.py` | `post_status(sha, "pending", "executor busy (GPU lock held)")` → POST with context `pruefstand/gate`; `context="pruefstand/nightly"` honoured; 200-char description → 140; `set_check(PASS, …)` calls `post_status` once with `success` and `"PASS: …"` | planned |
+| `post_status` call sites (**R13** P4.2, D297) | `pg/orchestrator/` | T6.2a | `pg/tests/test_health.py`, `test_report.py` | preflight failure → `post_status(..., "error", "executor unhealthy: NAS not mounted")`; lock wait → `pending` "executor busy (GPU lock held)"; the executor never posts "not gated" | planned |
+| `labels_document` (→ `LabelsDocument`, R9) | `report.labels` | T1.9 | `test_labels.py` | see `LabelsDocument` row | covered |
+| `render_html` | `report.html` | T6.4 | `test_html.py` | snapshots; XSS; no remote loads; „Kündigung“; < 2 MB; sanitised input; footer = licence line | covered |
+| `build_evidence_record` | `report.evidence` | T6.4 | `test_evidence.py` | schema; hashes; thresholds; wording; `reviewer=None` | covered |
+| `render_evidence_pdf` (optional) | `report.evidence_pdf` | T10.2 | `test_evidence_pdf.py` | `%PDF`; pages; text; deterministic bytes | covered |
+
+## ingest (§11)
+
+| Symbol | Module | Task | Test file | Test cases (short) | Status |
+| --- | --- | --- | --- | --- | --- |
+| `Document`, `Chunk`, `CorpusManifest` | `core.models.corpus` | T1.1 | `test_corpus.py` | `Chunk` with `citation_key` and „Kündigung“ round trip; extra field → error | covered |
+| `GiiXmlLoader.load` | `ingest.gii_xml` | T2.2 | `test_gii_xml.py`, `test_gii_citation_keys.py` | doc id; `§ 626a`; „(weggefallen)“ skipped; XXE; NFC | covered |
+| `ParagraphChunker.chunk` | `ingest.chunkers.paragraph` | T2.2 | `test_paragraph_chunker.py` | one §; 3 Absätze; Hypothesis concat == text | covered |
+| Shared text helpers | `ingest.text` | T2.2 | `test_text.py` | NFC, whitespace, hyphenation | covered |
+| `OldpLoader.load` | `ingest.oldp` | T2.3 | `test_oldp.py` | jurisdiction; ODbL; HTML stripped; `&uuml;` → „Kündigung“ | covered |
+| `DecisionSectionChunker.chunk` | `ingest.chunkers.decision` | T2.3 | `test_decision_chunker.py` | heading order; „Gründe“ alias; long section split; stable ids | covered |
+| `FixedTokenChunker.chunk` | `ingest.chunkers.fixed` | T2.3 | `pt/unit/ingest/test_fixed_chunker.py` | empty doc → `[]`; 10-token doc → 1 chunk; 25 tokens, `max_tokens=10, overlap=3` → windows 0, 7, 14, 21 (last shorter, R9 D9-24); union of windows = all tokens | covered |
+| `EurLexLoader.load` | `ingest.eurlex` | T2.4 | `test_eurlex.py`, `test_eurlex_citation_keys.py` | CELEX; DE/EN; `citation_en` on `Document.metadata` (R9 D9-25) | covered |
+| `ArticleChunker.chunk` + alignment | `ingest.chunkers.article`, `ingest.align` | T2.4 | `test_article_chunker.py` | „Rechtmäßigkeit“; EN citation; `parallel_id`; missing article → error | covered |
+| `load_citation_graph` | `ingest.citation_graph` | T2.3 | `test_citation_graph.py` | sorted normalised edges; unknown law kept | covered |
+| `assign_tenants` | `ingest.tenants` | T2.5 | `test_tenants.py` | rule hits, no match, overlap | covered |
+| `write_corpus` | `ingest.writer` | T2.5 | `test_writer.py`, `test_ingest_fixtures.py` | byte-identical; order-independent; counts + sha256 | covered |
+
+## perturb (§12)
+
+| Symbol | Module | Task | Test file | Test cases (short) | Status |
+| --- | --- | --- | --- | --- | --- |
+| `umlaut_translit` | `perturb.umlaut_translit` | T4.4 | `test_umlaut_translit.py`, `test_perturb_properties.py` | „Gebühren“ → „Gebuehren“; ß untouched; unchanged case | covered |
+| `eszett` | `perturb.eszett` | T4.4 | `test_eszett.py` | „Straße“, „Gemäß“; idempotent | covered |
+| `numbers` | `perturb.numbers` | T4.4 | `test_numbers.py` | `1.000,50 €`, `13,7 %`, `§ 622` unchanged | covered |
+| `dates` | `perturb.dates` | T4.4 | `test_dates.py` | two dates; invalid date unchanged | covered |
+| `citation_style` | `perturb.citation_style` | T4.4 | `test_citation_style.py` | 3 laws; unknown law unchanged | covered |
+| `abbreviations` | `perturb.abbreviations` | T4.4 | `test_abbreviations.py` | `Abs.`/`Nr.`/`i.V.m.` | covered |
+| `typos` | `perturb.typos` | T4.4 | `test_typos.py` | edit distance 1; protected tokens; seeded | covered |
+| `compound_split` | `perturb.compound_split` | T4.5 | `test_compound_split.py`, `test_llm_perturbations_live.py` | cassette rewrite; no long compound → no call | covered |
+| `register` | `perturb.register` | T4.5 | `test_register.py`, `test_validate.py` | Sie → du; leftover „Sie“ invalid | covered |
+| `gender` | `perturb.gender` | T4.5 | `test_gender.py` | style set; seeded | covered |
+| `colloquial` | `perturb.colloquial` | T4.5 | `test_colloquial.py` | accepted rewrite; new number rejected | covered |
+| `perturb_case` | `perturb.registry` | T4.4 | `test_perturb_case.py` | id `law-0042~dates`; ids kept; unchanged → `None` | covered |
+| `perturb_case_async` | `perturb.registry` | T4.5 | `pt/unit/perturb/test_perturb_case_async.py` | cassette → id `law-0042~compound_split`, `base_id`/`cluster_id` kept, `perturbation` set; equivalence 0 → `None` | covered |
+
+## attacks (§13)
+
+| Symbol | Module | Task | Test file | Test cases (short) | Status |
+| --- | --- | --- | --- | --- | --- |
+| `make_canary_token` | `attacks.canary` | T2.6 | `test_canary.py` | format; seeded; 1 000 unique; unknown tenant → `DatasetError` | covered |
+| `plant_canaries` | `attacks.canary` | T2.6 | `test_canary.py` | token once per doc; 3 + 3 canaries | covered |
+| `semantic_variants` | `attacks.canary` | T2.6 | `pt/unit/pipeline/test_ingest_private.py` | „47-tägigen“, „Siebenundvierzig Tage“ match; „147 Tage“ doesn't | covered |
+| Held-out set handling | `pipeline` (T2.6 scripts) | T2.6 | `test_heldout.py`, `test_private_docs.py` | held-out registry never written under the public tree | covered |
+| `make_injection_docs` | `attacks.injection` | T4.6 | `test_injection.py`, `test_ingest_attacks.py` | 12 docs + cases; BASE64; METADATA; seeded | covered |
+| `make_leak_probes` | `attacks.probes` | T4.6 | `test_probes.py` | 6 ordered pairs, ≥ 3 each | covered |
+| `make_filter_bypass_probes` | `attacks.probes` | T4.6 | `test_probes.py` | ≥ 1 probe per ordered tenant pair; category; foreign token in `forbidden_strings` | covered |
+| `make_system_prompt_probes` | `attacks.probes` | T4.6 | `test_probes.py` | DE + EN; category; `expect_refusal` | covered |
+| Refusal + near-miss cases | `attacks.refusal` | T4.6 | `test_refusal.py`, `test_refusal_near_miss.py` | unanswerable cases; near-miss templates | covered |
+| `rotate_canaries` | `attacks.rotation` | T4.6 | `test_rotation.py` | disjoint; retired list; seeded | covered |
+
+## dataset (§14)
+
+| Symbol | Module | Task | Test file | Test cases (short) | Status |
+| --- | --- | --- | --- | --- | --- |
+| `generate_qa` | `dataset.generate` | T4.2 | `test_generate.py`, `test_external_guard.py`, `pt/live/dataset/test_generate_live.py` | recorded JSON → candidate; repair; skip on 2nd failure; guard; budget stop; **R9:** candidate carries `evidence_span` ≤ 60 tokens | covered |
+| `generate_qa_pairs` | `dataset.generate` | T4.2 | `test_generate_pairs.py`, `test_sampling.py` | backend cassette: one `QACandidate` per pair with both chunk ids; invalid-then-valid → one repair | covered |
+| `check_support` | `dataset.filters` | T4.3 | `test_filters.py`, `test_filters_live.py` | score 1 kept; 0 unsupported; invalid ×2 → `judge_error`; same family → `ConfigError` | covered |
+| `check_overlap` | `dataset.filters` | T4.3 | `test_filters.py` | rejected / kept; NFC vs NFD „Kündigungsfrist“; Hypothesis | covered |
+| `dedupe` | `dataset.filters` | T4.3 | `test_filters.py` | fixed vectors; order-independent | covered |
+| `assign_splits` (**R13** P3.1, P3.2, P3.4) | `dataset.splits` | T4.1 | `test_splits.py` | clusters in one split; seeded; shortfall → `DatasetError`; robust_pr = 40 bases × applicable perturbations; **R9 X3.7:** `core` = 220 answerable + 50 unanswerable + 30 probes; **R12** (N1.1, D248): every `full` unanswerable case → `block None`, every other `full` case → block 0/1/2, a cluster never spans two blocks; exactly 150 `core` cases with `judged_subset`, whole clusters; same seed → identical assignment; **R13:** blocks and subset stratified by tenant × category only (no `lang`), the subset contains injection cases; each block = 300 unperturbed answerable + 150 perturbed variants whose base is in the same block; `rq1` cases share no cluster with `core`/`robust_pr`/`full` | planned |
+| `validate_dataset` (**R13** P3.1, D292) | `dataset.validate` | T4.1 | `test_validate.py` | duplicate id; cluster spans; licence mix; `core.jsonl:7`; **R9:** `validate_dataset(slice_v1) == []` while a fixture warning is logged; **R12** (D248, D281): cluster split over two blocks → problem; refusal stratum + largest block > 600 → problem "nightly block exceeds 600 cases"; 149 judged-subset cases → problem; `block` on a `core` case → problem; **R13:** a block with 299 unperturbed answerable cases or < 250 clusters or a tenant with 29 clusters → problem "full quota: …"; a perturbed variant whose base is in another block → problem; judged subset without injection → problem; `rq1` cluster shared with `full` → problem | planned |
+| `export_hf` (T4.1 part) | `dataset.export_hf` | T4.1 | `test_export_hf.py` | `dry_run=True` → layout under `dir/hf_export/`, one config per `license_config`, loadable, no network; keyword booleans (`private=True, dry_run=True`) | covered |
+| `export_hf` (T9.1b part) | `dataset.export_hf` | T9.1b | `scripts/tests/test_build_release_dir.py` | `build_release_dir` calls the dry-run export; private file → exit 1 | covered |
+
+## pipeline and CLI (§15)
+
+| Symbol | Module | Task | Test file | Test cases (short) | Status |
+| --- | --- | --- | --- | --- | --- |
+| `run_eval` (T1.10 part) | `pipeline.run` | T1.10 | `pt/unit/cli/test_commands.py` | good run; corpus mismatch abort; **R9:** tier-1 run maps every paired metric to `tier1_deterministic_only`, injection to `tier1_injection_reported`; manifest has `judge_serving`/`judge_epoch` | covered |
+| `run_eval` (T5.1 part) | `pipeline.run` | T5.1 | `test_judge_mode.py` | `judge_mode` set from the provider state (`github` / `local` / `skipped`) | covered |
+| `run_eval` (T5.2b part) | `pipeline.run` | T5.2b | `test_run_family_check.py` | family abort | covered |
+| `run_eval` (T6.1 part) | `pipeline.run` | T6.1 | `test_target_cache.py` | PR overlay cache wired through `run_eval`: same fingerprint twice → 0 target calls | covered |
+| `run_eval(..., block, judged_subset, stratum)`, CLI `run --split --stratum --block auto\|0\|1\|2 --judged-subset` (**R12** N1.2, D249; **R13** P4.3, P4.4; D298, D299) | `pipeline.run`, `cli.run` | T1.10 | `pt/unit/cli/test_commands.py`, `pt/unit/pipeline/test_case_selection.py` | `block=1` on `full` → only block-1 cases + refusal stratum, `RunManifest.block == 1`; `block=1` with splits `[core]` → `ConfigError` / exit 2; `judged_subset=True` → judged metrics only on subset cases, others `not_applicable` reason `not_in_judged_subset`, `judge_skipped` unchanged; manifest fields enter `eval_fingerprint`; **R13:** `stratum="refusal"` → only block-None cases, `RunManifest.stratum == "refusal"`; `stratum="refusal"` + `block=1` → `ConfigError` / exit 2; `stratum="blocks"`, `block=None` → all three blocks, no refusal case; `--block auto` with counter file `7` → k = 1; counter 8 → 2; `PRUEFSTAND_NIGHTLY_COUNTER` unset → reads `$PRUEFSTAND_HOME/state/nightly_counter`; file missing → k = 0; file `"x"` → exit 2 (no date fallback; D322); `--split rq1 --tier pr` → exit 2 | planned |
+| `run_gate` (T1.10 part) | `pipeline.gate` | T1.10 | `test_gate.py` | pass; hard fail; `citation_f1` informational with `applicable_clusters<30` on `mini.yaml` (R9 D9-03) | covered |
+| `run_gate` (T6.1 part: from store) | `pipeline.gate` | T6.1 | `test_gate_from_store.py` | no-baseline store → `INSUFFICIENT_DATA`, `no_baseline=True`, `baseline_run_id is None`, exit 0 | covered |
+| `run_gate` drift vs `release-b<k>`, refs `nightly-b<k>` (**R12** N1.4, D251; **R13** D305) | `pipeline.gate`, `cli.gate`, `cli.baseline` | T6.1 | `pt/unit/pipeline/test_gate_refs.py` | block-1 candidate vs `release-b1` (same fingerprint) → decision computed; block-1 candidate vs block-None run → `GateInputError` (no cross-fingerprint exception any more); block-1 candidate vs block-2 `main` run → `GateInputError`; `--ref nightly-b1` reads the block-1 baseline; `promote --ref nightly-b2` on a block-1 run → exit 2; `--ref release` → exit 2 | planned |
+| `build_dataset` | `pipeline.build_dataset` | T4.7a | `test_build_dataset_offline.py`, `pt/e2e/test_build_dataset_live.py` | offline with `CassetteRecorder` replay → dir validates, manifest `review` round; e2e live | covered |
+| CLI `run` / `gate` / `report` / `validate` / `schema` / `power` + exit codes | `cli.*` | T1.10 | `test_commands.py`, `test_exit_codes.py`, `test_power.py`, `pt/live/test_cli_live.py` | 0/1/2/3; `--fail-on-warn`; `--verbose` traceback | covered |
+| CLI `ingest` | `cli.ingest` | T2.5 | `test_ingest_fixtures.py`, `test_commands.py` | 4 tenant files; `corpus_version` prefix | covered |
+| CLI `baseline promote` / `export-public` / `prune` / `publish-dashboard` | `cli.baseline` | T6.1 | `pt/unit/cli/test_baseline_cli.py` | promote `complete=False` → exit 1, store unchanged; export has no `CANARY-`; prune keeps 20 | covered |
+| CLI `judge-drift` (R9) | `cli` → `pipeline.judge_drift` | T5.4 | `test_judge_drift.py` | recorded anchors: agree → no file, epoch unchanged; drift → `judge_drift.json` + `invalidate_judge` | covered |
+| CLI `export-dashboard` | `cli` | T8.1 | `test_dashboard_export.py` | `runs/index.json`, `slices.json` (typed rows), `cases/<run_id>/<shard>.json`, `labels.json`, `report.html` only with `gate.json` | covered |
+| CLI `init` | `cli.init` | T9.2 | `test_init.py` | 6 entries; compose has **no** `rerank` (R9 D9-17); non-empty dir → 2; wheel data | covered |
+| MCP tools `run_eval` / `get_report` / `compare_runs` (optional) | `pruefstand.mcp` | T10.1 | `pt/unit/mcp/test_tools.py`, `test_tools_live.py` | offline: 3 tools listed; path traversal and symlink escape → error; unknown id; incomplete run | covered |
+| CLI `drift` (optional) | `cli.drift` | T10.4 | `test_drift.py`, `test_redact.py` | redaction; NA for reference metrics; canary alert | covered |
+
+## rag-demo internals (§16)
+
+| Symbol | Module | Task | Test file | Test cases (short) | Status |
+| --- | --- | --- | --- | --- | --- |
+| `RagConfig`, `load_config`, `config_hash` (T1.13 part) | `rag_demo.models`, `rag_demo.config` | T1.13 | `rd/unit/test_config.py` | one switch per bug config; unknown key; prompt change → new hash; `enable_thinking` → new hash; tier-1 profile values; `reranker` default `off` (R9) | covered |
+| `RagConfig` (T3.2 part: tier-2 profile) | `rag_demo.config` | T3.2 | `test_config_gpu.py` | `rag.gpu.yaml` loads; catalogue ids resolve | covered |
+| `GermanAnalyzer.tokens` (T1.13 part) | `rag_demo.analysis` | T1.13 | `test_analysis.py` (moved by T3.3) | „Gebühren“/„Gebuehren“; „Straße“; NFD | covered |
+| `GermanAnalyzer.tokens` (T3.3 part) | `rag_demo.analysis` | T3.3 | `analysis/test_analyzer.py`, `analysis/test_compound.py`, `analysis/test_normalise.py` | compounds; `1.000,50 €`; Hypothesis | covered |
+| `SparseEncoder.encode` | `rag_demo.analysis.sparse` | T3.3 | `analysis/test_sparse.py` | cross-process stability; saturation; empty list | covered |
+| `RagConfig` R10/R11 fields (`profile`, `catalogue_id`, `endpoint_env`, `embed.engine`, `api_key_env`) | `rag_demo.config` | T3.2 | `test_config_gpu.py` | **R11 D216:** `generator.api_key_env` / `embed.api_key_env` default `PRUEFSTAND_CANDIDATE_API_KEY`; `rerank` has no key field (extra field → error, D217); `rag.gpu.yaml` resolves `catalogue_id` against `RAG_MODEL_CATALOGUE`; unknown `catalogue_id` → error; `embed.engine: ollama` requires an `ollama/` id. (`endpoint_env` is checked at app start, not at config load, so `rag.gpu.yaml` loads in CPU CI; DEV12-07) | covered |
+| `DenseEncoder.encode` (`TeiDenseEncoder`; T1.13 part) | `rag_demo.index.encoders` | T1.13 | `test_dense_prefix.py` | e5 prefixes; `truncate: true` | covered |
+| `DenseEncoder.encode` (T3.4 part) | `rag_demo.index.encoders` | T3.4 | `test_encoders.py` | 3 000-token passage → `truncated_chunks` + 1; TEI timeout → retried, then `EncoderError` | covered |
+| `OllamaDenseEncoder.encode` (**R11** D216, D219, D220) | `rag_demo.index.encoders` | T3.4 | `test_encoders.py` (Ollama, cassettes + `gpu`) | native `POST /api/embed` only (never `/v1/embeddings`); body has `model` (bare tag), list `input`, catalogue `options`, no `keep_alive`; with `PRUEFSTAND_CANDIDATE_API_KEY=k` set → header `Authorization: Bearer k`; unset or empty → no `Authorization` header; the key never appears in logs or exceptions (caplog); 70 texts → 3 requests; 9 000-token passage → `truncated_chunks` + 1; `gpu` variant → dim 1024 | covered |
+| `Indexer.index` | `rag_demo.index.indexer` | T3.4 | `test_corpus_reader.py`, `rd/integration/test_indexer_qdrant.py`, `rd/integration/test_index_retrieve.py` | 40 points; payload index; idempotent; alias switch; PR collection | covered |
+| `Retriever.retrieve` (T1.13 part) | `rag_demo.retrieval.retriever` | T1.13 | `test_query_builder.py`, `test_filters.py` | filter in every prefetch; `top_k` | covered |
+| `Retriever.retrieve` (T3.5 part) | `rag_demo.retrieval.retriever` | T3.5 | `test_retriever_isolation.py`, `rd/integration/test_retrieve_filters.py` | M8/M9 detectors; Hypothesis isolation | covered |
+| `Reranker.rerank` | `rag_demo.retrieval.rerank` | T3.5 | `test_rerank.py` | cassette re-order; identity; `top_n`; live; **R11 D217/D222:** tier-2 sends exactly the top 10 passages, each cut to 256 tokens, in one batched request, and **no** `Authorization` header | covered (R11 cases: T3.5 keeps the row in step) |
+| `Generator.answer` (T1.13 part) | `rag_demo.generation.generator` | T1.13 | `test_generate_guards.py`, `test_generate_thinking.py` | citations; refusal; no `<think>` | covered |
+| `Generator.answer` (T3.6 part) | `rag_demo.generation.generator` | T3.6 | `generation/test_generator.py`, `test_prompting.py` | 503 → ok; timeout → 503; injection in delimiters | covered |
+| Generator client bearer header (**R11** D216; T1.13 part) | `rag_demo.generation.llm_client` | T1.13 | `rd/unit/test_client_auth.py` (halves moved by T3.4/T3.6, D265) | key set → every call to `LLM_PROXY_URL` carries `Authorization: Bearer <key>`; empty key (tier 1) → no header and the call still succeeds against llama.cpp; key never logged | covered |
+| Generator client native API (**R11** D219; T3.6 part) | `rag_demo.generation.llm_client` | T3.6 | `generation/test_generator.py` | tier-2 request goes to `/api/chat` with `think: false`, bare tag and no `keep_alive` | covered |
+| `create_app` `/v1/retrieve` (**R11** D218) | `rag_demo.api` | T3.5 | `test_api_retrieve.py`, `test_openapi.py` | same tenant validation as `/v1/query` (unknown tenant → 422); response has only `chunks` with ranks 1..n in the order `/v1/query` would retrieve them (while `rerank.on_retrieve` is true, D271); the generator is never called (spy / `/v1/health.stats.requests` unchanged for generation); OpenAPI file lists `/v1/retrieve` | covered |
+| `rerank.on_retrieve` (**R12** DEV12-09, D271) | `rag_demo.config`, `rag_demo.api` | T3.5 | `test_api_retrieve.py` | default `true`; `on_retrieve: false` → `/v1/retrieve` makes no rerank call and returns fused order, `/v1/query` still reranks; the field changes `config_hash` | covered |
+| Sampling options (**R12** D252) | `rag_demo.generation.llm_client` | T3.6 | `generation/test_generator.py` | `generation.temperature 0.7`, `seed 7`, `max_tokens 300` → request `options` `temperature 0.7`, `seed 7`, `num_predict 300`, `num_ctx` = catalogue | covered |
+| Generator tokenizer + `prompt_overflow` (**R13** AI13-05, D307) | `rag_demo.generation`, `rag_demo.api` | T3.6 | `generation/test_generator.py` | prompt budget counted with the baked generator tokenizer; recorded `prompt_eval_count` 3 % above the local count → `/v1/health.stats.prompt_overflow` + 1; within 2 % → unchanged | planned |
+| `create_app` `/v1/query`, `/v1/info`, `/v1/health` (T1.13 part) | `rag_demo.api` | T1.13 | `test_api.py`, `test_openapi.py`, `test_response_mapping.py`, `test_live_app.py` | 422 unknown tenant / 2 001 chars; `/v1/info` fields; OpenAPI equality; live schema validation; **R9 X3.13:** `/v1/info.serving` has exactly `engine, engine_version, quantization, gpu, model_sha256`, equal before and after 3 queries, `/v1/health.stats` counters grow | covered |
+| `create_app` (T3.2 part) | `rag_demo.api` | T3.2 | `test_gpu_app.py` | tier-2 profile serves `/v1/info` with the catalogue model ids | covered |
+| `create_app` (T3.6 part) | `rag_demo.api` | T3.6 | `test_api_query.py` | **R9 X3.14:** every chunk has `used_in_prompt`, those `true` equal the prompt chunks | covered |
+| Demo-mode error body (`{code, message, retry_after_s}`) | `rag_demo.api` (demo mode) | T8.4 | `test_limits.py`, `test_budget.py`, `test_killswitch.py`, `test_errors.py`, `test_validation.py` | `rate_limited` + `retry_after_s`; `busy`; `budget_exhausted`; `demo_disabled`; `body_too_large`; `invalid_request` | covered |
+| Tenant isolation (M2 proof) | `rag_demo` (HTTP + Qdrant) | T3.7 | `test_isolation_http.py`, `test_isolation_qdrant.py`, `test_quality_and_isolation.py` | 50+ leak probes; filter bypass; Testcontainers | covered |
+
+## Out-of-package symbols (scripts, infra, experiments, workflows)
+
+Every symbol a "Done when" line names outside `packages/` and `apps/rag-demo/`. `pg/` = private repo
+`pruefstand-gate` (tests live there).
+
+| Symbol | Path | Task | Test file | Test cases (short) | Status |
+| --- | --- | --- | --- | --- | --- |
+| `check_code_limits.main` | `scripts/check_code_limits.py` | T0.1 | `scripts/tests/test_check_code_limits.py` | imported in-process (proves `pythonpath`); 301 lines → exit 1 | covered |
+| `check_test_locations.main` (**R12** N6.3, D266) | `scripts/check_test_locations.py` | T0.1 | `scripts/tests/test_check_test_locations.py` | test outside testpaths → exit 1; non-test module-name clash across the D177/D232 roots (incl. `infra/gpu`, `benchmarks`) → exit 1; **R12:** `scripts/tests/test_health.py` + `infra/vm/tests/test_health.py` (and two `conftest.py`) → exit 0; `scripts/dashboard/tests/test_derive.py` → exit 0; a test file directly in `infra/vm/` → exit 1; `make typecheck` recipe loops over the root list (one mypy call per root) | covered |
+| `check_coverage.main` | `scripts/check_coverage.py` | T0.1 | `scripts/tests/test_check_coverage.py` | thresholds equal CLAUDE.md §6; core 89.9 % → exit 1 | covered |
+| `format_edited` hook | `scripts/format_edited.py` | T0.1 | `scripts/tests/test_format_edited.py` | `.py` formatted; `.md` untouched; path outside repo ignored | covered |
+| CLI / layer stubs | `pruefstand.cli` | T0.1 | `test_cli.py`, `test_layers_exist.py` | `--help`, `version`; 14 layers import | covered |
+| `check_workflows` guard (T0.2 part: rules) | `scripts/check_workflows.py` | T0.2 | `scripts/tests/test_check_workflows.py` | unpinned `uses:` → fail; `pull_request_target` in any file but `gate-router.yml` → fail; `build-images.yml` checks out `pull_request.head.sha` (R9 X2.4) | covered |
+| `check_workflows` `gate-router.yml` rule (**R13** P1.1, D287; T0.2 part) | `scripts/check_workflows.py` | T0.2 | `scripts/tests/test_check_workflows.py` | fixture `gate-router.yml` with no checkout, `GITHUB_TOKEN` exactly `pull-requests: read`, `environment: gate-router` → pass; with a checkout, `statuses: write` or any extra permission → fail; any other workflow naming environment `gate-router` → fail; no workflow references a `run-gate` label | planned |
+| `check_workflows` on the real `gate-router.yml`, `nightly.yml` (T6.2b part) | `scripts/check_workflows.py` | T6.2b | `scripts/tests/test_check_workflows.py` | committed `gate-router.yml` passes; **R13** (P2.1, D290): `nightly` job has `if: needs.guard.outputs.run == 'true'`, job name `guard`, `timeout-minutes: 470` | planned |
+| `check_workflows` on `deploy.yml`, `demo-ready.yml` (T8.5 part) | `scripts/check_workflows.py` | T8.5 | `scripts/tests/test_check_workflows.py` | `deploy.yml` (dashboard-only) and `demo-ready.yml` pass the guard; **R13** (P5.2, D301): `actions: read` allowed only on job `fetch-artefacts` of `demo-ready.yml` (allowlist entry with reason), on any other job → fail; `contents: write` allowed on job `release-demo-ready` of `demo-ready.yml` (D318), the same job in `deploy.yml` → fail | planned |
+| `check_workflows` on release workflows (T9.1a part) | `scripts/check_workflows.py` | T9.1a | `scripts/tests/test_check_workflows.py` | `release-please.yml`, `release.yml` pass the guard (`id-token: write` only on the publish jobs) | covered |
+| `check_workflows` on `dataset-release.yml` (T9.1b part) | `scripts/check_workflows.py` | T9.1b | `scripts/tests/test_check_workflows.py` | `dataset-release.yml` passes the guard | covered |
+| CI aggregator | `.github/workflows/ci.yml` | T0.2 | `scripts/tests/test_aggregator.py` | `check` needs every other job | covered |
+| `check_compose` | `scripts/check_compose.py` | T0.3 | `scripts/tests/test_check_compose.py` | image without digest → fail; public port → fail | covered |
+| `summarise` (feasibility verdict, **R11**) | `infra/cluster/feasibility/summarise.py` | T0.6 | `infra/cluster/tests/test_summarise.py` | all go checks PASS → `VERDICT: go`; `nas-read WARN` → `go-with-conditions` naming the first-load minutes; `ollama-models WARN` → condition "re-pull into `ollama-models/`"; `api-chat-nothink FAIL`, `fwd FAIL`, `nas-write FAIL` or `detached-survives-logout FAIL` → `no-go`; `linger` never changes the verdict | covered |
+| `tunnel_check.sh` (**R11** D214, D228) | `infra/cluster/feasibility/tunnel_check.sh` | T0.6 | `infra/cluster/tests/test_tunnel_check.py` | `--print-cmd`: forwards bind `127.0.0.1:21434` / `:21435` by default, `PROBE_PORT0` overrides, never `11434`/`11435`; `detached-survives-logout` uses `setsid nohup`, no `tmux`, liveness checked in a second `ssh` | covered |
+| VM setup scripts, `pruefstand-lock`, tunnel unit, `vm_check.sh` (**R11** D211–D213; **R12** D254, D257) | `infra/vm/` | T0.7 | `infra/vm/tests/test_vm_scripts.py` | `setup-nas-mount.sh` idempotent, `x-systemd.automount,nofail`, no credentials; `setup-users.sh` creates system user `pruefstand`, `/var/lib/pruefstand` 2770, `gpu.lock` 0660, never `MAINTENANCE`; `setup-ssh-key.sh` only as `pruefstand` (else exit 2), creates `id_ed25519_cluster`; `pruefstand-tunnel.service` is a system unit with `User=pruefstand`, `127.0.0.1` forwards and **no** `mnt-` dependency (R12); runner unit `Wants=` + `After=mnt-pruefstand.automount`, never `Requires=` (R12); `pruefstand-lock` sets `PRUEFSTAND_LOCK_HELD=1`, same lock file for two `HOME`s, busy → exit 75; `vm_check.sh` FAILs on rootless Docker, a third `docker` member, and a `gh` token that can read `pruefstand-gate` (R12); ShellCheck clean | covered |
+| `quota_probe` | `scripts/models/quota_probe.py` | T0.6 | `scripts/models/tests/test_quota_probe.py` | rate-limit header parsing; table render | covered |
+| `select_smoke_live` | `datasets/fixtures/select_smoke_live.py` | T1.11 | `test_select_smoke_live.py`, `test_fixture_datasets.py` | 20/20 split by rule; quotas; split files equal a fresh selection | covered |
+| Tier-1 live gate | `pt/e2e/test_live_gate.py` | T1.11 | `test_live_gate.py` | `good` vs baseline → exit 0; every paired row `gated=False`, reason `tier1_deterministic_only`; injection row reason `tier1_injection_reported` (R9) | covered |
+| Action entrypoint, comment check | `action/entrypoint.py`, `action/check_comment.py` | T1.12 | `test_entrypoint.py`, `test_check_comment.py` | replayed target cassettes; outputs; 60 001 chars → error | covered |
+| `live-e2e.yml` conditions (R9 X1.4) | `.github/workflows/live-e2e.yml` | T1.12 | `test_workflow_conditions.py` | `timeout-minutes == 30`; 5 deterministic scenarios; `live` job `-m "live and not e2e and not gpu and not network"`; nightly uploads `live-baseline-nightly`, PR lookup downloads only `live-baseline` written by push-to-main | covered |
+| Download scripts | `data/download.py`, `data/sources.yaml` | T2.1 | `tests/data/test_download.py` | 30 `gii`, 20 `eurlex`, 7 `hf`, 1 `github` entries; licence-field mismatch → fail | covered |
+| `check_no_raw_data` (R9 X1.3) | `scripts/check_no_raw_data.py` | T2.1 | `tests/data/test_no_raw_data.py` | parquet under each allowlisted glob (`results/**`, `experiments/**/results/**`, `apps/dashboard/fixtures/**`, `datasets/fixtures/**`, `tests/**/fixtures/**`) → pass; `foo.parquet` elsewhere → fail; MEMERAG file anywhere → fail | covered |
+| Model catalogue (**R11** D220, D221; **R12** D252, D280; **R13** D306, D307) | `infra/gpu/models.yaml`, `infra/gpu/catalogue_schema.py` | T3.1a | `infra/gpu/tests/test_catalogue.py` | every `engine: ollama` entry has `id == "ollama/" + tag` and a 64-hex manifest `digest`; roles generator, judge, nightly_judge, large, embed, rerank present; family plan (generator `qwen`, nightly `gemma`, large `llama`, no judge `qwen`); licence allowlist; every chat/embed entry has `options` with `num_ctx`, `num_predict`, `temperature`, `seed`, `top_p` (missing one → fail); planned VRAM per card and mode ≤ 44 GB; `endpoints.yaml.model_id` = a catalogue id; no host names, IPs or keys; **R12:** chat entries have `option_bounds` with default inside the bounds (default outside → fail); judge `num_ctx` ≥ generator `num_ctx` + 4096 (≤ 3 072 allowance + 1 024 reserve, **R13** D306); embed `num_ctx` == `max_input_tokens`; **R13** (D307): every chat entry has `tokenizer` with a 64-hex `sha256` | planned |
+| `switch-mode.sh`, `health.sh`, `fetch-model.sh` (R9 X2.1, **R11** D212, D220, D230; **R12** D276) | `infra/gpu/` | T3.1a | `infra/gpu/tests/test_gpu_scripts.py` | without `PRUEFSTAND_LOCK_HELD` → exit 2, no `flock` in the scripts; same lock file for two `HOME`s; `datagen` creates `MAINTENANCE`; with `MAINTENANCE`: `night` → exit 3, `datagen`/`day` run, `day` removes it; night unloads the PR judge before gemma, no GPU0 call; every preload body is `{model, keep_alive, options: <catalogue>}`, no `/v1/` URL; `health.sh` exits 10/11/13/15/16 per stub; `--repair` relaunches once, handles `ollama-all`, honours `--mode night`; **R12:** night models resident + `--repair` in day mode → gemma unloaded first, only the day models remain; `fetch-model.sh` digest mismatch → `rm`, exit 1 | covered |
+| Cluster scripts + `deploy-cluster-bin.sh` + `pruefstand-cluster` wrapper (**R11** D228, D231; **R12** D276, D279) | `infra/cluster/start-ollama.sh`, `stop-ollama.sh`, `status.sh`, `cluster.env.template`, `infra/gpu/deploy-cluster-bin.sh`, wrapper | T3.1a | `infra/cluster/tests/test_cluster_scripts.py` | sources `bin/cluster.env` from its own path; per-server `OLLAMA_HOST`/`CUDA_VISIBLE_DEVICES`; launch line `setsid nohup`, never `tmux`; pid files under `$NAS/run/`; idempotent; NAS not mounted → nothing started; `datagen` → one `ollama-all` with `CUDA_VISIBLE_DEVICES=0,1` and `OLLAMA_SCHED_SPREAD=1`; deploy writes scripts + rendered `cluster.env` + `SHA256SUMS` (incl. `cluster.env`), `--check` detects an edit; **R12:** stale pid whose `/proc/<pid>/cmdline` is not `ollama serve` → removed, not killed; template keys = the `.env.example` CLUSTER names; wrapper `stop-ollama all` without the lock held → exit 2, `status` without the lock → runs; ShellCheck clean | covered |
+| `rerank-cpu` app (**R11** D217, DEV11-03) | `infra/gpu/rerank/app.py` | T3.1a | `infra/gpu/tests/test_rerank_app.py` | `POST /rerank` → list of `{index, score}` sorted desc; `truncate: true`, passages > 256 tokens cut; empty `texts` → `[]`; an `Authorization` header is accepted and ignored (no auth); `GET /health` 200 once loaded | covered |
+| A40 endpoints (**R11**) | `infra/gpu/endpoints.yaml` | T3.1a | `pt/gpu/test_endpoints.py` (`gpu`) | both servers `/api/tags` 200 through the tunnels; native `/api/chat` German answer without `<think>`; ≈ 7 000-token prompt → no reload after preload (`load_duration` < 1 s); `bge-m3` dim 1024; `rerank-cpu` via `docker compose exec` or dev port 18201 (D233); `/api/ps` shows catalogue digests with `size_vram == size` | covered |
+| Model benchmark | `experiments/model_selection/bench.py` | T3.1b | `experiments/model_selection/tests/test_bench.py` | JSON-validity rate on 3 strings | covered |
+| Calibration builders (`swap_first_number`, `negate`, `same_paragraph_span`, set builders) | `scripts/calibration/` | T5.3 | `test_construct.py`, `test_builders.py`, `test_memerag_guard.py` | „vier Wochen“ → „fünf Wochen“; seeded builders on 6 real rows; MEMERAG file under `datasets/` → guard fails | covered |
+| `legal_hard` builder (`section_swap`, `party_swap`, `sentence_drop`, `unsupported_append`; R9 X3.1) | `scripts/calibration/legal_hard.py` | T5.3 | `test_legal_hard.py` | `§ 622 Abs. 1` → `§ 623 Abs. 1`; Arbeitgeber ↔ Arbeitnehmer; matched pairs | covered |
+| RQ2 helpers (subsample, degraded pairs, binarise, bias) | `experiments/rq2/` | T5.4 | `test_subsample.py`, `test_make_degraded.py`, `test_binarise.py`, `test_bias.py`, `test_report_split.py` | deterministic stratified subsample; MEMERAG never to `github/` | covered |
+| Orchestrator `select_jobs`, processed state, lock (**R13** P1.2, D288) | `pg/orchestrator/` | T6.2a | `pg/tests/test_jobs.py`, `test_state.py`, `test_lock.py` | a PR job only from a `workflow_dispatch` with input `pr` (no label rule, no PR poll); `main` push → job; fork PR: `gate/pr-N` head ≠ fork head at dispatch → no job, equal → job targeting that SHA; processed line carries the dispatch run id; state round trip; lock taken once per job, preflight after the lock (X2.1) | planned |
+| `plan`, `verify_image`, `serve`, candidate, index, `report`, preflight, hooks | `pg/orchestrator/` | T6.2a | `test_plan.py`, `test_image.py`, `test_serve.py`, `test_candidate.py`, `test_index.py`, `test_report.py`, `test_health.py`, `test_hooks.py` | catalogue generator; `rag.gpu.yaml` read from the PR (X3.15); cosign identity; revision label = head SHA; `--read-only`, `--cap-drop ALL`, internal network; **R9 X2.5:** candidate has no mount or route to the held-out registry; PR collection deleted in `finally`; `set_check(..., no_baseline=True)` → `failure` | covered |
+| `llm-proxy` (**R11** D242, D216, D219, D226; **R12** N2, N6.4; D252, D267) | `infra/gate-executor/llm-proxy/llm_proxy.py` | T6.2a | `infra/gate-executor/llm-proxy/tests/test_llm_proxy.py` | allowed `POST /api/chat`, `POST /api/embed`, `GET /api/tags` for the run's tags → forwarded to `172.17.0.1:11434` only; **R12:** client `temperature: 0.7` (bounds [0, 1]) → forwarded as 0.7; `temperature: 1.5` → 403 "option out of bounds: temperature"; `num_ctx: 65536` → forwarded as the catalogue value; `num_gpu: 0` → dropped; missing `seed` → catalogue default; `keep_alive` stripped; 403 and nothing forwarded for `/v1/*`, `/api/pull\|delete\|create\|copy\|generate\|ps`, a judge or unknown tag, missing/wrong bearer key, oversized body; upstream refused → 502 and `upstream_errors` + 1; upstream reply with `load_duration` 3 s → `model_reloads` + 1; `GET /health` → exactly `{model_reloads, upstream_errors, requests}`; listens on container port 11500; no body or key in logs | covered |
+| Orchestrator preflight, heartbeat thread, infra-error retry (**R11** D225, D226; **R12** D254, D256, D267, D274, D280; **R13** D288) | `pg/orchestrator/` | T6.2a | `pg/tests/test_health.py`, `test_lock.py`, `test_jobs.py` | lock path `/var/lib/pruefstand/gpu.lock`, `MAINTENANCE` file under the same dir, two `HOME`s share it; preflight after the lock; tunnel restart via `sudo systemctl restart pruefstand-tunnel`; 70-min run → ≥ 4 heartbeat pushes (15-min thread); **R12:** NAS not mounted → `infra_error="nas_unavailable: …"`, status `error`; `/health` `model_reloads` 0 → 1 over the run → `add_counts`, `infra_error` kind `model_reload`, `error`, `health.sh --repair`, exactly one retry; second infra failure → `processed.jsonl` line with result `error`, status text ends "re-dispatch to retry", nothing re-runs it until a new dispatch (**R13** D288); nightly phase with 20 min left to 06:00 and a 60-min budget → `window_exceeded`, no retry, not promoted; PR with another catalogue embed model → `bge-m3` unloaded, that model preloaded, `bge-m3` restored in `finally` | planned |
+| Candidate container argv (**R11** D242) | `pg/orchestrator/` | T6.2a | `pg/tests/test_candidate.py` | `LLM_PROXY_URL=http://llm-proxy:11500`, no `--add-host`/`host-gateway`, only the internal network `gate-net` (never `proxy-egress`), no Ollama URL, no `-p`, no `--gpus` | covered |
+| Nightly judge selection, nightly subset, promotable nightly, mirror script, heartbeat check, backup check (**R11** D223, D224, D229) | `pg/scripts/`, `scripts/mirror_fork_pr.sh`, `scripts/check_heartbeat.py` | T6.2b | `test_nightly.py`, `test_promote.py`, `test_mirror_fork_pr.py`, `test_check_heartbeat.py`, `test_backup_check.py` | night window 22:00–06:00 Europe/Berlin incl. both DST dates (two UTC crons + local-time guard) → `gemma`; outside → PR judge + `fallback=True`; nightly = refusal stratum + one of **3** blocks, rotation covers `full` in 3 nights, same seed → same subset; cause-switches only on Sunday; fallback nightly not promotable (D321); 2 h 1 min → down; laptop receipt 8 days 1 h old → warning, 7 days → none, missing → warning | covered |
+| Nightly block scheduling, refs, guard, skip report (**R12** N1.4, N4.3, A12-03, A12-M2; **R13** P2.1, P4.3, P4.4, D305; D251, D256, D275, D281, D282, D290, D298, D299) | `pg/scripts/`, `.github/workflows/nightly.yml` (private), `scripts/check_heartbeat.py` | T6.2b | `test_nightly.py`, `test_promote.py`, `test_check_heartbeat.py`, `test_budgets.py` | nightly command = `pruefstand run --tier nightly --split full --stratum all --block auto` with `PRUEFSTAND_NIGHTLY_COUNTER` set; counter incremented only after a completed nightly (aborted or skipped night → unchanged, so its block repeats); gate `--ref nightly-b<k>` with k from the run; drift `--ref release-b<k>`; missing `release-b0..b2` for the current fingerprint → `release-run-due` true and that night runs the release run of all of `full` (no block gate, no drift, counter unchanged), promoted to `release-b0..b2` (D321); promotion of a block-2 run → ref `nightly-b2`; guard accepts the summer cron only in CEST and the winter cron only in CET and sets `run=false` for the other; a start at 23:30 from the right cron still runs; a job starting at 06:20 Berlin of its fired night → `window_exceeded`, no phase runs, reported once; nightly is one job; deadline 06:00 enforced; skipped nightly → `last_nightly_status` "skipped: …" and issue "nightly skipped"; `check_heartbeat`: `tunnel_ok_false_since` 2 h 1 min ago → alert, 1 h 59 min → none; `last_nightly_at` 26 h 1 min ago → alert; `nightly-failed` on a statistical fail only after two consecutive nights, at once on a hard fail | planned |
+| Backup bundle (R9 X2.6) | `infra/gate-executor/host/backup.sh` (private repo) | T6.2b | Done-when `[HUMAN]` drill | whole bundle `age`-encrypted (`file *.bundle.tar.age` reports neither a git bundle nor a tar); restore via temp file | weak (drill only; acceptable for an ops script) |
+| Noise study | `experiments/noise/` | T6.3 | `test_analyze.py`, `test_noop.py`, `test_replay.py`, `test_check_consistency.py`, `test_cause_switches.py` (`gpu`) | σ̂_d within ±10 %; **R9 X3.5:** regenerated no-op (seed change, rebuilt index) arm reported; replay FAIL rate ≤ 0.03 | covered |
+| `MutationSpec`, `apply` / `revert`, `expected.precondition` (T7.1a part) | `benchmarks/mutations/` | T7.1a | `benchmarks/tests/test_mutations.py` | every `mutation.yaml` validates; IDs unique; stratum | covered |
+| `MutationSpec` (T7.1b part) | `benchmarks/mutations/` | T7.1b | `benchmarks/tests/test_mutations.py` | **R9 X3.10:** every `statistical` mutation's metric is gated in its declared tier (M06, M14, M15, M20 → tier 2); **R13** (P3.3, D294): M14 = "embedding input truncated to 128 tokens" | planned |
+| `naive_gate`, `no_slice_gate`, scoring, dose response, replay | `experiments/rq3/` | T7.2 | `test_baselines.py`, `test_score.py`, `test_dose_response.py`, `test_replay.py`, `test_cause.py` | hand-built runs; Wilson bounds per stratum; committed `results/_inputs/rq3/` inputs | covered |
+| RQ3 true-effect reference and should-detect stratum (**R13** P3.3, D294) | `experiments/rq3/` | T7.2 | `test_score.py` | detection rate computed only over mutations with true effect ≥ δ; others in a separate column; WARN never counts as detection; reference run = 3 blocks + refusal stratum × 3 seeds with a matched BASE re-run per mutation (hand-built fixtures) | planned |
+| RQ1 grid expander, BH fix-first | `experiments/rq1/` | T7.3 | `experiments/rq1/tests/test_grid.py`, `test_analyze.py` | 12 / 18 effective configs; cluster resampling; BH | covered |
+| RQ1 split and equal-volume comparison (**R13** P3.2, AI13-13; D293) | `experiments/rq1/` | T7.3 | `experiments/rq1/tests/test_grid.py`, `test_analyze.py` | grid reads only `Split.RQ1` cases; `/v1/query` only for the pre-registered correctness subsample, `/v1/retrieve` for the rest; chunking arms compared at equal total retrieved tokens (top chunks until the token budget), not equal k | planned |
+| `reproduce` orchestration, `experiments-check` | `experiments/reproduce.py` | T7.4 | `experiments/tests/test_reproduce.py` | dependency order; MANIFEST sha256; tampered CSV → error | covered |
+| `verify_dashboard_export` | `scripts/dashboard/verify_dashboard_export.py` | T8.5 | `scripts/tests/test_verify_dashboard_export.py` | changed byte → exit 1 naming the file; file missing from manifest → exit 1 | covered |
+| Pre-deploy leak-probe job (R9 X2.8; **R13** UI13-06, D318) | `.github/workflows/demo-ready.yml` job `pre-deploy-leak-probes` | T8.5 | `scripts/tests/test_check_workflows.py` + Done-when `[DOCKER]` | `release-demo-ready` `needs:` the job and uploads the release asset `demo-ready.json` (D318); `deploy.yml` has no demo job; `[DOCKER]` leak probes against a `tenant_filter: post_topk` demo config → job fails, `release-demo-ready` skipped, no asset | planned |
+| Demo lookup within the anonymous limit (**R13** P5.3, D302) | `scripts/demo/` (demo-deploy) | T8.5 | `test_resolve_demo_ready.py` | exactly one API request (`releases/latest`) per night; assets `demo-ready.json` + `image-digests.json` fetched via `browser_download_url`; 403/429 → exit 0, summary note, deployed digest kept | planned |
+| Post-deploy smoke waits for the build id (**R13** P5.5, D304) | `apps/dashboard/e2e/smoke.deployed.spec.ts` | T8.5 | `smoke.deployed.spec.ts` | polls `/pruefstand/build-id.txt` until it equals the expected id (≤ 10 min; short timeout in the test), other id → fails "Pages still serves an older build"; page requests carry a cache-busting query | planned |
+| Deployed smoke (**R11** D235, D243) | `apps/dashboard/e2e/smoke.deployed.spec.ts` | T8.5 | `smoke.deployed.spec.ts` | GitHub Pages site root `https://dheena18.github.io/pruefstand/`: pages load under `basePath` `/pruefstand`, `/pruefstand/docs/` still loads; exactly one CSP `<meta>` per page, no CSP violation (R9 X5.2); no Vercel header file in `out/`; run by `docs.yml` job `post-deploy-smoke` (`needs: deploy`) | covered (R11 cases: T8.5 keeps the row in step) |
+| Pages assembly (**R11** D243; T0.4 part: placeholder) | `scripts/deploy/assemble_pages_site.sh` | T0.4 | `scripts/deploy/tests/test_assemble_pages_site.py` | mkdocs under `docs/`, `.nojekyll`; placeholder mode links to `docs/`; **R13** (P5.5, D304): `build-id.txt` = `BUILD_ID`, unset or malformed `BUILD_ID` → exit 1 | covered |
+| Pages assembly (T8.5 part: real dashboard) | `scripts/deploy/assemble_pages_site.sh` | T8.5 | `scripts/deploy/tests/test_assemble_pages_site.py` | dashboard `out/` at the root, root `404.html` = dashboard 404; dashboard export containing `docs/` → exit 1 | covered |
+| VM proxy network + firewall (**R11** D242; **R12** N4.2, D255) | `infra/vm/setup-proxy-net.sh`, `infra/vm/pruefstand-firewall.service` + its rules script, tunnel unit | T0.7 | `infra/vm/tests/test_vm_scripts.py` | four `-L` forwards (127.0.0.1 + 172.17.0.1), `After=docker.service`; `proxy-egress` subnet `10.231.0.0/24`; rules in the `DOCKER-USER` chain and the `PRUEFSTAND-INPUT` chain (jump from `INPUT`, D285): accept-from-subnet before drop for `172.17.0.1:11434/11435`; **R12:** the firewall unit is a oneshot with `After=docker.service` and re-applies on Docker restart; the rules file contains no `flush ruleset`; `nftables.service` is not enabled; applying twice gives the same rules; `vm_check firewall` asserts Docker's chains still exist | covered |
+| `demo-net` egress rules (**R13** P2.2, D291) | `infra/vm/pruefstand-firewall.sh` | T0.7 | `infra/vm/tests/test_vm_scripts.py` | `DOCKER-USER` drops `demo-egress` (`10.233.0.0/24`) → `10.0.0.0/8`, `172.16.0.0/12`, `192.168.0.0/16`; `PRUEFSTAND-INPUT` drops `10.232.0.0/24` and `10.233.0.0/24`; `demo-net` is `--internal` (no egress rule); rules idempotent; `vm_check firewall` probes the NAS IP, `cairo-s101lp:22` and the internet from a `demo-net` container → unreachable, from `cloudflared` RFC 1918 unreachable and internet reachable | planned |
+| Fixture derivation (**R11** D236, D237; **R12** N6.5, D268) | `scripts/dashboard/derive.py` | T8.1 | `scripts/dashboard/tests/test_derive.py` | from one real tier-1 run dir: `--partial` → `complete == False`, `stop_reason == "budget_exceeded"`, fewer cases; `--no-baseline` → `gate.json` with `no_baseline == True`, `baseline_run_id is None`; `--judge-skipped` → `judge_mode == "skipped"`, no judged values; no argument → all three regenerated; outputs only under `apps/dashboard/fixtures/**`; same input → same bytes; empty set builds with the `_empty` param and `dynamicParams = false` | covered |
+| Release exemption, release workflows (R9 X2.9) | `release-please-config.json`, `.github/workflows/release*.yml` | T9.1a | `scripts/tests/test_release_exemption.py`, `test_check_workflows.py` | exemption list equals `extra-files` + manifest + CHANGELOG; release PR commits `uv.lock` after `uv lock` | covered |
+| `check_canaries`, `build_release_dir` | `scripts/dataset/` | T9.1b | `test_check_canaries.py`, `test_build_release_dir.py` | not-rotated registry → exit 1; private file → exit 1; dry-run export | covered |
+| README / docs scripts | `scripts/docs/` | T9.2 | `test_docs_scripts.py` | "Live demo" section iff a production URL is recorded | covered |
+| `gen_macros`, `check_numbers_in_prose`, `check_bib` | `scripts/report/` | T9.3 | `test_gen_macros.py`, `test_check_numbers_in_prose.py`; `check_bib` via `[NET]` Done-when | CSV → macro; missing CSV → error; number in prose outside a macro ("detects 18 of 19") → flagged; "Section 3", "2026" allowed | covered |
+| `check_blog` | `scripts/blog/check_blog.py` | T9.4 | `test_check_blog.py` | unresolved placeholder → fail; pooled RQ3 number without stratum → fail | covered |
+
+UI tests (pages × states × theme × locale × viewport) are specified in `docs/design/ui-spec.md` §14 and
+`docs/engineering/testing-strategy.md` §3.10; they are not repeated here.
+
+## Totals (round-13 refresh)
+
+| Status | Rows |
+| --- | --- |
+| covered | 306 |
+| planned | 35 (R13 rows and rows whose case round 13 changed; owners T0.2, T0.7, T1.1, T1.8, T1.9, T1.10, T3.1a, T3.6, T4.1, T5.4, T6.1, T6.2a, T6.2b, T7.1b, T7.2, T7.3, T8.1, T8.5) |
+| weak | 1 (backup bundle: drill only, acceptable for an ops script) |
+| **total** | **342** |
+
+Round-13 changes (D296): the round-12 table (241 covered / 29 open / 1 weak = 271 rows) was re-derived: 40 multi-owner
+rows split into 90 single-owner rows (+50); 29 open rows flipped (`covered` unless round 13 changed the case); 21 new
+R13 rows (`Split.RQ1`, `RunManifest.stratum`, `eval_fingerprint(stratum)`, `RunIndexEntry` R13 fields + caps,
+`is_drift(threshold)`, `release-b<k>` refs + promotion exclusion, whole-tree `push_dashboard_data`, heartbeat
+vocabulary/maintenance, `sanitise_run` infra kind, runner judged-subset generation scope, `post_status` + call sites,
+flagged-judge promotion/phase order, generator tokenizer, RQ3 true effect, RQ1 split, demo lookup, build-id smoke,
+`demo-net` egress).
+
+Round-12 changes (D269): DEV12-07 applied (the round-11 table counted 247 covered / 13 open / 1 weak = 261 rows, not the 259 stated there; after DEV12-07: covered 254, open 6, weak 1, total 261); then R12 rows added
+(`TestCase.block`/`judged_subset`, `RunManifest` R12 fields, `eval_fingerprint` R12 parameters, `DatasetManifest` R12
+fields, `ArtifactStore.add_counts`, heartbeat R12 fields, `run_eval`/CLI block selection, release-drift restriction +
+`nightly-b<k>` refs, `rerank.on_retrieve` + sampling options, nightly block scheduling) and R12 cases added to existing
+rows (`is_drift` rule, `LabelsDocument.hard_fail_rules`, `set_check` summary, `assign_splits`, `validate_dataset`,
+`LocalDirBaselineStore` refs, `check_test_locations`, VM units, firewall, GPU scripts, cluster scripts + wrapper,
+catalogue bounds, `llm-proxy` option policy and `/health`, orchestrator retry/window/embedding swap), which turned those
+rows `open` until the owning prompts contain the cases.
+
+Round-11 changes (D240): 19 rows added (`RetrieveResponse`/`CaseRecord.mode`, Ollama translation,
+`HttpTargetAdapter.retrieve`, runner retrieve routing + infra errors, `set_check(infra_error)`, renderers with
+`base=None`, judge fallback informational, `RagConfig` R10/R11 fields, `OllamaDenseEncoder`, generator bearer
+header, `/v1/retrieve` endpoint, `tunnel_check.sh`, VM scripts + `pruefstand-lock`, cluster scripts +
+`deploy-cluster-bin.sh`, `rerank-cpu`, `llm-proxy`, orchestrator preflight/heartbeat/retry, candidate argv, fixture
+derivation); stale round-9 rows rewritten (`summarise` path and cases, catalogue 64-hex digests and `options`,
+VM scripts without vLLM/TEI, endpoints via `/api/tags`, nightly window and subset, deployed smoke on GitHub Pages).
+
+Changes against the round-8 matrix: statuses re-derived (12 former `weak` rows are `covered` because their prompts now
+test them: `FixedTokenChunker`, LLM models, `JudgeTask`/`JudgeVerdict`, `DatasetManifest`, `SplitPlan`,
+`generate_qa_pairs`, `build_dataset`, CLI `baseline`, MCP, drift models, `TeiDenseEncoder` timeout,
+`LiteLLMBackend.acomplete`); four rows that claimed `covered` without a prompt test are now `open` (`set_check`
+mapping, `write_gate_json`, and the R9 additions on both); file names corrected (`test_cassette_recorder.py`,
+`test_gate_models.py` + `test_tables.py`, `test_perturb_case_async.py`, `test_fixed_chunker.py`,
+`test_baseline_cli.py`); new rows for every R9 symbol and for the out-of-package symbols that Done-when lines name.

@@ -1,0 +1,137 @@
+# Secrets and environment variables — the single reference
+
+Every secret and environment variable of the project, in one table. Other docs and prompts point here
+instead of repeating names, scopes or locations. The committed template is `.env.example` (repo root,
+sections LOCAL / VM-SHARED / VM-EXECUTOR / CLUSTER). Machines follow `docs/planning/reviews/round10-resolution.md`
+Z1/Z7, identities follow `round11-resolution.md` Y1 (D211–D214; proxy networking D242); round-12 rows (D257, D260–D262,
+D272, D278, D279) follow `round12-resolution.md`; round-13 rows (D287–D289, D299, D303, D310, D316) follow
+`round13-resolution.md`:
+**LOCAL** = the development shell (main dev machine is the TrueNAS VM `pruefstand-exec`, owner login user, opened
+from VS Code via Remote-SSH; WSL2 optional), **VM** = the executor on `pruefstand-exec`, run by the system user
+**`pruefstand`**, **CLUSTER** = `cairo-s101lp` (only the two Ollama servers).
+
+On the VM there are exactly two env files (DEV11-18): the owner's `.env` = LOCAL + VM-SHARED (no duplicate keys,
+`PRUEFSTAND_STACK=live`, `PORT_OFFSET=10000`; symlinked or copied into every worktree by the lead agent, D234) and
+the executor's `/home/pruefstand/runner.env` (owner `pruefstand`, mode 600) = VM-SHARED + VM-EXECUTOR. Executor
+secrets live **only** under `pruefstand` (D213); coding agents run as the owner user, are root-equivalent through
+the `docker` group (accepted risk, security.md C18) and never read `/home/pruefstand/**` or `/var/lib/pruefstand/**`.
+Their GitHub powers are bounded separately (R12 N4.4, D257; stated exactly by R13 P1.3, D289): `gh`/git on the VM use a
+fine-grained token limited to the public repo. With it an agent **can** push branches, open and update PRs and
+comments, and push workflow files (`.github/workflows/**`) of the public repo. None of that can produce the required
+status `pruefstand/gate` (the ruleset pins it to the App `pruefstand-bot`, D287; a status a branch workflow posts with
+its `GITHUB_TOKEN` does not satisfy it) or start tier 2 (the only PR trigger is the owner's `workflow_dispatch` of
+the private `gate-executor.yml`, D288; there is no `run-gate` label). Nothing on the VM can reach the private repo,
+its runner workflows, the held-out canaries or ruleset bypass; those stay with the owner's browser session on the
+Windows laptop (or the GitHub mobile app for the dispatch).
+The GPU lock `/var/lib/pruefstand/gpu.lock` and the file `/var/lib/pruefstand/MAINTENANCE` are fixed paths, not
+variables (D211, D212).
+
+Rules:
+
+1. GitHub App private keys and PATs are **GitHub repo or environment secrets only**, never in any `.env`
+   file, image, compose file, log or run artefact (CLAUDE.md §5, §8).
+2. `.env` files are git-ignored; `.env.example` holds names, one-line comments and safe defaults only.
+3. **No password is stored anywhere.** The VM→cluster login uses an SSH key created on the VM in T0.7;
+   the key never leaves the VM and is never stored in GitHub.
+4. The public repo holds no token that reaches the private repo (ADR-0005, D108) and exactly one gate secret: the
+   `pruefstand-bot` App key in environment `gate-router` (deployment branch `main` only), used only by
+   `gate-router.yml` to post `pruefstand/gate` (R13 P1.1, D287).
+5. Adding a variable = one row here + one line in `.env.example` (append-only, last commit of the task).
+
+Location codes: **local .env** (dev shell; on the VM the owner's `.env`), **VM .env** (VM-SHARED: both the owner's
+`.env` and `runner.env`), **runner.env** (VM-EXECUTOR: `/home/pruefstand/runner.env` only),
+**cluster env** (`$CLUSTER_NAS_ROOT/bin/cluster.env`, rendered by T3.1a from `infra/cluster/cluster.env.template`,
+D231), **public secret**
+(public repo `dheena18/pruefstand`, environment named in brackets), **private secret** (private repo
+`dheena18/pruefstand-gate`), **workflow** (set by a workflow at run time), **VM only** (file on the VM).
+
+## Secrets
+
+| Name | Lives in | Created by | Scope / permissions | First needed | Rotation |
+| --- | --- | --- | --- | --- | --- |
+| `GITHUB_TOKEN` (local) | local .env | owner | fine-grained PAT, **Models: read** only, no repo access; local live tests and cassette recording | T1.4 (live tests), T5.1 | ≤ 1 year (expiry at creation) |
+| Owner `gh` token on the VM (R12 N4.4, D257) | the owner user's `gh` config on the VM (`~/.config/gh/hosts.yml`, via `gh auth login --with-token`; git uses it through `gh auth setup-git`); never in `.env`, a repo secret or `/home/pruefstand/**` | owner (GitHub → fine-grained PAT) | **only** `dheena18/pruefstand` (public repo): Contents read/write, Pull requests read/write, Metadata read; **no** Administration, **Workflows read/write** (required: agents push `.github/workflows/**` of the public repo, R12 integration D284), no access to `pruefstand-gate` or `pruefstand-dashboard-data`; check from the VM: `gh api repos/dheena18/pruefstand-gate` → 404 (T0.0/T0.7). What it can do (R13 P1.3, D289): push branches, open/update PRs and comments, push `.github/workflows/**`; none of it can produce `pruefstand/gate` (App-pinned, D287) or start tier 2 (owner dispatch only, D288; no `run-gate` label). `--admin` merges, ruleset bypass, the tier-2 dispatch and every private-repo action are done by the owner in the browser (security.md C18) | T0.0 | ≤ 90 days (expiry at creation); at once on suspicion |
+| `GITHUB_TOKEN` (CI) | workflow (automatic) | GitHub | per-job `permissions:`; `models: read` only in `live-e2e.yml`, `cassettes.yml` (security X2) | T0.2 | per run |
+| `HF_TOKEN` (local) | local .env | owner | fine-grained: read (gated Llama/Gemma weights; accept each model's licence on its HF page first) + write only on `<HF_USER>/pruefstand-de` for the manual T4.7b push | T3.1b (gated weights), T4.7b | ≤ 1 year |
+| `HF_TOKEN` (release) | public secret [`huggingface`, required reviewer] | owner | write on `<HF_USER>/pruefstand-de` only; used by `dataset-release.yml` | T9.1b | ≤ 1 year |
+| `BOT_APP_ID`, `BOT_APP_KEY` | private secret **and** public secret [`gate-router`, deployment branch `main` only, no reviewer] (R13 P1.1, D287) | owner (GitHub App `pruefstand-bot`) | App on the public repo only: `statuses: write`, `pull_requests: write`, `contents: read`, `metadata: read`; the ruleset pins `pruefstand/gate` to this App. The public copy is read only by `gate-router.yml` (`pull_request_target`, no checkout) to mint an installation token for "not gated" / "gated: awaiting tier-2 dispatch"; no other workflow names the environment (T0.2 guard) | T6.2a (private), T6.2b (`gate-router`) | key yearly or on suspicion, both copies together (runbook §7) |
+| `DASHBOARD_DATA_PAT` | private secret | owner | fine-grained PAT, `contents: write` on `dheena18/pruefstand-dashboard-data` only | T6.2a | ≤ 1 year (runbook §7) |
+| `HELDOUT_SEED` | private secret | owner | seed of the held-out canary set; never in the public repo | T2.6 | never (new seed = new held-out set) |
+| `RELEASE_APP_ID`, `RELEASE_APP_KEY` | public secret [`release`; copy in `action-sync`] | owner (GitHub App `pruefstand-release`) | `contents: write`, `pull_requests: write`; only `release-please.yml` and the optional `sync-action-repo` job | T9.1a | key yearly |
+| PyPI / TestPyPI | none (Trusted Publishing, OIDC) | owner (Trusted Publisher entries) | environments `pypi` (required reviewer), `testpypi` (deployment branches `main` only, R13 A13-M2, D316: a pushed agent branch cannot publish under the project's TestPyPI name), workflow `release.yml` | T9.1a | n/a (no token exists) |
+| GitHub Pages deploy | none (workflow `GITHUB_TOKEN` with `pages: write`, `id-token: write` on the `deploy` job of **`docs.yml`** only, the single Pages writer; environment `github-pages`) | GitHub | publishes one site: dashboard at `/pruefstand/`, docs at `/pruefstand/docs/` (R11 D235, D243); `deploy.yml` only builds the dashboard artefact `dashboard-site`; `docs.yml` is started by **`workflow_run`** on a successful `deploy.yml` and downloads the artefact from `github.event.workflow_run.id` with its own `GITHUB_TOKEN` (`actions: read`); no dispatch, no `actions: write` anywhere (R12 N5.2, D260); no Vercel token exists | T0.4 (docs), T8.5 (dashboard) | per run |
+| Optional demo image pull | none (R12 N5.3, D261) | – | the private `demo-deploy` job pulls the **public** GHCR image by digest without credentials and verifies it with `cosign verify`; R13 P5.3 (D302): one anonymous API call per night (`releases/latest`), the release assets are downloaded via `browser_download_url` (not the API); no cross-repo token exists | T8.5 | n/a |
+| `CLOUDFLARE_TUNNEL_TOKEN` | `/home/pruefstand/demo.env` on the VM (mode 600, user `pruefstand`) — **only if the optional demo T8.4 is built** | owner (Cloudflare Zero Trust dashboard, free plan) | `TUNNEL_TOKEN` of the `cloudflared` container on `demo-net` (compose project `pruefstand-demo`, `env_file`), started by the private nightly `demo-deploy` job for the one demo hostname (R11 D239, D244); never in GitHub (no `demo`/`preview` environment exists), the owner's `.env`, an image or a log | T8.5 | on suspicion (rotate in the Cloudflare dashboard, replace the file, next `demo-deploy` restarts `cloudflared`) |
+| `PRUEFSTAND_NONCE_KEY` | runner.env (mode 600) | owner on the VM (`openssl rand -hex 32`, written as `pruefstand`) | HMAC key for judge-prompt nonces; tests and hosted CI use a fixed test key | T5.2a (tier 2 in T6.2a) | on suspicion (invalidates the judge cache) |
+| VM→cluster SSH key | VM only, user `pruefstand`: `/home/pruefstand/.ssh/id_ed25519_cluster` (mode 600) + `/home/pruefstand/.ssh/config` block `Host cairo-s101lp` (R11 D211) | owner in **T0.7** via `sudo -u pruefstand infra/vm/setup-ssh-key.sh` (`ssh-keygen -t ed25519` + `ssh-copy-id`; the cluster password is typed once and never stored); no key in the owner's home | login to `cairo-s101lp` for `pruefstand-tunnel.service` (`autossh`, system unit) and the cluster scripts (`BatchMode=yes`); used only by processes running as `pruefstand`; never in GitHub, `.env`, the NAS, an image or a log | T0.7 | on suspicion or VM rebuild: new key, `ssh-copy-id`, remove the old line from the cluster's `authorized_keys` (`infra/vm/README.md`) |
+| `PRUEFSTAND_CANDIDATE_API_KEY` | runner.env (mode 600); passed by the orchestrator into the candidate container env and to `llm-proxy` only | owner on the VM (`openssl rand -hex 32`) | bearer key `llm-proxy` requires; rag-demo sends `Authorization: Bearer …` on every generator and embedding call to `LLM_PROXY_URL` (R11 D216; T3.4 embeddings client, T3.6 generator client, T1.13 tier-1 client with an empty key = no header). Not used by `rerank-cpu` (no auth, D217); never valid for a judge endpoint (R10 D206); never logged | T6.2a (header from T1.13/T3.4/T3.6) | on suspicion |
+| `age` key pair | private key: owner's laptop only; public key: `AGE_RECIPIENT` | owner | encrypts the weekly backup bundle | T6.2b | on loss or suspicion (runbook §7) |
+| Runner registration | runner config on the VM | owner (one-time registration token) | persistent self-hosted runner of the private repo, label `a40` | T6.2a | only when moving hosts |
+
+## Variables (not secret)
+
+| Name | Lives in | Set by | Meaning / default | First needed | Rotation |
+| --- | --- | --- | --- | --- | --- |
+| `GH_OWNER`, `HF_USER` | local .env, VM .env | owner | account names | T0.0 | n/a |
+| `PRUEFSTAND_HOME` | local .env, runner.env | owner | host state dir (runs, caches). Owner: `~/pruefstand`. Executor: `/home/pruefstand/pruefstand` (`state/`, run dirs, Qdrant data; VM-local disk). It never holds `gpu.lock` or `MAINTENANCE` (those are `/var/lib/pruefstand/…`, D211/D212) | T0.3 / T0.7 | n/a |
+| `PRUEFSTAND_LOCK_DIR` | never in `.env` (tests only) | test fixtures | overrides `/var/lib/pruefstand` in the tests of `pruefstand-lock` and `infra/gpu/` scripts; production never sets it (T0.7) | T0.7 | n/a |
+| `PORT_OFFSET` | local .env | owner | host-port offset of the compose stack (T0.3, D214): `0` on a laptop/WSL; `10000` in the owner's `.env` on the VM (profile `dev`: Qdrant 16333/16334, rerank 18201, rag-demo 18000, dev `llm-proxy` 21500); the executor stack always uses the defaults | T0.3 | n/a |
+| `QDRANT_HTTP_PORT`, `QDRANT_GRPC_PORT`, `LLM_HOST_PORT`, `EMBED_HOST_PORT`, `RAG_DEMO_HOST_PORT`, `RERANK_HOST_PORT`, `LLM_PROXY_PORT` | exported by `make` (`mk/docker.mk`, T0.3) for every compose call; written by `make ports-env` into the owner's VM `.env` only; never in `runner.env` (R13 A13-M6, D310) | `make` | each = default + `PORT_OFFSET` (6333, 6334, 8080, 8090, 8000, 8201, 11500); compose files read `${NAME:-default}`; `make -s ports` prints them (D214, D247). On the VM prefer `make up PROFILES=…`; a raw `docker compose` is safe only after `make ports-env`, verified by `make check-ports` (D310, superseding D278) | T0.3 | n/a |
+| `COMPOSE_PROJECT_NAME` | local .env | owner | empty on a laptop/WSL; `pruefstand-dev` in the owner's `.env` on the VM so the dev stack never shares container names or volumes with the executor project `pruefstand-exec` (T0.3, D214) | T0.3 | n/a |
+| `LLM_PROXY_UPSTREAM` | `llm-proxy` container env (executor: `compose.executor.yml`; dev profile) | T6.2a | `http://172.17.0.1:11434`: the GPU0 tunnel on the Docker bridge gateway, reached over `proxy-egress` and accepted by the VM firewall only from that subnet (D242); never the `:11435` judge port | T6.2a | n/a |
+| `PRUEFSTAND_DATA_ROOT` | VM .env | owner (T0.7) | NAS dataset on the VM, `/mnt/pruefstand` (data, corpus, datasets, baselines, backups, cache) | T0.7 | n/a |
+| `CLUSTER_SSH_HOST` | VM .env | owner (T0.7) | `cairo-s101lp` (alias in `/home/pruefstand/.ssh/config`) | T0.7 | n/a |
+| `CLUSTER_NAS_ROOT` | VM .env | owner (T0.7) | NAS dataset as the cluster sees it, `/data/dheena/truenas-ollama` | T0.7 | n/a |
+| `OLLAMA_GPU0_URL`, `OLLAMA_GPU1_URL` | VM .env | owner (T0.7) | `http://localhost:11434` / `:11435` through `pruefstand-tunnel.service` (trusted clients only: orchestrator, judges, bench, `llm-proxy`); native `/api/*` only (R11 D219) | T0.7 | n/a |
+| `RERANK_URL` | runner.env / candidate env set by the orchestrator; owner `.env` only for dev tools | owner / orchestrator | `rerank-cpu` on the VM CPU, TEI-compatible `POST /rerank`, **no auth** (R10 D198, R11 D217). Executor: `http://rerank-cpu:8201` (internal candidate network, no host port). Owner dev stack: `http://localhost:18201` (`PORT_OFFSET=10000`) | T3.1a | n/a |
+| `LLM_PROXY_URL` | candidate container env (set by the orchestrator); runner.env for manual tests | orchestrator | trusted `llm-proxy` (normal container on `gate-net` + `proxy-egress`), the candidate's only route to Ollama GPU0 (R10 D206, R11 D242); default `http://llm-proxy:11500` (resolved by name on `gate-net`; no `extra_hosts`). Owner dev stack from the host: `http://127.0.0.1:21500` | T6.2a | n/a |
+| `GPU_LOCK_TIMEOUT_S` | VM .env | owner | `flock -w` timeout of `pruefstand-lock` and the lock-taking `mk/gpu.mk` targets; default `7200` (orchestrator: ≤ 2 h PR/promote, ≤ 8 h nightly in the 22:00–06:00 window, D223) | T0.7 / T3.1a | n/a |
+| `OLLAMA_NUM_PARALLEL`, `OLLAMA_MAX_LOADED_MODELS`, `OLLAMA_KEEP_ALIVE`, `OLLAMA_FLASH_ATTENTION`, `OLLAMA_KV_CACHE_TYPE`, `OLLAMA_NOPRUNE`, `OLLAMA_CONTEXT_LENGTH_GPU0`, `OLLAMA_CONTEXT_LENGTH_GPU1` | cluster env | T3.1a renders `infra/cluster/cluster.env.template` (the **single source**; names exactly as in the template, R12 DEV12-10, D279) into NAS `bin/cluster.env` (checksummed, D231) | 4; 2; `-1` (**verify** on the pinned Ollama, else `24h`; AI11-14c, AI12-04); 1; `f16`; `1` (two servers share one model store, AI11-14d); `8192`; the judge `num_ctx` (`12288`, R12 N7, D270; server-side default as a second guard, **verify** support). Per-request options and the preload `keep_alive` come from `infra/gpu/models.yaml` (D220, D252); `OLLAMA_NUM_PARALLEL` on `ollama-gpu1` may drop to 2 before a judge's `num_ctx` is lowered (AI12-09) | T3.1a | n/a |
+| `OLLAMA_SCHED_SPREAD_DATAGEN` | cluster env | T3.1a (template) | `1`: `start-ollama.sh datagen` exports `OLLAMA_SCHED_SPREAD=1` for `ollama-all` only (spread the 70B model over both A40s); never set for `ollama-gpu0`/`ollama-gpu1` | T3.1a | n/a |
+| `OLLAMA_BIN_GPU0`, `OLLAMA_BIN_GPU1` | cluster env | T3.1a (template) | Ollama binary path per server; default `ollama` (AI11-09) | T3.1a | n/a |
+| `OLLAMA_MODELS`, `OLLAMA_HOST`, `CUDA_VISIBLE_DEVICES`, `OLLAMA_SCHED_SPREAD` | process env of each server, exported by `start-ollama.sh` (never in the template) | `start-ollama.sh` | `$NAS/ollama-models` (NAS root derived from the script's own path), `127.0.0.1:11434` or `:11435`, `0` or `1` (`0,1` for `ollama-all`), `1` for `ollama-all` only (Z7) | T3.1a | n/a |
+| `AGE_RECIPIENT` | runner.env | owner | `age` public key the backup is encrypted to | T6.2b | with the key pair |
+| `PRUEFSTAND_HELDOUT_DIR` | runner.env (trusted jobs only) | orchestrator | held-out registry dir; never passed to a candidate (X2.5) | T6.1 | n/a |
+| `PRUEFSTAND_LOCK_HELD` | never in `.env` | `pruefstand-lock` / orchestrator / `mk/gpu.mk` after `flock` | `1` lets the lock-free VM scripts run (X2.1) | T0.7 / T3.1a | n/a |
+| `PRUEFSTAND_STACK` | local .env, runner.env | owner | `live` in the owner's `.env` (also on the VM), `a40` only in `runner.env` | T1.10 | n/a |
+| `PRUEFSTAND_GPU_ENDPOINTS` | local .env, runner.env | owner | path of `infra/gpu/endpoints.yaml` read by `build_backend` (`PruefstandSettings.gpu_endpoints_file`, T1.2/T5.1; DEV11-22); default `infra/gpu/endpoints.yaml` relative to the working directory | T1.2 | n/a |
+| `PRUEFSTAND_GPU_CATALOGUE` | local .env, runner.env | owner | path of `infra/gpu/models.yaml` read by `LiteLLMBackend` for per-model options and bounds (`PruefstandSettings.gpu_catalogue_file`, T1.2 field, used by T5.1; R12 DEV12-12, D272); default `infra/gpu/models.yaml` relative to the working directory; tests pass a temp file | T5.1 | n/a |
+| `PRUEFSTAND_CACHE_DIR`, `PRUEFSTAND_LOG_JSON` | local .env, workflow | owner / CI | `PruefstandSettings` (`env_prefix="PRUEFSTAND_"`, T1.2): cache dir (default `$PRUEFSTAND_HOME/cache`), JSON logs (default: true when `CI` is set) | T1.2 | n/a |
+| `PRUEFSTAND_HF_TOKEN` | alias only | – | `PruefstandSettings.hf_token` reads `HF_TOKEN` first, then this alias (T1.2); never set both | T1.2 | as `HF_TOKEN` |
+| `PRUEFSTAND_E2E_SCENARIO` | workflow (`live-e2e.yml` matrix), local .env | T1.11 / T1.12 | bug-switch scenario of the tier-1 e2e job; empty = correct config | T1.11 | n/a |
+| `RAG_MODEL_CATALOGUE` | rag-demo image / container env | T3.2 | path of the model catalogue rag-demo resolves `catalogue_id` from; default `infra/gpu/models.yaml` (copied into the image) | T3.2 | n/a |
+| `PRUEFSTAND_CACHE_MODE` | local .env, workflow | owner / executor | `overlay` (default) or `shared` (main, nightly) | T6.1 | n/a |
+| `PRUEFSTAND_JUDGE_MODE` | workflow (forks), local .env | `live-e2e.yml` | `skipped` or unset | T1.10 | n/a |
+| `PRUEFSTAND_GH_MODELS_MODEL` | local .env, workflow | owner / T5.4 | pinned GitHub Models id | T1.4 | n/a |
+| `PRUEFSTAND_TARGET_URL`, `PRUEFSTAND_TEST_LLM_URL`, `PRUEFSTAND_JUDGE_BASE_URL` | local .env | owner | `http://localhost:8000`, `http://localhost:8080/v1`, `http://localhost:8080/v1` | T1.4 / T1.10 | n/a |
+| `PRUEFSTAND_DATAGEN_URL` | local .env (optional) | owner | Ollama URL for datagen cassette recording; empty = skip | T4.2 | n/a |
+| `RAG_CONFIG`, `LIVE_MODEL_DIR`, `LIVE_LLM_GGUF`, `LIVE_LLM_THREADS` | local .env | owner | compose `live` profile: rag-demo profile file, CPU model dir (`~/.cache/pruefstand/models`), GGUF name, threads | T0.3 / T1.13 | n/a |
+| `SERVING_ENGINE_VERSION`, `SERVING_GPU` | candidate container env | orchestrator | static `/v1/info.serving` fields (X3.13) | T3.2 | n/a |
+| `ACTIONS_RUNNER_HOOK_JOB_STARTED` / `_COMPLETED` | VM `runner.env` | T6.2a install script | job hygiene hooks | T6.2a | n/a |
+| `PRUEFSTAND_SIM_GRID` | workflow, local .env | `ci.yml` nightly | `reduced` (default) or `full` | T1.6 | n/a |
+| `PRUEFSTAND_ANNOTATOR` | local .env | annotator | pseudonym for optional human labels | T5.3-opt | n/a |
+| `OTEL_EXPORTER_OTLP_ENDPOINT` | local .env (optional) | owner | OTLP export target; empty = off | T5.1 | n/a |
+| `DASHBOARD_DATA_DIR` | local .env, workflow | owner / `ui.yml`, `deploy.yml` | data tree for the static build | T8.1 | n/a |
+| `NEXT_BASE_PATH` | workflow (`deploy.yml` job `build-dashboard`) | T8.5 | Next.js `basePath`: `/pruefstand` for the GitHub Pages site root (D243); empty (unset) in local builds, Playwright and `ui.yml` | T8.1 | n/a |
+| `DEMO_*`, `TRUSTED_PROXY_HOPS` | local .env, demo env on the VM | owner | optional public demo on the VM behind the Cloudflare Tunnel (R11 D239); limits (T8.4 defaults: 10 req/min, 100/day per key), `DEMO_TIMEOUT_S` default 75 (< client 90), `TRUSTED_PROXY_HOPS=1` behind the tunnel; `0` for the `rag-demo-e2e` instance the browser calls directly (key = peer address, UI12-11) | T8.4 | n/a |
+| `DEMO_TEST_RESET` | env of the `rag-demo-e2e` test instance only (`try_e2e.sh`); never in the demo env or any `.env` | T8.4 | `1` enables `POST /v1/_test/reset` (clears the in-process limit counters; 409 while a generation is in flight), loopback peers only; unset (default) = the endpoint does not exist (R12 N5.4, D262). R13 P5.4 (D303): called from **inside** the container (`docker compose exec rag-demo-e2e curl -X POST localhost:8000/v1/_test/reset`), so the peer really is loopback; no reset token exists | T8.4 | n/a |
+| `PRUEFSTAND_NIGHTLY_COUNTER` | runner.env (set per job by the orchestrator) | T6.2b / orchestrator | path of the counter file, default (unset) **`$PRUEFSTAND_HOME/state/nightly_counter`** = the executor's copy of `state/nightly_counter` (private branch `executor-state`; one name, D322); read by `pruefstand run --block auto` (k = value mod 3; file missing → 0, invalid → exit 2, no date fallback); incremented only by T6.2b after a completed nightly (R13 P4.4, D299) | T1.10 (read), T6.2b (write) | n/a |
+| `E2E_PORT` | computed by `scripts/demo/try_e2e.sh` (never in `.env`) | T8.4 | host port of `rag-demo-e2e` on `127.0.0.1` = 8091 + `PORT_OFFSET` | T8.4 | n/a |
+| `OLLAMA_DEBUG` | never set (cluster) | – | must stay unset on both Ollama servers (no prompt logging; security.md T2); `cluster.env.template` never sets it | T3.1a | n/a |
+| `PRUEFSTAND_TRUSTED_CHECKOUT` | runner.env (optional) | owner / orchestrator | path of the trusted `main` checkout that `health.sh` exit 14 compares NAS `bin/` against; default = the runner's checkout of `main` (T3.1a, A11-M11; R13 DEV13-09, D316) | T3.1a | n/a |
+| `PAGES_MAX_BYTES` | workflow (`docs.yml`), tests | T0.4 / T8.5 | size cap of the assembled Pages site in bytes, checked by `assemble_pages_site.sh` (default `800000000`, D259); tests set a small value (R13 DEV13-09, D316) | T0.4 | n/a |
+| `BUILD_ID` | workflow (`docs.yml` deploy job) | T0.4 | `"<head_sha>-<deploy_run_id>"` written to `build-id.txt` by `assemble_pages_site.sh` (required; exit 1 when unset or malformed); the post-deploy smoke polls `/pruefstand/build-id.txt` until it matches (R13 P5.5, D304) | T0.4 | per run |
+| `HYPOTHESIS_PROFILE` | workflow (`ci.yml` nightly), Make; local only for a manual run | T0.1 / T0.2 | Hypothesis profile `ci` (default, `max_examples=200`) or `nightly` (`max_examples=2000`), registered in the package `conftest.py` files (R13 DEV13-09, D316) | T0.1 | n/a |
+| `LITELLM_LOCAL_MODEL_COST_MAP` | Make (`make test`/`coverage`), workflow | T0.1 | `True`: LiteLLM uses its bundled cost map, no network fetch at import (CLAUDE.md §3; R13 DEV13-09, D316) | T0.1 | n/a |
+| `DEMO_API_URL` | public repo **variable** (Settings → Variables; not a secret) | owner | read by `deploy.yml` as `vars.DEMO_API_URL` and passed to the dashboard build as `NEXT_PUBLIC_DEMO_API_URL`; empty or unset → no Try-it link (UI12-19) | T8.5 | n/a |
+| `NEXT_PUBLIC_DEMO_API_URL`, `NEXT_PUBLIC_DEMO_TIMEOUT_S` | local .env; `deploy.yml` build step (from `vars.DEMO_API_URL`) | owner | dashboard "try it" panel (empty = hidden); client timeout default 90 | T8.4 | n/a |
+
+Removed names (round 9/10 integration): `PRUEFSTAND_GPU_LOCK_HELD` (use `PRUEFSTAND_LOCK_HELD`),
+`DASHBOARD_DATA_TOKEN` (use `DASHBOARD_DATA_PAT`), `PYPI_TOKEN` (Trusted Publishing),
+`PRUEFSTAND_MODEL_CACHE` (no model cache on the cluster; CPU models use `LIVE_MODEL_DIR`), and the
+vLLM/TEI endpoint variables (`PRUEFSTAND_VLLM_*_URL`, `PRUEFSTAND_TEI_URL`, `VLLM_API_KEY`, `GPU_HOST`;
+all GPU models are served by Ollama, round 10 Z3; D203).
+Removed in round 11: `VERCEL_*` and `FLY_API_TOKEN` (dashboard on GitHub Pages, demo on the VM; D235, D239), the
+key path `~/.ssh/pruefstand_cluster` and the user `gate-runner` (one service user `pruefstand`, D211),
+`$PRUEFSTAND_HOME/gpu.lock` and `$PRUEFSTAND_HOME/MAINTENANCE` (fixed files under `/var/lib/pruefstand/`, D212).
+`MAINTENANCE` is never an environment variable.

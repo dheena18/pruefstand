@@ -1,0 +1,121 @@
+# Round 12: cold read 7, architecture + DevOps/security lens
+
+Reviewer stance: principal architect + DevOps/security engineer, reading the pack cold against the
+**real** setup (binding): VS Code on Windows → Remote-SSH into the TrueNAS VM `pruefstand-exec` (64 GB,
+rootful Docker, system user `pruefstand` owning runner, lock, cluster key and the `autossh` **system** unit
+that binds `127.0.0.1` + `172.17.0.1`); `llm-proxy` on `gate-net` + `proxy-egress`; the cluster
+`cairo-s101lp` runs only two Ollama servers started with `setsid nohup`, models on the NAS; the NAS dataset
+is mounted on both.
+
+Read: `CLAUDE.md`, `docs/decisions.md` (superseded rows ignored), `docs/architecture/*.md`,
+`docs/adr/*.md`, `docs/engineering/{ci-cd,docker,security,gpu-cluster,release,git-workflow}.md`,
+`docs/ops/*.md`, `.env.example`, `tasks/TASKS.md`, `tasks/PARALLEL-PLAN.md`, `prompts/_lead-agent.md`,
+prompts T0.0–T0.7, T1.12, T1.13, T3.1a, T3.1b, T6.1, T6.2a, T6.2b, T8.5, T9.1a, T9.1b. Prior findings:
+`round11-arch.md`, `round11-resolution.md` (Y1–Y7), `round11-integration.md` (D242–D247). Only items that
+are still open or new are reported. **No file other than this one was edited.** Line numbers refer to
+the files at the time of this read.
+
+Counts: **0 blockers, 5 majors, 12 minors** (17 findings).
+
+## Verified (no finding)
+
+- Round-11 majors applied: one host-wide lock `/var/lib/pruefstand/gpu.lock` + `pruefstand-lock` with a
+  two-`HOME` test (A11-01); one service identity `pruefstand` with key, system tunnel unit, sudoers line and
+  the `pruefstand-cluster` wrapper (A11-02); dev ports via `PORT_OFFSET=10000` + `COMPOSE_PROJECT_NAME`, VM
+  RAM budget in PARALLEL-PLAN rule 7, split `.env` / `runner.env` (A11-03); rootful Docker with D242
+  reach method and firewall rule (A11-05); 8-h window, rotating 600-case subset, weekly cause-switches,
+  `test_budgets.py` on the sum (A11-06); 15-min heartbeat during jobs and lock waits plus health fields
+  (A11-07, see A12-M2); infra failure mid-run → `error`, `infra_error`, one retry (A11-08, see A12-M1);
+  VM autostart + automount + host-reboot Done-when (A11-09, see A12-01); mandatory laptop copy with
+  receipt and `backup-stale` (A11-10); `detached-survives-logout` in the T0.6 go set (A11-11).
+- Round-11 minors A11-M1…M9, M11 applied (`;` gone, NAS participant in sequence §1, one key name, `.env`
+  symlink in worktrees, `--repair` handles `ollama-all`, hand-held lock drill, `nightly-failed` issue,
+  system unit ordering, 14-day re-registration, `bin-dev/`). A11-M10 is moot (demo moved to the VM, D244).
+- Mermaid: every fenced block under `docs/` (flowchart, sequenceDiagram, stateDiagram-v2, erDiagram,
+  classDiagram) re-scanned: no `;` or bare `#` in sequence/state messages, all labels with special
+  characters quoted, edge labels quoted. The changed diagrams (deployment §1/§3/§4/§5, ci-cd §2.1–§2.5,
+  gpu-cluster §1, sequences §1) match the D242 topology: candidate only on `gate-net`, `llm-proxy` on
+  `gate-net` + `proxy-egress` → `172.17.0.1:11434`, tunnel as a system unit of `pruefstand`, Ollama only
+  on the cluster, lock/state on the VM disk, baselines/backups on the NAS.
+- Workflow ownership: every workflow in ci-cd §1.1/§1.2 has an owning task (T0.2, T0.3, T0.4, T1.12,
+  T6.2b, T8.1, T8.5, T9.1a, T9.1b); `demo-nightly.yml` (T8.5) and `executor-health.yml` (T6.2b) included;
+  `pull_request_target` only in `gate-router.yml`; `statuses: write` only there and in `push-sign`;
+  required checks are added only when their workflow exists (T0.5).
+- Secrets: no password stored; cluster key only under `/home/pruefstand`; App key and PAT only in the
+  private repo; `CLOUDFLARE_TUNNEL_TOKEN` only in `/home/pruefstand/demo.env`; `.env.example` holds no values.
+
+## Findings
+
+| ID | Sev | Where | Finding | Fix |
+| --- | --- | --- | --- | --- |
+| A12-01 | major | docs/decisions.md D227; docs/architecture/interfaces.md:253-254; prompts/T0.7-truenas-vm-setup.md:66-67, :99, :144 (test asserts `Requires=mnt-pruefstand.mount` on the tunnel unit); prompts/T6.2a-gate-executor.md (runner unit `Requires=`/`After=` "the NAS mount unit"); docs/engineering/gpu-cluster.md:340-341 and docs/ops/runbook.md:69 (`mnt-pruefstand.automount`) | **`Requires=` on the NAS mount breaks the unattended recovery it is meant to provide.** (1) After a TrueNAS host reboot the VM can boot before the share is exported. With `Requires=mnt-pruefstand.mount`, systemd tries the mount at boot; it fails after `x-systemd.mount-timeout=30`, and `pruefstand-runner.service` and `pruefstand-tunnel.service` end in "dependency failed". `Restart=always` does not restart a unit that failed on a dependency, so both stay down until someone acts. V7 passes only if the boot order happens to be right. (2) If the mount unit is later stopped or fails, `Requires=` stops the runner (which kills a running job) and the tunnel, and nothing starts them again when the share returns. (3) The tunnel does not use the NAS at all. Tying it to the mount takes down the owner's dev tunnels and the preflight's Ollama checks during a NAS outage. (4) The docs name two different units (`.mount` in T0.7/T6.2a, `.automount` in gpu-cluster/runbook), and they behave differently. | Change D227: the runner uses `Wants=` + `After=mnt-pruefstand.automount` (or `RequiresMountsFor=/mnt/pruefstand` with the automount), never `Requires=` on the `.mount`. The tunnel has **no** NAS dependency. Mount loss is handled by the preflight only (`timeout 10 mountpoint -q`, exit 16 → `error`). Use one unit name everywhere. Update the T0.7 unit test (the tunnel unit has no `mnt-` dependency), the T6.2a unit, interfaces §1.5, gpu-cluster §7/§9 and runbook §0/§2. Add a [HUMAN] V7 variant: the NAS share stays unavailable for 5 min after the VM boots → runner and tunnel are active anyway and the first poll posts `error` "NAS not mounted". |
+| A12-02 | major | prompts/T0.7-truenas-vm-setup.md:100 (S5b: `nftables-pruefstand.nft` "installed to `/etc/nftables.d/` (loaded by `nftables.service`, enabled)"), :101 (`firewall` check); docs/engineering/security.md C16, C2 | **The prescribed firewall install can delete Docker's own rules, including the `--internal` isolation of `gate-net`.** On Ubuntu 24.04, `/etc/nftables.conf` begins with `flush ruleset` and does not include `/etc/nftables.d/`. Following S5b as written either (a) never loads the D242 rule, or (b) adds the include and starts or reloads `nftables.service` while Docker runs. That flushes the iptables-nft tables Docker manages (NAT, `DOCKER-ISOLATION-*`, the drop rules behind `--internal`), so the candidate network can reach the internet until `docker` restarts. The same happens on any later `systemctl restart nftables`. `vm_check firewall` only tests the two tunnel ports, so it passes in both cases. | Load the rule as its own table through a dedicated oneshot unit (`pruefstand-nft.service`, `Before=docker.service`; the file does `table inet pruefstand` → `delete table inet pruefstand` → define it), never `flush ruleset`, and do not enable the distro `nftables.service`. `vm_check firewall` also asserts that Docker's chains exist (`iptables -S DOCKER-ISOLATION-STAGE-1` or `nft list tables` shows Docker's tables) and that a throwaway container on an `--internal` network has no egress. Add a T0.7 test that the `.nft` file contains no `flush ruleset`. Note the rule in security C16. |
+| A12-03 | major | docs/engineering/ci-cd.md:194, :260-273; prompts/T6.2b-gate-workflows.md:110 (guard = `TZ=Europe/Berlin date +%H` is `22` when the job **starts**; on failure "nothing is posted"), :48/:192 (budget = sum of `timeout-minutes`); ci-cd.md:196 (`demo-nightly.yml` same guard, hour `06`) | **The nightly is skipped without notice whenever the single runner is busy at 22:00, and the 06:00 end is not enforced.** The guard job runs on the one persistent runner and checks the wall-clock hour when it starts. A `baseline-promote` run after an evening merge (up to 220 min) or a gated PR labelled around 21:00 holds the runner past 23:00. Both cron runs then start at hour 23, both guards exit 0, and the night is lost. The only signal is `nightly-failed` after 26 h. GitHub cron delays of more than 53 min have the same effect. In the other direction, a late start, or a poll scheduled **between** the separate `nightly.yml` jobs (each job is queued only when the previous one ends, so a waiting `gate-executor` poll can take the runner in between), pushes the nightly past 06:00. The `timeout-minutes` sum does not include queue time. `demo-nightly`'s hour-`06` guard then also skips. | Decide by **which cron fired**, not by the start time: the guard reads `github.event.schedule` and accepts `7 20 * * *` only in Berlin summer time and `7 21 * * *` only in winter time. Run the guard on a hosted runner (seconds of private-repo minutes). Give the nightly a wall-clock deadline (06:00 Berlin): each nightly job computes its remaining budget from that deadline and skips with "skipped: budget". Run the nightly as **one** orchestrator job (or one job with steps) so no poll can slip in between. Apply the same cron-string guard to `demo-nightly.yml`. Add tests to `test_budgets.py` / `night-guard`: a start at 23:30 from the right cron still runs, and the deadline is enforced. |
+| A12-04 | major | docs/engineering/security.md C18 ("agents never hold the private-repo token or the App key"); prompts/T0.0-bootstrap.md:92 (`gh auth login --web` on the VM); prompts/_lead-agent.md:57, :80 (agents push, open PRs, `gh pr merge`); docs/engineering/ci-cd.md §5 (owner = ruleset bypass actor), §7 (`maintainers.txt`) | **Agents on the VM hold the owner's full GitHub OAuth token, and C18 states the opposite.** `gh auth login --web` grants `repo` + `workflow` on every repo of the owner, including the private `pruefstand-gate`. Every coding agent runs as the owner user, so it can: add `run-gate` as the allowlisted maintainer; `gh pr merge --admin` past `pruefstand/gate` (the owner is the bypass actor); push workflows to the private repo, which then run on the trusted runner; and read the held-out canaries through the API (`canaries/heldout/`), which contaminates the held-out set for the sessions that build rag-demo. Y1.3 accepted root-equivalence **on the VM**. It did not accept these GitHub-side powers, and the C18 mitigation row is factually wrong. | On the VM, authenticate `gh`/git with a **fine-grained PAT** limited to the public repo (contents + pull requests write; no administration, no access to `pruefstand-gate` or `pruefstand-dashboard-data`). Keep admin actions (bypass, label `run-gate`, private-repo sync PRs, ruleset changes) on the laptop or in the GitHub UI under a token that never sits on the VM. Correct C18 to say so, add a T0.0/T0.7 check (`gh api repos/<o>/pruefstand-gate` → 404 from the VM), and add to `_lead-agent.md` guardrails: never `--admin`, never add `run-gate`. |
+| A12-05 | major | prompts/T0.4-docs-site.md:57 (`docs.yml`: "top-level `permissions: {}`; concurrency group `pages`, `cancel-in-progress: false`"), :60 vs :63 (deploy "push: main only" vs "push: main and workflow_dispatch"); docs/engineering/ci-cd.md:70 (group `pages` on the deploy job), §6 (public workflows group per PR/ref) | **`docs / build`, a required check, gets cancelled whenever several PRs are open.** T0.4 puts the `pages` group at workflow level, so every PR run of `docs.yml` shares one group with `main` and the dispatched deploys. GitHub keeps one running and one pending run per group and cancels the older pending one. With up to 6 agent PRs per wave, `docs / build` routinely ends as "cancelled", which blocks those PRs until someone re-runs it by hand, and a PR docs run also delays the Pages deploy. ci-cd.md puts the group on the deploy job only, which conflicts with T0.4. | T0.4: workflow-level `concurrency` as ci-cd §6 (`${{ github.workflow }}-${{ PR number \|\| ref }}`, cancel for PRs). Put `concurrency: { group: pages, cancel-in-progress: false }` on the `deploy` **job** only. Fix the S6 text so the deploy job runs on `push: main` **and** `workflow_dispatch`. Add a `test_check_workflows.py` case: `docs.yml` has no workflow-level `pages` group. |
+| A12-M1 | minor | prompts/T6.2a-gate-executor.md:103-104 ("the next poll does not re-run it automatically, the maintainer relabels") vs docs/engineering/ci-cd.md:167, docs/ops/runbook.md:132-133 and sequences.md §1 (not recorded → the next poll re-runs); prompts/T6.2b-gate-workflows.md:48/:192 (PR timeout = 120 + 90 + 10) | Retry semantics after a **second** infra failure contradict each other. Nothing is written to `processed.jsonl`, so `select_jobs` *will* pick the PR again on every poll, which T6.2a says must not happen. With a recurring mid-run fault (e.g. another cluster user evicting the generator → `model_reload`, C14), the runner repeats 2 × 90-min attempts all day. The PR timeout also leaves no room for the one retry when the lock wait was long. | Choose one rule, e.g. write a `processed.jsonl` line with `result: "error"` after the second infra failure, so the job does not run again until a new label or dispatch (and say "relabel" in the status text). Set the PR/promote timeout to 120 + 2 × 90 + 15 min. Align ci-cd §1.2, the runbook §2 step 6, sequences §1, and the T6.2a `test_jobs.py` cases. |
+| A12-M2 | minor | prompts/T6.2b-gate-workflows.md:124-132, :190 (`check_heartbeat.py` = "pure function of `now` + file content"; "false in heartbeats spanning more than 2 h"; "no nightly result for > 26 h"); interfaces.md:685-686 (payload has no timestamps per field) | The heartbeat is a single force-pushed file. From one file, a stateless hourly check cannot tell whether `tunnel_ok=false` has lasted 2 h, or when the last nightly ran. The tests as written cannot be implemented. | Add `<field>_false_since` (ISO time or null) for each health field and `last_nightly_at` to the payload (T6.1/T6.2a set them), and alert on `now − false_since > 2 h` and `now − last_nightly_at > 26 h`. |
+| A12-M3 | minor | docs/engineering/gpu-cluster.md:212-217 and §9 table (`logs/*.pid`) vs interfaces.md:226 and prompts/T3.1a:42, :205 (`<nas>/run/*.pid`) | The pid and log location differs between the docs, and `run/` is missing from the NAS layout and single-writer table. After a cluster reboot the pid files are stale, so `stop-ollama.sh` killing "by pid" can hit an unrelated process of the same user. | Use one directory (`run/`), add it to gpu-cluster §9, and have `stop-ollama.sh`/`status.sh` check `/proc/<pid>/cmdline` (`ollama serve`) and the listening port before acting. |
+| A12-M4 | minor | CLAUDE.md §3 "Local stack" (`docker compose --profile core up -d`); docs/architecture/deployment.md:53; docs/engineering/docker.md:102-106 and .env.example:52-57 (`PORT_OFFSET` only; per-service ports exported by `make`) | Compose cannot do arithmetic, so the offset applies **only through `make`**. A plain `docker compose --profile core/live up`, which is exactly what CLAUDE.md and deployment §1 show, binds `127.0.0.1:6333`/`8000` on the VM. It then either fails against the executor stack or, if the executor's Qdrant is down at that moment, takes `:6333` from it. | In the owner's VM `.env`, set the effective per-service ports literally (`QDRANT_HTTP_PORT=16333`, …, written once by `make ports-env`), so raw `docker compose` reads them. Or change the CLAUDE.md/deployment examples to `make up`. Add a `vm_check` or `make check-ports` warning when a `pruefstand-dev` container binds a default port. |
+| A12-M5 | minor | prompts/T3.1a-gpu-cluster-services.md:89-96 (`pruefstand-cluster` via `sudo -n -u pruefstand`; ops `stop-ollama`, `start-ollama datagen`, `pull`, `rm`) | The wrapper's mutating ops are not tied to the GPU lock: `sudo`'s `env_reset` drops `PRUEFSTAND_LOCK_HELD`, and the wrapper has no check of its own. An agent's `pruefstand-cluster stop-ollama all` or `rm <tag>` can therefore hit a running gate. The run then shows as an infra `error`, which costs a 90-min retry. | Mutating ops (`start-ollama`, `stop-ollama`, `pull`, `rm`) require proof that the caller holds the lock (sudoers `env_keep += PRUEFSTAND_LOCK_HELD`, plus the wrapper checking `flock -n` on `gpu.lock` **fails**, i.e. the lock is held). `status`/`show` stay lock-free. Add a T3.1a test. |
+| A12-M6 | minor | docs/ops/runbook.md:43-44 (firewall "from the Docker bridges only port 11500"); docs/architecture/deployment.md:186 (`rerank-cpu` `gate-net` port "8000"); prompts/_lead-agent.md:68 (owner steps "cluster via `ssh cairo-s101lp bash …/bin/…`") | Stale text after D242/D247: the firewall rule is `172.17.0.1:11434/11435` from `proxy-egress` only, and `llm-proxy` has no host port; the rerank container port is 8201; the owner has no cluster key and must use `sudo -n -u pruefstand /usr/local/bin/pruefstand-cluster <op>`. | Correct the three lines. |
+| A12-M7 | minor | docs/engineering/ci-cd.md:48 and prompts/T0.2-ci-pipeline.md:129 (`id-token: write` allowed in `deploy.yml`) vs docs/engineering/security.md S2 (three files) and ci-cd.md:77 (`deploy.yml` needs no OIDC: no Pages write, cosign *verify* only) | The allowlist grants `deploy.yml` a permission it never needs, and S2 disagrees with it. | Remove `deploy.yml` from the `id-token` allowlist in ci-cd §1, T0.2 and `check_workflows.py`, so S2 is correct as written. |
+| A12-M8 | minor | prompts/T0.4-docs-site.md:41-43, :63 (`dashboard_run_id` dispatch input used as given) | Any writer (or agent, A12-04) can dispatch `docs.yml` with the run id of an arbitrary run that uploaded a `dashboard-site` artefact, e.g. from an unreviewed branch, and publish it to Pages. | Before downloading, the deploy job checks via the API that the run is `deploy.yml` on `main` with event `workflow_run`/`schedule`/`workflow_dispatch` and conclusion `success`, and falls back to the placeholder otherwise. Add a T0.4 test. |
+| A12-M9 | minor | prompts/T8.5-deploy-cd.md:131-141 (`demo-ready` artefact `retention-days: 90`; `gh run download -R <o>/pruefstand … -n demo-ready` from the **private** repo) | The token for the cross-repo artefact download is not named: the private `GITHUB_TOKEN` is scoped to `pruefstand-gate`, and `pruefstand-bot` has no `actions: read`. After 90 days without a release, the artefact expires, so `demo-deploy` cannot read the digest and fails every night (issue churn). | Name the credential (e.g. add `actions: read` to `pruefstand-bot`, or read the digest from the release's `image-digests.json` asset, which does not expire). With no readable `demo-ready` artefact, keep the deployed digest and exit 0 "no new demo-ready release". |
+| A12-M10 | minor | docs/decisions.md D228; gpu-cluster.md:22, :222-223; SPEC.md:711 ("survives logout **regardless of** `KillUserProcesses`") | This is technically wrong. With `KillUserProcesses=yes`, logind kills the whole session scope cgroup, and `setsid` only changes the process session, not the cgroup. The T0.6 C4 check (go condition) catches it, so the plan is safe, but the decision text misleads whoever debugs a dead server. | Reword: "survives logout unless logind kills the session scope (`KillUserProcesses=yes`); T0.6 C4 decides go/no-go; the fallback is linger or an admin exception." |
+| A12-M11 | minor | docs/engineering/ci-cd.md:74 (`executor-health.yml`), :77 (`deploy.yml` daily cron), :65 (`ci.yml` nightly) | GitHub disables scheduled workflows in a **public** repo after 60 days without repository activity. In a quiet period the public watchdog (`executor-health.yml`) stops without notice, while the private executor keeps running unobserved. | Runbook §6 monthly check: `gh workflow list -R <o>/pruefstand --all` shows the scheduled workflows `active`. Or have the private nightly re-enable them (`gh workflow enable`, needs `actions: write` on the App), recorded as a decision. |
+| A12-M12 | minor | prompts/T6.2a-gate-executor.md:243 (S7: nightly `switch-mode.sh night`, `day` in `finally`); interfaces.md:243-244 (`--repair` "loads the mode's missing models") | When a nightly job is killed by `timeout-minutes` or a runner restart, `finally` does not run, so GPU1 keeps `gemma`. `--repair` only **adds** the missing PR judge, so both judges compete for 45 GB (exit 15, CPU offload, or eviction mid-run → `model_reload`). | `--repair` normalises GPU1 to exactly the mode's model set (unloads non-mode models first). Add a T3.1a test: night models resident + `--repair day` → only the day models remain. |
+
+## Workflow triggers, permissions and required checks (summary)
+
+| Workflow | Owner task | Trigger / permissions coherent | Note |
+| --- | --- | --- | --- |
+| `ci.yml`, `security.yml`, `cassettes.yml`, `live-e2e.yml` skeleton | T0.2 | yes | schedules subject to the 60-day rule (A12-M11) |
+| `build-images.yml` | T0.3 + T6.2b | yes | – |
+| `docs.yml` | T0.4 | **no**: workflow-level `pages` group (A12-05); dispatch run id unchecked (A12-M8) | – |
+| `live-e2e.yml` body, `action-selftest.yml` | T1.12 | yes | – |
+| `ui.yml` | T8.1 | yes | – |
+| `gate-router.yml`, `executor-health.yml` | T6.2b | yes | heartbeat semantics A12-M2 |
+| private `gate-executor.yml`, `baseline-promote.yml`, `backup.yml` | T6.2b (orchestrator T6.2a) | yes | retry state A12-M1 |
+| private `nightly.yml`, `demo-nightly.yml` | T6.2b / T8.5 | triggers yes, guard **no** (A12-03) | demo artefact token/expiry A12-M9 |
+| `release-please.yml`, `release.yml` | T9.1a | yes | – |
+| `deploy.yml` | T8.5 | yes | unneeded `id-token` allowance (A12-M7) |
+| `dataset-release.yml` | T9.1b | yes | – |
+
+Required checks: `ci / check`, `security / scan`, `build-images / build`, `docs / build`, `live-e2e / gate`,
+`action-selftest / selftest`, `ui / check` (from T8.1), `pruefstand/gate` (from T6.2b, source not pinned).
+All are added only after their workflow exists. `docs / build` is the one that is currently cancellable
+(A12-05).
+
+## Security boundaries
+
+| Boundary | State |
+| --- | --- |
+| public repo → private executor | OK: pull-only; `gate-router.yml` runs no PR code |
+| owner/agents → GitHub | **open (A12-04)**: the owner's full OAuth token on the VM gives agents private-repo, label and bypass powers |
+| owner/agents → executor on the VM | accepted (C18, root-equivalent) |
+| candidate → models | OK in design (D242). **Open in mechanism (A12-02)**: the firewall install can remove Docker's isolation rules |
+| VM → cluster | OK: key only under `pruefstand`; wrapper ops not lock-bound (A12-M5) |
+| VM/cluster → NAS | OK: single writer per path; `run/` missing from the table (A12-M3) |
+| Pages | OK: single writer; run-id provenance unchecked (A12-M8) |
+
+## Unattended operation (failure → recovery)
+
+| Event | Recovery in the pack | Gap |
+| --- | --- | --- |
+| tunnel loss | system unit, `Restart=always`, preflight restart via sudoers | tunnel wrongly `Requires=` the NAS mount (A12-01) |
+| Ollama crash / cluster reboot | preflight `--repair` relaunches with `setsid nohup`; mid-run → `error` + retry | repeated retries (A12-M1); stale pids (A12-M3); leftover night models (A12-M12) |
+| NAS outage | automount, `timeout` checks, exit 16 | `Requires=` stops the runner and tunnel and does not restart them (A12-01) |
+| VM / TrueNAS host reboot | autostart, automount, V7 drill | boot race → units stuck in "dependency failed" (A12-01) |
+| nightly | 22:00–06:00, heartbeat every 15 min | silent skip when the runner is busy, no wall-clock deadline (A12-03) |
+| detection | heartbeat + `executor-down`, `backup-stale`, `nightly-failed` | stateless "> 2 h false" check (A12-M2); 60-day schedule disable (A12-M11) |
+| backups | NAS + mandatory laptop copy with receipt; ZFS snapshots optional | – |
+
+## One-person operability and parallel build safety
+
+The runbook names the user for every command, and drills exist for the lock, infra failure, host
+reboot and restore, which is adequate for one maintainer once A12-01 and A12-03 are fixed. For parallel
+builds, the wave rules (ownership, shared hunks, `.env` symlink, `pruefstand-lock`, `stack.lock`, dev
+ports, RAM budget) are sound. Two gaps remain: required-check cancellation in `docs.yml` (A12-05) and
+raw `docker compose` calls that bypass the port offset (A12-M4). The lead agent's `gh pr merge` uses
+the owner's full token (A12-04).
