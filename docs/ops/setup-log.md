@@ -324,8 +324,13 @@ settings icon of an existing one):
 
 ```bash
 #!/bin/bash
+apt-get update -qq && apt-get install -y -qq openssh-client || true
 curl -fsSL https://tailscale.com/install.sh | sh || true
 ```
+
+Verified 2026-10-31: in a cloud session `bash scripts/cloud/connect-vm.sh` connected (`ssh vm` → VM hostname,
+Ollama `/api/tags` lists `qwen3.8:27b-q8_0`). The base image had no `ssh` client; the setup script above and the
+connect script both install `openssh-client` now.
 
 The older inline lines below are kept as reference; `scripts/cloud/connect-vm.sh` replaces them.
 

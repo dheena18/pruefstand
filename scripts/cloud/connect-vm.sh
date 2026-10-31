@@ -13,6 +13,11 @@ VM_USER="${VM_USER:-dheena}"
 SUDO=""
 if [ "$(id -u)" -ne 0 ]; then SUDO="sudo -E"; fi
 
+if ! command -v ssh >/dev/null 2>&1; then
+  echo "ssh client not installed; installing openssh-client" >&2
+  $SUDO apt-get update -qq && $SUDO apt-get install -y -qq openssh-client
+fi
+
 if ! command -v tailscale >/dev/null 2>&1; then
   echo "tailscale not installed; installing" >&2
   curl -fsSL https://tailscale.com/install.sh | $SUDO sh
