@@ -30,6 +30,10 @@ command of yours that needs the cluster goes through the sudo wrapper** (T3.1a, 
 | `CLUSTER_SSH_HOST` | `cairo-s101lp`; cluster paths are fixed: `/data/dheena/Models`, `/data/dheena/pruefstand-bin`, `/data/dheena/ollama.log` |
 | `OLLAMA_GPU0_URL` / `OLLAMA_GPU1_URL` | both `http://127.0.0.1:11434` (the one tunnel end; generator lane / judge lane, ADR-0018) |
 | `PORT_OFFSET` | your `.env` only: `10000` (dev stack ports, `docker.md` §3); never set for `pruefstand` |
+| `PRUEFSTAND_GH_MODELS_TOKEN` | your `.env` only: the Models: read PAT for GitHub Models calls (D333); never named `GITHUB_TOKEN` |
+
+Never export your `.env` wholesale into a shell that runs `gh`: an exported `GITHUB_TOKEN`/`GH_TOKEN` overrides gh's stored
+login and `gh` loses repo/Actions access (HTTP 404 on `actions/runs`). If one is set, run `env -u GITHUB_TOKEN -u GH_TOKEN gh …`.
 
 `dheena18` = your GitHub account.
 
