@@ -108,7 +108,6 @@ jobs:
     timeout-minutes: 20
     permissions:
       contents: read
-      actions: read          # upload-sarif reads the workflow run
       security-events: write
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
@@ -138,12 +137,6 @@ jobs:
           ignore-unfixed: true
           limit-severities-for-sarif: true
           exit-code: "0"
-      - name: Upload SARIF (same-repo runs only; fork tokens are read-only)
-        if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
-        uses: github/codeql-action/upload-sarif@1b549b9259bda1cb5ddde3b41741a82a2d15a841 # v3.28.13
-        with:
-          sarif_file: trivy-image.sarif
-          category: trivy-pruefstand-smoke
       - name: Trivy gate (HIGH/CRITICAL with a fix available fails)
         uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0 (pins setup-trivy 3fb12ec = v0.2.6)
         with:
@@ -152,6 +145,17 @@ jobs:
           severity: HIGH,CRITICAL
           ignore-unfixed: true
           exit-code: "1"
+      # Code scanning needs a public repo or GitHub Advanced Security: skipped while the repo is private (D-T0.3,
+      # revisit when the repo goes public). Same-repo runs only (fork tokens are read-only). always(): the SARIF is
+      # uploaded even when the gate above fails; the gate, not the upload, decides the job.
+      - name: Upload SARIF (public repo, same-repo runs only)
+        if: >-
+          always() && github.event.repository.private == false &&
+          (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
+        uses: github/codeql-action/upload-sarif@1b549b9259bda1cb5ddde3b41741a82a2d15a841 # v3.28.13
+        with:
+          sarif_file: trivy-image.sarif
+          category: trivy-pruefstand-smoke
 
   compose-config:
     needs: changes
