@@ -429,6 +429,10 @@ below are exact.
 | 2026-10-31 | T0.1 | `make typecheck` expands the existing import roots at Make time (`$(foreach …)`), one `uv run mypy <root>` per root, so `make -n typecheck` shows each run and the test can count them; same effect as the shell loop in N6.3 | `Makefile`, `scripts/tests/test_makefile.py` |
 | 2026-10-31 | T0.1 | `pruefstand.metrics.deterministic` exists as an empty package so the `deterministic-no-llm` contract has a source module; `llm-gateway` uses `allow_indirect_imports` and `unmatched_ignore_imports_alerting = none` until `llm/backends/litellm.py` arrives (T1.4); `include_external_packages` is the global import-linter option | `.importlinter` |
 | 2026-10-31 | T0.1 | `.claude/settings.json`: the formatter hook only (no `Stop` hook; ai-workflow §7 updated to what is implemented); deny list also covers `/var/lib/pruefstand/**` and `/home/pruefstand/**` (CLAUDE.md §1.8) | `.claude/settings.json` |
+| 2026-10-31 | T0.3 | Image template `infra/docker/python-uv.Dockerfile` uses plain Dockerfile syntax only (no `# syntax=` line, no `RUN --mount` cache), because the VM's Docker has no buildx/BuildKit; `uv` runs with `UV_NO_CACHE=1`. The entrypoint is a build-arg (`ENTRYPOINT_BIN`) run through `sh -c 'exec $ENTRYPOINT_BIN "$@"'`, the healthcheck a build-arg (`HEALTHCHECK_CMD`, `NONE` = always healthy) | `infra/docker/python-uv.Dockerfile`, `docker.md` §2 |
+| 2026-10-31 | T0.3 | Qdrant's image has neither curl nor wget, so the compose healthcheck speaks plain HTTP over bash `/dev/tcp` against `/readyz` inside the container; the compose volume is named `qdrant_data` | `docker-compose.yml` |
+| 2026-10-31 | T0.3 | `build-images.yml` has an extra `changes` job (early exit when no Docker file changed and not main) that the other jobs `need`; the aggregate `build` accepts `skipped` for them. hadolint runs from the digest-pinned `hadolint/hadolint` image; Trivy writes SARIF first (code-scanning upload, same-repo runs only) and then gates in a table step | `.github/workflows/build-images.yml` |
+| 2026-10-31 | T0.3 | `mk/docker.mk` reads `PORT_OFFSET` from the environment or `ENV_FILE` (default `.env`) and exports one variable per port-table row; `make check-ports STRICT=1` fails (make exits 2); `make stack-run CMD=...` forbids single quotes in `CMD` | `mk/docker.mk` |
 | | | | |
 
 ## Pinned versions (filled in by tasks)
@@ -438,7 +442,11 @@ below are exact.
 | Python | 3.12.16 (`>=3.12,<3.14`) | T0.1 | 2026-10-31 |
 | uv | 0.13.6 | T0.1 | 2026-10-31 |
 | Node / pnpm | 22.x LTS / `<version>` | T8.1 | |
-| Qdrant image | `qdrant/qdrant:<version>@sha256:<digest>` | T0.3 |
+| Qdrant image | `qdrant/qdrant:v1.20.0@sha256:9bfc89f9914fc14876a88c05270685921a55b8877b254a98bcc1cc2f0a424cd2` | T0.3 | 2026-10-31 |
+| Python base image | `python:3.12-slim-bookworm@sha256:e697c81897302a4c4333bade000d98038fbb21eb064f8ee1fd42d02ebcd9d337` | T0.3 | 2026-10-31 |
+| uv image (Docker template) | `ghcr.io/astral-sh/uv:0.13.6@sha256:af22a52f5eafef3d78e551599d405c02df61919d18028f0cea8eda93bc9986d0` | T0.3 | 2026-10-31 |
+| llama.cpp server image (placeholder until T1.13 pins `server-<version>`) | `ghcr.io/ggml-org/llama.cpp:server@sha256:d9e9e74ba3f7ef119b1939162b1631f99b75ec703c310d140cfa2fdac8907389` | T0.3 | 2026-10-31 |
+| hadolint image (CI) | `hadolint/hadolint:v2.12.0-alpine@sha256:3c206a451cec6d486367e758645269fd7d696c5ccb6ff59d8b03b0e45268a199` | T0.3 | 2026-10-31 |
 | ~~TEI image (A40)~~ | removed (D198; the tier-1 CPU `embed` image is pinned by T0.3/T1.13) | – | |
 | ~~vLLM image~~ | removed (D198) | – | |
 | Ollama (cluster) | `ollama --version` → `<version>` | T0.6 (observed), T3.1a | |
