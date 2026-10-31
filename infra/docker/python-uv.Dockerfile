@@ -23,19 +23,20 @@ COPY apps apps
 RUN uv sync --frozen --no-dev --no-editable --package "${PKG}"
 
 FROM base AS runtime
-ARG GIT_SHA=unknown
 # Name of the console script in /app/.venv/bin (may be a command line such as "uvicorn app:app"); extra
 # arguments given to `docker run` are appended.
 ARG ENTRYPOINT_BIN=pruefstand
-# Shell command that exits 0 when the service is healthy. NONE (default) = the image has no service
-# to probe (CLI/Action images); compose or the orchestrator supplies the check where one is needed.
+# Shell command that exits 0 when the service is healthy. NONE (default) = placeholder for images with no
+# service to probe (CLI/Action images): the HEALTHCHECK then always passes; the image does not claim a check.
 ARG HEALTHCHECK_CMD=NONE
-LABEL org.opencontainers.image.source="https://github.com/dheena18/pruefstand" \
-      org.opencontainers.image.revision="${GIT_SHA}" \
-      org.opencontainers.image.licenses="MIT"
 RUN groupadd --system --gid 10001 app \
     && useradd --system --uid 10001 --gid app --no-create-home --home-dir /nonexistent app
 COPY --from=builder /app/.venv /app/.venv
+# GIT_SHA changes on every commit: declared after the expensive layers so it never invalidates them.
+ARG GIT_SHA=unknown
+LABEL org.opencontainers.image.source="https://github.com/dheena18/pruefstand" \
+      org.opencontainers.image.revision="${GIT_SHA}" \
+      org.opencontainers.image.licenses="MIT"
 ENV PATH="/app/.venv/bin:$PATH" \
     PYTHONUNBUFFERED=1 \
     GIT_SHA=${GIT_SHA} \

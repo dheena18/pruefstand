@@ -45,7 +45,7 @@ jobs:
             echo "run=true" >> "$GITHUB_OUTPUT"; echo "push to main: running all image checks"; exit 0
           fi
           changed=$(git diff --name-only "$BASE_SHA...$HEAD_SHA" | grep -E \
-            '(^|/)(Dockerfile[^/]*|[^/]*\.Dockerfile|docker-compose[^/]*\.ya?ml|compose[^/]*\.ya?ml)$|^\.hadolint\.yaml$|^\.dockerignore$|^scripts/check_compose\.py$|^\.github/workflows/build-images\.yml$' || true)
+            '(^|/)(Dockerfile[^/]*|[^/]*\.Dockerfile|docker-compose[^/]*\.ya?ml|compose[^/]*\.ya?ml)$|^\.hadolint\.yaml$|^\.dockerignore$|^scripts/check_compose\.py$|^uv\.lock$|^(packages|apps)/.*pyproject\.toml$|^\.github/workflows/build-images\.yml$' || true)
           if [ -n "$changed" ]; then
             echo "run=true" >> "$GITHUB_OUTPUT"; echo "Docker-related files changed:"; echo "$changed"
           else
@@ -97,7 +97,7 @@ jobs:
           push: false
           tags: pruefstand-smoke
           cache-from: type=gha,scope=pruefstand-smoke
-          cache-to: type=gha,scope=pruefstand-smoke,mode=min
+          cache-to: type=gha,scope=pruefstand-smoke,mode=min,ignore-error=true
       - name: Smoke test
         run: docker run --rm pruefstand-smoke --help
 
@@ -135,6 +135,7 @@ jobs:
           output: trivy-image.sarif
           severity: HIGH,CRITICAL
           ignore-unfixed: true
+          limit-severities-for-sarif: true
           exit-code: "0"
       - name: Upload SARIF (same-repo runs only; fork tokens are read-only)
         if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
@@ -178,8 +179,11 @@ jobs:
         with:
           ref: ${{ github.event.pull_request.head.sha || github.sha }}
           persist-credentials: false
-      - name: scripts/check_compose.py (stdlib + PyYAML, preinstalled on the runner)
-        run: python3 scripts/check_compose.py
+      - name: scripts/check_compose.py (PyYAML pinned to the version in uv.lock)
+        run: |
+          python3 -m venv "$RUNNER_TEMP/lint"
+          "$RUNNER_TEMP/lint/bin/pip" install --quiet --no-deps "pyyaml==6.0.3"
+          "$RUNNER_TEMP/lint/bin/python" scripts/check_compose.py
 
   build:
     # Aggregator = the required check "build-images / build" (T0.2 pattern).
