@@ -308,14 +308,16 @@ tailscale status && tailscale ip -4            # shows pruefstand-exec with a 10
 Tailscale admin console: **Machines → pruefstand-exec → Disable key expiry**; **Settings → Keys → Generate auth
 key** (reusable, ephemeral, ≤ 90 days) → cloud environment secret `TS_AUTHKEY` (`docs/ops/secrets.md`).
 
-Cloud environment: secrets `TS_AUTHKEY` and `VM_SSH_KEY` (private key `pruefstand_cloud`, made on Windows with
+Cloud environment: secrets `TS_AUTHKEY` and `VM_SSH_KEY` (the private key stored **base64-encoded on one line**,
+copied on Windows with `[Convert]::ToBase64String([IO.File]::ReadAllBytes("$env:USERPROFILE\.ssh\pruefstand_cloud")) | Set-Clipboard`;
+private key `pruefstand_cloud`, made on Windows with
 `ssh-keygen -t ed25519 -N "" -f $env:USERPROFILE\.ssh\pruefstand_cloud -C "claude-cloud-to-vm"`; its `.pub` is
 appended to the VM user's `authorized_keys`). Setup script:
 
 ```bash
 curl -fsSL https://tailscale.com/install.sh | sh
 (tailscaled --tun=userspace-networking --state=mem: > /tmp/tailscaled.log 2>&1 &) ; sleep 3 && tailscale up --authkey="$TS_AUTHKEY" --hostname=claude-cloud --accept-dns=false
-mkdir -p ~/.ssh && printf '%s\n' "$VM_SSH_KEY" > ~/.ssh/id_vm && chmod 600 ~/.ssh/id_vm
+mkdir -p ~/.ssh && printf '%s' "$VM_SSH_KEY" | base64 -d > ~/.ssh/id_vm && chmod 600 ~/.ssh/id_vm
 printf 'Host vm\n  HostName pruefstand-exec\n  User <vm-user>\n  IdentityFile ~/.ssh/id_vm\n  IdentitiesOnly yes\n  ProxyCommand tailscale nc %%h %%p\n  ServerAliveInterval 30\n' >> ~/.ssh/config
 ```
 
