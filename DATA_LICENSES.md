@@ -124,3 +124,31 @@ which carries the same Gemma Terms. Tokenizer files are never redistributed outs
 **`rq1` split (round 13 P3.2).** The RQ1 robustness set (`Split.RQ1`) is built from the same sources and
 `license_config` rules as `full`; it is used offline in `experiments/` and, like every split, released only
 under the config of its sources.
+
+## 7. Pinned sources (T2.1, checked 2026-10-31)
+
+`data/sources.yaml` is the source of truth for pins; `data/download.py` reads each Hugging Face
+card's `license` field (and the `LICENSE` file of the GitHub source) and exits 3 (`LicenseMismatch`)
+when it differs from the `license` there. This check lives in `data/download.py`, not in a separate
+`scripts/data/check_licenses.py`.
+
+| Source id | `license` in `sources.yaml` | `license_config` | Redistribute | Local path |
+| --- | --- | --- | --- | --- |
+| `gii:<abbrev>` (30 laws) | `official-work-5-urhg` | `laws_eurlex` | yes | `data/raw/gii/<abbrev>/xml.zip` |
+| `eurlex:<celex>` (20 acts, DE + EN) | `eurlex-legal-notice` | `laws_eurlex` | yes | `data/raw/eurlex/<celex>/{de,en}.html` |
+| `oldp_decisions` | `odbl` (card has **no** `license` field: open, see below) | `oldp_derived` | yes, under ODbL | `data/raw/hf/oldp_decisions/` |
+| `oldp_laws`, `oldp_citation_graph` | `odbl` (card agrees) | `oldp_derived` | yes, under ODbL | `data/raw/hf/<id>/` |
+| `germanquad`, `germandpr` | `cc-by-4.0` (card agrees) | `germanquad_derived` | yes | `data/raw/hf/<id>/` |
+| `germanrag` | `cc-by-4.0` (card metadata; **README prose says CC BY-SA 4.0**, open, see below) | `germanquad_derived` | yes | `data/raw/hf/germanrag/` |
+| `prompt_injections` | `apache-2.0` (card agrees) | `own` | yes, with notice | `data/raw/hf/prompt_injections/` |
+| `memerag` | `cc-by-nc-4.0` (LICENSE file agrees) | `download_only` | **no** | `data/raw/github/memerag/` |
+
+Open points found while pinning (not decided here):
+
+* `DiscoResearch/germanrag`: the card metadata says `cc-by-4.0` while its README says the original
+  dataset is CC BY-SA 4.0 and "this derived work therefore inherits the same license". The HF card of
+  `deepset/germandpr` says `cc-by-4.0`. Row 1 above and `sources.yaml` keep CC BY 4.0 until the owner
+  decides; if the stricter reading wins, `germanrag` becomes CC BY-SA 4.0 and cannot share a config
+  with ODbL material.
+* `openlegaldata/court-decisions-germany`: the dataset is gated and its card has no `license` field,
+  so the ODbL entry cannot be confirmed from the card.
