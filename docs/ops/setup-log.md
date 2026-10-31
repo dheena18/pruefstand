@@ -357,7 +357,31 @@ ssh -o StrictHostKeyChecking=accept-new vm 'hostname && curl -s http://127.0.0.1
 Working split: pure code tasks run in the cloud session's own checkout; VM / GPU / Docker tasks run as
 `ssh vm '…'` in `~/code/pruefstand` on the VM.
 
-## 10. Notes
+## 10. VM toolchain bootstrap (T0.0) — facts
+
+- The VM runs **Ubuntu 26.04.1**, not 24.04 as the prompts assume. If Docker's apt repository has no packages
+  for 26.04, use Ubuntu's own `docker.io` + `docker-compose-v2` packages (record which one was used).
+- **Temporary passwordless sudo** for the owner user during setup, so the coding agent can install packages over
+  `ssh vm` (the owner user is root-equivalent anyway through group `docker`, security.md C18):
+
+```bash
+echo '<vm-user> ALL=(ALL) NOPASSWD: ALL' | sudo tee /etc/sudoers.d/90-agent-setup >/dev/null && sudo chmod 440 /etc/sudoers.d/90-agent-setup && sudo visudo -c
+sudo -n true && echo "passwordless sudo ok"
+# remove again after T0.7 is merged:
+sudo rm /etc/sudoers.d/90-agent-setup
+```
+
+- `gh` on the VM: fine-grained token (only `dheena18/pruefstand`; Contents, Pull requests, Workflows write),
+  entered by the owner with `gh auth login` (paste token), then:
+
+```bash
+sudo apt update && sudo apt install -y git make
+gh auth setup-git && gh auth status            # token github_pat_…
+gh api repos/dheena18/pruefstand --jq .full_name          # works
+gh api repos/dheena18/pruefstand-gate --jq .full_name     # must fail (404)
+```
+
+## 11. Notes
 
 - If the cluster's public SSH endpoint gets a new port, change only `Port` in `/home/pruefstand/.ssh/config`
   and run `sudo systemctl restart pruefstand-tunnel`.
