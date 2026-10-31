@@ -437,6 +437,7 @@ below are exact.
 | 2026-10-31 | T1.1 | Logging: `configure_logging(*, json, level)` is keyword-only (ruff FBT001); records go to stderr through structlog `ProcessorFormatter`, so stdlib records of third-party libraries are redacted too; `get_logger` configures defaults on first use so redaction is never off; values of non-string objects (e.g. exceptions) are redacted through their `repr` | `core/logging.py` |
 | 2026-10-31 | T1.1 | Spec extension (review M3): log value redaction also masks `github_pat_` tokens and `Bearer <8+ non-space chars>` in free text, beyond the `sk-`/`hf_`/`gh[pousr]_` list of the prompt; `get_logger` leaves a root logger that already has handlers untouched (events are redacted and rendered to text for those handlers) | `core/logging.py` |
 | 2026-10-31 | T1.1 | Validation tightening (review M2, M6, M7): `MetricValue` status `ok` requires a value and `latency_ms` must be finite and >= 0; `eval_fingerprint` rejects an unknown `stratum` and ignores duplicate splits; `TestCase.cluster_id` must not be blank and `block` is a strict int (no `True`) | `core/models/`, `core/fingerprint.py` |
+| 2026-10-31 | T1.1 | Interface change (owner-approved, PR review): `RetrievedChunk.tenant_id: TenantId \| None = None`, because interfaces §1.1 lets third-party targets omit `tenant_id` per chunk; interfaces §2 updated; `chunk.schema.json` unaffected (that schema is `Chunk`) | `docs/architecture/interfaces.md` §2 |
 | | | | |
 
 ## Pinned versions (filled in by tasks)
