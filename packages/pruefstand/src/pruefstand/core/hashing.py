@@ -50,7 +50,9 @@ def stable_hash(*parts: object) -> str:
     become ISO strings; ``bytes`` becomes ``{"__bytes__": "<hex>"}``.
 
     No Unicode normalisation is applied: ``"Kündigung"`` in NFC and NFD hash differently, by
-    design (callers normalise first when they want equality).
+    design (callers normalise first when they want equality). Types are not coerced either:
+    ``stable_hash(1) != stable_hash(1.0)``, and tz-aware datetimes at different UTC offsets hash
+    differently even when they denote the same instant (convert to UTC first).
 
     Args:
         *parts: Values built from the types above.
@@ -61,6 +63,7 @@ def stable_hash(*parts: object) -> str:
     Raises:
         TypeError: A part (or nested value) has an unsupported type, or a mapping key is not str.
         ValueError: A float is NaN or infinite.
+        UnicodeEncodeError: A string holds a lone surrogate (a ``ValueError`` subclass).
 
     Examples:
         >>> stable_hash({"b": 1, "a": "ä"})

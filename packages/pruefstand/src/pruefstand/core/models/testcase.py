@@ -2,7 +2,14 @@
 
 from typing import Any, Self
 
-from pydantic import BaseModel, ConfigDict, field_validator, model_validator
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    StrictInt,
+    ValidationInfo,
+    field_validator,
+    model_validator,
+)
 
 from pruefstand.core.enums import Category, Difficulty, Lang, Split
 from pruefstand.core.ids import CaseId, DocId, TenantId
@@ -51,7 +58,7 @@ class TestCase(BaseModel):
     generation_prompt_version: str | None = None
     corpus_version: str
     tags: tuple[str, ...] = ()
-    block: int | None = None
+    block: StrictInt | None = None
     judged_subset: bool = False
 
     @model_validator(mode="before")
@@ -63,11 +70,11 @@ class TestCase(BaseModel):
         fallback = gold[0] if gold else data.get("base_id")
         return data if fallback is None else {**data, "cluster_id": fallback}
 
-    @field_validator("question")
+    @field_validator("question", "cluster_id")
     @classmethod
-    def _question_not_blank(cls, value: str) -> str:
+    def _not_blank(cls, value: str, info: ValidationInfo) -> str:
         if not value.strip():
-            msg = "question must not be blank"
+            msg = f"{info.field_name} must not be blank"
             raise ValueError(msg)
         return value
 

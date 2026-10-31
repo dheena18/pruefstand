@@ -9,6 +9,7 @@ from pruefstand.core.hashing import stable_hash
 from pruefstand.core.models.corpus import CorpusManifest
 from pruefstand.core.models.target import TargetInfo
 
+_STRATA = frozenset({"all", "refusal", "blocks"})
 _DATE_TAG = re.compile(r"[0-9]{4}-[0-9]{2}-[0-9]{2}")
 
 
@@ -92,7 +93,7 @@ def eval_fingerprint(  # noqa: PLR0913  (signature fixed by interfaces §2; codi
     Args:
         dataset_name: Dataset name.
         dataset_version: Dataset version.
-        splits: Splits run (order irrelevant).
+        splits: Splits run (order and duplicates irrelevant).
         judge_models: Metric to gated judge model id.
         judge_prompt_versions: Metric to judge prompt version.
         judge_serving: Metric to ``"<engine> <version> <quantization> <digest[:12]>"``.
@@ -105,11 +106,17 @@ def eval_fingerprint(  # noqa: PLR0913  (signature fixed by interfaces §2; codi
 
     Returns:
         16 hex characters.
+
+    Raises:
+        ValueError: ``stratum`` is not ``"all"``, ``"refusal"`` or ``"blocks"``.
     """
+    if stratum not in _STRATA:
+        msg = f"stratum must be one of {sorted(_STRATA)}, got {stratum!r}"
+        raise ValueError(msg)
     parts: list[object] = [
         dataset_name,
         dataset_version,
-        sorted(split.value for split in splits),
+        sorted({split.value for split in splits}),
         sorted(judge_models.items()),
         sorted(judge_prompt_versions.items()),
         sorted(judge_serving.items()),

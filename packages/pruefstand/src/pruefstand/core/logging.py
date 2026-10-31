@@ -15,7 +15,9 @@ from structlog.typing import EventDict, Processor, WrappedLogger
 
 REDACTED = "[REDACTED]"
 _KEY_PATTERN = re.compile(r"token|key|secret|password|authorization", re.IGNORECASE)
-_VALUE_PATTERN = re.compile(r"(?:sk-|hf_|gh[pousr]_)[A-Za-z0-9_]{8,}")
+_VALUE_PATTERN = re.compile(
+    r"(?:sk-|hf_|gh[pousr]_|github_pat_)[A-Za-z0-9_]{8,}|(?i:bearer)\s+\S{8,}"
+)
 _HANDLER_MARK = "_pruefstand_handler"
 _state = {"configured": False}
 
@@ -119,8 +121,24 @@ def configure_logging(*, json: bool = False, level: str = "INFO") -> None:
     _state["configured"] = True
 
 
+def _configure_passive() -> None:
+    """Configure structlog only: redact, render to text, hand the line to existing handlers."""
+    structlog.configure(
+        processors=[*_shared_processors(), structlog.dev.ConsoleRenderer(colors=False)],
+        logger_factory=structlog.stdlib.LoggerFactory(),
+        wrapper_class=structlog.stdlib.BoundLogger,
+        cache_logger_on_first_use=False,
+    )
+    _state["configured"] = True
+
+
 def get_logger(name: str) -> structlog.stdlib.BoundLogger:
-    """Return a logger; configures logging with defaults on first use so redaction is always on.
+    """Return a logger; on first use configures logging so redaction is always on.
+
+    If nothing configured logging yet and the root logger has no handlers, this behaves like
+    ``configure_logging()`` (stderr handler, INFO). If the root logger already has handlers
+    (an application, a test runner), the root logger is left untouched: events are redacted,
+    rendered to a text line and passed to the existing handlers.
 
     Args:
         name: Usually ``__name__``.
@@ -129,7 +147,10 @@ def get_logger(name: str) -> structlog.stdlib.BoundLogger:
         A bound logger. Event names are ``snake_case`` verb phrases; data goes in keyword fields.
     """
     if not _state["configured"]:
-        configure_logging()
+        if logging.getLogger().handlers:
+            _configure_passive()
+        else:
+            configure_logging()
     logger: structlog.stdlib.BoundLogger = structlog.stdlib.get_logger(name)
     return logger
 

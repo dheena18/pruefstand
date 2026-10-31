@@ -1,5 +1,6 @@
 """Metric value model (interfaces §2, ``core.models.metric``)."""
 
+import math
 from enum import StrEnum
 from typing import Self
 
@@ -24,8 +25,9 @@ class MetricKind(StrEnum):
 class MetricValue(BaseModel):
     """One metric on one case.
 
-    ``value`` lies in [0, 1] unless ``metric == "latency_ms"`` (milliseconds). Any status other
-    than ``ok`` carries no value (a judge failure is ``error`` with ``value=None``, never 0).
+    ``value`` lies in [0, 1] unless ``metric == "latency_ms"`` (finite milliseconds >= 0). Status
+    ``ok`` requires a value; any other status carries no value (a judge failure is ``error``
+    with ``value=None``, never 0).
 
     Raises:
         ValidationError: ``value`` out of range, or a value given with a non-``ok`` status.
@@ -44,7 +46,16 @@ class MetricValue(BaseModel):
         if self.status is not MetricStatus.OK and self.value is not None:
             msg = f"metric {self.metric}: value must be None when status is {self.status.value}"
             raise ValueError(msg)
-        if self.value is not None and self.metric != "latency_ms" and not 0.0 <= self.value <= 1.0:
+        if self.status is MetricStatus.OK and self.value is None:
+            msg = f"metric {self.metric}: status ok requires a value"
+            raise ValueError(msg)
+        if self.value is None:
+            return self
+        if self.metric == "latency_ms":
+            if not math.isfinite(self.value) or self.value < 0:
+                msg = f"metric latency_ms: value {self.value} must be finite and >= 0"
+                raise ValueError(msg)
+        elif not 0.0 <= self.value <= 1.0:
             msg = f"metric {self.metric}: value {self.value} is outside [0, 1]"
             raise ValueError(msg)
         return self
