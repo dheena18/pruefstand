@@ -4,6 +4,7 @@ from collections.abc import Iterator
 
 import pytest
 
+from pruefstand.core import logging as logging_module
 from pruefstand.core.logging import configure_logging, get_logger
 
 TOKENS = ["sk-abcdefgh12", "hf_abcdefgh12", "ghp_abcdefgh12", "ghs_abcdefgh12"]
@@ -115,6 +116,10 @@ def test_stdlib_loggers_are_redacted_too(capsys: pytest.CaptureFixture[str]) -> 
     assert "saw" in out
 
 
-def test_get_logger_before_configure_still_redacts(capsys: pytest.CaptureFixture[str]) -> None:
+def test_get_logger_before_configure_still_redacts(
+    capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(logging_module, "_state", {"configured": False})
     get_logger("early").info("x", **{"password": "hunter2"})
     assert "hunter2" not in capsys.readouterr().err
+    assert logging_module._state["configured"] is True
