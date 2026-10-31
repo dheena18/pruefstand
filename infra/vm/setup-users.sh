@@ -49,6 +49,9 @@ if [ "$DRY" -eq 0 ] && [ "$(id -u)" -ne 0 ]; then
   exit 2
 fi
 
+die() { echo "setup-users: $*" >&2; exit 3; }
+no_symlink() { [ ! -L "$1" ] || die "$1 is a symlink; refusing to follow it"; }
+
 run() {
   if [ "$DRY" -eq 1 ]; then echo "PLAN $*"; else echo "DO   $*"; "$@"; fi
 }
@@ -99,6 +102,7 @@ ensure_membership() {
 }
 
 ensure_home_mode() {
+  no_symlink "$HOME_DIR"
   if [ -d "$HOME_DIR" ] && [ "$(stat -c '%a' "$HOME_DIR")" != 700 ]; then
     run chmod 0700 "$HOME_DIR"
   fi
@@ -106,16 +110,18 @@ ensure_home_mode() {
 
 ensure_lock() {
   local lock="$LOCK_DIR/gpu.lock"
+  no_symlink "$LOCK_DIR"
+  no_symlink "$lock"
   if [ ! -d "$LOCK_DIR" ]; then
     run install -d -o "$SVC" -g "$SVC" -m 2770 "$LOCK_DIR"
   elif [ "$(stat -c '%a %U:%G' "$LOCK_DIR")" != "2770 $SVC:$SVC" ]; then
-    run chown "$SVC:$SVC" "$LOCK_DIR"
+    run chown -h "$SVC:$SVC" "$LOCK_DIR"
     run chmod 2770 "$LOCK_DIR"
   fi
   if [ ! -e "$lock" ]; then
     run install -o "$SVC" -g "$SVC" -m 0660 /dev/null "$lock"
   elif [ "$(stat -c '%a %U:%G' "$lock")" != "660 $SVC:$SVC" ]; then
-    run chown "$SVC:$SVC" "$lock"
+    run chown -h "$SVC:$SVC" "$lock"
     run chmod 0660 "$lock"
   fi
 }

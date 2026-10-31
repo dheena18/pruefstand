@@ -4,7 +4,9 @@
 # Run once by the owner: sudo infra/vm/install-tunnel.sh [--dry-run]   (idempotent)
 # Replaces the first unit of setup log section 3 (127.0.0.1 forward only) with the repo unit, which also
 # forwards 172.17.0.1:11434 for llm-proxy. Needs Docker running (docker0 must have 172.17.0.1) and autossh.
-# When the unit file changed, the tunnel is restarted once (an active tunnel keeps its old forwards otherwise).
+# Refuses unless pruefstand-firewall is active (run setup-proxy-net.sh first). When the unit file changed, the old
+# unit is saved as <unit>.bak, the tunnel is restarted once, and if it does not come up with both listeners within
+# TUNNEL_WAIT_S (20) seconds the backup is restored and the script exits 1.
 # This is a system unit owned by the system and run as user pruefstand (Y1.1), never a per-user unit.
 #   --unit-dir DIR   target directory (default /etc/systemd/system; tests only)
 set -euo pipefail
@@ -26,22 +28,63 @@ done
 run() {
   if [ "$DRY" -eq 1 ]; then echo "PLAN $*"; else echo "DO   $*"; "$@"; fi
 }
+die() { echo "install-tunnel: $*" >&2; exit "${2:-3}"; }
 
 if [ "$DRY" -eq 0 ]; then
-  [ "$(id -u)" -eq 0 ] || { echo "install-tunnel: needs root (sudo), or use --dry-run" >&2; exit 2; }
-  command -v autossh >/dev/null || { echo "install-tunnel: autossh missing (apt install autossh)" >&2; exit 3; }
-  if ! ip -4 addr show docker0 2>/dev/null | grep -q '172\.17\.0\.1'; then
-    echo "install-tunnel: docker0 has no 172.17.0.1; start Docker first (the second forward binds it)" >&2
-    exit 3
+  [ "$(id -u)" -eq 0 ] || die "needs root (sudo), or use --dry-run" 2
+  command -v autossh >/dev/null || die "autossh missing (apt install autossh)"
+  if ! ip -4 addr show docker0 2>/dev/null | grep -q 'inet 172\.17\.0\.1/'; then
+    die "docker0 has no 172.17.0.1; start Docker first (the second forward binds it)"
+  fi
+  if [ "$(systemctl is-active pruefstand-firewall 2>/dev/null || true)" != active ]; then
+    die "pruefstand-firewall is not active; run setup-proxy-net.sh first (the 172.17.0.1 listener needs its drop rule)"
   fi
 fi
+
+# wait_ready: the unit is active and both listeners exist (up to TUNNEL_WAIT_S seconds).
+wait_ready() {
+  local waited=0 limit="${TUNNEL_WAIT_S:-20}" listen
+  while :; do
+    listen="$(ss -ltn 2>/dev/null || true)"
+    if [ "$(systemctl is-active pruefstand-tunnel 2>/dev/null || true)" = active ] &&
+      grep -q '127\.0\.0\.1:11434' <<<"$listen" && grep -q '172\.17\.0\.1:11434' <<<"$listen"; then
+      return 0
+    fi
+    [ "$waited" -lt "$limit" ] || return 1
+    sleep 1
+    waited=$((waited + 1))
+  done
+}
+
+rollback() {
+  local unit="$UNIT_DIR/$UNIT"
+  echo "install-tunnel: the new tunnel did not come up with both listeners (127.0.0.1:11434 and 172.17.0.1:11434)" >&2
+  if [ -f "$unit.bak" ]; then
+    mv "$unit.bak" "$unit"
+    systemctl daemon-reload
+    systemctl restart pruefstand-tunnel || true
+    echo "install-tunnel: restored the previous unit from $unit.bak" >&2
+  else
+    echo "install-tunnel: there was no previous unit to restore; see: journalctl -u pruefstand-tunnel" >&2
+  fi
+  exit 1
+}
 
 if cmp -s "$HERE/$UNIT" "$UNIT_DIR/$UNIT" 2>/dev/null; then
   echo "OK   $UNIT_DIR/$UNIT is up to date"
   run systemctl enable --now pruefstand-tunnel
 else
-  run install -m 0644 -o root -g root "$HERE/$UNIT" "$UNIT_DIR/$UNIT"
+  [ ! -f "$UNIT_DIR/$UNIT" ] || run cp -p "$UNIT_DIR/$UNIT" "$UNIT_DIR/$UNIT.bak"
+  run install -m 0644 "$HERE/$UNIT" "$UNIT_DIR/$UNIT"
   run systemctl daemon-reload
   run systemctl enable pruefstand-tunnel
-  run systemctl restart pruefstand-tunnel
+  if [ "$DRY" -eq 1 ]; then
+    echo "PLAN systemctl restart pruefstand-tunnel"
+    echo "PLAN wait up to ${TUNNEL_WAIT_S:-20}s for is-active and both listeners; otherwise restore $UNIT.bak"
+  else
+    echo "DO   systemctl restart pruefstand-tunnel"
+    systemctl restart pruefstand-tunnel || rollback
+    wait_ready || rollback
+    echo "OK   tunnel active with 127.0.0.1:11434 and 172.17.0.1:11434"
+  fi
 fi

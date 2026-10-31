@@ -39,16 +39,19 @@ run() {
   fi
 }
 
+die() { echo "setup-data-root: $*" >&2; exit 3; }
+
 # ensure_dir PATH: directory exists, owned by OWNER, mode 2775 (setgid, group-writable).
 ensure_dir() {
   local path="$1"
+  [ ! -L "$path" ] || die "$path is a symlink; refusing to follow it (ADR-0019: plain directories only)"
   [ -d "$path" ] || run mkdir -p "$path"
   if [ -d "$path" ]; then
-    [ "$(stat -c '%U:%G' "$path")" = "$OWNER" ] || run chown "$OWNER" "$path"
+    [ "$(stat -c '%U:%G' "$path")" = "$OWNER" ] || run chown -h "$OWNER" "$path"
     [ "$(stat -c '%a' "$path")" = 2775 ] || run chmod 2775 "$path"
   else
     # dry run on a missing directory: the owner and mode steps are still part of the plan
-    run chown "$OWNER" "$path"
+    run chown -h "$OWNER" "$path"
     run chmod 2775 "$path"
   fi
 }
@@ -58,6 +61,7 @@ for name in "${DIRS[@]}"; do
   ensure_dir "$ROOT/$name"
 done
 
+[ ! -L "$ROOT/$SENTINEL" ] || die "$ROOT/$SENTINEL is a symlink"
 if [ ! -e "$ROOT/$SENTINEL" ]; then
   run install -m 0664 -o "${OWNER%%:*}" -g "${OWNER##*:}" /dev/null "$ROOT/$SENTINEL"
 fi

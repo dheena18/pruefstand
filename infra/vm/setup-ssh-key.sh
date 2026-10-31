@@ -34,6 +34,26 @@ while [ "$#" -gt 0 ]; do
   esac
 done
 
+valid() { [[ "$2" =~ ^[A-Za-z0-9._-]+$ ]] || { echo "setup-ssh-key: invalid $1 '$2'" >&2; exit 2; }; }
+[ -z "$HOST" ] || valid --host "$HOST"
+[ -z "$CUSER" ] || valid --user "$CUSER"
+if [ -n "$PORT" ] && ! [[ "$PORT" =~ ^[0-9]{1,5}$ ]]; then
+  echo "setup-ssh-key: --port must be numeric, got '$PORT'" >&2
+  exit 2
+fi
+
+if [ -n "$HOME_DIR" ]; then
+  real_tmp="$(realpath -m "${TMPDIR:-/tmp}")"
+  case "$(realpath -m "$HOME_DIR")" in
+    /tmp/* | "$real_tmp"/*) ;;
+    *) echo "setup-ssh-key: --home is for tests and must be under /tmp or \$TMPDIR" >&2; exit 2 ;;
+  esac
+  if [ "$(id -u)" -eq 0 ]; then
+    echo "setup-ssh-key: --home is never used as root" >&2
+    exit 2
+  fi
+fi
+
 if [ -z "$HOME_DIR" ]; then
   if [ "$(id -un)" != pruefstand ]; then
     echo "setup-ssh-key: run as the service user: sudo -u pruefstand $0 ... (the key must not live in another home)" >&2
@@ -58,7 +78,7 @@ fi
 chmod 600 "$KEY"
 chmod 644 "$KEY.pub"
 
-block_exists() { [ -f "$CONFIG" ] && grep -qE "^Host[[:space:]]+${ALIAS}[[:space:]]*$" "$CONFIG"; }
+block_exists() { [ -f "$CONFIG" ] && grep -qE "^[[:space:]]*Host[[:space:]]+${ALIAS}[[:space:]]*$" "$CONFIG"; }
 
 block_text() {
   awk -v alias="$ALIAS" '
@@ -115,7 +135,7 @@ if [ "$VERIFY" -eq 0 ]; then
   copy_id_hint
   exit 0
 fi
-if ssh -F "$CONFIG" -o BatchMode=yes -o PreferredAuthentications=publickey -o ConnectTimeout=15 "$ALIAS" true; then
+if ssh -n -F "$CONFIG" -o BatchMode=yes -o PreferredAuthentications=publickey -o ConnectTimeout=15 "$ALIAS" true; then
   echo "OK   BatchMode login to $ALIAS works"
 else
   echo "FAIL BatchMode login to $ALIAS failed"

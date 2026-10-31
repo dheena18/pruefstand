@@ -51,10 +51,17 @@ overlaps() {
   [ $(($(ip2int "${1%/*}") & mask)) -eq $(($(ip2int "${2%/*}") & mask)) ]
 }
 
+# refuse_clashing_route SUBNET: a route of something other than a Docker bridge that overlaps SUBNET would
+# be cut by Docker's bridge route (and could take SSH with it).
 refuse_clashing_route() {
-  local subnet="$1" route
-  while read -r route _; do
-    [ "$route" = default ] && continue
+  local subnet="$1" route rest
+  while read -r route rest; do
+    case "$route" in
+      default) continue ;;
+      blackhole | unreachable | prohibit | throw) read -r route rest <<<"$rest" ;;
+    esac
+    [[ "$route" =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+(/[0-9]+)?$ ]] || continue
+    case " $rest " in *" dev docker0 "* | *" dev br-"*) continue ;; esac
     case "$route" in */*) ;; *) route="$route/32" ;; esac
     if overlaps "$subnet" "$route"; then
       die "subnet $subnet would clash with the existing route $route; pick another subnet or remove the route"
@@ -78,11 +85,12 @@ ensure_network() {
 changed=0
 install_file() {
   if ! cmp -s "$2" "$3" 2>/dev/null; then
-    run install -m "$1" -o root -g root "$2" "$3"
+    run install -m "$1" "$2" "$3"
     changed=1
   fi
 }
 
+refuse_clashing_route 10.232.0.0/24   # demo-net is created by the demo compose file, but must not clash either
 ensure_network proxy-egress 10.231.0.0/24
 ensure_network demo-egress 10.233.0.0/24
 install_file 0755 "$HERE/pruefstand-firewall.sh" "$BIN_DIR/pruefstand-firewall.sh"

@@ -6,9 +6,12 @@
 # (iptables, and ssh / write probes as user pruefstand). It never restarts Docker: that is --restart-drill.
 #   vm_check.sh [--owner USER] [ID...]     run all checks, or only the named ids
 #   vm_check.sh --confirm ID               record an owner-confirmed check: tunnel-reboot | host-reboot | vscode
-#   vm_check.sh --restart-drill            refuses (exit 75) while gpu.lock is held; restarts Docker ONCE, then re-runs
-#                                          the firewall check (R12 N4.2). Use it only when no gate or nightly runs.
-# Test/ops overrides (env): PRUEFSTAND_LOCK_DIR PRUEFSTAND_DATA_ROOT ENV_FILE OS_RELEASE_FILE MEMINFO_FILE FSTAB_FILE
+#   vm_check.sh --restart-drill [--yes]    refuses (exit 75) while gpu.lock is held and (exit 2) while containers run unless
+#                                          --yes; restarts Docker ONCE, checks that pruefstand-firewall was restarted too
+#                                          and re-runs the firewall check (R12 N4.2). Use it only when no gate or nightly runs.
+#   vm_check.sh --strict ...               WARN counts as failure (exit 1): use it for the S7 evidence run.
+# Never run it as root (exit 2; PRUEFSTAND_ALLOW_ROOT=1 exists for the tests only).
+# Test/ops overrides (env): PRUEFSTAND_LOCK_DIR PRUEFSTAND_DATA_ROOT PRUEFSTAND_ENV_FILE OS_RELEASE_FILE MEMINFO_FILE FSTAB_FILE
 #   TRUENAS_HOST_IP (for the demo probes) PROBE_IMAGE (pin by digest: curlimages/curl@sha256:...) DRILL_WAIT_S
 set -euo pipefail
 
@@ -16,7 +19,7 @@ HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 OWNER="${SUDO_USER:-$(id -un)}"
 LOCK_DIR="${PRUEFSTAND_LOCK_DIR:-/var/lib/pruefstand}"
 DATA_ROOT="${PRUEFSTAND_DATA_ROOT:-/mnt/pruefstand}"
-ENV_FILE="${ENV_FILE:-$HERE/../../.env}"
+ENV_FILE="${PRUEFSTAND_ENV_FILE:-$HERE/../../.env}"
 OS_RELEASE_FILE="${OS_RELEASE_FILE:-/etc/os-release}"
 MEMINFO_FILE="${MEMINFO_FILE:-/proc/meminfo}"
 FSTAB_FILE="${FSTAB_FILE:-/etc/fstab}"
@@ -30,7 +33,8 @@ ALL_IDS=(os ram cpu disk docker docker-group docker-gw proxy-net firewall gh-sco
 GIB_KB=$((1024 * 1024))
 
 # ---- result bookkeeping ---------------------------------------------------------------------------
-FAILS=0 CUR="" STATUS=PASS OKS=() NOTES=()
+FAILS=0 STRICT=0 CUR="" STATUS=PASS OKS=() NOTES=() EXTRA_FW_NOTE="" CLUSTER_ENDPOINT=""
+PROBE_CONTAINERS=() PROBE_NETS=()
 begin() { CUR="$1"; STATUS=PASS; OKS=(); NOTES=(); }
 ok() { OKS+=("$*"); }
 note() {
@@ -42,9 +46,18 @@ note() {
 finish() {
   local detail
   if [ "${#NOTES[@]}" -gt 0 ]; then detail="${NOTES[*]}"; else detail="${OKS[*]:-ok}"; fi
-  [ "$STATUS" != FAIL ] || FAILS=$((FAILS + 1))
+  if [ "$STATUS" = FAIL ] || { [ "$STRICT" -eq 1 ] && [ "$STATUS" = WARN ]; }; then FAILS=$((FAILS + 1)); fi
   echo "CHECK $CUR $STATUS $detail"
 }
+
+# shellcheck disable=SC2329  # called by the trap below
+cleanup() {
+  local c n
+  for c in ${PROBE_CONTAINERS[@]+"${PROBE_CONTAINERS[@]}"}; do docker rm -f "$c" >/dev/null 2>&1 || true; done
+  for n in ${PROBE_NETS[@]+"${PROBE_NETS[@]}"}; do docker network rm "$n" >/dev/null 2>&1 || true; done
+}
+trap cleanup EXIT INT TERM
+redact() { sed -E 's#(://)[^/@[:space:]]*@#\1***@#g'; }
 
 as_root() { if [ "$(id -u)" -eq 0 ]; then "$@"; else sudo -n "$@"; fi; }
 as_pf() { sudo -n -u pruefstand "$@"; }
@@ -153,12 +166,13 @@ fw_rules() {
   for net in 10.232.0.0/24 10.233.0.0/24; do
     grep -qE -- "-s ${net//./\\.} -j DROP" <<<"$input" || note FAIL "PRUEFSTAND-INPUT lacks the drop for $net"
   done
+  as_root iptables -w -C INPUT -j PRUEFSTAND-INPUT >/dev/null 2>&1 || note FAIL "INPUT lacks the jump to PRUEFSTAND-INPUT"
   as_root iptables -w -S DOCKER-ISOLATION-STAGE-1 >/dev/null 2>&1 || note FAIL "Docker chain DOCKER-ISOLATION-STAGE-1 is gone"
   as_root iptables -w -t nat -S DOCKER >/dev/null 2>&1 || note FAIL "Docker nat chain DOCKER is gone"
 }
-# dcurl_state RC: reached | blocked | error  (blocked = DNS failure, refused or timeout)
+# dcurl_state RC: reached (HTTP success) | timeout (28: what a DROP produces) | noroute (7) | dns (6) | error | other
 dcurl_state() {
-  case "$1" in 0) echo reached ;; 6 | 7 | 28) echo blocked ;; 125 | 126 | 127) echo error ;; *) echo reached ;; esac
+  case "$1" in 0) echo reached ;; 28) echo timeout ;; 7) echo noroute ;; 6) echo dns ;; 125 | 126 | 127) echo error ;; *) echo other ;; esac
 }
 CURL_ARGS=(-s -o /dev/null -f --connect-timeout 4 --max-time 6)
 # probe_net NET URL [docker-run options...]: state of a throwaway container on NET
@@ -173,57 +187,78 @@ probe_exec() {
   docker exec "$1" curl "${CURL_ARGS[@]}" "$2" >/dev/null 2>&1 || rc=$?
   dcurl_state "$rc"
 }
-# expect STATE ACTUAL WHAT: record a failure when the probe did not give the wanted state
+# expect WANT STATE WHAT. WANT: reached | drop (only a timeout proves a DROP) | noroute (timeout or no route).
+# A DNS failure or a probe that could not run proves nothing: WARN.
 expect() {
-  if [ "$2" = error ]; then note WARN "probe could not run: $3"; elif [ "$2" != "$1" ]; then note FAIL "$3 (wanted $1, got $2)"; fi
+  case "$2" in
+    dns) note WARN "probe inconclusive (DNS failure): $3"; return ;;
+    error) note WARN "probe could not run: $3"; return ;;
+  esac
+  case "$1:$2" in
+    reached:reached | drop:timeout | noroute:timeout | noroute:noroute) ;;
+    *) note FAIL "$3 (wanted $1, got $2)" ;;
+  esac
 }
 fw_gateway_probes() {
   local tmp="pf-probe-int-$$"
   expect reached "$(probe_net proxy-egress "http://$GW:11434/api/tags")" "proxy-egress container -> $GW:11434"
-  expect blocked "$(probe_net bridge "http://$GW:11434/api/tags")" "default bridge container -> $GW:11434"
+  expect drop "$(probe_net bridge "http://$GW:11434/api/tags")" "default bridge container -> $GW:11434"
   if docker network create --internal "$tmp" >/dev/null 2>&1; then
-    expect blocked "$(probe_net "$tmp" https://example.com)" "--internal network container -> internet"
-    docker network rm "$tmp" >/dev/null 2>&1 || true
+    PROBE_NETS+=("$tmp")
+    expect noroute "$(probe_net "$tmp" https://1.1.1.1/)" "--internal network container -> internet"
+  fi
+}
+# cluster_endpoint: resolve the SSH endpoint; a public address cannot be blocked by RFC 1918 rules
+cluster_endpoint() {
+  local host port ip
+  host="$(as_pf ssh -G cairo-s101lp 2>/dev/null | awk '$1=="hostname" {print $2}' || true)"
+  port="$(as_pf ssh -G cairo-s101lp 2>/dev/null | awk '$1=="port" {print $2}' || true)"
+  [ -n "$host" ] || return 0
+  ip="$(getent ahostsv4 "$host" 2>/dev/null | awk 'NR==1 {print $1}' || true)"
+  if [[ "$ip" =~ ^(10\.|192\.168\.|172\.(1[6-9]|2[0-9]|3[01])\.) ]]; then
+    CLUSTER_ENDPOINT="$ip|${port:-22}"
+  else
+    note WARN "cluster endpoint is public; not blockable by RFC1918 rules"
   fi
 }
 # targets the demo containers must never reach: "label|host|port"
 demo_targets() {
-  local host port lan
+  local port lan
   if [ -n "${TRUENAS_HOST_IP:-}" ]; then
     for port in 2049 445 443 80; do echo "truenas-$port|$TRUENAS_HOST_IP|$port"; done
   fi
-  host="$(as_pf ssh -G cairo-s101lp 2>/dev/null | awk '$1=="hostname" {print $2}' || true)"
-  port="$(as_pf ssh -G cairo-s101lp 2>/dev/null | awk '$1=="port" {print $2}' || true)"
-  if [ -n "$host" ]; then echo "cluster-ssh|$host|${port:-22}"; echo "cluster-22|$host|22"; fi
+  if [ -n "$CLUSTER_ENDPOINT" ]; then echo "cluster-ssh|${CLUSTER_ENDPOINT%|*}|${CLUSTER_ENDPOINT#*|}"; fi
   lan="$(hostname -I | tr ' ' '\n' | grep -vE '^(172\.17\.|10\.23[0-9]\.)' | head -1 || true)"
   if [ -n "$lan" ]; then echo "vm-lan|$lan|22"; fi
 }
 fw_demo_probes() {
-  local net=demo-net cf="pf-probe-cf-$$" made="" label host port
+  local net=demo-net cf="pf-probe-cf-$$" label host port
+  cluster_endpoint
   if ! docker network inspect demo-net >/dev/null 2>&1; then
     net="pf-probe-demo-$$"
-    docker network create --internal --subnet 10.232.0.0/24 "$net" >/dev/null 2>&1 && made="$net"
+    if docker network create --internal --subnet 10.232.0.0/24 "$net" >/dev/null 2>&1; then PROBE_NETS+=("$net"); fi
   fi
-  expect blocked "$(probe_net "$net" https://example.com)" "demo-net container -> internet"
+  expect noroute "$(probe_net "$net" https://1.1.1.1/)" "demo-net container -> internet"
   while IFS='|' read -r label host port; do
-    expect blocked "$(probe_net "$net" "http://$host:$port/")" "demo-net container -> $label"
+    expect noroute "$(probe_net "$net" "http://$host:$port/")" "demo-net container -> $label"
   done < <(demo_targets)
+  PROBE_CONTAINERS+=("$cf")
   if docker run -d --name "$cf" --network "$net" --ip 10.232.0.2 --entrypoint sleep "$PROBE_IMAGE" 120 >/dev/null 2>&1 &&
     docker network connect demo-egress "$cf" >/dev/null 2>&1; then
     expect reached "$(probe_exec "$cf" https://example.com)" "cloudflared-like container -> internet"
     while IFS='|' read -r label host port; do
-      expect blocked "$(probe_exec "$cf" "http://$host:$port/")" "cloudflared-like container -> $label"
+      expect drop "$(probe_exec "$cf" "http://$host:$port/")" "cloudflared-like container -> $label"
     done < <(demo_targets)
   else
     note WARN "cloudflared-like probe container could not start (10.232.0.2 in use or image missing)"
   fi
-  docker rm -f "$cf" >/dev/null 2>&1 || true
-  [ -z "$made" ] || docker network rm "$made" >/dev/null 2>&1 || true
 }
 check_firewall() {
   begin firewall
   if [ "$(systemctl is-active pruefstand-firewall 2>/dev/null || true)" != active ]; then note FAIL "pruefstand-firewall.service is not active"; fi
   if [ "$(systemctl is-enabled nftables 2>/dev/null || true)" = enabled ]; then note FAIL "the nftables unit is enabled (it would reload a ruleset over Docker's)"; fi
+  [ -z "$EXTRA_FW_NOTE" ] || note FAIL "$EXTRA_FW_NOTE"
+  case "$PROBE_IMAGE" in *@sha256:*) ;; *) note WARN "PROBE_IMAGE is a tag, not a digest; pin it: PROBE_IMAGE=curlimages/curl@sha256:..." ;; esac
   if have_sudo; then fw_rules; else note WARN "iptables rules not checked: run 'sudo -v' first"; fi
   fw_gateway_probes
   fw_demo_probes
@@ -242,7 +277,7 @@ check_gh_scope() {
   if [ "$admin" = false ]; then ok "no admin on $PUBLIC_REPO"; else note FAIL "admin permission on $PUBLIC_REPO is [$admin], expected false"; fi
   if out="$(timeout 30 gh api "repos/$GATE_REPO" 2>&1)"; then
     note FAIL "the token can read $GATE_REPO (must be 404, C18)"
-  elif grep -q 404 <<<"$out"; then
+  elif grep -q 'HTTP 404' <<<"$out"; then
     ok "$GATE_REPO -> 404"
   else
     note WARN "could not tell whether $GATE_REPO is hidden (no network?)"
@@ -264,7 +299,13 @@ check_lock_dir() {
   lock_state="$(stat -c '%a %U:%G' "$LOCK_DIR/gpu.lock" 2>&1 || true)"
   [ "$dir_state" = "2770 pruefstand:pruefstand" ] || note FAIL "$LOCK_DIR is [$dir_state], expected 2770 pruefstand:pruefstand"
   [ "$lock_state" = "660 pruefstand:pruefstand" ] || note FAIL "gpu.lock is [$lock_state], expected 660 pruefstand:pruefstand"
-  if GPU_LOCK_TIMEOUT_S=10 pruefstand-lock true >/dev/null 2>&1; then ok "pruefstand-lock true works"; else note FAIL "pruefstand-lock true failed for $OWNER"; fi
+  local lock_rc=0
+  GPU_LOCK_TIMEOUT_S=10 pruefstand-lock true >/dev/null 2>&1 || lock_rc=$?
+  case "$lock_rc" in
+    0) ok "pruefstand-lock true works" ;;
+    75) note WARN "gpu.lock busy: a job or another command holds the GPU lock" ;;
+    *) note FAIL "pruefstand-lock true failed (rc $lock_rc); is $OWNER in group pruefstand (log in again)?" ;;
+  esac
   if [ -e "$LOCK_DIR/MAINTENANCE" ]; then note WARN "maintenance set ($LOCK_DIR/MAINTENANCE exists; clear with rm when the swap is done)"; fi
   finish
 }
@@ -307,7 +348,7 @@ check_ssh_key() {
 # ---- tunnel (V3, ADR-0018) ------------------------------------------------------------------------
 tunnel_listeners() {
   local listen addr
-  listen="$(ss -ltnpH 2>/dev/null || true)"
+  if have_sudo; then listen="$(as_root ss -ltnpH 2>/dev/null || true)"; else listen="$(ss -ltnpH 2>/dev/null || true)"; fi
   for addr in 127.0.0.1:11434 $GW:11434; do
     awk '{print $4}' <<<"$listen" | grep -qx "$addr" || note FAIL "no listener on $addr"
   done
@@ -328,8 +369,8 @@ tunnel_env() {
   if [ -z "$g0" ]; then note WARN "OLLAMA_GPU0_URL not found in $ENV_FILE"; fi
   if grep -E '^https?://' <<<"$g0"$'\n'"$g1" | grep -vqE '^https?://(127\.0\.0\.1|localhost)[:/]'; then
     note FAIL "an OLLAMA_GPU*_URL is not a loopback address; no public tunnel may be used (C19)"
-  elif [ -n "$g0" ] && [ "$g0" != http://127.0.0.1:11434 ]; then note WARN "OLLAMA_GPU0_URL is [$g0], expected http://127.0.0.1:11434"; fi
-  if [ "$g1" != "$g0" ]; then note WARN "OLLAMA_GPU1_URL [$g1] differs from OLLAMA_GPU0_URL [$g0] (one server, ADR-0018)"; fi
+  elif [ -n "$g0" ] && [ "$g0" != http://127.0.0.1:11434 ]; then note WARN "OLLAMA_GPU0_URL is [$(redact <<<"$g0")], expected http://127.0.0.1:11434"; fi
+  if [ "$g1" != "$g0" ]; then note WARN "OLLAMA_GPU1_URL [$(redact <<<"$g1")] differs from OLLAMA_GPU0_URL [$(redact <<<"$g0")] (one server, ADR-0018)"; fi
 }
 check_tunnel() {
   begin tunnel
@@ -358,18 +399,25 @@ check_host_reboot() { confirmed host-reboot "reboot the TrueNAS host once; the V
 check_vscode() { confirmed vscode "open the VM from Windows VS Code (Remote-SSH) and run make check there"; }
 
 restart_drill() {
-  local limit="${DRILL_WAIT_S:-90}" waited=0
+  local limit="${DRILL_WAIT_S:-90}" waited=0 before after
   exec 9<"$LOCK_DIR/gpu.lock"
   if ! flock -n 9; then
     echo "vm_check: gpu.lock busy; a gate or nightly may be running, not touching Docker" >&2
     exit 75
   fi
+  if [ "$YES" -ne 1 ] && [ -n "$(docker ps -q 2>/dev/null || true)" ]; then
+    echo "vm_check: running containers would be stopped by the restart; stop them or pass --yes" >&2
+    exit 2
+  fi
+  before="$(systemctl show -p ActiveEnterTimestampMonotonic --value pruefstand-firewall 2>/dev/null || true)"
   as_root systemctl restart docker
   until docker info >/dev/null 2>&1 && [ "$(systemctl is-active pruefstand-firewall 2>/dev/null || true)" = active ]; do
     [ "$waited" -lt "$limit" ] || break
     sleep 2
     waited=$((waited + 2))
   done
+  after="$(systemctl show -p ActiveEnterTimestampMonotonic --value pruefstand-firewall 2>/dev/null || true)"
+  if [ -z "$after" ] || [ "$after" = "$before" ]; then EXTRA_FW_NOTE="pruefstand-firewall.service did not restart with Docker (PartOf=)"; fi
   check_firewall
   exit $((FAILS > 0))
 }
@@ -377,10 +425,13 @@ restart_drill() {
 # ---- main -----------------------------------------------------------------------------------------
 WANT=()
 DRILL=0
+YES=0
 while [ "$#" -gt 0 ]; do
   case "$1" in
     --owner) OWNER="$2"; shift 2 ;;
     --restart-drill) DRILL=1; shift ;;
+    --yes) YES=1; shift ;;
+    --strict) STRICT=1; shift ;;
     --confirm)
       case "$2" in tunnel-reboot | host-reboot | vscode) ;; *) echo "can only confirm: tunnel-reboot host-reboot vscode" >&2; exit 2 ;; esac
       mkdir -p "$(dirname "$CONFIRM_FILE")"
@@ -388,10 +439,14 @@ while [ "$#" -gt 0 ]; do
       echo "recorded $2"
       exit 0
       ;;
-    -h | --help) sed -n '2,12p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
+    -h | --help) sed -n '2,18p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
     *) WANT+=("$1"); shift ;;
   esac
 done
+if [ "$(id -u)" -eq 0 ] && [ -z "${PRUEFSTAND_ALLOW_ROOT:-}" ]; then
+  echo "vm_check: run it as the owner user, not as root (it uses sudo -n where needed)" >&2
+  exit 2
+fi
 [ "$DRILL" -eq 0 ] || restart_drill
 
 run_check() {

@@ -10,6 +10,8 @@ PartOf=docker.service
 Type=oneshot
 RemainAfterExit=yes
 ExecStart=/usr/local/sbin/pruefstand-firewall.sh
+Restart=on-failure
+RestartSec=5
 
 [Install]
 WantedBy=docker.service

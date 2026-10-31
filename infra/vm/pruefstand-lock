@@ -3,7 +3,8 @@
 #
 # Installed to /usr/local/bin/pruefstand-lock by setup-users.sh. The owner, coding agents and the
 # executor's orchestrator all use the same file, so dev GPU work and gate jobs exclude each other.
-# The lock is held until <cmd> (and anything inheriting fd 9) exits.
+# The lock is held until <cmd> (and anything inheriting fd 9) exits. With PRUEFSTAND_LOCK_HELD=1 already set the
+# command runs at once (nested call). GPU_LOCK_TIMEOUT_S must be numeric (exit 64 otherwise).
 #   exit 75 "gpu.lock busy"   no lock within ${GPU_LOCK_TIMEOUT_S:-7200} seconds
 #   exit 64                   no command given
 #   exit 2                    gpu.lock missing (run infra/vm/setup-users.sh)
@@ -12,10 +13,21 @@
 set -euo pipefail
 
 lock="${PRUEFSTAND_LOCK_DIR:-/var/lib/pruefstand}/gpu.lock"
+timeout_s="${GPU_LOCK_TIMEOUT_S:-7200}"
 
 if [ "$#" -lt 1 ]; then
   echo "usage: pruefstand-lock <cmd> [args...]" >&2
   exit 64
+fi
+case "$timeout_s" in
+  '' | *[!0-9]*)
+    echo "pruefstand-lock: GPU_LOCK_TIMEOUT_S must be a whole number of seconds, got '$timeout_s'" >&2
+    exit 64
+    ;;
+esac
+# Already inside a pruefstand-lock (or a job that holds the lock): do not wait for ourselves.
+if [ "${PRUEFSTAND_LOCK_HELD:-}" = 1 ]; then
+  exec -- "$@"
 fi
 if [ ! -e "$lock" ]; then
   echo "pruefstand-lock: $lock does not exist; run infra/vm/setup-users.sh first" >&2
@@ -23,9 +35,13 @@ if [ ! -e "$lock" ]; then
 fi
 
 # Read-only open is enough for flock(2) and never needs write access to the file.
-exec 9<"$lock"
-if ! flock -w "${GPU_LOCK_TIMEOUT_S:-7200}" 9; then
-  echo "pruefstand-lock: gpu.lock busy (waited ${GPU_LOCK_TIMEOUT_S:-7200}s)" >&2
+if ! exec 9<"$lock"; then
+  echo "pruefstand-lock: cannot open $lock; is $(id -un) in group pruefstand? (log out and in after setup-users.sh)" >&2
+  exit 2
+fi
+if ! flock -w "$timeout_s" 9; then
+  echo "pruefstand-lock: gpu.lock busy (waited ${timeout_s}s)" >&2
   exit 75
 fi
-exec env PRUEFSTAND_LOCK_HELD=1 "$@"
+export PRUEFSTAND_LOCK_HELD=1
+exec -- "$@"
