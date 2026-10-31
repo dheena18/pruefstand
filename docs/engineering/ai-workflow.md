@@ -110,14 +110,16 @@ git worktree add ../pruefstand-T1.5b -b feat/T1.5b-deterministic-metrics origin/
 
 ## 7. Claude Code configuration (`.claude/settings.json`, committed)
 
+As implemented by T0.1:
+
 | Setting | Value / purpose |
 | --- | --- |
-| Hook `PostToolUse` on `Edit`/`Write` for `*.py` | `uv run ruff format <file> && uv run ruff check --fix <file>` gives fast feedback without waiting for CI |
-| Hook `PostToolUse` on `*.py` under `packages/` | `uv run mypy <file> --follow-imports=silent` (fast, file-scoped) |
-| Hook `PostToolUse` on `*.ts(x)` | `pnpm -C apps/dashboard exec eslint --fix <file>` |
-| Hook `Stop` | `make lint typecheck arch` summary, so the session sees failures before it reports done (added by T0.1 once the Makefile exists; `.claude/settings.json` is created in T0.1) |
-| Permissions allow | `uv run *`, `make *`, `pnpm -C apps/dashboard *`, `git status/diff/log/add/commit`, `docker compose *` |
-| Permissions deny | `git push --force*`, `git commit --no-verify*`, `rm -rf *`, reading `.env*`, any read or write under `/var/lib/pruefstand/**` and `/home/pruefstand/**` (C18; `pruefstand-lock` is allowed) |
+| Hook `PostToolUse` on `Edit`/`Write` | `uv run python scripts/hooks/format_edited.py`: reads the hook JSON from stdin and runs `ruff format` + `ruff check --fix` on the edited file only when it is a `.py` file inside the repo; always exits 0 and prints problems |
+| Permissions allow | `make`, `uv run`, `uv sync`, `uv lock`, `pnpm`, `git status`, `git diff`, `git log` |
+| Permissions deny | `Read(./.env)`, `Read(./.env.*)`, `git push --force`, read or edit under `/var/lib/pruefstand/**` and `/home/pruefstand/**` (C18; `pruefstand-lock` is allowed) |
+
+Planned later (not part of T0.1): a file-scoped mypy hook on `*.py` under `packages/`, an eslint hook on `*.ts(x)` (T8.1)
+and a `Stop` hook that summarises `make lint typecheck arch`.
 
 Hooks never auto-commit. Pre-commit (`.pre-commit-config.yaml`) runs the same tools at commit time.
 

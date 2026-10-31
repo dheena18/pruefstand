@@ -14,6 +14,7 @@ gate is defined only in `CLAUDE.md` §6 (D130). Round-9 changes (D176, D177) are
 target-version = "py312"
 line-length = 100
 src = ["packages/pruefstand/src", "apps/rag-demo/src"]
+extend-exclude = ["*.md"]       # ruff >= 0.17 formats/lints Python blocks in Markdown; docs hold pseudo-code (T0.1)
 
 [tool.ruff.lint]
 preview = true                  # needed for PLR0917 (max-positional-args)
@@ -136,10 +137,11 @@ inside them are imported by their own names.
 
   ```make
   typecheck:
-  	@set -e; for r in $(PY_ROOTS); do uv run mypy --strict "$$r"; done
+  	@$(foreach r,$(EXISTING_ROOTS),echo ">> mypy $(r)"; uv run mypy $(r) || exit 1;) true
   ```
 
-  `PY_ROOTS` is exactly the §1.1 root list (same order); the `[tool.mypy]` config above is shared by every
+  `EXISTING_ROOTS` is the §1.1 root list (same order) filtered to the roots that exist, expanded by Make so that
+  `make -n typecheck` shows one `uv run mypy <root>` per root (`--strict` comes from `[tool.mypy]`); the `[tool.mypy]` config above is shared by every
   invocation, and a root that has no `.py` file yet is skipped. `packages/pruefstand/tests` and `apps/rag-demo/tests`
   are separate runs, so their `unit.*` modules never meet.
 - The module-uniqueness rule above applies to **non-test** modules only. `scripts/check_test_locations.py` (T0.1)

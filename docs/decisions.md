@@ -422,14 +422,21 @@ below are exact.
 
 | Date | Task | Decision | Link |
 | --- | --- | --- | --- |
+| 2026-10-31 | T0.1 | Tool versions are locked in `uv.lock` (Python 3.12.16, uv 0.13.6, ruff 0.17.3, mypy 2.4.1, pytest 9.2.0, import-linter 2.15); the pre-commit `ruff-pre-commit` rev equals the locked ruff version and both are bumped together | `pyproject.toml`, `.pre-commit-config.yaml` |
+| 2026-10-31 | T0.1 | Ruff rule set = coding-standards §1.1 verbatim, plus `extend-exclude = ["*.md"]` (ruff ≥ 0.17 formats and lints Python code blocks in Markdown, and the docs hold pseudo-code); interface signatures take precedence over arg-count lint, exceptions only as inline `# noqa` on the "Allowed long signatures" list | coding-standards §1.1 |
+| 2026-10-31 | T0.1 | Shared Makefile convention: the root `Makefile` holds only the CLAUDE.md §3 targets and ends with `-include mk/*.mk`; later tasks add `mk/<area>.mk` | `Makefile`, `mk/` |
+| 2026-10-31 | T0.1 | Import convention: one root list in pytest `pythonpath` = mypy `mypy_path` (checked by `check_test_locations.py`); repo code outside the packages is imported by its path below a root, with no `__init__.py` and no `sys.path` edits | testing-strategy §2.1 |
+| 2026-10-31 | T0.1 | `make typecheck` expands the existing import roots at Make time (`$(foreach …)`), one `uv run mypy <root>` per root, so `make -n typecheck` shows each run and the test can count them; same effect as the shell loop in N6.3 | `Makefile`, `scripts/tests/test_makefile.py` |
+| 2026-10-31 | T0.1 | `pruefstand.metrics.deterministic` exists as an empty package so the `deterministic-no-llm` contract has a source module; `llm-gateway` uses `allow_indirect_imports` and `unmatched_ignore_imports_alerting = none` until `llm/backends/litellm.py` arrives (T1.4); `include_external_packages` is the global import-linter option | `.importlinter` |
+| 2026-10-31 | T0.1 | `.claude/settings.json`: the formatter hook only (no `Stop` hook; ai-workflow §7 updated to what is implemented); deny list also covers `/var/lib/pruefstand/**` and `/home/pruefstand/**` (CLAUDE.md §1.8) | `.claude/settings.json` |
 | | | | |
 
 ## Pinned versions (filled in by tasks)
 
 | Item | Pinned value | Set by | Date |
 | --- | --- | --- | --- |
-| Python | 3.12.x | T0.1 | |
-| uv | `<version>` | T0.1 | |
+| Python | 3.12.16 (`>=3.12,<3.14`) | T0.1 | 2026-10-31 |
+| uv | 0.13.6 | T0.1 | 2026-10-31 |
 | Node / pnpm | 22.x LTS / `<version>` | T8.1 | |
 | Qdrant image | `qdrant/qdrant:<version>@sha256:<digest>` | T0.3 |
 | ~~TEI image (A40)~~ | removed (D198; the tier-1 CPU `embed` image is pinned by T0.3/T1.13) | – | |

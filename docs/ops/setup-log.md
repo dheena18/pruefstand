@@ -381,6 +381,14 @@ gh api repos/dheena18/pruefstand --jq .full_name          # works
 gh api repos/dheena18/pruefstand-gate --jq .full_name     # must fail (404)
 ```
 
+### Recorded deviations from T0.0 (2026-10-31, recorded by T0.1)
+
+- The VM runs **Ubuntu 26.04**, not 24.04.
+- **Docker** is installed from Ubuntu's own packages `docker.io` + `docker-compose-v2` (Docker 29.1.3, Compose 2.40.3),
+  because Docker's apt repository has no `docker-ce` candidate for Ubuntu 26.04.
+- **Node** 22.22.1 comes from apt (`nodejs`, `npm`, `corepack`; pnpm 9.15.9 through corepack) instead of fnm, because
+  the fnm curl-to-bash installer was blocked.
+
 ## 11. Notes
 
 - If the cluster's public SSH endpoint gets a new port, change only `Port` in `/home/pruefstand/.ssh/config`

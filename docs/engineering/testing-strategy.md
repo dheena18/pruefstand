@@ -50,6 +50,19 @@ flowchart TB
 | UI | Dashboard renders real artefacts correctly and accessibly; one static build per fixture set (§3.10) | Vitest + Testing Library, Playwright, `@axe-core/playwright`, Lighthouse CI | `apps/dashboard/src/**/*.test.tsx`, `apps/dashboard/e2e/` | – | ≤ 4 min | `ui / check` (required) |
 | Code mutation | The tests really detect bugs in gate/metrics | mutmut | `pyproject.toml` | – | nightly ≤ 60 min | `nightly` (informational) |
 
+### 2.1 Import convention (T0.1)
+
+The root `pyproject.toml` has one root list, written out literally in pytest `pythonpath` and in mypy `mypy_path`
+(`scripts/check_test_locations.py` fails when they differ). Repo code outside the packages is imported **in-process
+by its path below one of these roots**, with no `__init__.py` and no `sys.path` edits: `from check_code_limits import
+main` (`scripts/`), `from download import …` (`data/`), `from rq2.construct import …` (`experiments/`), `from
+review_app import app` (`tools/`), `from entrypoint import main` (`action/`), `from catalogue_schema import …`
+(`infra/gpu/`), `from mutations.schema import …` (`benchmarks/`). Shared test helpers import as `from
+testsupport.builders import …`. Top-level non-test module names must be unique across the roots, tests of a root stay
+in `<root>/tests/`, and test directories never contain an `__init__.py`. `make typecheck` runs mypy once per root.
+The doctest run (`pytest --doctest-modules packages/pruefstand/src`) is a second invocation inside `make test` and
+`make coverage`, because a path argument overrides `testpaths`.
+
 ## 3. Harnesses
 
 ### 3.1 Live stack (tier 1, `docker compose --profile live`)
