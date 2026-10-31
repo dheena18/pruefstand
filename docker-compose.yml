@@ -1,0 +1,80 @@
+# Prüfstand compose stack (T0.3; docs/engineering/docker.md section 3 is the port table).
+# Profiles: core (Qdrant) | live (CPU stack of tier 1: Qdrant + llama.cpp [+ embed, rag-demo from T1.13]) |
+# dev (rag-demo built from source, T1.13). gpu (T3.1a) and demo (T8.5) are added by those tasks in their own hunks.
+# Start it with `make up PROFILES="core live"` (mk/docker.mk exports the host ports = default + PORT_OFFSET,
+# D214); a raw `docker compose` needs `make ports-env` first. Every host port binds 127.0.0.1 only and is a
+# variable (scripts/check_compose.py). No secrets here: only ${VAR} references.
+
+x-service-defaults: &service-defaults
+  restart: unless-stopped
+  security_opt:
+    - no-new-privileges:true
+  logging:
+    driver: json-file
+    options:
+      max-size: 10m
+      max-file: "3"
+
+services:
+  qdrant:
+    <<: *service-defaults
+    # Qdrant v1.20.0 (decisions.md "Pinned versions"); update tag and digest together.
+    image: qdrant/qdrant:v1.20.0@sha256:9bfc89f9914fc14876a88c05270685921a55b8877b254a98bcc1cc2f0a424cd2
+    # Add `gpu` here in T3.1a (own hunk): profiles: [core, live, gpu]
+    profiles: [core, live]
+    ports:
+      - "127.0.0.1:${QDRANT_HTTP_PORT:-6333}:6333"
+      - "127.0.0.1:${QDRANT_GRPC_PORT:-6334}:6334"
+    volumes:
+      - qdrant_data:/qdrant/storage
+    mem_limit: 2g
+    healthcheck:
+      # The image has neither curl nor wget: plain HTTP over bash's /dev/tcp, checked inside the container.
+      test:
+        - CMD
+        - bash
+        - -c
+        - >-
+          exec 3<>/dev/tcp/127.0.0.1/6333
+          && printf 'GET /readyz HTTP/1.0\r\n\r\n' >&3
+          && grep -q '200 OK' <&3
+      interval: 5s
+      timeout: 3s
+      retries: 12
+      start_period: 5s
+
+  llm:
+    <<: *service-defaults
+    # CPU llama.cpp server, OpenAI-compatible /v1. T1.13 pins the exact server-<version> tag (decisions.md).
+    image: ghcr.io/ggml-org/llama.cpp:server@sha256:d9e9e74ba3f7ef119b1939162b1631f99b75ec703c310d140cfa2fdac8907389
+    profiles: [live]
+    # --parallel 1: greedy outputs must not depend on batch composition (AI-36); --jinja: the chat template
+    # honours enable_thinking=false for Qwen3 (W1.2). The model file comes from scripts/models/fetch.py (T1.4).
+    command: >-
+      --model /models/${LIVE_LLM_GGUF:-model.gguf}
+      --host 0.0.0.0 --port 8080
+      --ctx-size 4096
+      --threads ${LIVE_LLM_THREADS:-4}
+      --parallel 1 --seed 0 --jinja
+    ports:
+      - "127.0.0.1:${LLM_HOST_PORT:-8080}:8080"
+    volumes:
+      - ${LIVE_MODEL_DIR:-${HOME}/.cache/pruefstand/models}:/models:ro
+    mem_limit: 6g
+    healthcheck:
+      # Inside the container, so it never depends on the published host port.
+      test: ["CMD", "curl", "-fsS", "http://localhost:8080/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+      start_period: 20s
+
+  # rag-demo (T1.13 adds apps/rag-demo/Dockerfile; then uncomment, set profiles and fill the blocks below):
+  #   live: built from the T0.3 template, depends_on qdrant + llm (condition: service_healthy),
+  #         ports: ["127.0.0.1:${RAG_DEMO_HOST_PORT:-8000}:8000"], healthcheck on /v1/health
+  #   dev:  same service from source with reload: build: {context: apps/rag-demo}, profiles: [dev]
+  # rag-demo:
+  #   profiles: [live, dev]
+
+volumes:
+  qdrant_data:

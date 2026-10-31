@@ -1,0 +1,121 @@
+from pathlib import Path
+
+import check_compose
+import pytest
+import yaml
+
+REPO = Path(__file__).resolve().parents[2]
+DIGEST = "sha256:" + "a" * 64
+HEALTH = {"test": ["CMD", "true"], "interval": "10s"}
+
+
+def _compose(
+    overrides: dict[str, object] | None = None, drop: tuple[str, ...] = ()
+) -> dict[str, object]:
+    service: dict[str, object] = {"image": f"qdrant/qdrant:v1.20.0@{DIGEST}", "healthcheck": HEALTH}
+    service.update(overrides or {})
+    for key in drop:
+        del service[key]
+    return {"services": {"qdrant": service}}
+
+
+def _problems(**overrides: object) -> list[str]:
+    return check_compose.check_compose(_compose(overrides))
+
+
+def test_clean_service_passes() -> None:
+    assert _problems() == []
+
+
+def test_image_without_digest_fails() -> None:
+    assert "qdrant: image not pinned by digest" in _problems(image="qdrant/qdrant:v1.12.0")
+
+
+def test_build_without_image_is_exempt_from_digest() -> None:
+    assert check_compose.check_compose(_compose({"build": {"context": "."}}, drop=("image",))) == []
+
+
+def test_all_interfaces_port_fails() -> None:
+    assert any("binds all interfaces" in p for p in _problems(ports=["6333:6333"]))
+
+
+def test_bare_container_port_fails() -> None:
+    assert any("binds all interfaces" in p for p in _problems(ports=["6333"]))
+
+
+def test_non_loopback_ip_fails() -> None:
+    assert any("binds all interfaces" in p for p in _problems(ports=["0.0.0.0:6333:6333"]))
+
+
+def test_literal_host_port_fails() -> None:
+    assert any("literal host port" in p for p in _problems(ports=["127.0.0.1:6333:6333"]))
+
+
+def test_variable_host_port_passes() -> None:
+    assert _problems(ports=["127.0.0.1:${QDRANT_HTTP_PORT:-6333}:6333"]) == []
+
+
+def test_variable_without_port_suffix_fails() -> None:
+    bad = ["127.0.0.1:${QDRANT:-6333}:6333"]
+    assert any("literal host port" in p for p in _problems(ports=bad))
+
+
+def test_long_syntax_ports() -> None:
+    good = {"target": 6333, "published": "${QDRANT_HTTP_PORT:-6333}", "host_ip": "127.0.0.1"}
+    assert _problems(ports=[good]) == []
+    assert any("binds all interfaces" in p for p in _problems(ports=[{**good, "host_ip": "::"}]))
+    assert any("literal host port" in p for p in _problems(ports=[{**good, "published": 6333}]))
+
+
+def test_host_network_without_ports_passes() -> None:
+    assert _problems(network_mode="host") == []
+
+
+def test_missing_healthcheck_fails() -> None:
+    assert "qdrant: no healthcheck" in check_compose.check_compose(_compose(drop=("healthcheck",)))
+
+
+def test_disabled_healthcheck_fails() -> None:
+    assert "qdrant: no healthcheck" in _problems(healthcheck={"disable": True})
+
+
+def test_literal_secret_in_list_env_fails() -> None:
+    assert any("secret" in p for p in _problems(environment=["HF_TOKEN=abc"]))
+
+
+def test_literal_secret_in_mapping_env_fails() -> None:
+    assert any("secret" in p for p in _problems(environment={"API_KEY": "abc"}))
+
+
+def test_variable_secret_passes() -> None:
+    assert _problems(environment=["HF_TOKEN=${HF_TOKEN}"]) == []
+    assert _problems(environment={"DB_PASSWORD": "${DB_PASSWORD:?set it}"}) == []
+
+
+def test_empty_or_bare_secret_names_pass() -> None:
+    assert _problems(environment=["HF_TOKEN", "API_KEY="]) == []
+
+
+def test_non_secret_literal_passes() -> None:
+    assert _problems(environment=["QDRANT__LOG_LEVEL=INFO"]) == []
+
+
+def test_yaml_reset_tag_is_tolerated(tmp_path: Path) -> None:
+    path = tmp_path / "compose.executor.yml"
+    path.write_text(
+        f"services:\n  qdrant:\n    image: q@{DIGEST}\n    healthcheck: {{test: [CMD, 'true']}}\n"
+        "    ports: !reset []\n",
+        encoding="utf-8",
+    )
+    assert check_compose.check_file(path) == []
+
+
+def test_main_reports_and_exits_nonzero(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    path = tmp_path / "docker-compose.yml"
+    path.write_text(yaml.safe_dump(_compose({"image": "qdrant/qdrant:latest"})), encoding="utf-8")
+    assert check_compose.main([str(path)]) == 1
+    assert "image not pinned by digest" in capsys.readouterr().out
+
+
+def test_repo_compose_file_passes() -> None:
+    assert check_compose.check_file(REPO / "docker-compose.yml") == []
