@@ -232,7 +232,7 @@ follow `tasks/PARALLEL-PLAN.md` §2.
 | Wave | Tasks (`[x]` = merged and checkpoint green) | Milestone |
 | --- | --- | --- |
 | 0 | [ ] T0.7 S1–S2 (human) · [ ] T0.0 | – |
-| 1 | [ ] T0.1 | – |
+| 1 | [x] T0.1 (2026-10-31, direct push e885fda) | – |
 | 2 | [ ] T0.2 · [ ] T0.3 · [ ] T1.1 · [ ] T2.1 · [ ] T0.7 | – |
 | 3 | [ ] T1.2 · [ ] T1.5a · [ ] T0.4 · [ ] T0.6 (+ S7 quota follow-up) · [ ] T0.5 | – |
 | 4 | [ ] T1.6 · [ ] T1.5b · [ ] T1.3 · [ ] T1.4 · [ ] T2.2 · [ ] T3.1a | – |
