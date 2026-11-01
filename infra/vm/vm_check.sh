@@ -50,7 +50,7 @@ finish() {
   echo "CHECK $CUR $STATUS $detail"
 }
 
-# shellcheck disable=SC2329  # called by the trap below
+# shellcheck disable=SC2329,SC2317  # called by the trap below (older ShellCheck reports SC2317)
 cleanup() {
   local c n
   for c in ${PROBE_CONTAINERS[@]+"${PROBE_CONTAINERS[@]}"}; do docker rm -f "$c" >/dev/null 2>&1 || true; done
