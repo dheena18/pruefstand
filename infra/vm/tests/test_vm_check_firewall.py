@@ -4,7 +4,15 @@ import fcntl
 from pathlib import Path
 
 from vm_testkit import VM_DIR, Runner
-from vm_world import IPT_INPUT, IPT_USER, World, check, raw
+from vm_world import (
+    IPT_INPUT,
+    IPT_USER,
+    LEGACY_DOCKER_CHAINS,
+    NEW_DOCKER_CHAINS,
+    World,
+    check,
+    raw,
+)
 
 
 def test_gh_scope(world: World, run_script: Runner) -> None:
@@ -13,6 +21,34 @@ def test_gh_scope(world: World, run_script: Runner) -> None:
     assert check(world, run_script, "gh-scope")["gh-scope"][0] == "FAIL"
     world.override("gh", ("auth token", "gho_classicoauth", 0))
     assert check(world, run_script, "gh-scope")["gh-scope"][0] == "FAIL"
+
+
+def test_gh_scope_tests_the_token_not_the_owner_role(world: World, run_script: Runner) -> None:
+    # permissions.admin of GET /repos/{repo} is the owner's role, true even for a harmless token.
+    assert check(world, run_script, "gh-scope")["gh-scope"][0] == "PASS"
+    calls = world.stubs.calls("gh")
+    assert not any("permissions.admin" in c for c in calls)
+    assert any("actions/permissions" in c for c in calls)
+
+
+def test_gh_scope_fails_when_the_token_can_read_actions_permissions(
+    world: World, run_script: Runner
+) -> None:
+    world.override(
+        "gh", ("api repos/dheena18/pruefstand/actions/permissions", '{"enabled":true}', 0)
+    )
+    status, detail = check(world, run_script, "gh-scope")["gh-scope"]
+    assert status == "FAIL"
+    assert "administration" in detail
+
+
+def test_gh_scope_unexpected_error_is_not_a_pass(world: World, run_script: Runner) -> None:
+    errors = ((1, "gh: Not Found (HTTP 404)"), (1, "error connecting to api.github.com"), (124, ""))
+    for rc, err in errors:
+        world.override("gh", ("api repos/dheena18/pruefstand/actions/permissions", "", rc, err))
+        status, detail = check(world, run_script, "gh-scope")["gh-scope"]
+        assert status == "WARN", (rc, err, detail)
+        assert "administration" in detail
 
 
 def test_gh_token_is_never_printed(world: World, run_script: Runner) -> None:
@@ -38,6 +74,43 @@ def test_firewall_failures(world: World, run_script: Runner) -> None:
         + IPT_USER.splitlines()[3:]
     )
     world.override("iptables", ("*-S DOCKER-USER", swapped, 0))
+    assert check(world, run_script, "firewall")["firewall"][0] == "FAIL"
+
+
+def _chains(world: World, present: tuple[str, ...]) -> None:
+    every = sorted({*NEW_DOCKER_CHAINS, *LEGACY_DOCKER_CHAINS})
+    world.override(
+        "iptables",
+        *[(f"*-S {c}", f"-N {c}" if c in present else "", int(c not in present)) for c in every],
+    )
+
+
+def test_firewall_accepts_the_docker_28_chain_set(world: World, run_script: Runner) -> None:
+    _chains(world, NEW_DOCKER_CHAINS)
+    assert check(world, run_script, "firewall")["firewall"][0] == "PASS"
+
+
+def test_firewall_accepts_the_legacy_isolation_chain_set(world: World, run_script: Runner) -> None:
+    _chains(world, LEGACY_DOCKER_CHAINS)
+    assert check(world, run_script, "firewall")["firewall"][0] == "PASS"
+
+
+def test_firewall_fails_when_no_docker_chain_set_is_recognisable(
+    world: World, run_script: Runner
+) -> None:
+    _chains(world, ())
+    status, detail = check(world, run_script, "firewall")["firewall"]
+    assert status == "FAIL"
+    assert "chains" in detail
+    _chains(world, ("DOCKER", "DOCKER-FORWARD", "DOCKER-BRIDGE"))  # half a set is not a set
+    assert check(world, run_script, "firewall")["firewall"][0] == "FAIL"
+
+
+def test_firewall_fails_when_docker_user_is_missing_in_the_new_set(
+    world: World, run_script: Runner
+) -> None:
+    _chains(world, NEW_DOCKER_CHAINS)
+    world.override("iptables", ("*-S DOCKER-USER", "", 1))
     assert check(world, run_script, "firewall")["firewall"][0] == "FAIL"
 
 

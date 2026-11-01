@@ -26,6 +26,10 @@ IPT_INPUT = f"""-N PRUEFSTAND-INPUT
 -A PRUEFSTAND-INPUT -m conntrack --ctstate RELATED,ESTABLISHED -j RETURN
 -A PRUEFSTAND-INPUT -s 10.232.0.0/24 -j DROP
 -A PRUEFSTAND-INPUT -s 10.233.0.0/24 -j DROP"""
+# Docker >= 28 (the real VM: Docker 29.1.3) replaced DOCKER-ISOLATION-STAGE-1/2 by these chains.
+NEW_DOCKER_CHAINS = ("DOCKER", "DOCKER-FORWARD", "DOCKER-BRIDGE", "DOCKER-CT", "DOCKER-INTERNAL")
+LEGACY_DOCKER_CHAINS = ("DOCKER", "DOCKER-ISOLATION-STAGE-1", "DOCKER-ISOLATION-STAGE-2")
+GH_NO_ADMIN = "gh: Resource not accessible by personal access token (HTTP 403)"
 LISTEN = (
     'LISTEN 0 128 127.0.0.1:11434 0.0.0.0:* users:(("ssh",pid=11,fd=5))\n'
     'LISTEN 0 128 172.17.0.1:11434 0.0.0.0:* users:(("ssh",pid=11,fd=6))\n'
@@ -142,8 +146,8 @@ def _service_stubs(world: World) -> None:
         [
             ("*-C INPUT*", "", 0),
             ("*-S DOCKER-USER", IPT_USER, 0), ("*-S PRUEFSTAND-INPUT", IPT_INPUT, 0),
-            ("*-S DOCKER-ISOLATION-STAGE-1", "-N DOCKER-ISOLATION-STAGE-1", 0),
             ("*-t nat -S DOCKER", "-N DOCKER", 0),
+            *[(f"*-S {c}", f"-N {c}", 0) for c in NEW_DOCKER_CHAINS],
         ],
     )  # fmt: skip
 
@@ -174,7 +178,7 @@ def _docker_stubs(world: World) -> None:
         "gh",
         [
             ("auth token", "github_pat_TESTONLY", 0),
-            ("api repos/dheena18/pruefstand --jq .permissions.admin", "false", 0),
+            ("api repos/dheena18/pruefstand/actions/permissions", "", 1, GH_NO_ADMIN),
             ("api repos/dheena18/pruefstand-gate*", "", 1, "gh: Not Found (HTTP 404)"),
         ],
     )
