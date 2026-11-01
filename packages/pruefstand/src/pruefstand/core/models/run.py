@@ -43,6 +43,11 @@ class RunManifest(BaseModel):
     Run-time flags (``judge_drift``, ``judge_degraded``, ``judge_fallback``) never change
     ``eval_fingerprint``; ``block``, ``judged_subset`` and a ``stratum`` other than ``"all"`` do.
 
+    ``artifact_sha256`` is set by ``ArtifactStore.write_run`` (T1.8): file name -> SHA-256 of
+    ``results.parquet``, ``responses.jsonl`` and ``scored.jsonl``. Readers must stream-hash a file
+    and compare *before* they parse it (a hostile parquet footer can abort a parser); the runner
+    leaves it empty.
+
     Raises:
         ValidationError: ``complete`` differs from ``stop_reason == "completed"``, or
             ``infra_error`` is set with a ``stop_reason`` other than ``"aborted"``.
@@ -87,6 +92,7 @@ class RunManifest(BaseModel):
     judge_degraded: bool = False
     judge_drift: bool = False
     judged_cases: int = 0
+    artifact_sha256: dict[str, str] = {}
 
     @model_validator(mode="after")
     def _check_stop_state(self) -> Self:

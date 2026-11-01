@@ -10,11 +10,12 @@ from types import SimpleNamespace
 
 import polars as pl
 import pytest
-from testsupport.run_builders import make_results
+from testsupport.run_builders import make_results, refresh_hashes
 
 from pruefstand.core.errors import StoreError
 from pruefstand.core.models.run import RunArtifacts
 from pruefstand.store import _run_files
+from pruefstand.store import artifacts as artifacts_module
 from pruefstand.store.artifacts import ArtifactStore
 
 
@@ -91,6 +92,7 @@ def _canary_line(extra: dict[str, object]) -> str:
 def test_extra_key_names_in_jsonl_never_reach_the_error(tmp_path: Path, name: str) -> None:
     store, path = written(tmp_path)
     (path / name).write_text(_canary_line({"CANARY-sk-SECRETKEY": 1}), encoding="utf-8")
+    refresh_hashes(path)
     with pytest.raises(StoreError) as info:
         store.read_run(path)
     assert "CANARY" not in str(info.value)
@@ -179,6 +181,6 @@ def test_update_reads_run_json_with_the_bounded_reader(
 ) -> None:
     store, path = written(tmp_path)
     (path / "run.json").write_text("{" + " " * 200, encoding="utf-8")
-    monkeypatch.setattr(_run_files, "MAX_MANIFEST_BYTES", 100)
+    monkeypatch.setattr(artifacts_module, "MAX_MANIFEST_BYTES", 100)
     with pytest.raises(StoreError, match="larger"):
         store.add_counts(path, {"model_reloads": 1})

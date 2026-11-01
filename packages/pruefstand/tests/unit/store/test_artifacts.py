@@ -4,7 +4,7 @@ from pathlib import Path
 
 import polars as pl
 import pytest
-from testsupport.run_builders import make_results
+from testsupport.run_builders import make_results, unhashed
 
 from pruefstand.core.errors import StoreError
 from pruefstand.core.models.run import RunArtifacts
@@ -27,14 +27,14 @@ def test_round_trip_is_equal_and_root_is_the_run_dir(tmp_path: Path) -> None:
     store, run, path = written(tmp_path)
     assert path == run.root
     back = store.read_run(path)
-    assert back.results == run.results
+    assert unhashed(back.results) == run.results
     assert back.root == path
 
 
 def test_read_by_run_id_and_by_path(tmp_path: Path) -> None:
     store, run, path = written(tmp_path)
     assert store.read_run(run.results.manifest.run_id).root == path
-    assert store.read_run(str(path)).results == run.results
+    assert unhashed(store.read_run(str(path)).results) == run.results
 
 
 def test_run_json_is_indented_sorted_utf8(tmp_path: Path) -> None:

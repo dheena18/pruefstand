@@ -9,7 +9,7 @@ from typing import Literal
 from uuid import uuid4
 
 import numpy as np
-from pydantic import ValidationError
+from pydantic import BaseModel, ConfigDict, Field
 
 from pruefstand.core.config import RunnerConfig
 from pruefstand.core.errors import StoreError
@@ -34,6 +34,16 @@ class Fetched:
     fallback: bool
 
 
+class _CacheEntry(BaseModel):
+    """One cached exchange; finite, non-negative latency only."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    mode: Mode
+    latency_ms: float = Field(ge=0, le=86_400_000.0, allow_inf_nan=False)
+    response: TargetResponse
+
+
 class TargetCaller:
     """Calls the target for one case; owns the target-response cache (namespace ``target``).
 
@@ -48,7 +58,7 @@ class TargetCaller:
         self._adapter = adapter
         self._cache = cache
         self._cfg = cfg
-        self._warned: set[str] = set()
+        self._cache_failed = False
 
     async def fetch(
         self, case: TestCase, route: Route, *, target_fingerprint: str, rng: np.random.Generator
@@ -124,27 +134,32 @@ class TargetCaller:
         )
 
     async def _lookup(self, key: str, mode: Mode) -> tuple[TargetResponse, float] | None:
-        """Return a cached ``(response, latency_ms)`` or None; a cache failure is a miss."""
-        if self._cache is None:
+        """Return a cached ``(response, latency_ms)`` or None; every failure is a miss.
+
+        The blob is untrusted (a planted row): it is parsed by one typed model in one step, and
+        any failure to parse or validate it, whatever the exception, is a miss.
+        """
+        if self._cache is None or self._cache_failed:
             return None
         try:
             raw = await asyncio.to_thread(self._cache.get, key)
         except StoreError as exc:
-            self._warn_once("target_cache_read_failed", str(exc))
+            self._disable_cache("target_cache_read_failed", str(exc))
             return None
         if raw is None:
             return None
-        try:  # JSON only: planted or foreign bytes (e.g. a pickle) fail to parse and are a miss
-            entry = json.loads(raw)
-            if entry["mode"] != mode:
-                return None
-            return TargetResponse.model_validate(entry["response"]), float(entry["latency_ms"])
-        except (ValueError, KeyError, TypeError, ValidationError):
+        try:
+            entry = _CacheEntry.model_validate_json(raw)
+        except Exception:
             _log.warning("target_cache_entry_unreadable", key=key)
             return None
+        checked = _require_valid_unicode(Attempts(entry.response, None, 0))
+        if entry.mode != mode or checked.value is None:
+            return None
+        return entry.response, entry.latency_ms
 
     async def _store(self, key: str, record: CaseRecord) -> None:
-        if self._cache is None or record.response is None:
+        if self._cache is None or self._cache_failed or record.response is None:
             return
         entry = {
             "mode": record.mode,
@@ -155,12 +170,12 @@ class TargetCaller:
         try:
             await asyncio.to_thread(self._cache.set, key, payload)
         except StoreError as exc:
-            self._warn_once("target_cache_write_failed", str(exc))
+            self._disable_cache("target_cache_write_failed", str(exc))
 
-    def _warn_once(self, event: str, error: str) -> None:
-        if event not in self._warned:
-            self._warned.add(event)
-            _log.warning(event, error=error, note="logged once per run; later cases skip the cache")
+    def _disable_cache(self, event: str, error: str) -> None:
+        """Skip the cache for the rest of the run after its first failure (locked, read-only)."""
+        self._cache_failed = True
+        _log.warning(event, error=error, note="cache skipped for the rest of the run")
 
 
 def _require_valid_unicode(

@@ -232,6 +232,8 @@ owning module's unit test dir (`pt/unit/<module>/`, `rd/unit/…`).
 | `LayeredKVCache` | `store.kv` | T6.1 | `test_layered_cache.py` | overlay write only; shadowing; base read-only | covered |
 | `ArtifactStore.write_run`, `.read_run` | `store.artifacts` | T1.8 | `test_artifacts.py` | round trip; 13 columns; atomic; „Kündigungsschutzgesetz“; root outside → `StoreError`; existing run dir never overwritten; `scored.jsonl` carries `TestCase` and metric details (D359) | covered |
 | `ArtifactStore.mark_aborted` (**R11** D245; T1.8) | `store.artifacts` | T1.8 | `test_budget_stop.py`, `test_artifacts.py` | `complete=False`, `stop_reason="aborted"`, `infra_error` set; `results.parquet` byte-identical | covered |
+| `RunManifest.artifact_sha256`, `StoreIntegrityError` (T1.8, D364) | `core.models.run`, `core.errors`, `store.artifacts` | T1.8 | `test_artifacts_checksums.py` | hashes recorded by `write_run`; tampered values with a valid footer, corrupted parquet, changed jsonl, missing hash → `StoreIntegrityError`; the 222-byte crafted footer is refused in a subprocess without polars being called; hashes survive `mark_aborted` / `add_counts` | covered |
+| Planted target-cache blobs (T1.8, D364) | `runner.target_call` | T1.8 | `test_runner_cache.py` | deep nesting, 400-digit / NaN / infinite / negative latency, lone surrogate, extra field → miss, run stays writable; a failing cache is skipped after its first failure | covered |
 | `new_run_id` (T1.8, D357) | `store.artifacts` | T1.8 | `test_artifacts.py` + doctest | `<UTC yyyymmddTHHMMSS>-<6 hex>`; two ids differ | covered |
 | `ArtifactStore.add_counts` (**R12** N6.4, D267) | `store.artifacts` | T1.8 | `test_artifacts.py` | `add_counts(run, {"model_reloads": 1, "upstream_errors": 0})` → `run.json` counts merged atomically, other files byte-identical; key `ok` → `StoreError`; existing counts kept | covered |
 | `LocalDirBaselineStore.get`, `.put` | `store.baselines_local` | T6.1 | `test_baselines_local.py` | refs isolated; unknown → `None`; partial write; `complete=False`; digest mismatch; **R12** (D251): refs `nightly-b0`…`nightly-b2` accepted and isolated from `main`; ref `nightly-b3` / `foo` → `StoreError` | covered |
@@ -519,10 +521,10 @@ UI tests (pages × states × theme × locale × viewport) are specified in `docs
 
 | Status | Rows |
 | --- | --- |
-| covered | 339 |
+| covered | 341 |
 | planned | 31 (R13 rows and rows whose case round 13 changed; owners T0.7, T1.9, T1.10, T3.1a, T3.6, T4.1, T5.1, T5.4, T6.1, T6.2a, T6.2b, T7.1b, T7.2, T7.3, T8.1, T8.5) |
 | weak | 1 (backup bundle: drill only, acceptable for an ops script) |
-| **total** | **371** |
+| **total** | **373** |
 
 Round-13 changes (D296): the round-12 table (241 covered / 29 open / 1 weak = 271 rows) was re-derived: 40 multi-owner
 rows split into 90 single-owner rows (+50); 29 open rows flipped (`covered` unless round 13 changed the case); 21 new

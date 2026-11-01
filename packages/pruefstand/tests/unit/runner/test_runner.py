@@ -5,7 +5,7 @@ from pathlib import Path
 import httpx
 import respx
 from contract.adapter_contract import load_example
-from testsupport.run_builders import make_case, make_cases
+from testsupport.run_builders import make_case, make_cases, unhashed
 from testsupport.runner_support import (
     DictCache,
     echo_answer,
@@ -221,7 +221,7 @@ async def test_a_response_with_a_lone_surrogate_is_a_target_error_and_the_run_is
     assert cache.data == {}
     store = ArtifactStore(tmp_path)
     path = store.write_run(RunArtifacts(results=results, root=tmp_path / results.manifest.run_id))
-    assert store.read_run(path).results == results
+    assert unhashed(store.read_run(path).results) == results
 
 
 def test_a_response_that_cannot_be_encoded_becomes_a_target_error() -> None:

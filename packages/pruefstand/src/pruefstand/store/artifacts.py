@@ -31,7 +31,6 @@ from pruefstand.store._run_files import (
     RESULT_COLUMNS,
     manifest_text,
     read_bounded,
-    read_manifest,
     read_results,
     safe_error,
     write_files,
@@ -178,11 +177,13 @@ class ArtifactStore:
 
     @staticmethod
     def _update_locked(path: Path, change: Callable[[dict[str, Any]], dict[str, Any]]) -> None:
-        read_manifest(path)  # a clear StoreError for a missing or broken run.json
+        # ONE bounded read of run.json, validated before and after the change
         raw = read_bounded(path / "run.json", min(MAX_MANIFEST_BYTES, MAX_FILE_BYTES))
         try:
-            manifest = RunManifest.model_validate(change(json.loads(raw)))
-        except ValueError as exc:
+            data = json.loads(raw)
+            RunManifest.model_validate(data)
+            manifest = RunManifest.model_validate(change(data))
+        except (ValueError, KeyError, TypeError) as exc:
             msg = f"invalid manifest for {path.name}: {safe_error(exc)}"
             raise StoreError(msg) from exc
         tmp = path / f"run.json.{secrets.token_hex(4)}.tmp"

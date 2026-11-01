@@ -146,7 +146,8 @@ runs/<run_id>/
   results.parquet     one row per (case_id, metric) — columns in §8
   responses.jsonl     CaseRecord per case (request, response or error, timings)
   scored.jsonl        ScoredCase per case (TestCase + all MetricValues with details): the lossless source of
-                      RunResults.values (T1.8, D359, ADR-0020); results.parquet is the 13-column analytics view
+                      RunResults.values (T1.8, D359, ADR-0020); results.parquet is the 13-column analytics view;
+                      their hashes are in run.json artifact_sha256 (verify before parsing, never parse results.parquet unverified)
   llm_calls.parquet   one row per LLM call (judge + datagen), §3
   gate.json           GateReport (schema)  — only after `pruefstand gate`
   report.html         optional
@@ -574,6 +575,8 @@ class RunManifest(BaseModel):    # (schema) -> run.json
                                       # -> that judge's cache is invalidated
                                       # and its judged metrics are informational until re-calibration bumps judge_epoch.
                                       # Run-time flags (judge_drift, judge_degraded, judge_fallback) NEVER change eval_fingerprint
+    artifact_sha256: dict[str, str] = {}   # T1.8 (D364, ADR-0020): SHA-256 of results.parquet, responses.jsonl, scored.jsonl, set by
+                                      # ArtifactStore.write_run; readers verify it BEFORE parsing (StoreIntegrityError)
     judged_cases: int = 0             # cases sent to a judge (tier 1: as many as fit in 10 judge CALLS per PR, D97/D9-06)
     # the gate refuses (GateInputError) to decide on a run with complete == False
 
@@ -610,7 +613,7 @@ def eval_fingerprint(*, dataset_name: str, dataset_version: str, splits: Sequenc
 class PruefstandError(Exception); class ConfigError; class TargetError; class LLMError(message, *, transient: bool = False, status: int | None = None); class PolicyViolation(LLMError); class BudgetExceeded
 class QuotaExhausted(LLMError)        # R9 (D9-07): provider quota exhausted (GitHub Models 429 + exhausted headers); raised by
                                       # LLMClient (T5.1), caught by the runner -> counts["judge_skipped"], reason "judge_quota"
-class DatasetError; class StoreError; class GateInputError; class PromptError; class CorpusMismatch   # all subclass PruefstandError
+class DatasetError; class StoreError; class StoreIntegrityError(StoreError)   # T1.8: stored file does not match its SHA-256; class GateInputError; class PromptError; class CorpusMismatch   # all subclass PruefstandError
 ```
 
 ## 3. llm

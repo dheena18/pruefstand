@@ -8,10 +8,11 @@ import textwrap
 from pathlib import Path
 from types import SimpleNamespace
 
+import polars as pl
 import pytest
 from testsupport.run_builders import make_results
 
-from pruefstand.core.errors import StoreError
+from pruefstand.core.errors import StoreError, StoreIntegrityError
 from pruefstand.core.models.run import RunArtifacts
 from pruefstand.store import _run_files
 from pruefstand.store.artifacts import ArtifactStore
@@ -27,14 +28,25 @@ def crafted_parquet() -> bytes:
 def written(base: Path, count: int = 2) -> tuple[ArtifactStore, Path]:
     results = make_results(count)
     store = ArtifactStore(base)
-    return store, store.write_run(RunArtifacts(results=results, root=base / results.manifest.run_id))
+    return store, store.write_run(
+        RunArtifacts(results=results, root=base / results.manifest.run_id)
+    )
 
 
-def test_checksums_file_covers_the_data_files_not_run_json(tmp_path: Path) -> None:
+def test_the_manifest_records_the_hashes_of_the_data_files(tmp_path: Path) -> None:
     _, path = written(tmp_path)
-    sums = json.loads((path / "checksums.json").read_text(encoding="utf-8"))
+    sums = json.loads((path / "run.json").read_text(encoding="utf-8"))["artifact_sha256"]
     assert sorted(sums) == ["responses.jsonl", "results.parquet", "scored.jsonl"]
     assert all(len(v) == 64 for v in sums.values())
+    assert not (path / "checksums.json").exists()
+
+
+def test_tampered_values_with_a_valid_footer_and_a_stale_hash_are_refused(tmp_path: Path) -> None:
+    store, path = written(tmp_path)
+    frame = pl.read_parquet(path / "results.parquet")
+    frame.with_columns(value=pl.col("value") * 0.0).write_parquet(path / "results.parquet")
+    with pytest.raises(StoreIntegrityError, match="checksum"):
+        store.read_run(path)
 
 
 def test_a_corrupted_parquet_is_refused_by_its_hash(tmp_path: Path) -> None:
@@ -42,46 +54,59 @@ def test_a_corrupted_parquet_is_refused_by_its_hash(tmp_path: Path) -> None:
     data = bytearray((path / "results.parquet").read_bytes())
     data[len(data) // 2] ^= 0xFF
     (path / "results.parquet").write_bytes(bytes(data))
-    with pytest.raises(StoreError, match="checksum"):
+    with pytest.raises(StoreIntegrityError, match="checksum"):
         store.read_run(path)
 
 
 @pytest.mark.parametrize("name", ["responses.jsonl", "scored.jsonl"])
 def test_a_changed_jsonl_file_is_refused_by_its_hash(tmp_path: Path, name: str) -> None:
     store, path = written(tmp_path)
-    (path / name).write_bytes((path / name).read_bytes().replace(b"Kleinbetrieben", b"Kleinbetriebex"))
-    with pytest.raises(StoreError, match="checksum"):
+    data = (path / name).read_bytes().replace(b"Kleinbetriebe", b"Kleinbetriebx")
+    (path / name).write_bytes(data)
+    with pytest.raises(StoreIntegrityError, match="checksum"):
         store.read_run(path)
 
 
-def test_missing_or_malformed_checksums_are_refused(tmp_path: Path) -> None:
+def test_a_missing_hash_field_is_refused(tmp_path: Path) -> None:
     store, path = written(tmp_path)
-    (path / "checksums.json").write_text('{"results.parquet": "CANARY-NOT-HEX"}', encoding="utf-8")
-    with pytest.raises(StoreError) as info:
+    manifest = json.loads((path / "run.json").read_text(encoding="utf-8"))
+    del manifest["artifact_sha256"]["results.parquet"]
+    (path / "run.json").write_text(json.dumps(manifest), encoding="utf-8")
+    with pytest.raises(StoreIntegrityError, match="artifact_sha256"):
         store.read_run(path)
-    assert "CANARY" not in str(info.value)
-    (path / "checksums.json").unlink()
-    with pytest.raises(StoreError, match="checksums"):
+    manifest["artifact_sha256"] = {}
+    (path / "run.json").write_text(json.dumps(manifest), encoding="utf-8")
+    with pytest.raises(StoreIntegrityError):
         store.read_run(path)
+
+
+def test_a_valid_run_passes_and_mark_aborted_keeps_the_hashes(tmp_path: Path) -> None:
+    store, path = written(tmp_path)
+    store.mark_aborted(path, "tunnel_lost: ssh exit 255")
+    store.add_counts(path, {"model_reloads": 1})
+    back = store.read_run(path).results.manifest
+    assert back.stop_reason == "aborted"
+    assert len(back.artifact_sha256) == 3
 
 
 def test_the_crafted_footer_is_refused_by_hash_and_polars_is_never_called(tmp_path: Path) -> None:
     """A 222-byte-class footer that makes polars abort the process must not reach polars."""
-    store, path = written(tmp_path / "store")
+    _, path = written(tmp_path / "store")
     (path / "results.parquet").write_bytes(crafted_parquet())
     script = textwrap.dedent(
         f"""
         import sys
         from pathlib import Path
         import polars as pl
-        from pruefstand.core.errors import StoreError
+        from pruefstand.core.errors import StoreError, StoreIntegrityError
         from pruefstand.store.artifacts import ArtifactStore
 
         def trap(*args, **kwargs):
             print("POLARS CALLED")
             sys.exit(3)
 
-        for name in ("read_parquet", "read_parquet_schema", "scan_parquet", "read_parquet_metadata"):
+        names = ("read_parquet", "read_parquet_schema", "scan_parquet", "read_parquet_metadata")
+        for name in names:
             setattr(pl, name, trap)
         try:
             ArtifactStore(Path({str(tmp_path / "store")!r})).read_run({str(path)!r})
@@ -92,7 +117,11 @@ def test_the_crafted_footer_is_refused_by_hash_and_polars_is_never_called(tmp_pa
         """
     )
     done = subprocess.run(  # noqa: S603  (fixed interpreter and script)
-        [sys.executable, "-I", "-c", script], capture_output=True, text=True, timeout=120, check=False
+        [sys.executable, "-I", "-c", script],
+        capture_output=True,
+        text=True,
+        timeout=120,
+        check=False,
     )
     assert done.returncode == 0, done.stdout + done.stderr
     assert "checksum" in done.stdout
@@ -118,7 +147,9 @@ def test_a_regular_file_renamed_in_after_the_lstat_is_refused(
         st_mode=real.st_mode, st_size=real.st_size, st_ino=real.st_ino + 1, st_dev=real.st_dev
     )
     real_lstat = os.lstat
-    monkeypatch.setattr(os, "lstat", lambda p, **kw: stale if Path(p).name == "f.jsonl" else real_lstat(p))
+    monkeypatch.setattr(
+        os, "lstat", lambda p, **kw: stale if Path(p).name == "f.jsonl" else real_lstat(p)
+    )
     with pytest.raises(StoreError, match="changed"):
         _run_files.read_bounded(target, 100)
 

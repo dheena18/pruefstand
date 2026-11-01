@@ -1,16 +1,17 @@
 """Serialisation of one run directory: ``run.json``, ``results.parquet`` and the JSONL files."""
 
+import hashlib
 import io
 import json
 import os
 import stat
 from pathlib import Path
-from typing import get_args
+from typing import BinaryIO, get_args
 
 import polars as pl
 from pydantic import BaseModel, ValidationError
 
-from pruefstand.core.errors import StoreError
+from pruefstand.core.errors import StoreError, StoreIntegrityError
 from pruefstand.core.models.run import RunManifest, RunResults, ScoredCase
 from pruefstand.core.models.target import CaseRecord
 
@@ -19,6 +20,8 @@ MAX_FILE_BYTES = 128 * 1024 * 1024
 MAX_MANIFEST_BYTES = 4 * 1024 * 1024
 MAX_PARQUET_BYTES = 64 * 1024 * 1024
 """``results.parquet`` is never decoded by ``read_results``; this only bounds the footer read."""
+
+CHECKED_FILES = ("responses.jsonl", "results.parquet", "scored.jsonl")
 
 RESULT_COLUMNS = (
     "case_id", "base_id", "cluster_id", "tenant", "lang", "category", "perturbation", "split",
@@ -79,13 +82,19 @@ def jsonl(models: tuple[CaseRecord, ...] | tuple[ScoredCase, ...]) -> str:
 
 
 def write_files(root: Path, results: RunResults, llm_calls: pl.DataFrame | None) -> None:
-    """Write every run file into the existing directory ``root``."""
-    (root / "run.json").write_text(manifest_text(results.manifest), encoding="utf-8")
+    """Write every run file into the existing directory ``root``.
+
+    The data files are written first; their SHA-256 values go into ``run.json``
+    (``RunManifest.artifact_sha256``), which is written last.
+    """
     results_frame(results.values).write_parquet(root / "results.parquet", compression="zstd")
     (root / "responses.jsonl").write_text(jsonl(results.records), encoding="utf-8")
     (root / "scored.jsonl").write_text(jsonl(results.values), encoding="utf-8")
     if llm_calls is not None:
         llm_calls.write_parquet(root / "llm_calls.parquet", compression="zstd")
+    sums = {name: sha256_file(root / name, MAX_FILE_BYTES) for name in CHECKED_FILES}
+    manifest = results.manifest.model_copy(update={"artifact_sha256": sums})
+    (root / "run.json").write_text(manifest_text(manifest), encoding="utf-8")
 
 
 def _known_field_names() -> frozenset[str]:
@@ -149,34 +158,68 @@ def _regular_stat(path: Path, limit: int) -> os.stat_result:
     return info
 
 
-def read_bounded(path: Path, limit: int) -> bytes:
-    """Read a regular, non-symlink file of at most ``limit`` bytes (once).
+def _open_verified(path: Path, limit: int) -> BinaryIO:
+    """Open a regular, non-symlink file of at most ``limit`` bytes; the caller closes it.
 
-    The opened descriptor is checked again (regular file, same inode as the ``lstat``), so a
-    path swapped for a symlink or another file in between is refused.
-
-    Raises:
-        StoreError: Not a regular file, a symlink, larger than ``limit``, swapped, or unreadable.
+    The opened descriptor is checked again (regular file, same inode and device as the ``lstat``),
+    so a path swapped for a symlink or another file in between is refused.
     """
     info = _regular_stat(path, limit)
     try:
         fd = os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
-        with os.fdopen(fd, "rb") as handle:
-            opened = os.fstat(handle.fileno())
-            if not stat.S_ISREG(opened.st_mode) or (opened.st_ino, opened.st_dev) != (
-                info.st_ino,
-                info.st_dev,
-            ):
-                msg = f"{path.name} in {path.parent} changed while being opened"
-                raise StoreError(msg)
-            data = handle.read(limit + 1)
+        handle = os.fdopen(fd, "rb")
+        opened = os.fstat(handle.fileno())
     except OSError as exc:
         msg = f"cannot read {path.name} in {path.parent}: {safe_error(exc)}"
         raise StoreError(msg) from exc
+    if not stat.S_ISREG(opened.st_mode) or (opened.st_ino, opened.st_dev) != (
+        info.st_ino,
+        info.st_dev,
+    ):
+        handle.close()
+        msg = f"{path.name} in {path.parent} changed while being opened"
+        raise StoreError(msg)
+    return handle
+
+
+def read_bounded(path: Path, limit: int) -> bytes:
+    """Read a regular, non-symlink file of at most ``limit`` bytes (once).
+
+    Raises:
+        StoreError: Not a regular file, a symlink, larger than ``limit``, swapped, or unreadable.
+    """
+    with _open_verified(path, limit) as handle:
+        try:
+            data = handle.read(limit + 1)
+        except OSError as exc:
+            msg = f"cannot read {path.name} in {path.parent}: {safe_error(exc)}"
+            raise StoreError(msg) from exc
     if len(data) > limit:
         msg = f"{path.name} in {path.parent} grew beyond the {limit} byte limit while reading"
         raise StoreError(msg)
     return data
+
+
+def sha256_file(path: Path, limit: int) -> str:
+    """Return the SHA-256 of a regular file, streamed in 1 MiB chunks, without parsing it.
+
+    Raises:
+        StoreError: As ``read_bounded``.
+    """
+    digest = hashlib.sha256()
+    total = 0
+    with _open_verified(path, limit) as handle:
+        try:
+            while chunk := handle.read(1 << 20):
+                total += len(chunk)
+                if total > limit:
+                    msg = f"{path.name} in {path.parent} grew beyond the {limit} byte limit"
+                    raise StoreError(msg)
+                digest.update(chunk)
+        except OSError as exc:
+            msg = f"cannot read {path.name} in {path.parent}: {safe_error(exc)}"
+            raise StoreError(msg) from exc
+    return digest.hexdigest()
 
 
 def read_manifest(root: Path) -> RunManifest:
@@ -196,10 +239,13 @@ def read_manifest(root: Path) -> RunManifest:
 def read_results(root: Path) -> RunResults:
     """Parse a run directory into ``RunResults``, failing closed.
 
-    Checks: the directory is named after ``manifest.run_id``; every file is a regular file within
-    the size limit; case ids are unique and equal in ``responses.jsonl`` and ``scored.jsonl``; a
-    complete run has exactly ``n_cases`` of them; ``results.parquet`` has the expected columns and
-    row count (read from its footer) and equals the view derived from ``scored.jsonl``.
+    Order: ``run.json`` is parsed; the directory must be named after ``manifest.run_id``;
+    ``manifest.artifact_sha256`` must name the three data files; the SHA-256 of ``results.parquet``
+    (streamed, never decoded), ``responses.jsonl`` and ``scored.jsonl`` must match it *before*
+    anything but ``run.json`` is parsed (``StoreIntegrityError`` otherwise). ``results.parquet``
+    is never opened by a parser here: it is a derived view, and a hostile footer can abort a
+    parser (rebuild it with ``results_frame`` if needed). Then case ids must be unique and
+    equal in both jsonl files, and a complete run must have exactly ``n_cases`` of them.
 
     Raises:
         StoreError: Any check fails or a file is missing or invalid. Messages never contain
@@ -207,10 +253,18 @@ def read_results(root: Path) -> RunResults:
     """
     manifest = read_manifest(root)
     if root.name != manifest.run_id:
-        msg = f"directory {root.name!r} does not match run_id {manifest.run_id!r} in run.json"
+        msg = f"directory name {root.name!r} does not match the run_id in run.json"
         raise StoreError(msg)
-    records = tuple(_read_lines(root / "responses.jsonl", CaseRecord))
-    values = tuple(_read_lines(root / "scored.jsonl", ScoredCase))
+    expected = manifest.artifact_sha256
+    missing = [name for name in CHECKED_FILES if name not in expected]
+    if missing:
+        msg = f"run.json in {root} has no artifact_sha256 for {missing}"
+        raise StoreIntegrityError(msg)
+    if sha256_file(root / "results.parquet", MAX_PARQUET_BYTES) != expected["results.parquet"]:
+        msg = f"checksum mismatch for results.parquet in {root}"
+        raise StoreIntegrityError(msg)
+    records = tuple(_read_lines(root / "responses.jsonl", CaseRecord, expected["responses.jsonl"]))
+    values = tuple(_read_lines(root / "scored.jsonl", ScoredCase, expected["scored.jsonl"]))
     ids = [s.case.id for s in values]
     if [r.case_id for r in records] != ids:
         msg = f"responses.jsonl and scored.jsonl disagree in {root}"
@@ -219,44 +273,19 @@ def read_results(root: Path) -> RunResults:
         msg = f"duplicate case ids in {root}"
         raise StoreError(msg)
     if manifest.complete and len(values) != manifest.n_cases:
-        msg = (
-            f"complete run {manifest.run_id} has {len(values)} cases but n_cases={manifest.n_cases}"
-        )
+        msg = f"complete run has {len(values)} cases but n_cases={manifest.n_cases} in {root}"
         raise StoreError(msg)
     if len(values) > manifest.n_cases:
-        msg = (
-            f"run {manifest.run_id} has more cases ({len(values)}) than n_cases={manifest.n_cases}"
-        )
+        msg = f"run has more cases ({len(values)}) than n_cases={manifest.n_cases} in {root}"
         raise StoreError(msg)
-    _check_parquet(root / "results.parquet", values)
     return RunResults(manifest=manifest, records=records, values=values)
 
 
-def _check_parquet(path: Path, values: tuple[ScoredCase, ...]) -> None:
-    """Check the derived view without decoding it.
-
-    ``results.parquet`` is compressed data from disk, so decoding it is a decompression-bomb
-    risk. Only the footer is read: column names and the total row count must match what
-    ``scored.jsonl`` (the lossless source) implies. The body is never materialised.
-    """
-    _regular_stat(path, MAX_PARQUET_BYTES)
-    try:
-        columns = tuple(pl.read_parquet_schema(path))
-        rows = int(pl.scan_parquet(path).select(pl.len()).collect().item())
-    except (OSError, pl.exceptions.PolarsError) as exc:
-        msg = f"cannot read results.parquet footer in {path.parent}: {safe_error(exc)}"
-        raise StoreError(msg) from exc
-    if columns != RESULT_COLUMNS:
-        msg = f"results.parquet in {path.parent} has unexpected columns"
-        raise StoreError(msg)
-    expected = sum(len(s.values) for s in values)
-    if rows != expected:
-        msg = f"results.parquet in {path.parent} has {rows} rows, scored.jsonl implies {expected}"
-        raise StoreError(msg)
-
-
-def _read_lines[M: (CaseRecord, ScoredCase)](path: Path, model: type[M]) -> list[M]:
+def _read_lines[M: (CaseRecord, ScoredCase)](path: Path, model: type[M], sha256: str) -> list[M]:
     data = read_bounded(path, MAX_FILE_BYTES)
+    if hashlib.sha256(data).hexdigest() != sha256:
+        msg = f"checksum mismatch for {path.name} in {path.parent}"
+        raise StoreIntegrityError(msg)
     try:
         # BytesIO iterates on b"\n" only (str.splitlines() also cuts at U+2028, U+0085, ...) and
         # pydantic validates the UTF-8 of each line, so no full-text copy is made.

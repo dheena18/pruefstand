@@ -1,6 +1,9 @@
 """Builders for runner and store tests: real models, no fakes of the target or of models."""
 
+import hashlib
+import json
 from datetime import UTC, datetime
+from pathlib import Path
 from typing import Any
 
 from pruefstand.core.ids import CaseId, TenantId
@@ -126,3 +129,19 @@ def make_results(count: int = 2) -> RunResults:
     return RunResults(
         manifest=make_manifest(n_cases=count), records=tuple(records), values=tuple(scored)
     )
+
+
+def refresh_hashes(run_dir: Path) -> None:
+    """Re-hash the data files of a run directory into ``run.json`` (after a test edited them)."""
+    manifest = json.loads((run_dir / "run.json").read_text(encoding="utf-8"))
+    manifest["artifact_sha256"] = {
+        name: hashlib.sha256((run_dir / name).read_bytes()).hexdigest()
+        for name in ("responses.jsonl", "results.parquet", "scored.jsonl")
+    }
+    (run_dir / "run.json").write_text(json.dumps(manifest), encoding="utf-8")
+
+
+def unhashed(results: RunResults) -> RunResults:
+    """Drop ``artifact_sha256`` (set by ``write_run``) so a read run equals the original."""
+    manifest = results.manifest.model_copy(update={"artifact_sha256": {}})
+    return results.model_copy(update={"manifest": manifest})

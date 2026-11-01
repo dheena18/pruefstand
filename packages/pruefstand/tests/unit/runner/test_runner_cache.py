@@ -8,14 +8,14 @@ from pathlib import Path
 import pytest
 import respx
 from contract.adapter_contract import load_example
-from testsupport.run_builders import make_case, make_cases
+from testsupport.run_builders import make_case, make_cases, unhashed
 from testsupport.runner_support import DictCache, make_runner, run_cases
 
 from pruefstand.adapters.http import HttpTargetAdapter
 from pruefstand.core.errors import StoreError
 from pruefstand.core.hashing import stable_hash
-from pruefstand.store.artifacts import ArtifactStore
 from pruefstand.core.models.run import RunArtifacts
+from pruefstand.store.artifacts import ArtifactStore
 from pruefstand.store.kv import DiskKVCache
 
 
@@ -95,7 +95,9 @@ def _entry(**changes: object) -> bytes:
 
 PLANTED = {
     "deep_nesting": b"[" * 200000,
-    "huge_latency": ('{"mode":"answer","latency_ms":' + "9" * 400 + ',"response":{"answer":"x"}}').encode(),
+    "huge_latency": (
+        '{"mode":"answer","latency_ms":' + "9" * 400 + ',"response":{"answer":"x"}}'
+    ).encode(),
     "nan_latency": b'{"mode":"answer","latency_ms":NaN,"response":{"answer":"x"}}',
     "infinite_latency": b'{"mode":"answer","latency_ms":1e999,"response":{"answer":"x"}}',
     "negative_latency": _entry(latency_ms=-1.0),
@@ -117,7 +119,7 @@ async def test_planted_cache_entries_are_misses_and_the_run_stays_writable(
     assert results.records[0].cached is False
     store = ArtifactStore(tmp_path)
     path = store.write_run(RunArtifacts(results=results, root=tmp_path / results.manifest.run_id))
-    assert store.read_run(path).results == results
+    assert unhashed(store.read_run(path).results) == results
 
 
 class _CountingBrokenCache:

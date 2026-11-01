@@ -8,7 +8,7 @@ from pathlib import Path
 
 import polars as pl
 import pytest
-from testsupport.run_builders import make_results
+from testsupport.run_builders import make_results, refresh_hashes, unhashed
 
 from pruefstand.core.errors import StoreError
 from pruefstand.core.models.run import RunArtifacts
@@ -41,7 +41,7 @@ def test_unicode_line_separators_in_text_survive_the_round_trip(tmp_path: Path) 
     results = results.model_copy(update={"records": records, "values": values})
     store = ArtifactStore(tmp_path)
     path = store.write_run(RunArtifacts(results=results, root=tmp_path / results.manifest.run_id))
-    assert store.read_run(path).results == results
+    assert unhashed(store.read_run(path).results) == results
 
 
 def test_garbage_parquet_is_a_store_error(tmp_path: Path) -> None:
@@ -67,6 +67,7 @@ def test_a_complete_run_with_missing_cases_is_a_store_error(tmp_path: Path) -> N
         (path / name).write_text("".join(lines[:1]), encoding="utf-8")
     frame = pl.read_parquet(path / "results.parquet").head(2)
     frame.write_parquet(path / "results.parquet")
+    refresh_hashes(path)
     with pytest.raises(StoreError, match="n_cases"):
         store.read_run(path)
 
@@ -170,6 +171,7 @@ def test_error_texts_never_contain_file_content(tmp_path: Path) -> None:
     for name in ("responses.jsonl", "scored.jsonl"):
         original = (path / name).read_text(encoding="utf-8")
         (path / name).write_text(bad + "\n", encoding="utf-8")
+        refresh_hashes(path)
         with pytest.raises(StoreError) as info:
             store.read_run(path)
         assert "CANARY" not in str(info.value)
@@ -183,38 +185,6 @@ def test_error_texts_never_contain_file_content(tmp_path: Path) -> None:
     with pytest.raises(StoreError) as info:
         store.add_counts(path, {"model_reloads": 1})
     assert "CANARY" not in str(info.value)
-
-
-def test_parquet_row_count_is_checked_from_the_footer_before_reading(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    store, _, path = written(tmp_path)
-    frame = pl.read_parquet(path / "results.parquet")
-    pl.concat([frame] * 50).write_parquet(path / "results.parquet")
-
-    def must_not_run(*args: object, **kwargs: object) -> pl.DataFrame:
-        msg = "the parquet body was read before the footer row count was checked"
-        raise AssertionError(msg)
-
-    monkeypatch.setattr(pl, "read_parquet", must_not_run)
-    with pytest.raises(StoreError, match="rows"):
-        store.read_run(path)
-
-
-def test_parquet_with_extra_or_missing_columns_is_refused_before_reading(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    store, _, path = written(tmp_path)
-    frame = pl.read_parquet(path / "results.parquet")
-    frame.with_columns(extra=pl.lit("x")).write_parquet(path / "results.parquet")
-
-    def must_not_run(*args: object, **kwargs: object) -> pl.DataFrame:
-        msg = "body read"
-        raise AssertionError(msg)
-
-    monkeypatch.setattr(pl, "read_parquet", must_not_run)
-    with pytest.raises(StoreError, match="columns"):
-        store.read_run(path)
 
 
 def test_lone_surrogates_make_write_run_a_store_error_and_leave_nothing(tmp_path: Path) -> None:

@@ -16,8 +16,14 @@ and exposes no per-call usage.
 ## Decision
 1. A run directory gains **`scored.jsonl`**: one `ScoredCase` (case + all metric values with details)
    per line, in case order. It is the lossless source of `RunResults.values`; `results.parquet` stays the
-   13-column analytics view and `responses.jsonl` stays one `CaseRecord` per line. `read_run` requires all
-   of `run.json`, `results.parquet`, `responses.jsonl` and `scored.jsonl`, and refuses files that disagree.
+   13-column analytics view and `responses.jsonl` stays one `CaseRecord` per line. `write_run` records
+   the SHA-256 of `results.parquet`, `responses.jsonl` and `scored.jsonl` in `run.json`
+   (`RunManifest.artifact_sha256`, written last). `read_run` checks, in this order: regular non-symlink
+   file, size cap, streamed hash (`StoreIntegrityError` on a mismatch or a missing entry), and only then
+   parses the jsonl files. It never opens `results.parquet` with a parser: the parquet footer of an
+   untrusted file is itself a bomb (a 222-byte file makes polars abort the process), and the file is a
+   derived view. Consumers of the parquet (gate input, `RunIndex`, baselines, dashboard export) must
+   verify the hash before parsing, or rebuild the view from `scored.jsonl` with `results_frame()`.
 2. Writes are atomic: `write_run` fills a hidden sibling directory and `os.replace`s it into place
    (a stored run is never overwritten); `mark_aborted` and `add_counts` write `run.json.tmp` and
    `os.replace` it. A failure removes the temporary files.
@@ -39,6 +45,7 @@ and exposes no per-call usage.
 - Positive: exact round trip; gate and report code can load a stored run as `RunArtifacts`.
 - Negative / cost: one more file per run (about the size of `responses.jsonl` without the chunks).
 - `scored.jsonl` is sensitive like `responses.jsonl` (full `TestCase`: canary tokens in `forbidden_strings`, gold text); same retention, never published unmasked.
+- Follow-ups: T6.1, T8.1 and `RunIndex` must verify `artifact_sha256` before parsing the parquet (or rebuild it with `results_frame()`); T1.10 treats a `StoreError` from the `DiskKVCache` constructor as no cache.
 - Follow-ups: T6.1 `LocalDirBaselineStore` / `GitBranchBaselineStore` must keep `scored.jsonl` next to
   `results.parquet` (and compress it like `responses.jsonl.zst`) if baselines are to be read back as
   `RunArtifacts`; T8.1 sanitiser must mask `scored.jsonl` like `responses.jsonl`.

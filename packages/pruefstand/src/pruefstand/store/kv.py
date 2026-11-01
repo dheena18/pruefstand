@@ -14,6 +14,8 @@ from pruefstand.core.errors import StoreError
 
 _FILE = "cache.sqlite3"
 _BUSY_TIMEOUT_S = 2.0
+MAX_KEY_CHARS = 512
+"""Longest cache key (callers pass 16-character ``stable_hash`` digests)."""
 MAX_VALUE_BYTES = 16 * 1024 * 1024
 """Largest value ``set`` stores; a bigger row found on read is treated as a miss."""
 _NAMESPACES = frozenset({"target", "llm"})
@@ -32,7 +34,8 @@ class DiskKVCache:
         read_only: Refuse writes (the file is opened read-only).
 
     Raises:
-        StoreError: (constructor) the cache file cannot be opened or is not a database.
+        StoreError: (constructor) the cache file cannot be opened, is locked, or is not a
+            database. Callers (T1.10) must treat that as "no cache" and continue without one.
     """
 
     def __init__(
@@ -155,4 +158,7 @@ class DiskKVCache:
 def _check_key(key: object) -> None:
     if not isinstance(key, str):
         msg = f"cache keys must be str, not {type(key).__name__}"
+        raise StoreError(msg)
+    if len(key) > MAX_KEY_CHARS:
+        msg = f"cache key of {len(key)} characters is longer than the {MAX_KEY_CHARS} limit"
         raise StoreError(msg)
