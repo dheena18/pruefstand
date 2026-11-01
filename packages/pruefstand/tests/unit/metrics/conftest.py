@@ -4,10 +4,11 @@ from collections.abc import Sequence
 from typing import Any
 
 import pytest
+from testsupport.metric_types import CaseFactory, ChunkFactory, RespFactory
 
+from pruefstand.core.ids import ChunkId, DocId, TenantId
 from pruefstand.core.models.target import RetrievedChunk, TargetResponse
 from pruefstand.core.models.testcase import TestCase
-from testsupport.metric_types import CaseFactory, ChunkFactory, RespFactory
 
 _BASE: dict[str, Any] = {
     "id": "law-0042",
@@ -31,7 +32,7 @@ _BASE: dict[str, Any] = {
 def make_case() -> CaseFactory:
     """Build a valid ``TestCase``; keyword arguments override the factual default."""
 
-    def build(**changes: Any) -> TestCase:  # noqa: ANN401  (test builder: any field value)
+    def build(**changes: Any) -> TestCase:
         return TestCase.model_validate({**_BASE, **changes})
 
     return build
@@ -49,9 +50,9 @@ def make_chunk() -> ChunkFactory:
         rank: int = 1,
     ) -> RetrievedChunk:
         return RetrievedChunk(
-            chunk_id=f"{doc_id}#{rank}",
-            doc_id=doc_id,
-            tenant_id=tenant,
+            chunk_id=ChunkId(f"{doc_id}#{rank}"),
+            doc_id=DocId(doc_id),
+            tenant_id=None if tenant is None else TenantId(tenant),
             text=text,
             score=1.0 / rank,
             rank=rank,

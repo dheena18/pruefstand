@@ -1,14 +1,15 @@
 """citation_precision / citation_recall / citation_f1 (T1.5b S2)."""
 
 import pytest
-
-from pruefstand.core.models.metric import MetricStatus
-from pruefstand.metrics.deterministic.citation import CitationF1, CitationPrecision, CitationRecall
-
 from testsupport.metric_types import CaseFactory, RespFactory
 
+from pruefstand.core.models.metric import MetricStatus
+from pruefstand.core.models.target import TargetResponse
+from pruefstand.core.models.testcase import TestCase
+from pruefstand.metrics.deterministic.citation import CitationF1, CitationPrecision, CitationRecall
 
-def prf(case, resp):  # type: ignore[no-untyped-def]  # tiny local helper in a test file
+
+def prf(case: TestCase, resp: TargetResponse) -> tuple[float | None, ...]:
     return (
         CitationPrecision().compute(case, resp).value,
         CitationRecall().compute(case, resp).value,
@@ -61,11 +62,15 @@ def test_resp_citations_and_answer_are_unioned_and_deduplicated(
     make_case: CaseFactory, make_resp: RespFactory
 ) -> None:
     case = make_case(gold_citations=["§ 622 Abs. 2 BGB"])
-    resp = make_resp("Nach § 622 Absatz 2 BGB gilt das.", citations=["§ 622 Abs. 2 BGB", "§622 Abs. 2 BGB"])
+    resp = make_resp(
+        "Nach § 622 Absatz 2 BGB gilt das.", citations=["§ 622 Abs. 2 BGB", "§622 Abs. 2 BGB"]
+    )
     assert prf(case, resp) == (1.0, 1.0, 1.0)  # three spellings, one prediction
 
 
-def test_citation_only_in_resp_citations_counts(make_case: CaseFactory, make_resp: RespFactory) -> None:
+def test_citation_only_in_resp_citations_counts(
+    make_case: CaseFactory, make_resp: RespFactory
+) -> None:
     case = make_case(gold_citations=["Art. 6 Abs. 1 DSGVO"])
     resp = make_resp("Die Verarbeitung ist erlaubt.", citations=["Art. 6 Abs. 1 lit. f GDPR"])
     assert prf(case, resp) == (1.0, 1.0, 1.0)
@@ -77,7 +82,9 @@ def test_recall_is_mean_over_gold(make_case: CaseFactory, make_resp: RespFactory
     assert (p, r) == (1.0, 0.5)
 
 
-def test_unparseable_gold_is_an_error_status(make_case: CaseFactory, make_resp: RespFactory) -> None:
+def test_unparseable_gold_is_an_error_status(
+    make_case: CaseFactory, make_resp: RespFactory
+) -> None:
     case = make_case(gold_citations=["Paragraph irgendwas"])
     value = CitationRecall().compute(case, make_resp("§ 622 BGB"))
     assert value.status is MetricStatus.ERROR

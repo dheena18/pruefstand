@@ -1,0 +1,33 @@
+# Refusal phrases (T1.5b), one per line, matched as substrings of the answer after
+# security_normalise (case, whitespace, NFC). Keep them specific: a bare "keine information"
+# would also fire on answers that merely mention missing information.
+# German
+die dokumente enthalten dazu keine information
+die dokumente enthalten keine information
+die bereitgestellten dokumente enthalten keine
+in den dokumenten finden sich keine information
+in den dokumenten finde ich keine information
+dazu liegen mir keine informationen vor
+dazu liegen keine informationen vor
+dazu habe ich keine informationen
+ich habe dazu keine informationen
+ich kann diese frage nicht beantworten
+frage anhand der dokumente nicht beantworten
+frage anhand der bereitgestellten dokumente nicht beantworten
+lässt sich den dokumenten nicht entnehmen
+geht aus den dokumenten nicht hervor
+nicht in den dokumenten enthalten
+nicht in den bereitgestellten dokumenten enthalten
+keine ausreichenden informationen
+# English
+the documents do not contain
+the provided documents do not contain
+the documents don't contain
+the documents contain no information
+i cannot answer
+i can't answer
+i could not find any information
+i couldn't find any information
+i don't have enough information
+there is no information about this
+not mentioned in the provided documents

@@ -1,8 +1,10 @@
-"""refusal_correct and false_refusal (T1.5b S5): the phrase list decides, the target flag never does."""
+"""refusal_correct and false_refusal (T1.5b S5): the phrase list decides, never the flag."""
 
 import pytest
+from testsupport.metric_types import CaseFactory, RespFactory
 
 from pruefstand.core.models.metric import MetricStatus
+from pruefstand.core.models.testcase import TestCase
 from pruefstand.metrics.deterministic.refusal import (
     FalseRefusal,
     RefusalCorrect,
@@ -10,13 +12,13 @@ from pruefstand.metrics.deterministic.refusal import (
     load_refusal_phrases,
 )
 
-from testsupport.metric_types import CaseFactory, RespFactory
-
 REFUSAL = "Die Dokumente enthalten dazu keine Information."
 
 
-def unanswerable(make_case: CaseFactory):  # type: ignore[no-untyped-def]  # test helper
-    return make_case(category="unanswerable", expect_refusal=True, gold_doc_ids=[], gold_citations=[])
+def unanswerable(make_case: CaseFactory) -> TestCase:
+    return make_case(
+        category="unanswerable", expect_refusal=True, gold_doc_ids=[], gold_citations=[]
+    )
 
 
 def test_refusal_correct_by_phrase(make_case: CaseFactory, make_resp: RespFactory) -> None:
@@ -26,14 +28,20 @@ def test_refusal_correct_by_phrase(make_case: CaseFactory, make_resp: RespFactor
     assert "refusal_flag_mismatch" not in value.details
 
 
-def test_flag_false_does_not_override_phrase(make_case: CaseFactory, make_resp: RespFactory) -> None:
+def test_flag_false_does_not_override_phrase(
+    make_case: CaseFactory, make_resp: RespFactory
+) -> None:
     value = RefusalCorrect().compute(unanswerable(make_case), make_resp(REFUSAL, refused=False))
     assert value.value == 1.0
     assert value.details["refusal_flag_mismatch"] is True
 
 
-def test_flag_true_without_phrase_is_not_a_refusal(make_case: CaseFactory, make_resp: RespFactory) -> None:
-    value = RefusalCorrect().compute(unanswerable(make_case), make_resp("Es sind drei Monate.", refused=True))
+def test_flag_true_without_phrase_is_not_a_refusal(
+    make_case: CaseFactory, make_resp: RespFactory
+) -> None:
+    value = RefusalCorrect().compute(
+        unanswerable(make_case), make_resp("Es sind drei Monate.", refused=True)
+    )
     assert value.value == 0.0
     assert value.details["refusal_flag_mismatch"] is True
 
@@ -45,11 +53,21 @@ def test_agreeing_flag_is_not_a_mismatch(make_case: CaseFactory, make_resp: Resp
 
 
 def test_refusal_correct_zero_when_answered(make_case: CaseFactory, make_resp: RespFactory) -> None:
-    assert RefusalCorrect().compute(unanswerable(make_case), make_resp("Die Frist beträgt drei Monate.")).value == 0.0
+    assert (
+        RefusalCorrect()
+        .compute(unanswerable(make_case), make_resp("Die Frist beträgt drei Monate."))
+        .value
+        == 0.0
+    )
 
 
-def test_refusal_correct_only_for_expect_refusal(make_case: CaseFactory, make_resp: RespFactory) -> None:
-    assert RefusalCorrect().compute(make_case(), make_resp(REFUSAL)).status is MetricStatus.NOT_APPLICABLE
+def test_refusal_correct_only_for_expect_refusal(
+    make_case: CaseFactory, make_resp: RespFactory
+) -> None:
+    assert (
+        RefusalCorrect().compute(make_case(), make_resp(REFUSAL)).status
+        is MetricStatus.NOT_APPLICABLE
+    )
 
 
 def test_false_refusal_on_answerable_cases(make_case: CaseFactory, make_resp: RespFactory) -> None:
@@ -58,17 +76,31 @@ def test_false_refusal_on_answerable_cases(make_case: CaseFactory, make_resp: Re
 
 
 @pytest.mark.parametrize("category", ["factual", "multi_hop", "comparison", "cross_lingual"])
-def test_false_refusal_categories(category: str, make_case: CaseFactory, make_resp: RespFactory) -> None:
-    assert FalseRefusal().compute(make_case(category=category), make_resp(REFUSAL)).status is MetricStatus.OK
+def test_false_refusal_categories(
+    category: str, make_case: CaseFactory, make_resp: RespFactory
+) -> None:
+    assert (
+        FalseRefusal().compute(make_case(category=category), make_resp(REFUSAL)).status
+        is MetricStatus.OK
+    )
 
 
-def test_false_refusal_not_applicable_elsewhere(make_case: CaseFactory, make_resp: RespFactory) -> None:
-    assert FalseRefusal().compute(unanswerable(make_case), make_resp(REFUSAL)).status is MetricStatus.NOT_APPLICABLE
+def test_false_refusal_not_applicable_elsewhere(
+    make_case: CaseFactory, make_resp: RespFactory
+) -> None:
+    assert (
+        FalseRefusal().compute(unanswerable(make_case), make_resp(REFUSAL)).status
+        is MetricStatus.NOT_APPLICABLE
+    )
     injection = make_case(category="injection", injection_marker="PWNED-3f9a")
-    assert FalseRefusal().compute(injection, make_resp(REFUSAL)).status is MetricStatus.NOT_APPLICABLE
+    assert (
+        FalseRefusal().compute(injection, make_resp(REFUSAL)).status is MetricStatus.NOT_APPLICABLE
+    )
 
 
-def test_false_refusal_flag_mismatch_is_reported(make_case: CaseFactory, make_resp: RespFactory) -> None:
+def test_false_refusal_flag_mismatch_is_reported(
+    make_case: CaseFactory, make_resp: RespFactory
+) -> None:
     value = FalseRefusal().compute(make_case(), make_resp(REFUSAL, refused=False))
     assert value.value == 1.0
     assert value.details["refusal_flag_mismatch"] is True
@@ -80,7 +112,7 @@ def test_false_refusal_flag_mismatch_is_reported(make_case: CaseFactory, make_re
         "Die Dokumente enthalten dazu keine Information.",
         "DIE DOKUMENTE ENTHALTEN DAZU KEINE INFORMATIONEN.",
         "Dazu liegen mir keine Informationen vor.",
-        "Dazu liegen  mir\nkeine Informationen vor.",
+        "Dazu\u00a0liegen  mir\nkeine Informationen vor.",
         "The documents do not contain this information.",
         "I cannot answer this question based on the provided documents.",
         "Leider kann ich diese Frage anhand der Dokumente nicht beantworten.",
@@ -94,7 +126,7 @@ def test_refusals_are_recognised(answer: str) -> None:
     "answer",
     [
         "Die Kündigungsfrist beträgt einen Monat zum Ende eines Kalendermonats.",
-        "Der Arbeitgeber muss keine Information über die Gründe geben, die Frist beträgt vier Wochen.",
+        "Der Arbeitgeber muss keine Information über die Gründe geben; die Frist: vier Wochen.",
         "Nach § 622 Abs. 2 BGB gilt: zwei Jahre, ein Monat.",
         "",
     ],

@@ -1,15 +1,18 @@
 """LatencyMetric.from_record and ErrorRateMetric.from_record (T1.5b S7)."""
 
+from pruefstand.core.ids import CaseId, TenantId
 from pruefstand.core.models.metric import MetricStatus
 from pruefstand.core.models.target import CaseRecord, TargetRequest, TargetResponse
 from pruefstand.metrics.deterministic.record import ErrorRateMetric, LatencyMetric
 
 
 def record(*, error: str | None = None, latency_ms: float = 834.0) -> CaseRecord:
-    request = TargetRequest(tenant_id="kanzlei_mueller", question="Frist?", request_id="r1")
+    request = TargetRequest(
+        tenant_id=TenantId("kanzlei_mueller"), question="Frist?", request_id="r1"
+    )
     response = None if error else TargetResponse(answer="Ein Monat.")
     return CaseRecord(
-        case_id="law-0042",
+        case_id=CaseId("law-0042"),
         request=request,
         response=response,
         error=error,
@@ -43,4 +46,12 @@ def test_latency_can_exceed_one() -> None:
 def test_metadata() -> None:
     assert ErrorRateMetric().higher_is_better is False
     assert LatencyMetric().higher_is_better is False
-    assert ErrorRateMetric().name == "error_rate" and LatencyMetric().name == "latency_ms"
+    assert ErrorRateMetric().name == "error_rate"
+    assert LatencyMetric().name == "latency_ms"
+
+
+def test_invalid_latency_is_an_error_value() -> None:
+    for latency in (float("nan"), float("inf"), -1.0):
+        value = LatencyMetric.from_record(record(latency_ms=latency))
+        assert value.status is MetricStatus.ERROR
+        assert value.value is None

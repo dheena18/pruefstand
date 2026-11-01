@@ -1,13 +1,17 @@
 """citation_grounded (T1.5b S2b, R9 X3.2)."""
 
+from testsupport.metric_types import CaseFactory, ChunkFactory, RespFactory
+
 from pruefstand.core.models.metric import MetricStatus
 from pruefstand.metrics.deterministic.citation import CitationGrounded
 
-from testsupport.metric_types import CaseFactory, ChunkFactory, RespFactory
 
-
-def test_grounded_by_chunk_text(make_case: CaseFactory, make_chunk: ChunkFactory, make_resp: RespFactory) -> None:
-    chunk = make_chunk(text="Die Kündigungsfrist ergibt sich aus § 622 Abs. 2 BGB und beträgt einen Monat.")
+def test_grounded_by_chunk_text(
+    make_case: CaseFactory, make_chunk: ChunkFactory, make_resp: RespFactory
+) -> None:
+    chunk = make_chunk(
+        text="Die Kündigungsfrist ergibt sich aus § 622 Abs. 2 BGB und beträgt einen Monat."
+    )
     resp = make_resp("Gemäß § 622 Abs. 2 BGB gilt ein Monat.", chunks=[chunk])
     value = CitationGrounded().compute(make_case(), resp)
     assert value.status is MetricStatus.OK
@@ -51,8 +55,13 @@ def test_not_applicable_without_chunks(make_case: CaseFactory, make_resp: RespFa
     assert value.value is None
 
 
-def test_empty_chunk_list_means_nothing_is_grounded(make_case: CaseFactory, make_resp: RespFactory) -> None:
-    assert CitationGrounded().compute(make_case(), make_resp("Nach § 622 BGB.", chunks=[])).value == 0.0
+def test_empty_chunk_list_means_nothing_is_grounded(
+    make_case: CaseFactory, make_resp: RespFactory
+) -> None:
+    assert (
+        CitationGrounded().compute(make_case(), make_resp("Nach § 622 BGB.", chunks=[])).value
+        == 0.0
+    )
 
 
 def test_attributes() -> None:
