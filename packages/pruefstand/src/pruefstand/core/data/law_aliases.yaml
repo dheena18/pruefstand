@@ -50,6 +50,98 @@ national:
     - Grundgesetz
     - Grundgesetzes
     - Basic Law
+  # --- T2.2: the other national laws of the GII corpus (data/sources.yaml). `BGBEG`, `SGB 4`, `KredWG`
+  # and `TTDSG` are the spellings of <jurabk> in the GII files.
+  EGBGB:
+    - BGBEG
+    - Einführungsgesetz zum Bürgerlichen Gesetzbuche
+    - Einführungsgesetz zum Bürgerlichen Gesetzbuch
+    - Einführungsgesetzes zum Bürgerlichen Gesetzbuche
+    - Einführungsgesetzes zum Bürgerlichen Gesetzbuch
+    - Introductory Act to the Civil Code
+  ArbSchG:
+    - Arbeitsschutzgesetz
+    - Arbeitsschutzgesetzes
+    - Occupational Safety and Health Act
+  TzBfG:
+    - Teilzeit- und Befristungsgesetz
+    - Teilzeit- und Befristungsgesetzes
+    - Part-Time and Fixed-Term Employment Act
+  BUrlG:
+    - Bundesurlaubsgesetz
+    - Bundesurlaubsgesetzes
+    - Federal Leave Act
+  EntgFG:
+    - Entgeltfortzahlungsgesetz
+    - Entgeltfortzahlungsgesetzes
+    - Continued Remuneration Act
+  MuSchG:
+    - Mutterschutzgesetz
+    - Mutterschutzgesetzes
+    - Maternity Protection Act
+  AGG:
+    - Allgemeines Gleichbehandlungsgesetz
+    - Allgemeinen Gleichbehandlungsgesetz
+    - Allgemeinen Gleichbehandlungsgesetzes
+    - General Equal Treatment Act
+  BetrVG:
+    - Betriebsverfassungsgesetz
+    - Betriebsverfassungsgesetzes
+    - Works Constitution Act
+  GewO:
+    - Gewerbeordnung
+    - Trade Regulation Act
+  NachwG:
+    - Nachweisgesetz
+    - Nachweisgesetzes
+  ArbGG:
+    - Arbeitsgerichtsgesetz
+    - Arbeitsgerichtsgesetzes
+    - Labour Courts Act
+  SGB IV:
+    - SGB 4
+    - Sozialgesetzbuch Viertes Buch
+    - Sozialgesetzbuch IV
+    - Sozialgesetzbuches Viertes Buch
+    - Social Code Book IV
+  ProdHaftG:
+    - Produkthaftungsgesetz
+    - Produkthaftungsgesetzes
+    - Product Liability Act
+  TDDDG:
+    - TTDSG
+    - Telekommunikation-Digitale-Dienste-Datenschutz-Gesetz
+    - Telekommunikation-Telemedien-Datenschutz-Gesetz
+  GmbHG:
+    - GmbH-Gesetz
+    - GmbH-Gesetzes
+    - Gesetz betreffend die Gesellschaften mit beschränkter Haftung
+    - Limited Liability Companies Act
+  AktG:
+    - Aktiengesetz
+    - Aktiengesetzes
+    - Stock Corporation Act
+  InsO:
+    - Insolvenzordnung
+    - Insolvency Code
+  KWG:
+    - KredWG
+    - Kreditwesengesetz
+    - Kreditwesengesetzes
+    - Banking Act
+  VAG:
+    - Versicherungsaufsichtsgesetz
+    - Versicherungsaufsichtsgesetzes
+    - Insurance Supervision Act
+  EnSiG:
+    - Energiesicherungsgesetz
+    - Energiesicherungsgesetzes
+    - Energy Security Act
+  BSIG:
+    - BSI-Gesetz
+    - BSI-Gesetzes
+    - Gesetz über das Bundesamt für Sicherheit in der Informationstechnik
+    - Federal Office for Information Security Act
 eu:
   DSGVO:
     - GDPR

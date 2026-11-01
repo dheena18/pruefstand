@@ -1,0 +1,133 @@
+"""`python -m pruefstand.ingest.gii_xml <raw_dir> --stats` and the counters (T2.2, S6/S7)."""
+
+import subprocess
+import sys
+import zipfile
+from collections.abc import Callable, Mapping
+from pathlib import Path
+
+import pytest
+
+from pruefstand.ingest.gii.cli import main
+from pruefstand.ingest.gii.stats import GiiStats
+from pruefstand.ingest.gii_xml import GiiXmlLoader
+
+RawFactory = Callable[[Mapping[str, Mapping[str, bytes]]], Path]
+
+
+def test_stats_table_lists_every_law_and_the_total(
+    raw_dir: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    assert main([str(raw_dir), "--stats"]) == 0
+    lines = capsys.readouterr().out.splitlines()
+    assert lines[0].split() == [
+        "law",
+        "norms",
+        "skipped",
+        "docs",
+        "chunks",
+        "errors",
+        "version_date",
+    ]
+    rows = {ln.split()[0]: ln.split() for ln in lines[1:-1]}
+    assert rows["BGB"][1:6] == ["7", "4", "3", "3", "0"]
+    assert rows["BGB"][6] == "2026-09-26"
+    assert set(rows) == {"AktG", "ArbZG", "BGB", "EGBGB", "KSchG", "TOTAL"}
+    assert rows["TOTAL"][3] == str(sum(int(rows[k][3]) for k in rows if k != "TOTAL"))
+
+
+def test_without_stats_nothing_is_printed(
+    raw_dir: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    assert main([str(raw_dir)]) == 0
+    assert capsys.readouterr().out == ""
+
+
+def test_problems_give_exit_code_1_and_are_listed_on_stderr(
+    make_raw: RawFactory, capsys: pytest.CaptureFixture[str]
+) -> None:
+    raw = make_raw({"bad": {"../x.xml": b"<a/>"}})
+    assert main([str(raw), "--stats"]) == 1
+    captured = capsys.readouterr()
+    assert "error: bad: unsafe_archive" in captured.err
+    assert captured.out.splitlines()[-2].split()[0] == "TOTAL"
+    assert any(ln.startswith("bad ") for ln in captured.out.splitlines())
+
+
+def test_module_entry_point_runs(raw_dir: Path) -> None:
+    result = subprocess.run(  # noqa: S603  (fixed argv, no shell)
+        [sys.executable, "-I", "-m", "pruefstand.ingest.gii_xml", str(raw_dir), "--stats"],
+        capture_output=True, text=True, check=False, timeout=60,
+    )  # fmt: skip
+    assert result.returncode == 0, result.stderr
+    assert "BGB" in result.stdout
+
+
+def test_two_letter_suffix_paragraph_is_a_document(make_raw: RawFactory, fixture_dir: Path) -> None:
+    raw = make_raw({"kwg": {"k.xml": (fixture_dir / "kwg_53ca.xml").read_bytes()}})
+    loader = GiiXmlLoader()
+    docs = {str(d.doc_id): d for d in loader.load(raw)}
+    assert sorted(docs) == ["gii-kwg-25a", "gii-kwg-53ca"]
+    assert docs["gii-kwg-53ca"].metadata["citation_key"] == "§ 53ca KWG"
+    assert loader.stats.laws["KWG"].skipped == {"header": 1}
+    assert loader.stats.error_count == 0
+
+
+def test_record_chunks_creates_the_law_row() -> None:
+    stats = GiiStats()
+    stats.record_chunks("BGB", 3)
+    stats.record_chunks("BGB", 2)
+    assert stats.laws["BGB"].chunks == 5
+
+
+def test_stats_prints_the_skip_reasons(raw_dir: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    assert main([str(raw_dir), "--stats"]) == 0
+    out = capsys.readouterr().out
+    last = out.splitlines()[-1]
+    assert last.startswith("skipped by reason: ")
+    assert "header=5" in last
+    assert "range=" in last
+    assert "WARNING" not in out
+
+
+def test_placeholder_norms_are_skipped(make_raw: RawFactory, fixture_dir: Path) -> None:
+    raw = make_raw(
+        {
+            "aktg": {"a.xml": (fixture_dir / "aktg_159.xml").read_bytes()},
+            "betrvg": {"b.xml": (fixture_dir / "betrvg_122.xml").read_bytes()},
+        }
+    )
+    loader = GiiXmlLoader()
+    docs = sorted(str(d.doc_id) for d in loader.load(raw))
+    assert docs == ["gii-aktg-95", "gii-betrvg-1"]
+    assert loader.stats.laws["AktG"].skipped == {"header": 1, "placeholder": 1}
+    assert loader.stats.laws["BetrVG"].skipped == {"header": 1, "placeholder": 2}
+
+
+def test_missing_expected_law_is_a_counted_problem(make_raw: RawFactory, fixture_dir: Path) -> None:
+    raw = make_raw({"kschg": {"k.xml": (fixture_dir / "kschg_1.xml").read_bytes()}})
+    loader = GiiXmlLoader(expected=["kschg", "bgb"])
+    assert [str(d.doc_id) for d in loader.load(raw)] == ["gii-kschg-1"]
+    assert [(p.law, p.kind) for p in loader.stats.problems] == [("bgb", "missing_law")]
+
+
+def test_expect_laws_option_exit_code(raw_dir: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    assert main([str(raw_dir), "--expect-laws", "5"]) == 0
+    assert main([str(raw_dir), "--expect-laws", "6", "--stats"]) == 1
+    assert "missing_law" in capsys.readouterr().err
+
+
+def test_default_expectation_comes_from_sources_yaml(
+    tmp_path: Path, fixture_dir: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    data = tmp_path / "data"
+    (data / "raw" / "gii" / "kschg").mkdir(parents=True)
+    with zipfile.ZipFile(data / "raw" / "gii" / "kschg" / "xml.zip", "w") as zf:
+        zf.writestr("k.xml", (fixture_dir / "kschg_1.xml").read_bytes())
+    (data / "sources.yaml").write_text(
+        "sources:\n- id: gii:kschg\n  kind: gii\n- id: gii:sgbiv\n  kind: gii\n"
+        "- id: germanrag\n  kind: hf\n",
+        encoding="utf-8",
+    )
+    assert main([str(data / "raw" / "gii")]) == 1
+    assert "sgbiv: missing_law" in capsys.readouterr().err

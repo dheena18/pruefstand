@@ -101,11 +101,39 @@ def _build(raw: dict[str, Any], defaults: dict[str, Any]) -> Source:
 
 def load_raw(path: Path) -> dict[str, Any]:
     """Parse ``sources.yaml`` into its raw mapping."""
-    data = yaml.safe_load(path.read_text(encoding="utf-8"))
+    try:
+        data = yaml.safe_load(path.read_text(encoding="utf-8"))
+    except yaml.YAMLError as err:
+        msg = f"{path}: not valid YAML: {err}"
+        raise SourcesError(msg) from err
     if not isinstance(data, dict) or not isinstance(data.get("sources"), list):
         msg = f"{path}: expected a mapping with a 'sources' list"
         raise SourcesError(msg)
     return data
+
+
+def _defaults_of(data: dict[str, Any]) -> dict[str, Any]:
+    """Return the ``defaults`` mapping (``{}`` when absent); any other shape is a SourcesError."""
+    defaults = data.get("defaults")
+    if defaults is None:
+        return {}
+    if not isinstance(defaults, dict) or not all(isinstance(v, dict) for v in defaults.values()):
+        msg = "sources.yaml: 'defaults' must map each kind to a mapping"
+        raise SourcesError(msg)
+    return defaults
+
+
+def _defaults_for(raw: object, defaults: dict[str, Any]) -> dict[str, Any]:
+    """Return the per-kind defaults of one entry; an entry that is not a mapping is rejected."""
+    if not isinstance(raw, dict):
+        msg = f"sources.yaml: every source entry must be a mapping, got {type(raw).__name__}"
+        raise SourcesError(msg)
+    kind = raw.get("kind", "")
+    if not isinstance(kind, str):
+        msg = f"bad entry {raw.get('id')!r}: field 'kind' must be a string"
+        raise SourcesError(msg)
+    found: dict[str, Any] = defaults.get(kind, {})
+    return found
 
 
 def load_sources(path: Path) -> list[Source]:
@@ -121,8 +149,8 @@ def load_sources(path: Path) -> list[Source]:
         SourcesError: Malformed entry, unknown kind, bad revision or checksum.
     """
     data = load_raw(path)
-    defaults: dict[str, dict[str, Any]] = data.get("defaults") or {}
-    sources = [_build(raw, defaults.get(raw.get("kind", ""), {})) for raw in data["sources"]]
+    defaults = _defaults_of(data)
+    sources = [_build(raw, _defaults_for(raw, defaults)) for raw in data["sources"]]
     ids = [s.id for s in sources]
     if len(ids) != len(set(ids)):
         msg = "duplicate source ids in sources.yaml"
