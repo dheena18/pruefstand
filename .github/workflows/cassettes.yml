@@ -84,17 +84,25 @@ jobs:
           if [ "$(wc -l < names.txt)" -gt 500 ]; then echo "too many files in the artefact" >&2; exit 1; fi
           total="$(tar -tvzf cassettes.tgz | awk '{s += $3} END {print s + 0}')"
           if [ "$total" -gt 33554432 ]; then echo "artefact is larger than 32 MiB" >&2; exit 1; fi
+          name_re='^[A-Za-z0-9_./-]+\.(yaml|json)$'
           while IFS= read -r path; do
-            case "$path" in deleted.txt | "$prefix"*) ;; *) echo "unexpected path: $path" >&2; exit 1 ;; esac
-            case "$path" in *..*) echo "path escape: $path" >&2; exit 1 ;; esac
+            [ "$path" = deleted.txt ] && continue
+            case "$path" in "$prefix"*) ;; *) echo "unexpected path: $path" >&2; exit 1 ;; esac
+            case "$path" in *..* | -*) echo "path escape: $path" >&2; exit 1 ;; esac
+            if ! printf '%s\n' "$path" | grep -Eq "$name_re"; then
+              echo "unexpected file name: $path" >&2; exit 1
+            fi
           done < names.txt
           tar -xzf cassettes.tgz --no-same-owner --no-same-permissions
           if [ -f deleted.txt ]; then
             while IFS= read -r path; do
               [ -z "$path" ] && continue
               case "$path" in "$prefix"*) ;; *) echo "unexpected deletion: $path" >&2; exit 1 ;; esac
-              case "$path" in *..*) echo "path escape: $path" >&2; exit 1 ;; esac
-              git rm -q --ignore-unmatch -- "$path"
+              case "$path" in *..* | -*) echo "path escape: $path" >&2; exit 1 ;; esac
+              if ! printf '%s\n' "$path" | grep -Eq "$name_re"; then
+                echo "unexpected deletion name: $path" >&2; exit 1
+              fi
+              git --literal-pathspecs rm -q --ignore-unmatch -- "$path"
             done < deleted.txt
             rm -f deleted.txt
           fi

@@ -22,13 +22,18 @@ SECRET_PATTERN = re.compile(
     re.IGNORECASE,
 )
 _MAX_DEPTH = 3
+_MAX_DECODES = 3
 
 
 def _views(text: str, depth: int = 0) -> Iterator[str]:
     """Yield the raw text, its URL-decoded form and every string inside JSON found in it."""
     yield text
-    decoded = unquote(text)
-    if decoded != text:
+    decoded = text
+    for _ in range(_MAX_DECODES):
+        again = unquote(decoded)
+        if again == decoded:
+            break
+        decoded = again
         yield decoded
     if depth >= _MAX_DEPTH:
         return

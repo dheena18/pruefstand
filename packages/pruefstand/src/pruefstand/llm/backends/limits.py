@@ -63,6 +63,11 @@ class LimitedTransport(httpx.AsyncBaseTransport):
             self._tripped.append(True)
             await resp.aclose()
             raise _TooLargeError
+        encoding = resp.headers.get("content-encoding", "").strip().lower()
+        if encoding not in {"", "identity"}:  # httpx would gunzip it uncapped (decompression bomb)
+            self._tripped.append(True)
+            await resp.aclose()
+            raise _TooLargeError
         assert isinstance(resp.stream, httpx.AsyncByteStream)  # noqa: S101  (httpx contract)
         return httpx.Response(
             status_code=resp.status_code,
@@ -75,4 +80,6 @@ class LimitedTransport(httpx.AsyncBaseTransport):
         """Close the wrapped transport."""
         await self._inner.aclose()
 
+
+# Sent with every request: an encoded body would be inflated by httpx without any cap.
 IDENTITY_HEADERS = {"Accept-Encoding": "identity"}

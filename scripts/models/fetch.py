@@ -70,6 +70,27 @@ def _sha256(path: Path) -> str:
     return digest.hexdigest()
 
 
+class _SchemeRedirects(urllib.request.HTTPRedirectHandler):
+    """Follow redirects only to the schemes the caller allows."""
+
+    def __init__(self, allowed: tuple[str, ...]) -> None:
+        self._allowed = allowed
+
+    def redirect_request(  # noqa: PLR0917  (signature fixed by urllib)
+        self,
+        req: urllib.request.Request,
+        fp: object,
+        code: int,
+        msg: str,
+        headers: object,
+        newurl: str,
+    ) -> urllib.request.Request | None:
+        if urlparse(newurl).scheme not in self._allowed:
+            message = f"redirect to scheme {urlparse(newurl).scheme!r} refused"
+            raise FetchError(message)
+        return super().redirect_request(req, fp, code, msg, headers, newurl)  # type: ignore[arg-type]
+
+
 def fetch_file(
     url: str,
     dest: Path,
@@ -110,7 +131,14 @@ def fetch_file(
         raise FetchError(msg)
     part.unlink(missing_ok=True)
     try:
-        _download(url, part, size_bytes, deadline_s, default_max_bytes)
+        _download(
+            url,
+            part,
+            size_bytes=size_bytes,
+            deadline_s=deadline_s,
+            default_max_bytes=default_max_bytes,
+            allowed=allowed_schemes,
+        )
         actual = _sha256(part)
         if actual != sha256:
             msg = f"sha256 mismatch for {url}: expected {sha256}, got {actual}"
@@ -122,14 +150,20 @@ def fetch_file(
 
 
 def _download(
-    url: str, part: Path, size_bytes: int | None, deadline_s: float, default_max_bytes: int
+    url: str,
+    part: Path,
+    *,
+    size_bytes: int | None,
+    deadline_s: float,
+    default_max_bytes: int,
+    allowed: tuple[str, ...],
 ) -> None:
     flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, "O_NOFOLLOW", 0)
     cap = size_bytes if size_bytes is not None else default_max_bytes
     deadline = time.monotonic() + deadline_s
     total = 0
     with (
-        urllib.request.urlopen(url, timeout=TIMEOUT_S) as src,  # noqa: S310  (scheme checked by caller)
+        urllib.request.build_opener(_SchemeRedirects(allowed)).open(url, timeout=TIMEOUT_S) as src,
         os.fdopen(os.open(part, flags, 0o600), "wb") as out,
     ):
         while chunk := src.read(min(CHUNK, cap + 1 - total)):

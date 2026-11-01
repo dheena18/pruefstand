@@ -24,7 +24,7 @@ from pruefstand.core.config import ModelRef
 from pruefstand.core.errors import ConfigError, LLMError
 from pruefstand.core.models.llm import LLMRequest, LLMResponse
 from pruefstand.core.models.target import Usage
-from pruefstand.llm.backends.limits import LimitedTransport, response_limits
+from pruefstand.llm.backends.limits import IDENTITY_HEADERS, LimitedTransport, response_limits
 
 if litellm.litellm_mode != "PRODUCTION":  # litellm was imported first, in DEV mode, and loaded .env
     msg = "litellm was imported before pruefstand.llm in non-PRODUCTION mode (.env may be loaded)"
@@ -184,17 +184,7 @@ class LiteLLMBackend:
         )
         max_chars, max_bytes = response_limits(req.max_tokens)
         tripped: list[bool] = []
-        http_client: httpx.AsyncClient | None = None
-        base = self.api_base or (GITHUB_MODELS_URL if provider == "github" else None)
-        # Every provider that goes through the OpenAI client gets the bounded transport. `ollama/`
-        # (T5.1) must install the same LimitedTransport on its httpx client before it is enabled.
-        if provider in {"openai_compatible_local", "github"} and base is not None:
-            http_client = httpx.AsyncClient(
-                transport=LimitedTransport(max_bytes, tripped), timeout=self.timeout_s
-            )
-            kwargs["client"] = openai.AsyncOpenAI(
-                base_url=base, api_key=key, http_client=http_client, max_retries=0
-            )
+        http_client = self._bounded_client(provider, key, max_bytes, tripped, kwargs)
         start = time.perf_counter()
         try:
             raw = await asyncio.wait_for(litellm.acompletion(**kwargs), timeout=self.timeout_s)
@@ -211,6 +201,29 @@ class LiteLLMBackend:
                 await http_client.aclose()
         latency_ms = (time.perf_counter() - start) * 1000
         return self._to_response(raw, req, provider, latency_ms, max_chars)
+
+    def _bounded_client(
+        self,
+        provider: str,
+        key: str,
+        max_bytes: int,
+        tripped: list[bool],
+        kwargs: dict[str, object],
+    ) -> httpx.AsyncClient | None:
+        """Install the size-capped OpenAI client (`ollama/` must do the same in T5.1)."""
+        base = self.api_base or (GITHUB_MODELS_URL if provider == "github" else None)
+        if provider not in {"openai_compatible_local", "github"} or base is None:
+            return None
+        transport = LimitedTransport(max_bytes, tripped)
+        http_client = httpx.AsyncClient(transport=transport, timeout=self.timeout_s)
+        kwargs["client"] = openai.AsyncOpenAI(
+            base_url=base,
+            api_key=key,
+            http_client=http_client,
+            max_retries=0,
+            default_headers=IDENTITY_HEADERS,
+        )
+        return http_client
 
     def _to_response(
         self,

@@ -47,7 +47,7 @@ class PromptRegistry:
         if not _PROMPT_ID.fullmatch(prompt_id):
             msg = f"prompt_id '{prompt_id}' must match [a-z0-9_.]+"
             raise PromptError(msg)
-        if not _VERSION.match(version):
+        if not _VERSION.fullmatch(version):
             msg = f"prompt version '{version}' is not of the form v<N>"
             raise PromptError(msg)
         name = f"{prompt_id}_{version}.txt"

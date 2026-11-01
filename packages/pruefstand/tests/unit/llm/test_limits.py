@@ -137,7 +137,7 @@ async def test_a_gzip_bomb_is_refused_without_inflating_it(
     with PeakRss() as rss, serve(gzip_expand=500 * 1024 * 1024) as base:
         backend = LiteLLMBackend(model, api_base=base, api_key_env=key_env, timeout_s=60)
         with pytest.raises(LLMError) as info:
-            await backend.acomplete(_req().model_copy(update={"model": model}))
+            await backend.acomplete(_req(max_tokens=8192).model_copy(update={"model": model}))
     assert info.value.transient is False
     assert "too large" in str(info.value)
     assert rss.grown_kib < 100 * 1024

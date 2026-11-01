@@ -13,6 +13,7 @@ from pruefstand.llm.policy import is_paid, provider_of, validate_policy_config
 DEFAULT_LOCAL_URL = "http://localhost:8080/v1"
 GH_MODELS_TOKEN_ENV = "PRUEFSTAND_GH_MODELS_TOKEN"  # noqa: S105  (a variable NAME, not a secret)
 DEFAULT_TIMEOUT_S = 120.0
+_UNCAPPED_FREE_TIERS = frozenset({"mistral", "gemini", "groq", "openrouter"})
 _LITELLM_PREFIXES = ("ollama_chat/", "openai/")
 _LOCAL_HOSTS = frozenset({"localhost", "llm", "llm-proxy", "embed", "rerank-cpu"})
 _PRIVATE_NETS = tuple(
@@ -63,6 +64,12 @@ def build_backend(ref: ModelRef, *, policy: LLMPolicyConfig) -> LLMBackend:
     """
     validate_policy_config(policy)
     provider = provider_of(ref.id)
+    if provider in _UNCAPPED_FREE_TIERS:
+        msg = (
+            f"provider '{provider}' has no capped HTTP client yet; it is refused until T5.1 "
+            "adds one (response size and decompression limits)"
+        )
+        raise ConfigError(msg)
     _refuse_litellm_prefix(ref, provider, policy)
     if provider not in policy.allowed_providers:
         msg = f"provider '{provider}' not in allowed_providers"
