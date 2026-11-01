@@ -12,7 +12,7 @@ from pruefstand.llm.policy import is_paid, provider_of, validate_policy_config
 
 DEFAULT_LOCAL_URL = "http://localhost:8080/v1"
 GITHUB_MODELS_URL = (
-    "https://models.github.ai/inference"  # LiteLLM's own default host does not resolve (D346 g)
+    "https://models.github.ai/inference"  # LiteLLM's own default host does not resolve (D347 g)
 )
 GH_MODELS_TOKEN_ENV = "PRUEFSTAND_GH_MODELS_TOKEN"  # noqa: S105  (a variable NAME, not a secret)
 DEFAULT_TIMEOUT_S = 120.0

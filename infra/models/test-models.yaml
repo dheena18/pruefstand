@@ -1,4 +1,4 @@
-# Pinned CPU test model for the tier-1 `live` profile, the live tests and `make cassettes` (T1.4, D344).
+# Pinned CPU test model for the tier-1 `live` profile, the live tests and `make cassettes` (T1.4, D345).
 # `scripts/models/fetch.py` downloads each file to ~/.cache/pruefstand/models and verifies the SHA-256.
 # Weights are never committed. Verified 2026-11-01 against the Hugging Face model card (license field).
 models:

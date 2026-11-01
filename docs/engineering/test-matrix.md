@@ -273,6 +273,8 @@ owning module's unit test dir (`pt/unit/<module>/`, `rd/unit/…`).
 | `power_estimate` | `gate.stats` | T1.6 | `test_power.py` | 0.981, 0.5, n = 50 < 0.5; formula vs simulation | covered |
 | `decide` | `gate.decision` | T1.6 | `test_decision.py` | FAIL/WARN/PASS; not gated; INSUFFICIENT_DATA; doctests run | covered |
 | `decide_absolute` | `gate.decision` | T1.6 | `test_decision.py` | 0/300, 7/300, 20/300, 0/0 | covered |
+| gate input validation (`gate._validate`, `gate._resample`) | `gate` | T1.6 | `test_bootstrap.py`, `test_power.py`, `test_sign_wilson.py`, `test_correction.py`, `test_decision.py` | NaN/inf, empty, mismatched, bool and non-numeric parameters, `n_resamples` cap, float64 overflow, tail underflow → `GateInputError` | covered |
+| `simulate_paired` | `tests/testsupport/sim_data.py` | T1.6 | `test_gate_error_rates.py` | Gaussian and binary draws feed every simulation cell; heterogeneous `cluster_sizes` cell | covered |
 | `evaluate_gate` | `gate.policy` | T1.7 | `test_policy.py`, `test_tables.py`, `test_gate_overall_rates.py` | R1–R18; 22 applicable clusters → `applicable_clusters<30`; judge-ERROR excluded; **R9 X3.6:** perturbed cases only in `perturbed_all`, `overall` built from unperturbed cases (R14 `overall` PASS, `perturbed_all` FAIL); **R9 X5.4:** every decision with a reason has `gated=False`; **R9 X5.6/X3.11:** `informational={…: "tier1_deterministic_only", "injection_success": "tier1_injection_reported"}` → PASS rows with those reasons; `false_refusal` gated in a PR run (X3.7) | covered |
 | `likely_cause` (T1.7 part) | `gate.cause` | T1.7 | `test_cause.py` | one row per code + precedence | covered |
 | `likely_cause` (T6.3 part) | `gate.cause` | T6.3 | `test_cause_switches.py` (`gpu`) | real-stack switches | covered |
@@ -503,10 +505,10 @@ UI tests (pages × states × theme × locale × viewport) are specified in `docs
 
 | Status | Rows |
 | --- | --- |
-| covered | 328 |
+| covered | 330 |
 | planned | 32 (R13 rows and rows whose case round 13 changed; owners T0.7, T1.8, T1.9, T1.10, T3.1a, T3.6, T4.1, T5.1, T5.4, T6.1, T6.2a, T6.2b, T7.1b, T7.2, T7.3, T8.1, T8.5) |
 | weak | 1 (backup bundle: drill only, acceptable for an ops script) |
-| **total** | **361** |
+| **total** | **363** |
 
 Round-13 changes (D296): the round-12 table (241 covered / 29 open / 1 weak = 271 rows) was re-derived: 40 multi-owner
 rows split into 90 single-owner rows (+50); 29 open rows flipped (`covered` unless round 13 changed the case); 21 new
@@ -541,4 +543,4 @@ mapping, `write_gate_json`, and the R9 additions on both); file names corrected 
 `test_gate_models.py` + `test_tables.py`, `test_perturb_case_async.py`, `test_fixed_chunker.py`,
 `test_baseline_cli.py`); new rows for every R9 symbol and for the out-of-package symbols that Done-when lines name.
 
-T1.4 (D344–D346): +12 `covered` rows (7 from the first pass, 5 from the review pass) (`extract_json_object`, `cache_key`, request builder, `litellm_model`, policy validation, `fetch.py`, `record_cassettes.sh`) and +1 `planned` row (cache key with `model_version`, owner T5.1); five T1.4 rows re-worded to the tests that exist.
+T1.4 (D345–D347): +12 `covered` rows (7 from the first pass, 5 from the review pass) (`extract_json_object`, `cache_key`, request builder, `litellm_model`, policy validation, `fetch.py`, `record_cassettes.sh`) and +1 `planned` row (cache key with `model_version`, owner T5.1); five T1.4 rows re-worded to the tests that exist.
