@@ -5,6 +5,7 @@ import time
 
 import pytest
 
+from pruefstand.ingest import html_text
 from pruefstand.ingest.html_text import HtmlTextError, html_to_text
 
 
@@ -101,3 +102,29 @@ def test_pathological_markup_terminates_quickly(markup: str) -> None:
     with contextlib.suppress(HtmlTextError):  # the one documented way to refuse
         assert isinstance(html_to_text(markup), str)
     assert time.perf_counter() - start < 10
+
+
+@pytest.mark.parametrize(
+    "unit", ["<script></script>x", "<style>a</style>x", "<script>y</script>x", "<title>t</title>x"]
+)
+def test_dropped_elements_cost_linear_time(unit: str) -> None:
+    small, large = best_of(3, unit * 10_000), best_of(3, unit * 40_000)  # 4x the markup
+    assert large / small <= 8  # linear = 4, quadratic = 16
+
+
+def test_dropped_elements_keep_their_tail_text() -> None:
+    assert html_to_text("<script></script>a<style>b</style>c<script>d</script>e") == "ace"
+
+
+def test_parser_is_built_hardened(monkeypatch: pytest.MonkeyPatch) -> None:
+    seen: dict[str, object] = {}
+    real = html_text.lxml_html.HTMLParser
+
+    def spy(**kwargs: object) -> object:
+        seen.update(kwargs)
+        return real(**kwargs)  # type: ignore[arg-type]  # forwarding the spied keyword arguments
+
+    monkeypatch.setattr(html_text.lxml_html, "HTMLParser", spy)
+    html_to_text("<p>x</p>")
+    assert seen["huge_tree"] is False
+    assert seen["no_network"] is True

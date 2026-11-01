@@ -159,7 +159,8 @@ def test_cli_prints_the_stats_line(oldp_raw: Path, capsys: pytest.CaptureFixture
     assert main([str(oldp_raw), "--stats"]) == 0
     out = capsys.readouterr().out.strip()
     fields = dict(part.split("=") for part in out.split())
-    assert list(fields) == ["decisions", "chunks", "no_sections", "errors"]
+    assert list(fields) == ["decisions", "chunks", "no_sections", "errors", "trailer_chars"]
+    assert fields["trailer_chars"] == "0"
     assert fields["decisions"] == "3"
     assert int(fields["chunks"]) >= 6
     assert fields["no_sections"] == "1"

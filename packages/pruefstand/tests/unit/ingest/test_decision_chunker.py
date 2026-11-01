@@ -14,6 +14,7 @@ from pruefstand.core.models.corpus import Chunk, Document
 from pruefstand.core.protocols import Chunker
 from pruefstand.ingest.chunkers.decision import (
     DecisionSectionChunker,
+    dropped_trailer,
     has_named_sections,
     split_sections,
 )
@@ -234,3 +235,23 @@ def test_long_non_heading_lines_are_cheap() -> None:
     start = time.perf_counter()
     DecisionSectionChunker().chunk(make_doc(("G r ü n d e " * 20_000) + "\nTenor\nx"))
     assert time.perf_counter() - start < 5
+
+
+def test_randnummer_gap_of_ten_is_a_marker_eleven_is_not() -> None:
+    chunker = DecisionSectionChunker(max_tokens=5, overlap=0)
+    near = chunker.chunk(make_doc("Gründe\n1\na b c\n11\nd e f"))
+    assert [c.text for c in near] == ["1\na b c", "11\nd e f"]
+    far = chunker.chunk(make_doc("Gründe\n1\na b c\n12\nd e f"))
+    assert [c.text for c in far] == ["1\na b c\n12", "d e f"]
+
+
+def test_trailer_heading_in_the_body_is_text_and_at_the_end_it_cuts() -> None:
+    body = "\n".join(f"Zeile {i}" for i in range(40))
+    text = f"Tenor\nHinweis\n{body}\nFußnoten\nBGH 1\nBGH 2"
+    chunks = DecisionSectionChunker().chunk(make_doc(text))
+    joined = "\n".join(c.text for c in chunks)
+    assert "Hinweis" not in joined or "Zeile 39" in joined  # early heading is not a cut
+    assert "Zeile 39" in joined
+    assert "BGH" not in joined
+    assert dropped_trailer(text) == (3, len("Fußnoten\nBGH 1\nBGH 2"))
+    assert dropped_trailer("Tenor\nx") == (0, 0)

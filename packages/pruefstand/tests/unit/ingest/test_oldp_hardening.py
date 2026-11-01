@@ -155,3 +155,10 @@ def test_loader_time_is_linear(tmp_path: Path, oldp_record: Rec, write_jsonl: Wr
             best = min(best, time.perf_counter() - start)
         times[paragraphs] = best
     assert times[16_000] / times[2_000] < 20  # linear = 8, quadratic = 64
+
+
+def test_boolean_ids_are_rejected(tmp_path: Path, oldp_record: Rec, write_jsonl: Writer) -> None:
+    write_jsonl(tmp_path / "a.jsonl", [record(oldp_record("labour_lag_hessen"), id=True)])
+    docs, loader = docs_of(tmp_path)
+    assert docs == []
+    assert problems_of(loader) == ["bad_record"]

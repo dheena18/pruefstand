@@ -11,7 +11,7 @@ from structlog.testing import capture_logs
 
 from pruefstand.core.ids import DocId
 from pruefstand.ingest.citation_graph import load_citation_graph
-from pruefstand.ingest.records import OldpDataError
+from pruefstand.ingest.records import OldpDataError, Problem
 
 Writer = Callable[[Path, Sequence[Mapping[str, object]]], Path]
 
@@ -130,3 +130,57 @@ def test_many_distinct_unknown_laws_are_logged_once_each_and_fast(
     assert time.perf_counter() - start < 20
     assert len(graph[DocId("oldp-446202")]) == 20_000
     assert len([entry for entry in logs if entry["event"] == "citation_unknown_law"]) == 50
+
+
+def test_filters_need_case_to_law(oldp_graph_raw: Path, write_jsonl: Writer) -> None:
+    rows = [
+        edge(LABOUR, "BGB", "§ 1", to_type="Case"),  # a decision citing a decision
+        {**edge(LABOUR, "BGB", "§ 2"), "from_type": "Law"},  # a law citing a law
+        edge(LABOUR, "BGB", "§ 3"),
+    ]
+    write_jsonl(oldp_graph_raw / "extra.jsonl", rows)
+    graph = load_citation_graph(oldp_graph_raw)
+    assert "§ 3 BGB" in graph[DocId("oldp-446202")]
+    assert not {"§ 1 BGB", "§ 2 BGB"} & set(graph[DocId("oldp-446202")])
+
+
+def test_boolean_decision_ids_do_not_resolve(tmp_path: Path, write_jsonl: Writer) -> None:
+    write_jsonl(
+        tmp_path / "oldp_decisions" / "a.jsonl",
+        [{"id": True, "slug": LABOUR}, {"id": 5, "slug": "z"}],
+    )
+    write_jsonl(
+        tmp_path / "oldp_citation_graph" / "e.jsonl",
+        [edge(LABOUR, "BGB", "§ 1"), edge("z", "BGB", "§ 2")],
+    )
+    assert load_citation_graph(tmp_path / "oldp_citation_graph") == {DocId("oldp-5"): ("§ 2 BGB",)}
+
+
+def test_empty_graph_directory_fails_closed(oldp_raw: Path) -> None:
+    empty = oldp_raw.parent / "oldp_citation_graph"
+    empty.mkdir()
+    with pytest.raises(OldpDataError, match="no readable"):
+        load_citation_graph(empty)
+
+
+def test_corrupt_only_file_fails_closed(oldp_raw: Path) -> None:
+    broken = oldp_raw.parent / "oldp_citation_graph"
+    broken.mkdir()
+    (broken / "g.parquet").write_bytes(b"not parquet")
+    with pytest.raises(OldpDataError, match="no readable"):
+        load_citation_graph(broken)
+
+
+def test_all_edges_unresolved_fails_closed(oldp_raw: Path, write_jsonl: Writer) -> None:
+    graph_dir = oldp_raw.parent / "oldp_citation_graph"
+    write_jsonl(graph_dir / "e.jsonl", [edge("unbekannt", "BGB", "§ 1")])
+    with pytest.raises(OldpDataError, match="resolve"):
+        load_citation_graph(graph_dir)
+
+
+def test_problems_are_returned_to_the_caller(oldp_graph_raw: Path) -> None:
+    (oldp_graph_raw / "broken.parquet").write_bytes(b"not parquet")
+    problems: list[Problem] = []
+    graph = load_citation_graph(oldp_graph_raw, problems=problems)
+    assert graph[DocId("oldp-446202")] == ("§ 1 KSchG", "§ 622 BGB")
+    assert [p.kind for p in problems] == ["bad_file"]
