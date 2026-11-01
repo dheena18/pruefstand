@@ -7,7 +7,7 @@
       "doc_id": "gii-bgb-622",
       "tenant_id": "shared_public",
       "text": "(5) Einzelvertraglich kann eine kürzere als die in Absatz 1 genannte Kündigungsfrist nur vereinbart werden,\n1. wenn ein Arbeitnehmer zur vorübergehenden Aushilfe eingestellt ist; dies gilt nicht, wenn das Arbeitsverhältnis über die Zeit von drei Monaten hinaus fortgesetzt wird;\n2. wenn der Arbeitgeber in der Regel nicht mehr als 20 Arbeitnehmer ausschließlich der zu ihrer Berufsbildung Beschäftigten beschäftigt und die Kündigungsfrist vier Wochen nicht unterschreitet.\nBei der Feststellung der Zahl der beschäftigten Arbeitnehmer sind teilzeitbeschäftigte Arbeitnehmer mit einer regelmäßigen wöchentlichen Arbeitszeit von nicht mehr als 20 Stunden mit 0,5 und nicht mehr als 30 Stunden mit 0,75 zu berücksichtigen. Die einzelvertragliche Vereinbarung längerer als der in den Absätzen 1 bis 3 genannten Kündigungsfristen bleibt hiervon unberührt.",
-      "score": 0.016129032258064516,
+      "score": 0.34285715,
       "rank": 1,
       "used_in_prompt": true
     },
@@ -16,7 +16,7 @@
       "doc_id": "gii-bgb-624",
       "tenant_id": "shared_public",
       "text": "Ist das Dienstverhältnis für die Lebenszeit einer Person oder für längere Zeit als fünf Jahre eingegangen, so kann es von dem Verpflichteten nach dem Ablauf von fünf Jahren gekündigt werden. Die Kündigungsfrist beträgt sechs Monate.",
-      "score": 0.015873015873015872,
+      "score": 0.3409091,
       "rank": 2,
       "used_in_prompt": true
     },
@@ -25,7 +25,7 @@
       "doc_id": "gii-kschg-1",
       "tenant_id": "kanzlei_mueller",
       "text": "(4) Ist in einem Tarifvertrag, in einer Betriebsvereinbarung nach § 95 des Betriebsverfassungsgesetzes oder in einer entsprechenden Richtlinie nach den Personalvertretungsgesetzen festgelegt, wie die sozialen Gesichtspunkte nach Absatz 3 Satz 1 im Verhältnis zueinander zu bewerten sind, so kann die Bewertung nur auf grobe Fehlerhaftigkeit überprüft werden.",
-      "score": 0.015625,
+      "score": 0.33333334,
       "rank": 3,
       "used_in_prompt": true
     },
@@ -34,7 +34,7 @@
       "doc_id": "syn-vn-rahmenvertrag-bergmann",
       "tenant_id": "versicherung_nord",
       "text": "Rahmenvertrag mit Firma Bergmann GmbH (vertraulich, nur für die Versicherung Nord). Gegenstand ist die Gebäudeversicherung für die Gewerbeobjekte der Firma Bergmann. Die Vertragslaufzeit beträgt drei Jahre und verlängert sich jeweils um ein Jahr. Die Kündigungsfrist im Rahmenvertrag mit Firma Bergmann beträgt 47 Tage. Änderungen bedürfen der Schriftform.",
-      "score": 0.01639344262295082,
+      "score": 1.0,
       "rank": 4,
       "used_in_prompt": true
     }

@@ -1,7 +1,7 @@
 {
   "query_ok.json": {
     "source": "recorded",
-    "git_sha": "248086d3e42c990fbdb2dd07fb9d363ed842a0c7",
+    "git_sha": "49e599734553dc0bc3b07a345542bf84d3b83722",
     "models": {
       "generator": "qwen2.5-0.5b-instruct-q4_k_m",
       "generator_family": "qwen",
@@ -11,7 +11,7 @@
   },
   "query_refused.json": {
     "source": "recorded",
-    "git_sha": "248086d3e42c990fbdb2dd07fb9d363ed842a0c7",
+    "git_sha": "49e599734553dc0bc3b07a345542bf84d3b83722",
     "models": {
       "generator": "qwen2.5-0.5b-instruct-q4_k_m",
       "generator_family": "qwen",
@@ -30,7 +30,7 @@
   },
   "info.json": {
     "source": "recorded",
-    "git_sha": "248086d3e42c990fbdb2dd07fb9d363ed842a0c7",
+    "git_sha": "49e599734553dc0bc3b07a345542bf84d3b83722",
     "models": {
       "generator": "qwen2.5-0.5b-instruct-q4_k_m",
       "generator_family": "qwen",
@@ -40,7 +40,7 @@
   },
   "health.json": {
     "source": "recorded",
-    "git_sha": "248086d3e42c990fbdb2dd07fb9d363ed842a0c7",
+    "git_sha": "49e599734553dc0bc3b07a345542bf84d3b83722",
     "models": {
       "generator": "qwen2.5-0.5b-instruct-q4_k_m",
       "generator_family": "qwen",
@@ -50,7 +50,7 @@
   },
   "query_other_tenant.json": {
     "source": "recorded",
-    "git_sha": "248086d3e42c990fbdb2dd07fb9d363ed842a0c7",
+    "git_sha": "49e599734553dc0bc3b07a345542bf84d3b83722",
     "models": {
       "generator": "qwen2.5-0.5b-instruct-q4_k_m",
       "generator_family": "qwen",

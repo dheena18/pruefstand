@@ -1,4 +1,4 @@
-# recorded: 2026-11-01, git: 248086d, by scripts/models/record_cassettes.sh
+# recorded: 2026-11-01, git: 49e5997, by scripts/models/record_cassettes.sh
 interactions:
 - request:
     body: "{\"inputs\":[\"query: Welche K\xFCndigungsfrist gilt nach zwei Jahren Betriebszugeh\xF6rigkeit?\"],\"truncate\":true,\"normalize\":true}"
