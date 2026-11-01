@@ -93,7 +93,8 @@ def test_main_fetches_listed_models(tmp_path: Path) -> None:
 
 def _entry(**over: object) -> dict[str, object]:
     base = {
-        "id": "t", "repo": "o/r", "revision": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb", "file": "t.gguf",
+        "id": "t", "repo": "o/r", "revision": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+        "file": "t.gguf",
         "url": "https://huggingface.co/o/r/resolve/bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb/t.gguf",
         "sha256": "0" * 64, "license": "Apache-2.0",
     }  # fmt: skip

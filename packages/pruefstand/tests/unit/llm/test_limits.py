@@ -5,13 +5,19 @@ import socket
 import time
 
 import pytest
-from testsupport.llm_scenarios import echo_request
+from pydantic import BaseModel
+from testsupport.llm_scenarios import echo_request, json_probe_request
 from testsupport.loopback import serve
 
+from pruefstand.core.config import LLMPolicyConfig
 from pruefstand.core.errors import LLMError
 from pruefstand.core.models.llm import LLMRequest
 from pruefstand.llm.backends.limits import response_limits
 from pruefstand.llm.backends.litellm import LiteLLMBackend
+from pruefstand.llm.budget import Budget
+from pruefstand.llm.client import LLMClient
+from pruefstand.llm.policy import LLMPolicy
+from pruefstand.llm.recorder import CallRecorder
 
 MODEL = "openai_compatible_local/loop"
 
@@ -80,7 +86,7 @@ def _grown_kib(before: int) -> int:
 
 @pytest.mark.parametrize("chunked", [False, True])
 async def test_github_provider_bodies_are_capped_too(
-    monkeypatch: pytest.MonkeyPatch, chunked: bool
+    monkeypatch: pytest.MonkeyPatch, *, chunked: bool
 ) -> None:
     monkeypatch.setenv("LOOP_GH_TOKEN", "t0ken-for-loopback")
     before = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss
@@ -107,3 +113,20 @@ async def test_an_unresolvable_host_is_a_transient_connection_error() -> None:
     assert info.value.status is None
     assert "HTTP 500" not in str(info.value)
     assert "connection" in str(info.value).lower()
+
+
+class _Probe(BaseModel):
+    reason: str
+
+
+async def test_the_repair_error_names_the_scan_and_candidate_caps() -> None:
+    with serve(content="{" * 400) as base:
+        backend = LiteLLMBackend(MODEL, api_base=base, api_key_env=None, timeout_s=10)
+        client = LLMClient(
+            backend, None, Budget(max_usd=None, max_tokens=None), CallRecorder(),
+            LLMPolicy(LLMPolicyConfig()),
+        )  # fmt: skip
+        req = json_probe_request(max_tokens=64).model_copy(update={"model": MODEL})
+        with pytest.raises(LLMError, match="256 KiB") as info:
+            await client.complete_json(req, _Probe)
+    assert "1000" in str(info.value)

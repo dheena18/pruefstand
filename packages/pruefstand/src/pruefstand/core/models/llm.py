@@ -4,7 +4,7 @@ import re
 from enum import StrEnum
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 
 from pruefstand.core.errors import PromptError
 from pruefstand.core.models.target import Usage
@@ -43,7 +43,7 @@ class LLMRequest(BaseModel):
     model: str
     messages: tuple[Message, ...]
     temperature: float = 0.0
-    max_tokens: int = 1024
+    max_tokens: int = Field(default=1024, ge=1, le=65536)
     seed: int | None = 0
     prompt_id: str
     prompt_version: str

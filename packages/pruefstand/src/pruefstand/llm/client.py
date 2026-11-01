@@ -9,7 +9,7 @@ from pruefstand.core.hashing import stable_hash
 from pruefstand.core.models.llm import LLMRequest, LLMResponse
 from pruefstand.core.protocols import KVCache, LLMBackend
 from pruefstand.llm.budget import Budget
-from pruefstand.llm.json_extract import extract_json_object
+from pruefstand.llm.json_extract import MAX_CANDIDATES, MAX_SCAN_CHARS, extract_json_object
 from pruefstand.llm.policy import LLMPolicy, provider_of
 from pruefstand.llm.prompts import PromptRegistry
 from pruefstand.llm.recorder import CallRecorder
@@ -171,7 +171,11 @@ class LLMClient:
         resp = await self.complete(again)
         parsed = _parse(resp.text, schema)
         if parsed is None:
-            msg = f"invalid JSON after one repair: {resp.text[:_EXCERPT]!r}"
+            msg = (
+                "invalid JSON after one repair "
+                f"(only the first {MAX_SCAN_CHARS // 1024} KiB are scanned, at most "
+                f"{MAX_CANDIDATES} candidates tried): {resp.text[:_EXCERPT]!r}"
+            )
             raise LLMError(msg, transient=False)
         return parsed
 

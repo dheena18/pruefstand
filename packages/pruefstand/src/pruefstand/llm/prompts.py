@@ -44,7 +44,7 @@ class PromptRegistry:
         return self._cache[key]
 
     def _load(self, prompt_id: str, version: str) -> PromptTemplate:
-        if not _PROMPT_ID.match(prompt_id):
+        if not _PROMPT_ID.fullmatch(prompt_id):
             msg = f"prompt_id '{prompt_id}' must match [a-z0-9_.]+"
             raise PromptError(msg)
         if not _VERSION.match(version):

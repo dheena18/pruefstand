@@ -1,4 +1,4 @@
-"""Both conftests must register the scrubbing hooks (the live one is the only scrubber of `make cassettes`)."""
+"""Both conftests must register the scrubbing hooks (the live one scrubs `make cassettes`)."""
 
 import asyncio
 import importlib.util

@@ -15,6 +15,7 @@ from testsupport.vcr_scrub import (
     VCR_CONFIG,
     scrub_request,
 )
+from vcr.request import Request  # type: ignore[import-untyped]
 
 from pruefstand.core.errors import LLMError
 from pruefstand.llm.backends.litellm import LiteLLMBackend
@@ -164,8 +165,6 @@ def test_benign_words_with_secret_looking_endings_pass(text: str) -> None:
 
 
 def test_request_uri_and_body_are_scanned_by_the_hook() -> None:
-    from vcr.request import Request
-
     with pytest.raises(LLMError, match="secret"):
         scrub_request(Request("GET", "http://h/v1?api=ghp_abcdefghijklmnop", None, {}))
     with pytest.raises(LLMError, match="secret"):

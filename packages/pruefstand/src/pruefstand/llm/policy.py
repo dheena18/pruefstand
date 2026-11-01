@@ -14,6 +14,8 @@ FREE_PROVIDERS = frozenset(
 LOCAL_PROVIDERS = frozenset({"openai_compatible_local", "ollama"})
 PRIVATE_PROMPT_PREFIX = "datagen.private_docs"
 _log = get_logger(__name__)
+# U+2010..U+2015 and U+2212 are not folded by NFKC (U+2011 included); an attacker may swap them in.
+_HYPHENS = dict.fromkeys((*range(8208, 8214), 8722), "-")
 
 
 def normalise(text: str) -> str:
@@ -23,7 +25,7 @@ def normalise(text: str) -> str:
         >>> normalise("CAN\u00adARY\u200b  \uff11")
         'canary 1'
     """
-    folded = unicodedata.normalize("NFKC", text)
+    folded = unicodedata.normalize("NFKC", text).translate(_HYPHENS)
     kept = "".join(c for c in folded if unicodedata.category(c) != "Cf")
     return " ".join(kept.split()).casefold()
 

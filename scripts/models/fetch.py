@@ -8,6 +8,8 @@ again; a download with a wrong hash is deleted and the script fails.
 import argparse
 import hashlib
 import os
+import re
+import time
 import urllib.request
 from collections.abc import Sequence
 from pathlib import Path
@@ -20,6 +22,9 @@ DEFAULT_MANIFEST = Path("infra/models/test-models.yaml")
 DEFAULT_DEST = Path("~/.cache/pruefstand/models")
 CHUNK = 1 << 20
 TIMEOUT_S = 60
+DEADLINE_S = 3600.0
+DEFAULT_MAX_BYTES = 8 * 1024**3
+_REVISION = re.compile(r"[0-9a-f]{40}")
 
 
 class FetchError(Exception):
@@ -45,8 +50,8 @@ class ModelEntry(BaseModel):
         if not self.file or Path(self.file).name != self.file or self.file in {".", ".."}:
             msg = f"file '{self.file}' must be a plain file name"
             raise ValueError(msg)
-        if not self.revision or self.revision not in self.url:
-            msg = f"url of '{self.id}' does not contain its pinned revision"
+        if not _REVISION.fullmatch(self.revision) or self.revision not in self.url:
+            msg = f"revision of '{self.id}' must be a 40-hex commit hash that the url contains"
             raise ValueError(msg)
         return self
 
@@ -72,6 +77,8 @@ def fetch_file(
     *,
     allowed_schemes: tuple[str, ...] = ("https",),
     size_bytes: int | None = None,
+    deadline_s: float = DEADLINE_S,
+    default_max_bytes: int = DEFAULT_MAX_BYTES,
 ) -> str:
     """Make ``dest`` hold the file at ``url`` with the given SHA-256.
 
@@ -81,6 +88,8 @@ def fetch_file(
         sha256: Expected lowercase hex digest.
         allowed_schemes: URL schemes that may be downloaded (tests add ``file``).
         size_bytes: Expected size; reading stops at ``size_bytes + 1`` bytes.
+        deadline_s: Total time allowed for the download.
+        default_max_bytes: Size cap when ``size_bytes`` is None.
 
     Returns:
         ``"cached"`` when ``dest`` already matched, else ``"downloaded"``.
@@ -101,7 +110,7 @@ def fetch_file(
         raise FetchError(msg)
     part.unlink(missing_ok=True)
     try:
-        _download(url, part, size_bytes)
+        _download(url, part, size_bytes, deadline_s, default_max_bytes)
         actual = _sha256(part)
         if actual != sha256:
             msg = f"sha256 mismatch for {url}: expected {sha256}, got {actual}"
@@ -112,22 +121,26 @@ def fetch_file(
     return "downloaded"
 
 
-def _download(url: str, part: Path, size_bytes: int | None) -> None:
+def _download(
+    url: str, part: Path, size_bytes: int | None, deadline_s: float, default_max_bytes: int
+) -> None:
     flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, "O_NOFOLLOW", 0)
-    limit = None if size_bytes is None else size_bytes + 1
+    cap = size_bytes if size_bytes is not None else default_max_bytes
+    deadline = time.monotonic() + deadline_s
     total = 0
     with (
         urllib.request.urlopen(url, timeout=TIMEOUT_S) as src,  # noqa: S310  (scheme checked by caller)
         os.fdopen(os.open(part, flags, 0o600), "wb") as out,
     ):
-        while chunk := src.read(CHUNK if limit is None else min(CHUNK, limit - total)):
+        while chunk := src.read(min(CHUNK, cap + 1 - total)):
             total += len(chunk)
-            if size_bytes is not None and total > size_bytes:
-                msg = f"download of {url} is larger than the pinned size {size_bytes}"
+            if total > cap:
+                msg = f"download of {url} is larger than the allowed size {cap}"
+                raise FetchError(msg)
+            if time.monotonic() > deadline:
+                msg = f"download of {url} passed its deadline of {deadline_s:g} s"
                 raise FetchError(msg)
             out.write(chunk)
-            if limit is not None and total >= limit:
-                break
 
 
 def main(argv: Sequence[str] | None = None) -> int:

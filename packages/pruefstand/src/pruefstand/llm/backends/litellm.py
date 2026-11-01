@@ -14,7 +14,7 @@ from typing import Any
 # (CLAUDE.md §3). Outside PRODUCTION mode its __init__ runs dotenv.load_dotenv(), which would pull
 # the repository .env (every secret) into this process and its children (CLAUDE.md §5).
 os.environ.setdefault("LITELLM_LOCAL_MODEL_COST_MAP", "True")
-os.environ.setdefault("LITELLM_MODE", "PRODUCTION")
+os.environ["LITELLM_MODE"] = "PRODUCTION"  # forced: an exported DEV must not win
 
 import httpx
 import litellm
@@ -26,10 +26,16 @@ from pruefstand.core.models.llm import LLMRequest, LLMResponse
 from pruefstand.core.models.target import Usage
 from pruefstand.llm.backends.limits import LimitedTransport, response_limits
 
+if litellm.litellm_mode != "PRODUCTION":  # litellm was imported first, in DEV mode, and loaded .env
+    msg = "litellm was imported before pruefstand.llm in non-PRODUCTION mode (.env may be loaded)"
+    raise ConfigError(msg)
 litellm.suppress_debug_info = True
 litellm.telemetry = False
 litellm.drop_params = False
 
+GITHUB_MODELS_URL = (
+    "https://models.github.ai/inference"  # LiteLLM's own default host does not resolve
+)
 NO_KEY = "not-needed"  # llama.cpp ignores the key; the OpenAI client insists on a non-empty one
 _THINK_BLOCK = re.compile(r"\A\s*<think>.*?</think>\s*", re.DOTALL)
 _CONNECTION_ERRORS = ("APIConnectionError", "Timeout", "APITimeoutError")
@@ -179,12 +185,15 @@ class LiteLLMBackend:
         max_chars, max_bytes = response_limits(req.max_tokens)
         tripped: list[bool] = []
         http_client: httpx.AsyncClient | None = None
-        if provider == "openai_compatible_local":
+        base = self.api_base or (GITHUB_MODELS_URL if provider == "github" else None)
+        # Every provider that goes through the OpenAI client gets the bounded transport. `ollama/`
+        # (T5.1) must install the same LimitedTransport on its httpx client before it is enabled.
+        if provider in {"openai_compatible_local", "github"} and base is not None:
             http_client = httpx.AsyncClient(
                 transport=LimitedTransport(max_bytes, tripped), timeout=self.timeout_s
             )
             kwargs["client"] = openai.AsyncOpenAI(
-                base_url=self.api_base, api_key=key, http_client=http_client, max_retries=0
+                base_url=base, api_key=key, http_client=http_client, max_retries=0
             )
         start = time.perf_counter()
         try:
@@ -240,19 +249,37 @@ class LiteLLMBackend:
         )
 
 
+def _root_connection_error(err: BaseException) -> BaseException | None:
+    """Return the connection-level exception in the cause/context chain of ``err``, if any."""
+    seen: set[int] = set()
+    stack: list[BaseException | None] = [err]
+    while stack:
+        cur = stack.pop()
+        if cur is None or id(cur) in seen:
+            continue
+        seen.add(id(cur))
+        if (
+            isinstance(cur, httpx.TransportError | openai.APIConnectionError | OSError)
+            or type(cur).__name__ in _CONNECTION_ERRORS
+        ):
+            return cur
+        stack += [cur.__cause__, cur.__context__]
+    return None
+
+
 def map_error(err: Exception, provider: str, key: str) -> LLMError:
     """Map a LiteLLM/OpenAI exception to ``LLMError``; the key never appears in the text.
 
-    Only connection problems, 408/409/425/429 and 5xx are transient; an exception without a
-    status that is not a connection error is permanent.
+    Connection problems (DNS, refused, reset, timeout) are transient and carry no status; so are
+    408/409/425/429 and 5xx. Any other exception without a status is permanent.
     """
-    name = type(err).__name__
+    root = _root_connection_error(err)
+    if root is not None:
+        kind = "host not found" if "gaierror" in type(root).__name__ else type(root).__name__
+        return LLMError(f"{provider}: connection error ({kind})", transient=True)
     raw_status = getattr(err, "status_code", None)
-    connection = name in _CONNECTION_ERRORS
-    status = raw_status if isinstance(raw_status, int) and not connection else None
-    transient = connection or (
-        status is not None and (status >= 500 or status in _TRANSIENT_STATUS)
-    )
+    status = raw_status if isinstance(raw_status, int) else None
+    transient = status is not None and (status >= 500 or status in _TRANSIENT_STATUS)
     detail = str(err).replace(key, "***")[:_MAX_ERROR_TEXT]
-    where = f"HTTP {status}" if status is not None else name
+    where = f"HTTP {status}" if status is not None else type(err).__name__
     return LLMError(f"{provider}: {where}: {detail}", transient=transient, status=status)

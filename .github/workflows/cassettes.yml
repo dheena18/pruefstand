@@ -45,8 +45,11 @@ jobs:
       - name: Pack changed cassettes
         if: steps.detect.outputs.changed == 'true'
         run: |
-          git status --porcelain --untracked-files=all -- packages/pruefstand/tests/cassettes \
-            | cut -c4- | tar -czf cassettes.tgz -T -
+          dir=packages/pruefstand/tests/cassettes
+          git add -A -- "$dir"
+          git diff --cached --name-only --diff-filter=D -- "$dir" > deleted.txt
+          { git diff --cached --name-only --diff-filter=AM -- "$dir"; echo deleted.txt; } \
+            | tar -czf cassettes.tgz -T -
       - name: Upload changed cassettes
         if: steps.detect.outputs.changed == 'true'
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
@@ -71,26 +74,49 @@ jobs:
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           name: cassettes
-      - name: Unpack (only paths under the cassette directory)
+      - name: Unpack and validate
         run: |
+          set -euo pipefail
           prefix="packages/pruefstand/tests/cassettes/"
-          tar -tzf cassettes.tgz | while IFS= read -r path; do
-            case "$path" in
-              "$prefix"*) ;;
-              *) echo "unexpected path in artefact: $path" >&2; exit 1 ;;
-            esac
-            case "$path" in
-              *..*) echo "path escape in artefact: $path" >&2; exit 1 ;;
-            esac
-          done
-          tar -xzf cassettes.tgz --no-same-owner
+          bad="$(tar -tvzf cassettes.tgz | grep -v '^-' || true)"
+          if [ -n "$bad" ]; then echo "artefact holds a non-regular member" >&2; exit 1; fi
+          tar -tzf cassettes.tgz > names.txt
+          if [ "$(wc -l < names.txt)" -gt 500 ]; then echo "too many files in the artefact" >&2; exit 1; fi
+          total="$(tar -tvzf cassettes.tgz | awk '{s += $3} END {print s + 0}')"
+          if [ "$total" -gt 33554432 ]; then echo "artefact is larger than 32 MiB" >&2; exit 1; fi
+          while IFS= read -r path; do
+            case "$path" in deleted.txt | "$prefix"*) ;; *) echo "unexpected path: $path" >&2; exit 1 ;; esac
+            case "$path" in *..*) echo "path escape: $path" >&2; exit 1 ;; esac
+          done < names.txt
+          tar -xzf cassettes.tgz --no-same-owner --no-same-permissions
+          if [ -f deleted.txt ]; then
+            while IFS= read -r path; do
+              [ -z "$path" ] && continue
+              case "$path" in "$prefix"*) ;; *) echo "unexpected deletion: $path" >&2; exit 1 ;; esac
+              case "$path" in *..*) echo "path escape: $path" >&2; exit 1 ;; esac
+              git rm -q --ignore-unmatch -- "$path"
+            done < deleted.txt
+            rm -f deleted.txt
+          fi
+          rm -f names.txt
+      - name: Stage and verify
+        run: |
+          set -euo pipefail
+          prefix="packages/pruefstand/tests/cassettes/"
+          git add -A -- "$prefix"
+          bad="$(git diff --cached --raw | awk -v p="$prefix" '
+            { path = $NF; if (($2 != "100644" && $2 != "000000") || index(path, p) != 1) print path }')"
+          if [ -n "$bad" ]; then
+            echo "staged entries that are not regular files under $prefix:" >&2
+            echo "$bad" >&2
+            exit 1
+          fi
       - name: Push the branch and print the PR command
         run: |
           branch="cassettes/$(date +%F)-${GITHUB_RUN_ID}"
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git checkout -b "$branch"
-          git add -- packages/pruefstand/tests/cassettes
           git commit -m "test(llm): re-record cassettes from real models"
           git push origin "$branch"
           {
