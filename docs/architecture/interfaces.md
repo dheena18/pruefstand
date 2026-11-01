@@ -602,7 +602,7 @@ def eval_fingerprint(*, dataset_name: str, dataset_version: str, splits: Sequenc
     # provider-reported version; otherwise they are shown as "not comparable". Never gate across judges.
 
 # core/errors.py
-class PruefstandError(Exception); class ConfigError; class TargetError; class LLMError; class PolicyViolation(LLMError); class BudgetExceeded
+class PruefstandError(Exception); class ConfigError; class TargetError; class LLMError(message, *, transient: bool = False, status: int | None = None); class PolicyViolation(LLMError); class BudgetExceeded
 class QuotaExhausted(LLMError)        # R9 (D9-07): provider quota exhausted (GitHub Models 429 + exhausted headers); raised by
                                       # LLMClient (T5.1), caught by the runner -> counts["judge_skipped"], reason "judge_quota"
 class DatasetError; class StoreError; class GateInputError; class PromptError; class CorpusMismatch   # all subclass PruefstandError
@@ -668,7 +668,9 @@ class CassetteRecorder:             # llm/cassettes.py, implemented in T1.4 (D13
     # record: wraps a real backend, writes request/response pairs (secrets stripped) to tests/cassettes/;
     # replay: serves them in unit tests. Cassettes are created only by `make cassettes` against real models
     # and re-recorded weekly (cassettes.yml). Every cassette-covered behaviour also has a `live` test.
-    # replay of a request with no recorded pair -> LLMError("no cassette for <prompt_id>"), never a network call
+    def wrap(self, backend: LLMBackend | None) -> LLMBackend   # record: backend required (else ValueError); replay: ignored
+    # file format: <dir>/<stable_hash(request)>.json = {recorded_at, model_id, model_version, request, response}; no headers, no keys
+    # replay of a request with no recorded pair -> LLMError("cassette miss: <hash> (no cassette for <prompt_id>)", transient=False), never a network call
 class CallRecorder: def record(self, req: LLMRequest, resp: LLMResponse | None, error: str | None) -> None; def to_parquet(self, path: Path) -> None
 
 def build_backend(ref: ModelRef, *, policy: LLMPolicyConfig) -> LLMBackend    # llm/factory.py (T1.4); refuses providers
@@ -677,11 +679,14 @@ def build_backend(ref: ModelRef, *, policy: LLMPolicyConfig) -> LLMBackend    # 
 def family_of(model_id: str) -> str               # llm/families.py (T5.1): reads core/data/model_families.yaml
                                                   # (id pattern -> family; the ONLY family table); unknown -> ConfigError
 
+# prompt file <prompt_id>_v<N>.txt: optional `### system`, required `### user`, `{{var}}` placeholders; sha256 over the file bytes
 class PromptRegistry:                                # loads *_v<N>.txt files shipped as package data
     def get(self, prompt_id: str, version: str) -> PromptTemplate
 class PromptTemplate(BaseModel): prompt_id: str; version: str; sha256: str; system: str; user: str
     def render(self, **vars: str) -> tuple[Message, ...]          # strict: missing/extra vars raise
 ```
+
+`llm_calls.parquet` dtypes (explicit schema, also for zero rows): `ts` Datetime(us, UTC); `role, model, provider, prompt_id, prompt_version, error` String (nullable `error`); `prompt_tokens, completion_tokens` Int64; `cost_usd, latency_ms` Float64; `cached, fallback` Boolean.
 
 `llm_calls.parquet` columns: `ts, role, model, provider, prompt_id, prompt_version, prompt_tokens,
 completion_tokens, cost_usd, latency_ms, cached, fallback, error` (a run with zero calls writes the same 13

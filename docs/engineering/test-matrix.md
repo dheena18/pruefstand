@@ -126,9 +126,9 @@ owning module's unit test dir (`pt/unit/<module>/`, `rd/unit/…`).
 | `LiteLLMBackend.acomplete` (T1.4 part) | `llm.backends.litellm` | T1.4 | `test_litellm_cassette.py`, `test_litellm_live.py` | replayed echo: `usage` mapped, `cost_usd == 0`; replayed 503 → `LLMError(transient=True)`; live echo; `max_tokens=1` | covered |
 | `LiteLLMBackend.acomplete` (T5.1 part) | `llm.backends.litellm` | T5.1 | `test_llamacpp_live.py` | `timeout_s` exceeded → transient error | covered |
 | Ollama translation (**R11** D219–D221; **R12** D252, D272) | `llm.backends.litellm` | T5.1 | `pt/unit/llm/test_qwen_thinking.py` | `ModelRef(id="ollama/qwen3.8:27b-q8_0")` → LiteLLM model `ollama_chat/qwen3.8:27b-q8_0`; `/api/chat` with `think: false`; catalogue options of that id sent (five keys); a request-level `num_ctx` override is replaced by the catalogue value; no `keep_alive`; `openai/<tag>` for an Ollama endpoint → `ConfigError`. Missing cases T5.1 adds (DEV12-07, DEV12-11): `api_base` from `endpoints.yaml` without `/v1`; an `ollama/` id absent from the catalogue → `ConfigError` **at request time** (`build_backend` succeeds; `test_factory.py` uses a catalogue id); a non-Qwen Ollama model (e.g. `ollama/gemma3:12b`) gets no `think` key handling beyond `think: false` and its own catalogue options; catalogue path from `PRUEFSTAND_GPU_CATALOGUE` (temp file) | covered |
-| `LLMClient.complete` (T1.4 part) | `llm.client` | T1.4 | `test_client.py`, `test_client_cache.py` | cache hit; 400 no retry; 503; key includes `model_version`; same answer, different context → miss | covered |
+| `LLMClient.complete` (T1.4 part) | `llm.client` | T1.4 | `pt/unit/llm/test_client.py` | replayed echo (1 call row); identical request → `cached=True`, no 2nd HTTP exchange, charged once; replayed 503 → `LLMError(transient=True, status=503)` with error row; `BudgetExceeded` still leaves the row; policy violation → no call | covered |
 | `LLMClient.complete` (T5.1 part) | `llm.client` | T5.1 | `test_retries.py` | recorded 429 + `Retry-After` twice then OK → 3 calls; timeout → transient after retries | covered |
-| `LLMClient.complete_json` (T1.4 part) | `llm.client` | T1.4 | `test_client.py` | fenced JSON; umlauts kept | covered |
+| `LLMClient.complete_json` (T1.4 part) | `llm.client` | T1.4 | `pt/unit/llm/test_client.py` | recorded fenced JSON parsed; recorded truncated answer → repair with doubled `max_tokens` → 2 rows | covered |
 | `LLMClient.complete_json` (T5.1 part) | `llm.client` | T5.1 | `test_complete_json.py` | recorded real output with prose before the JSON → parsed; invalid → valid after 2 calls; invalid twice → `LLMError` | covered |
 | Quota → `QuotaExhausted` (R9) | `llm.client` | T5.1 | `test_retries.py`, `test_judge_mode.py` | exhausted `github/…` → `QuotaExhausted`, next call to the same model raises without a network call | covered |
 | `Budget.charge` (T1.4 part) | `llm.budget` | T1.4 | `test_budget.py` | USD, tokens, requests limits; all `None` | covered |
@@ -138,15 +138,23 @@ owning module's unit test dir (`pt/unit/<module>/`, `rd/unit/…`).
 | `Budget.requests_remaining` (T1.8 part) | `llm.budget` | T1.8 | `test_judge_errors.py` | read by the runner for information only (never raises, never blocks) | covered |
 | `CallRecorder.record`, `.to_parquet` (T1.4 part) | `llm.recorder` | T1.4 | `test_recorder.py` | 3 rows → 13 columns; 0 records → same 13 columns with documented dtypes | covered |
 | `CallRecorder.record` (T5.1 part) | `llm.recorder` | T5.1 | `test_recorder.py` | Ollama and llama.cpp records fill the same 13 columns | covered |
-| `LLMPolicy.check` (T1.4 part) | `llm.policy` | T1.4 | `test_factory.py` | provider not allowed; paid | covered |
+| `LLMPolicy.check` (T1.4 part) | `llm.policy` | T1.4 | `pt/unit/llm/test_factory.py` | provider not allowed; paid; provider ≠ model prefix; `openrouter` only `:free`; private-doc prompt prefix and canary token / fact to an external provider refused, local allowed | covered |
 | `LLMPolicy.check` (T5.1 part) | `llm.policy` | T5.1 | `test_policy_guard.py` | canary to `github/` → `PolicyViolation`, no network call; `datagen.private_docs` prefix | covered |
-| `CassetteRecorder` | `llm.cassettes` | T1.4 | `pt/unit/llm/test_cassette_recorder.py` | record around a real llama.cpp backend (`live`) writes the pair with `Authorization` stripped; replay serves it offline; replay miss → `LLMError`, no network call | covered |
-| `build_backend` (T1.4 part) | `llm.factory` | T1.4 | `test_factory.py` | local URL from env; paid → `ConfigError` | covered |
+| `CassetteRecorder` | `llm.cassettes` | T1.4 | `pt/unit/llm/test_cassette_recorder.py` | replay of recorded real pairs (identical request → stored response, `cached=False`); `seed` differs → `LLMError("cassette miss…", transient=False)`; `wrap(None)` replay ok / record → `ValueError`; files named `stable_hash(request)` without key material; record around a real llama.cpp backend (`live`) | covered |
+| `build_backend` (T1.4 part) | `llm.factory` | T1.4 | `pt/unit/llm/test_factory.py` | local URL from env (and default); `github/` uses `PRUEFSTAND_GH_MODELS_TOKEN`; `ollama/` → `ConfigError` until T5.1; paid / unlisted → `ConfigError`; `ollama_chat/`, `openai/` ids → `ConfigError` naming D221 | covered |
 | `build_backend` (T5.1 part) | `llm.factory` | T5.1 | `test_factory.py` | `ollama` (D209) via `endpoints.yaml` `base_url_env` (`OLLAMA_GPU0_URL`/`OLLAMA_GPU1_URL`; unset → `ConfigError`); **R11:** endpoints file from `PRUEFSTAND_GPU_ENDPOINTS` (temp file, DEV11-22); `endpoints.yaml.model_id` must equal the `ollama/<tag>` id (D221) | covered |
 | `family_of` | `llm.families` | T5.1 | `test_families.py` | catalogue, distill pattern, unknown → `ConfigError`, family plan rows, `models.yaml` consistency | covered |
 | `invalidate_judge`, `clear_drift` (cache epoch ≠ `judge_epoch`) | `llm.cache_epochs` | T5.1 | `test_cache_epochs.py` | epoch 0 → 1; verdict cached before is a miss, other models still hit; `clear_drift` removes the flag; neither touches `eval_fingerprint` | covered |
 | Qwen3 thinking off + `<think>` strip (D95, R9 D191) | `llm.client` | T5.1 | `test_qwen_thinking.py` | `qwen3*` request has `enable_thinking: false` (llama.cpp) / `"think": false` on native `/api/chat` (Ollama, R11 D219; never `/no_think`); leading `<think>` block stripped, strip function returns `(text, True)`; counted in `RunManifest.counts["think_stripped"]` by the pipeline | covered |
 | `PromptRegistry.get` | `llm.prompts` | T1.4 | `test_prompts.py` | unknown version → `PromptError` | covered |
+| `extract_json_object` | `llm.json_extract` | T1.4 | `pt/unit/llm/test_json_extract.py` | plain, fenced, prose around, braces inside strings, umlauts kept, unbalanced → `None` | covered |
+| `cache_key` (T1.4 part) | `llm.client` | T1.4 | `pt/unit/llm/test_client.py` | every request field changes the key; equal requests equal keys | covered |
+| `LLM cache key` includes `model_version` (D113) | `llm.client` | T5.1 | `test_client_cache.py` | same answer text from a model with another `model_version` → miss | planned |
+| `strip_think`, `completion_kwargs` (T1.4 part: request builder) | `llm.backends.litellm` | T1.4 | `pt/unit/llm/test_litellm_cassette.py` | `qwen3` id → `enable_thinking: false`; `qwen2.5` → no `extra_body`; parameters, timeout, `num_retries=0`, JSON mode; `<think>` strip cases; missing token variable named, no value | covered |
+| `litellm_model` (D221) | `llm.backends.litellm` | T1.4 | `pt/unit/llm/test_factory.py` | `ollama/<tag>` → `ollama_chat/<tag>`; `openai_compatible_local/<m>` → `openai/<m>`; `github/…` unchanged; prefixed ids refused | covered |
+| `validate_policy_config`, `provider_of`, `is_paid` | `llm.policy` | T1.4 | `pt/unit/llm/test_factory.py` | paid provider listed without `allow_paid` → `ConfigError`; opt-in free tiers accepted; fallback judge provider must be listed | covered |
+| `fetch_file`, `load_models`, `main` (T1.4 S9) | `scripts/models/fetch.py` | T1.4 | `scripts/models/tests/test_fetch.py` | wrong SHA-256 → error and file removed; correct → idempotent second call; corrupt file replaced; manifest complete | covered |
+| `record_cassettes.sh` (T1.4 S10) | `scripts/models/record_cassettes.sh` | T1.4 | `pt/live/llm/test_record.py` | records `echo_ok`, `server_503` (while loading), `json_fenced`, `json_invalid_then_valid` and the backend cassettes from the real model; fails when a recording does not show the intended behaviour | covered |
 
 ## adapters (§4)
 
@@ -490,10 +498,10 @@ UI tests (pages × states × theme × locale × viewport) are specified in `docs
 
 | Status | Rows |
 | --- | --- |
-| covered | 316 |
-| planned | 31 (R13 rows and rows whose case round 13 changed; owners T0.7, T1.8, T1.9, T1.10, T3.1a, T3.6, T4.1, T5.4, T6.1, T6.2a, T6.2b, T7.1b, T7.2, T7.3, T8.1, T8.5) |
+| covered | 323 |
+| planned | 32 (R13 rows and rows whose case round 13 changed; owners T0.7, T1.8, T1.9, T1.10, T3.1a, T3.6, T4.1, T5.1, T5.4, T6.1, T6.2a, T6.2b, T7.1b, T7.2, T7.3, T8.1, T8.5) |
 | weak | 1 (backup bundle: drill only, acceptable for an ops script) |
-| **total** | **348** |
+| **total** | **356** |
 
 Round-13 changes (D296): the round-12 table (241 covered / 29 open / 1 weak = 271 rows) was re-derived: 40 multi-owner
 rows split into 90 single-owner rows (+50); 29 open rows flipped (`covered` unless round 13 changed the case); 21 new
@@ -527,3 +535,5 @@ test them: `FixedTokenChunker`, LLM models, `JudgeTask`/`JudgeVerdict`, `Dataset
 mapping, `write_gate_json`, and the R9 additions on both); file names corrected (`test_cassette_recorder.py`,
 `test_gate_models.py` + `test_tables.py`, `test_perturb_case_async.py`, `test_fixed_chunker.py`,
 `test_baseline_cli.py`); new rows for every R9 symbol and for the out-of-package symbols that Done-when lines name.
+
+T1.4 (D344–D346): +7 `covered` rows (`extract_json_object`, `cache_key`, request builder, `litellm_model`, policy validation, `fetch.py`, `record_cassettes.sh`) and +1 `planned` row (cache key with `model_version`, owner T5.1); five T1.4 rows re-worded to the tests that exist.

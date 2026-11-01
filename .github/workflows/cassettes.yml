@@ -1,6 +1,6 @@
 name: cassettes
 
-# SKELETON (T0.2): the weekly re-recording of tests/cassettes/ from real model calls arrives in T1.4.
+# Weekly re-recording of tests/cassettes/ from real model calls (T1.4 S10: `make cassettes`).
 # The workflow never opens a PR: it pushes branch cassettes/<date> and prints the `gh pr create`
 # command; the maintainer opens the PR (Actions may not create PRs, T0.5 S3).
 on:
@@ -23,5 +23,37 @@ jobs:
       contents: write  # own cassettes/<date> branch only
       models: read  # GitHub Models for the judged cassettes
     steps:
-      - name: Placeholder
-        run: echo "cassettes arrive in T1.4"
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: true  # needed to push the own cassettes/<date> branch
+      - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
+        with:
+          version: "0.13.6"
+      - name: Install
+        run: uv sync --all-packages --all-extras
+      - name: Fetch the pinned test model
+        run: uv run python scripts/models/fetch.py
+      - name: Record cassettes from the real models
+        env:
+          PRUEFSTAND_GH_MODELS_TOKEN: ${{ github.token }}  # D333; used by the judged recordings
+        run: make cassettes
+      - name: Push branch cassettes/<date> and print the PR command
+        run: |
+          if git diff --quiet -- 'packages/**/cassettes' && [ -z "$(git ls-files --others --exclude-standard -- 'packages/**/cassettes')" ]; then
+            echo "Cassettes unchanged." >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+          branch="cassettes/$(date +%F)"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git checkout -b "$branch"
+          git add -- 'packages/**/cassettes'
+          git commit -m "test(llm): re-record cassettes from real models"
+          git push origin "$branch"
+          {
+            echo "Cassettes changed. Open the PR yourself (Actions may not create PRs, T0.5 S3):"
+            echo
+            echo '```'
+            echo "gh pr create --base main --head $branch --title 'test(llm): re-record cassettes' --body 'Weekly re-recording (cassettes.yml).'"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
