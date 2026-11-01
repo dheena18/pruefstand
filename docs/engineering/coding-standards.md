@@ -162,6 +162,7 @@ with exactly these exceptions; review rejects any other `noqa` for `PLR0913`, `P
 | `Runner.__init__(adapter, metrics, judges, cache, budget, cfg, *, hard_fail)` (§8) | `runner/runner.py` | `PLR0917` | 6 positional |
 | `cluster_bootstrap_ci(stat, df, cluster_col, n_resamples, confidence, rng)` (§6) | `judges/calibration.py` | `PLR0917` | 6 positional |
 | `CassetteRecorder.__init__(self, dir, mode)` (§3) | `llm/cassettes.py` | `A002` | `dir` shadows a builtin |
+| `simulate_paired(n_clusters, cluster_size, true_delta, *, sigma_d, icc, kind, discordance, rng, cluster_sizes, n_sims)` (testing-strategy §3.4) | `packages/pruefstand/tests/testsupport/sim_data.py` | `PLR0913` | 10 args: 8 of §3.4 + `cluster_sizes` (T1.6 prompt) + `n_sims` (vectorised draws); test helper, keyword-only after 3 positionals |
 | `validate_dataset(dir)` (§14) | `dataset/validate.py` | `A002` | `dir` |
 | `export_hf(dir, repo_id, private, *, dry_run)` (§14) | `dataset/export_hf.py` | `A002`, `FBT001` | `dir`; positional bool `private` |
 | `PromptTemplate.render(**vars)` (§3) | `core/models/llm.py` | `A002` | `vars` |
