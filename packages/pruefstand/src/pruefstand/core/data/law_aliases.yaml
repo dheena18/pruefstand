@@ -162,3 +162,71 @@ eu:
   DSA:
     - Digital Services Act
     - Gesetz über digitale Dienste
+  # --- T2.4: the other 16 pinned EUR-Lex acts (data/sources.yaml); the first four are above.
+  DMA:
+    - Gesetz über digitale Märkte
+    - Gesetzes über digitale Märkte
+    - Digital Markets Act
+  Data Act:
+    - Datenverordnung
+    - Datengesetz
+  DGA:
+    - Daten-Governance-Rechtsakt
+    - Data Governance Act
+  ePrivacy-RL:
+    - ePrivacy-Richtlinie
+    - ePrivacy Directive
+    - Datenschutzrichtlinie für elektronische Kommunikation
+    - Directive on privacy and electronic communications
+  CRA:
+    - Cyberresilienzgesetz
+    - Cyber-Resilienz-Verordnung
+    - Cyber Resilience Act
+  DORA:
+    - DORA-VO
+    - Verordnung über die digitale operationale Resilienz
+    - Digital Operational Resilience Act
+  eIDAS-VO:
+    - eIDAS
+    - eIDAS-Verordnung
+    - eIDAS Regulation
+  Strombinnenmarkt-RL:
+    - Elektrizitätsbinnenmarkt-Richtlinie
+    - Elektrizitätsbinnenmarktrichtlinie
+    - Strombinnenmarktrichtlinie
+    - Electricity Directive
+  Strombinnenmarkt-VO:
+    - Elektrizitätsbinnenmarkt-Verordnung
+    - Elektrizitätsbinnenmarktverordnung
+    - Strombinnenmarktverordnung
+    - Electricity Regulation
+  EED:
+    - Energieeffizienzrichtlinie
+    - Energieeffizienz-Richtlinie
+    - Energy Efficiency Directive
+  REMIT:
+    - REMIT-Verordnung
+    - REMIT-VO
+    - REMIT Regulation
+  Whistleblower-RL:
+    - Hinweisgeberrichtlinie
+    - Hinweisgeber-Richtlinie
+    - Whistleblower Directive
+    - Whistleblowing Directive
+  VRRL:
+    - Verbraucherrechterichtlinie
+    - Verbraucherrechte-Richtlinie
+    - Consumer Rights Directive
+  ProdHaft-RL:
+    - Produkthaftungsrichtlinie
+    - Produkthaftungs-Richtlinie
+    - Product Liability Directive
+  Arbeitszeit-RL:
+    - Arbeitszeitrichtlinie
+    - Arbeitszeit-Richtlinie
+    - Working Time Directive
+  Arbeitsbedingungen-RL:
+    - Arbeitsbedingungenrichtlinie
+    - Arbeitsbedingungen-Richtlinie
+    - Working Conditions Directive
+    - Transparent and Predictable Working Conditions Directive

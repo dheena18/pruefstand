@@ -334,8 +334,9 @@ owning module's unit test dir (`pt/unit/<module>/`, `rd/unit/…`).
 | `OldpLoader.load`, `OldpStats`, `iter_rows` | `ingest.oldp`, `ingest.records` | T2.3 | `test_oldp.py`, `test_oldp_hardening.py`, `test_oldp_memory.py` | dictionary-encoded parquet bomb read row by row (peak RSS), oversized row group skipped, boolean id rejected, `datetime.date` columns; jurisdiction `Arbeitsgericht`, title with Aktenzeichen, ODbL, HTML stripped, `&uuml;` → „Kündigung“; `tenant_domain`; parquet == JSONL; scripts/comments dropped, NFC, hyphenation, Randnummer lines; empty content kept; counted problems (bad record, duplicate, bad JSON, oversized line/content/file, unreadable parquet, `max_documents`, no files), missing dir raises, no socket opened; HTML bombs and linear time | covered |
 | `DecisionSectionChunker.chunk`, `split_sections`, `has_named_sections` | `ingest.chunkers.decision` | T2.3 | `test_decision_chunker.py` | heading order; „Gründe“ alias; heading variants (case, colon, letter-spaced, enumerator, `#`); heading is a whole line; unnamed boundaries; trailer dropped; no headings → 512/64 windows, `section is None`; 3 000-token Gründe → ≥ 6 chunks, stable ids; Randnummer blocks kept whole; restarting list; Randnummer gap 10 vs 11; trailer only in the last quarter, `dropped_trailer`; oversized Randnummer windows; real fixtures; linear time | covered |
 | `FixedTokenChunker.chunk`, `token_windows` | `ingest.chunkers.fixed` | T2.3 | `pt/unit/ingest/test_fixed_chunker.py` | empty doc → `[]`; 10-token doc → 1 chunk; 25 tokens, `max_tokens=10, overlap=3` → windows 0, 7, 14, 21 (last shorter, R9 D9-24); union of windows = all tokens (also Hypothesis over length, size, overlap); no split of „Kündigungsschutzgesetz“/„Straße"/combining characters; stable ids; invalid parameters; linear time | covered |
-| `EurLexLoader.load` | `ingest.eurlex` | T2.4 | `test_eurlex.py`, `test_eurlex_citation_keys.py` | CELEX; DE/EN; `citation_en` on `Document.metadata` (R9 D9-25) | covered |
-| `ArticleChunker.chunk` + alignment | `ingest.chunkers.article`, `ingest.align` | T2.4 | `test_article_chunker.py` | „Rechtmäßigkeit“; EN citation; `parallel_id`; missing article → error | covered |
+| `EurLexLoader.load` | `ingest.eurlex`, `ingest.eurlex_parse`, `ingest.eurlex_legacy`, `ingest.eurlex_meta`, `ingest.eurlex_blocks`, `ingest.eurlex_cli` | T2.4 | `test_eurlex.py`, `test_eurlex_citation_keys.py`, `test_eurlex_hardening.py`, `test_eurlex_cli.py`, `test_eurlex_real_corpus.py` | CELEX; DE/EN; `citation_en` on `Document.metadata` (R9 D9-25); eli, flat, legacy layouts; size/depth/element caps, no network, linear time (4x input <= 8x time); `--stats` line | covered |
+| EUR-Lex act table + 16 `law_aliases.yaml` rows | `ingest.eurlex_acts`, `core.data` | T2.4 | `test_eurlex_citation_keys.py`, `pt/unit/core/test_citations.py` | 20 CELEX = `data/sources.yaml`; key survives `extract_citations`; EN label resolves to the same key | covered |
+| `ArticleChunker.chunk` + alignment | `ingest.chunkers.article`, `ingest.align` | T2.4 | `test_article_chunker.py`, `test_eurlex.py` | „Rechtmäßigkeit“; EN citation; `parallel_id`; recital blocks; paragraph split decided for both languages; list articles never split; missing article/recital → `DatasetError` naming act and id | covered |
 | `load_citation_graph` | `ingest.citation_graph` | T2.3 | `test_citation_graph.py` | sorted normalised edges; unknown law kept and logged once per code; Case→Case and unresolved slugs left out; `decisions_dir`; parquet with the real schema; bad rows skipped; 20 000 edges fast; fails closed (no file, corrupt only, all unresolved), `problems` returned, Case→Law filter, boolean ids | covered |
 | `html_to_text` | `ingest.html_text` | T2.3 | `test_html_text.py` | 4x markup ≤ 8x time for adjacent script/style/title; tail kept; parser built with `huge_tree=False`; blocks → lines, inline tags keep words, tables, entities, script/style/comment dropped, plain text, broken markup, NFC, hyphenation; linear time; pathological markup terminates | covered |
 | `classify_court`, `tenant_domain` | `ingest.oldp_courts` | T2.3 | `test_oldp_courts.py` | 25 court names → jurisdiction; level; labour / insurance / other with the 4 000-character head | covered |
@@ -528,10 +529,10 @@ UI tests (pages × states × theme × locale × viewport) are specified in `docs
 
 | Status | Rows |
 | --- | --- |
-| covered | 348 |
+| covered | 349 |
 | planned | 30 (R13 rows and rows whose case round 13 changed; owners T1.9, T1.10, T3.1a, T3.6, T4.1, T5.1, T5.4, T6.1, T6.2a, T6.2b, T7.1b, T7.2, T7.3, T8.1, T8.5) |
 | weak | 1 (backup bundle: drill only, acceptable for an ops script) |
-| **total** | **379** |
+| **total** | **380** |
 
 Round-13 changes (D296): the round-12 table (241 covered / 29 open / 1 weak = 271 rows) was re-derived: 40 multi-owner
 rows split into 90 single-owner rows (+50); 29 open rows flipped (`covered` unless round 13 changed the case); 21 new
