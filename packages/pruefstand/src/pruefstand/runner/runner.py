@@ -181,6 +181,8 @@ def _case_counts(
 async def _drive(tasks: list["asyncio.Task[None]"]) -> StopReason:
     """Wait for the case tasks; on the first failure or on cancellation stop the rest."""
     stop: StopReason = "completed"
+    if not tasks:
+        return stop
     try:
         await asyncio.wait(tasks, return_when=asyncio.FIRST_EXCEPTION)
     except (asyncio.CancelledError, KeyboardInterrupt):

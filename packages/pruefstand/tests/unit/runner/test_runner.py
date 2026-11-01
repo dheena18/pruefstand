@@ -184,3 +184,11 @@ async def test_cancellation_returns_an_aborted_run_with_the_finished_cases(
     assert results.manifest.infra_error is None
     assert [r.case_id for r in results.records] == ["law-0000", "law-0001", "law-0002"]
     assert results.manifest.n_cases == 8
+
+
+async def test_no_cases_is_a_complete_empty_run(adapter: HttpTargetAdapter) -> None:
+    results = await run_cases(make_runner(adapter), [])
+    assert results.records == ()
+    assert results.values == ()
+    assert results.manifest.complete is True
+    assert results.manifest.n_cases == 0
