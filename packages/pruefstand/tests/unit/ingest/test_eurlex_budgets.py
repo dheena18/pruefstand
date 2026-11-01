@@ -208,9 +208,11 @@ page = (
     '<html><body><div id="art_1"><p class="oj-ti-art">Article 1</p><p>x</p></div>'
     + '<strong>' * 190 + 'lorem ipsum dolor ' * 216000 + '</strong>' * 190 + '</body></html>'
 ).encode()
+rss = lambda: resource.getrusage(resource.RUSAGE_SELF).ru_maxrss
+before = rss()  # a forked child starts from the parent peak, so only the growth counts
 start = time.perf_counter()
 act = parse_act(page)
-print(round(time.perf_counter() - start, 2), resource.getrusage(resource.RUSAGE_SELF).ru_maxrss)
+print(round(time.perf_counter() - start, 2), rss() - before)
 """
 
 
@@ -220,4 +222,4 @@ def test_nested_strong_title_is_bounded_in_time_and_memory() -> None:
     )
     seconds, max_rss_kb = (float(x) for x in out.stdout.split())
     assert seconds < 5
-    assert max_rss_kb < 400_000
+    assert max_rss_kb < 300_000  # the unbounded version grew by about 700 MB
