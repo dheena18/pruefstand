@@ -1,5 +1,7 @@
 """EUR-Lex parser budgets and shapes found in review: siblings, footnotes, nesting (T2.4)."""
 
+import subprocess
+import sys
 import time
 from collections.abc import Callable
 from pathlib import Path
@@ -137,3 +139,85 @@ def test_only_ascii_digits_make_an_article_number() -> None:
     ).encode()
     with pytest.raises(EurLexParseError, match="Article"):
         parse_act(page)
+
+
+ART = '<div id="art_1"><p class="oj-ti-art">Article 1</p><p>a</p></div>'
+LOREM = "lorem ipsum dolor " * 11_000
+
+
+def total_chars(page: bytes) -> int:
+    """Output size, or 0 when the budget refuses the file (it must never expand it)."""
+    try:
+        return sum(len(b.body) + len(b.title) for b in parse_act(page).blocks)
+    except EurLexParseError as err:
+        if err.kind != "too_much_text":
+            raise
+        return 0
+
+
+@pytest.mark.parametrize("kind", ["li", "table", "art-li"])
+def test_nested_blocks_in_lists_and_tables_do_not_multiply_the_output(kind: str) -> None:
+    n = 40
+    if kind == "li":
+        opens = "".join(f'<div id="rct_{i + 1}"><ul><li>' for i in range(n))
+        closes = "</li></ul></div>" * n
+    elif kind == "table":
+        opens = "".join(f'<div id="rct_{i + 1}"><table><tr><td>' for i in range(n))
+        closes = "</td></tr></table></div>" * n
+    else:
+        opens = "".join(f'<div id="art_{i + 2}"><ul><li>' for i in range(n))
+        closes = "</li></ul></div>" * n
+    page = f"<html><body>{ART}{opens}<p>{LOREM}</p>{closes}</body></html>".encode()
+    assert total_chars(page) <= len(page)
+
+
+def test_nested_tables_are_bounded_by_the_budget() -> None:
+    n = 60
+    opens = "<table><tr><td>" * n
+    closes = "</td></tr></table>" * n
+    page = f'<html><body>{ART}<div id="rct_1">{opens}{LOREM}{closes}</div></body></html>'.encode()
+    start = time.perf_counter()
+    assert total_chars(page) <= len(page)
+    assert time.perf_counter() - start < 10
+
+
+def test_flat_recital_scan_is_linear_for_nested_tables() -> None:
+    def make(n: int) -> Callable[[], object]:
+        opens = "<table><tr><td>" * n
+        closes = "</td></tr></table>" * n
+        page = (
+            f"<html><body>{opens}(1) text{closes}"
+            '<p class="ti-art">Article 1</p><p>a</p></body></html>'
+        ).encode()
+
+        def run() -> object:
+            try:
+                return parse_act(page)
+            except EurLexParseError:
+                return None
+
+        return run
+
+    assert_linear(make, 20)
+
+
+NESTED_STRONG = """
+import resource, sys, time
+from pruefstand.ingest.eurlex_parse import parse_act
+page = (
+    '<html><body><div id="art_1"><p class="oj-ti-art">Article 1</p><p>x</p></div>'
+    + '<strong>' * 190 + 'lorem ipsum dolor ' * 216000 + '</strong>' * 190 + '</body></html>'
+).encode()
+start = time.perf_counter()
+act = parse_act(page)
+print(round(time.perf_counter() - start, 2), resource.getrusage(resource.RUSAGE_SELF).ru_maxrss)
+"""
+
+
+def test_nested_strong_title_is_bounded_in_time_and_memory() -> None:
+    out = subprocess.run(  # noqa: S603 - fixed argv, code is a constant of this file
+        [sys.executable, "-I", "-c", NESTED_STRONG], capture_output=True, text=True, check=True
+    )
+    seconds, max_rss_kb = (float(x) for x in out.stdout.split())
+    assert seconds < 5
+    assert max_rss_kb < 400_000
