@@ -97,7 +97,10 @@ def test_openapi_examples_equal_the_example_files() -> None:
         "InfoResponse": "info.json",
         "HealthResponse": "health.json",
     }
+    meta = load_example("_meta.json")
     for component, name in first_examples.items():
+        if meta[name]["source"] != "openapi-example":
+            continue  # T1.13: recorded from the real rag-demo, no longer the OpenAPI example
         assert schemas[component]["examples"][0] == load_example(name), name
 
 

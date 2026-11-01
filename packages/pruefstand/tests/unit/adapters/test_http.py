@@ -42,12 +42,13 @@ async def test_query_ok_parses_answer_citations_and_chunks(
 ) -> None:
     router.post("/v1/query").respond(200, json=load_example("query_ok.json"))
     response = await adapter.query(request())
-    assert response.answer == "Einen Monat zum Ende eines Kalendermonats (§ 622 Abs. 2 Nr. 1 BGB)."
-    assert response.citations == ("§ 622 Abs. 2 Nr. 1 BGB",)
+    example = load_example("query_ok.json")  # recorded from the real rag-demo (T1.13)
+    assert response.answer == example["answer"]
+    assert response.citations == tuple(example["citations"])
     assert response.chunks is not None
-    assert response.chunks[0].doc_id == "gii-bgb-622"
+    assert response.chunks[0].doc_id == example["chunks"][0]["doc_id"]
     assert response.chunks[0].used_in_prompt is True
-    assert response.chunks[1].used_in_prompt is None
+    assert response.chunks[1].used_in_prompt is example["chunks"][1].get("used_in_prompt")
 
 
 async def test_query_without_chunks_gives_none(
@@ -70,7 +71,7 @@ async def test_refused_example_parses(router: respx.MockRouter, adapter: HttpTar
     router.post("/v1/query").respond(200, json=load_example("query_refused.json"))
     response = await adapter.query(request())
     assert response.refused is True
-    assert response.chunks == ()
+    assert len(response.chunks or ()) == len(load_example("query_refused.json")["chunks"])
 
 
 @pytest.mark.parametrize(

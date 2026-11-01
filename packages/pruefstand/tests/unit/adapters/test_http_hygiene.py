@@ -220,7 +220,7 @@ async def test_wire_parsing_does_not_use_the_default_executor(
     router.post("/v1/query").respond(200, json=load_example("query_ok.json"))
     adapter = HttpTargetAdapter(HttpTargetConfig(type="http", url=BASE, timeout_s=2))
     try:
-        assert (await adapter.query(REQ)).answer.startswith("Einen Monat")
+        assert (await adapter.query(REQ)).answer == load_example("query_ok.json")["answer"]
     finally:
         release.set()
         await blocker
