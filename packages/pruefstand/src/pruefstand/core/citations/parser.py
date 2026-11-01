@@ -9,7 +9,7 @@ and logged at debug level.
 Conventions: number lists (``622, 623``, ``17 und 18``, ranges) expand to one citation each for
 every head; qualifiers after a list belong to its last number; several qualifier values
 (``Abs. 2, 3``, ``lit. a und b``) keep the first. A law-less citation borrows the law of the next
-one when joined by ``i.V.m.`` or, for heads of the same kind, by ``und``/``sowie``/``,``.
+one when both heads are of the same kind and joined by ``i.V.m.``, ``und``, ``sowie`` or ``,``.
 ``§`` (kind ``para``) exists only for national laws: ``§ 6 DSGVO`` is dropped.
 """
 
@@ -38,7 +38,9 @@ _RANGE = re.compile(rf"\s*(?:bis|[–—-])\s*(?P<end>{_NUM})")
 _LIST_SEP = re.compile(r"\s*(?:,|&|und|and|sowie)(?=\s*[0-9])")
 _LINK = re.compile(r"\s*(?:i\.\s?V\.\s?m\.|iVm|in\s+Verbindung\s+mit)\s*")
 _AND = re.compile(r"\s*(?:,|&|und|and|sowie)\s*")
-_MAX_RANGE = 200
+_MAX_RANGE = 50
+_MIN_CAP = 100
+_CAP_DIVISOR = 20  # at most one citation per 20 characters of input (floor: 100)
 _FIELDS = ("absatz", "satz", "nummer", "lit")
 
 
@@ -175,11 +177,13 @@ def _parse_at(text: str, head: re.Match[str]) -> _Parsed | None:
 
 
 def _lend_target(text: str, pos: int, kind: Kind) -> int | None:
-    """Offset of the next head if a law-less citation may borrow its law, else ``None``."""
+    """Offset of the next head if a law-less citation may borrow its law, else ``None``.
+
+    Lending needs a link (``i.V.m.``, ``und``, ``sowie``, ``,``) and heads of the same kind, so a
+    ``§`` is never completed with the law of an ``Art.`` (``Art. 6 i.V.m. § 280 BGB``).
+    """
     link = _LINK.match(text, pos)
-    if link is not None:
-        return link.end() if _HEAD.match(text, link.end()) else None
-    sep = _AND.match(text, pos)
+    sep = link or _AND.match(text, pos)
     if sep is None:
         return None
     nxt = _HEAD.match(text, sep.end())
@@ -203,7 +207,8 @@ def extract_citations(text: str) -> list[Citation]:
 
     Returns:
         Citations in order; a citation without a resolvable law is dropped (debug log).
-        Never raises; runs in time linear in ``len(text)``.
+        Never raises. The scan is linear in ``len(text)``; the result has at most
+        ``max(100, len(text) // 20)`` citations (the excess is dropped in order).
 
     Examples:
         >>> [c.law for c in extract_citations("§§ 622, 623 BGB und Art. 6 DSGVO")]
@@ -233,6 +238,15 @@ def extract_citations(text: str) -> list[Citation]:
         else:
             _drop("no_law", head.start())
             pending.clear()
+    return _cap(found, len(text))
+
+
+def _cap(found: list[Citation], length: int) -> list[Citation]:
+    """Bound the output (range expansion could otherwise multiply the input size)."""
+    cap = max(_MIN_CAP, length // _CAP_DIVISOR)
+    if len(found) > cap:
+        _log.debug("citations_capped", found=len(found), cap=cap)
+        return found[:cap]
     return found
 
 

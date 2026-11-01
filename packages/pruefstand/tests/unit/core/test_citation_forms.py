@@ -73,6 +73,11 @@ def test_full_granularity_keeps_first_lit_of_a_list() -> None:
         ("§ 6 DSGVO und § 7 BGB", ["§ 7 BGB"]),
         ("Art. 1 GG und Art. 20 GG", ["Art. 1 GG", "Art. 20 GG"]),
         ("§ 1 BGB und KSchG", ["§ 1 BGB"]),
+        ("Art. 6 i.V.m. § 280 BGB", ["§ 280 BGB"]),
+        ("Art. 5 Abs. 1 lit. a i.V.m. § 280 BGB", ["§ 280 BGB"]),
+        ("§ 5 i.V.m. Art. 1 GG", ["Art. 1 GG"]),
+        ("§ 1 und Art. 3 GG", ["Art. 3 GG"]),
+        ("§ 1 und § 5 DSGVO. Art. 3 GG", ["Art. 3 GG"]),
     ],
 )
 def test_law_lending(text: str, expected: list[str]) -> None:
@@ -81,7 +86,7 @@ def test_law_lending(text: str, expected: list[str]) -> None:
 
 @pytest.mark.parametrize(
     ("text", "count"),
-    [("§§ 1 bis 200 BGB", 200), ("§§ 1 bis 201 BGB", 2), ("§§ 1 bis 1000 BGB", 2)],
+    [("§§ 1 bis 50 BGB", 50), ("§§ 1 bis 51 BGB", 2), ("§§ 1 bis 1000 BGB", 2)],
 )
 def test_range_cap(text: str, count: int) -> None:
     assert len(extract_citations(text)) == count
@@ -127,3 +132,19 @@ def test_multi_word_abbreviation_parses() -> None:
     assert _norm("§ 7 SGB IV") == ["§ 7 SGB IV"]
     assert _norm("§ 7 Abs. 1 Sozialgesetzbuch  Viertes Buch") == ["§ 7 Abs. 1 SGB IV"]
     assert parse_one(normalise(_c("§ 7 SGB IV"))) == _c("§ 7 SGB IV")
+
+
+def test_output_is_capped_against_amplification() -> None:
+    text = "§§ 1 bis 50 BGB " * 6000
+    start = time.perf_counter()
+    found = extract_citations(text)
+    assert time.perf_counter() - start < 5.0
+    assert len(found) == max(100, len(text) // 20)
+    assert [c.number for c in found[:2]] == ["1", "2"]  # the excess is dropped in order
+
+
+def test_short_text_keeps_the_floor_of_100() -> None:
+    assert (
+        len(extract_citations("§§ 1 bis 50 BGB und §§ 60 bis 109 BGB und §§ 200 bis 249 BGB"))
+        == 100
+    )
