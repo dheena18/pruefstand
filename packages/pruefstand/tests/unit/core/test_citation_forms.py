@@ -96,23 +96,44 @@ def test_over_cap_range_keeps_both_ends() -> None:
     assert _norm("§§ 1 bis 1000 BGB") == ["§ 1 BGB", "§ 1000 BGB"]
 
 
+# Scaling check, not a wall-clock bound: a 4x larger input must cost at most _MAX_RATIO x the base
+# input, measured as min-of-N perf_counter ratios inside one process (load cancels out). Linear is
+# ~4x, the original quadratic bug ~16x. The absolute bound is only a hang guard.
+_SCALE = 4
+_MAX_RATIO = 8.0
+_HANG_GUARD_S = 120.0
+_REPS = 3
+
+
+def _best_time(text: str) -> float:
+    best = float("inf")
+    for _ in range(_REPS):
+        start = time.perf_counter()
+        extract_citations(text)
+        best = min(best, time.perf_counter() - start)
+    return best
+
+
+def _assert_scales_linearly(unit: str, count: int) -> None:
+    small = _best_time(unit * count)
+    big = _best_time(unit * count * _SCALE)
+    assert big < _HANG_GUARD_S
+    assert big <= _MAX_RATIO * max(small, 1e-3), f"{_SCALE}x input took {big / small:.1f}x"
+
+
 @pytest.mark.parametrize(
-    "text",
+    ("unit", "count"),
     [
-        "s. 1 " * 20000,
-        "Sec. 1 s. 1 " * 10000,
-        "§ 1 Abs. 1 " * 20000,
-        "§ 1 und " * 20000,
-        "§ 1 i.V.m. " * 20000,
-        "s. 1 Abs. 1 Sec. 2 § 3 Art. 4 " * 5000,
+        ("s. 1 ", 5000),
+        ("Sec. 1 s. 1 ", 2500),
+        ("§ 1 Abs. 1 ", 5000),
+        ("§ 1 und ", 5000),
+        ("§ 1 i.V.m. ", 5000),
+        ("s. 1 Abs. 1 Sec. 2 § 3 Art. 4 ", 1250),
     ],
 )
-def test_runs_in_linear_time(text: str) -> None:
-    start = time.perf_counter()
-    extract_citations(text)
-    assert (
-        time.perf_counter() - start < 5.0
-    )  # linear is ~0.3 s; the quadratic bug took 40 s+ (slack for coverage runs)
+def test_runs_in_linear_time(unit: str, count: int) -> None:
+    _assert_scales_linearly(unit, count)
 
 
 @pytest.fixture
@@ -136,11 +157,13 @@ def test_multi_word_abbreviation_parses() -> None:
 
 def test_output_is_capped_against_amplification() -> None:
     text = "§§ 1 bis 50 BGB " * 6000
-    start = time.perf_counter()
     found = extract_citations(text)
-    assert time.perf_counter() - start < 5.0
     assert len(found) == max(100, len(text) // 20)
     assert [c.number for c in found[:2]] == ["1", "2"]  # the excess is dropped in order
+
+
+def test_amplification_input_scales_linearly() -> None:
+    _assert_scales_linearly("§§ 1 bis 50 BGB ", 500)
 
 
 def test_short_text_keeps_the_floor_of_100() -> None:
