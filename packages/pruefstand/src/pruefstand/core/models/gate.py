@@ -19,10 +19,11 @@ class ScoreTable(BaseModel):
 
     Raises:
         ValidationError: ``case_ids``, ``cluster_ids``, ``values`` and every ``slices`` value
-            tuple do not all have the same length.
+            tuple do not all have the same length, a ``case_id`` is duplicated, or a value is
+            NaN or infinite.
     """
 
-    model_config = ConfigDict(frozen=True, extra="forbid")
+    model_config = ConfigDict(frozen=True, extra="forbid", allow_inf_nan=False)
 
     metric: str
     higher_is_better: bool
@@ -34,6 +35,9 @@ class ScoreTable(BaseModel):
     @model_validator(mode="after")
     def _aligned(self) -> Self:
         n = len(self.case_ids)
+        if len(set(self.case_ids)) != n:
+            msg = "duplicate case_ids"
+            raise ValueError(msg)
         if len(self.cluster_ids) != n or len(self.values) != n:
             msg = "case_ids, cluster_ids and values must have the same length"
             raise ValueError(msg)

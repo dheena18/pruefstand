@@ -12,7 +12,6 @@ from typing import Literal
 
 import numpy as np
 from numpy.typing import NDArray
-from scipy import stats as sps
 
 from pruefstand.core.models.gate import BootstrapResult
 from pruefstand.gate._resample import (
@@ -33,6 +32,7 @@ from pruefstand.gate._validate import (
     z_upper,
 )
 
+_EXACT_SIGN_TEST_MAX = 1000  # above this the binomial cdf comes from scipy.special.bdtr
 _SIGN_TEST_MIN_CLUSTERS = 10  # fewer non-zero cluster diffs than this -> exact sign test
 _ZERO_TOL = 1e-12  # relative to the largest |diff|: a cluster mean this small counts as exactly 0
 
@@ -64,7 +64,11 @@ def sign_test_p(cluster_diffs: NDArray[np.float64]) -> float:
     if m == 0:
         return 1.0
     n_pos = int((nonzero > 0).sum())
-    return float(min(1.0, max(0.0, sps.binom.cdf(n_pos, m, 0.5))))
+    if m <= _EXACT_SIGN_TEST_MAX:
+        return sum(math.comb(m, i) for i in range(n_pos + 1)) / (1 << m)  # exact integers
+    from scipy.special import bdtr  # noqa: PLC0415  (lazy: scipy is slow to import)
+
+    return float(min(1.0, max(0.0, bdtr(n_pos, m, 0.5))))
 
 
 def _cluster_sums(

@@ -123,7 +123,7 @@ def test_score_table_rejects_non_finite_values_and_duplicate_case_ids() -> None:
 @pytest.mark.parametrize("m", [1, 9, 40, 1000, 1001, 5000])
 def test_sign_test_matches_binomial_cdf(m: int) -> None:
     rng = np.random.default_rng(m)
-    x = rng.choice([-1.0, 1.0], size=m)
+    x = rng.choice([-1.0, 1.0], size=m).astype(np.float64)
     n_pos = int((x > 0).sum())
     assert sign_test_p(x) == pytest.approx(
         float(sps.binom.cdf(n_pos, m, 0.5)), rel=1e-9, abs=1e-300
