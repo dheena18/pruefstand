@@ -11,7 +11,7 @@ PAYLOAD = "Kündigung ".encode() * 100
 
 
 def _src(tmp_path: Path) -> tuple[str, str]:
-    src = tmp_path / "src-abc.bin"
+    src = tmp_path / "src-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.bin"
     src.write_bytes(PAYLOAD)
     return src.as_uri(), hashlib.sha256(PAYLOAD).hexdigest()
 
@@ -64,7 +64,7 @@ def test_main_fetches_listed_models(tmp_path: Path) -> None:
                     {
                         "id": "t",
                         "repo": "o/r",
-                        "revision": "abc",
+                        "revision": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
                         "file": "t.gguf",
                         "url": url,
                         "sha256": sha,
@@ -93,8 +93,8 @@ def test_main_fetches_listed_models(tmp_path: Path) -> None:
 
 def _entry(**over: object) -> dict[str, object]:
     base = {
-        "id": "t", "repo": "o/r", "revision": "abc123", "file": "t.gguf",
-        "url": "https://huggingface.co/o/r/resolve/abc123/t.gguf",
+        "id": "t", "repo": "o/r", "revision": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb", "file": "t.gguf",
+        "url": "https://huggingface.co/o/r/resolve/bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb/t.gguf",
         "sha256": "0" * 64, "license": "Apache-2.0",
     }  # fmt: skip
     return {**base, **over}
@@ -142,3 +142,25 @@ def test_a_symlinked_part_file_is_refused(tmp_path: Path) -> None:
     with pytest.raises(FetchError, match="symlink"):
         fetch_file(url, dest, sha, allowed_schemes=("file",))
     assert victim.read_text(encoding="utf-8") == "keep"
+
+
+def test_revision_must_be_a_full_commit_hash() -> None:
+    ModelEntry.model_validate(_entry())
+    for short in ("abc123", "main", "B" * 40, "g" * 40):
+        with pytest.raises(ValueError, match="revision"):
+            ModelEntry.model_validate(
+                _entry(revision=short, url=f"https://h/resolve/{short}/t.gguf")
+            )
+
+
+def test_a_download_deadline_is_enforced(tmp_path: Path) -> None:
+    url, sha = _src(tmp_path)
+    with pytest.raises(FetchError, match="deadline"):
+        fetch_file(url, tmp_path / "m", sha, allowed_schemes=("file",), deadline_s=-1)
+    assert not (tmp_path / "m").exists()
+
+
+def test_a_default_size_cap_applies_without_size_bytes(tmp_path: Path) -> None:
+    url, sha = _src(tmp_path)
+    with pytest.raises(FetchError, match="size"):
+        fetch_file(url, tmp_path / "m", sha, allowed_schemes=("file",), default_max_bytes=10)

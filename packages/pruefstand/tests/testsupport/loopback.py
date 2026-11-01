@@ -37,6 +37,7 @@ class _Handler(BaseHTTPRequestHandler):
     content = "ok"
     drip_s = 0.0
     huge_bytes = 0
+    chunked = False
 
     def log_message(self, format: str, *args: object) -> None:  # noqa: A002
         return
@@ -79,16 +80,27 @@ class _Handler(BaseHTTPRequestHandler):
         total = len(head) + self.huge_bytes + len(tail)
         self.send_response(200)
         self.send_header("Content-Type", "application/json")
-        self.send_header("Content-Length", str(total))
+        if self.chunked:
+            self.send_header("Transfer-Encoding", "chunked")
+        else:
+            self.send_header("Content-Length", str(total))
         self.end_headers()
-        self.wfile.write(head)
+        self._write(head)
         chunk = b"a" * (1 << 20)
         sent = 0
         while sent < self.huge_bytes:
             piece = chunk[: min(len(chunk), self.huge_bytes - sent)]
-            self.wfile.write(piece)
+            self._write(piece)
             sent += len(piece)
-        self.wfile.write(tail)
+        self._write(tail)
+        if self.chunked:
+            self.wfile.write(b"0\r\n\r\n")
+
+    def _write(self, data: bytes) -> None:
+        if self.chunked:
+            self.wfile.write(f"{len(data):x}\r\n".encode() + data + b"\r\n")
+        else:
+            self.wfile.write(data)
 
 
 @contextmanager
@@ -98,6 +110,7 @@ def serve(
     content: str = "ok",
     drip_s: float = 0.0,
     huge_bytes: int = 0,
+    chunked: bool = False,
 ) -> Iterator[str]:
     """Run a loopback server; yields its ``http://127.0.0.1:<port>/v1`` base URL."""
     handler = type(
@@ -108,6 +121,7 @@ def serve(
             "content": content,
             "drip_s": drip_s,
             "huge_bytes": huge_bytes,
+            "chunked": chunked,
         },
     )
     server = ThreadingHTTPServer(("127.0.0.1", 0), handler)

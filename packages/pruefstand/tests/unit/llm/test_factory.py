@@ -294,3 +294,12 @@ def test_external_use_without_a_canary_registry_logs_a_warning() -> None:
             _github("harmlos"), "github"
         )
     assert not logs
+
+
+@pytest.mark.parametrize(
+    "dash", ["\u2010", "\u2011", "\u2012", "\u2013", "\u2014", "\u2015", "\u2212"]
+)
+def test_unicode_hyphens_do_not_hide_a_canary(dash: str) -> None:
+    policy = LLMPolicy(LLMPolicyConfig(), canaries=_canary_registry())
+    with pytest.raises(PolicyViolation, match="canary"):
+        policy.check(_github(f"Was ist CANARY{dash}7f3a?"), "github")

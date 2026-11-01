@@ -9,7 +9,12 @@ import vcr  # type: ignore[import-untyped]  # vcrpy ships no stubs
 import yaml
 from testsupport.llm_scenarios import BACKEND_CASSETTE_DIR, CASSETTE_DIR, echo_request
 from testsupport.loopback import serve
-from testsupport.vcr_scrub import REQUEST_HEADERS, RESPONSE_HEADERS, VCR_CONFIG
+from testsupport.vcr_scrub import (
+    REQUEST_HEADERS,
+    RESPONSE_HEADERS,
+    VCR_CONFIG,
+    scrub_request,
+)
 
 from pruefstand.core.errors import LLMError
 from pruefstand.llm.backends.litellm import LiteLLMBackend
@@ -121,3 +126,49 @@ def test_every_committed_backend_cassette_is_scrubbed() -> None:
         assert set(json.loads(path.read_text("utf-8"))) == {
             "recorded_at", "model_id", "model_version", "request", "response",
         }  # fmt: skip
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        '{"h": "Bearer\\tabcdefgh12345"}',
+        "BEARER abcdefgh12345",
+        "GHP_abcdefghijkl",
+        "?token=Bearer%20abcdefgh12345",
+        "AKIAABCDEFGHIJKLMNOP",
+        "xoxb-1234-abcd",
+        "glpat-abcdefgh1234",
+        "AIzaSyA-abcdefghijklmnopqrstuvwxyz123",
+        "-----BEGIN RSA PRIVATE KEY-----\nMIIE",
+        "password=hunter2hunter2",
+        '{"cfg": "secret=abcd1234"}',
+        '{"a": ["x", {"k": "ghp_abcdefghijklmnop"}]}',
+    ],
+)
+def test_json_encoded_encoded_and_other_shapes_are_refused(text: str) -> None:
+    with pytest.raises(LLMError, match="secret"):
+        assert_no_secrets(text)
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "Risk-Management und Desk-Recherche",
+        "Task-Force-Berichte",
+        "Bank-Verbindung hf_ x",
+        "Passwort ist geheim",
+    ],
+)
+def test_benign_words_with_secret_looking_endings_pass(text: str) -> None:
+    assert_no_secrets(text)
+
+
+def test_request_uri_and_body_are_scanned_by_the_hook() -> None:
+    from vcr.request import Request
+
+    with pytest.raises(LLMError, match="secret"):
+        scrub_request(Request("GET", "http://h/v1?api=ghp_abcdefghijklmnop", None, {}))
+    with pytest.raises(LLMError, match="secret"):
+        scrub_request(Request("POST", "http://h/v1", b'{"k": "Bearer abcdefgh12345"}', {}))
+    ok = scrub_request(Request("POST", "http://h/v1", b"{}", {"X-A": "b", "Content-Type": "c"}))
+    assert dict(ok.headers) == {"Content-Type": "c"}

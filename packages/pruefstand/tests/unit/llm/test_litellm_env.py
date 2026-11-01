@@ -40,3 +40,20 @@ def test_our_backend_import_does_not_load_dotenv(tmp_path: Path) -> None:
 def test_telemetry_is_off(tmp_path: Path) -> None:
     imp = "import pruefstand.llm.backends.litellm as b; print(b.litellm.telemetry)"
     assert _run(tmp_path, imp, None)[-2] == "False"
+
+
+def test_forced_production_mode_beats_an_exported_dev_mode(tmp_path: Path) -> None:
+    out = _run(tmp_path, "import pruefstand.llm.backends.litellm", "DEV")
+    assert out[-1] == "False"
+
+
+def test_litellm_imported_first_in_dev_mode_is_refused(tmp_path: Path) -> None:
+    imp = (
+        "import litellm\n"
+        "try:\n"
+        "    import pruefstand.llm.backends.litellm\n"
+        "except Exception as err:\n"
+        "    print(type(err).__name__)\n"
+    )
+    out = _run(tmp_path, imp, "DEV")
+    assert "ConfigError" in out

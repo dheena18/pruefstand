@@ -55,3 +55,34 @@ def test_a_megabyte_of_braces_returns_quickly() -> None:
 
 def test_input_beyond_the_cap_is_not_scanned() -> None:
     assert extract_json_object("x" * 300_000 + '{"a": 1}') is None
+
+
+async def test_the_repair_error_names_the_scan_and_candidate_caps() -> None:
+    from pydantic import BaseModel
+    from testsupport.llm_scenarios import json_probe_request
+    from testsupport.loopback import serve
+
+    from pruefstand.core.config import LLMPolicyConfig
+    from pruefstand.llm.backends.litellm import LiteLLMBackend
+    from pruefstand.llm.budget import Budget
+    from pruefstand.llm.client import LLMClient
+    from pruefstand.llm.policy import LLMPolicy
+    from pruefstand.llm.recorder import CallRecorder
+
+    class Probe(BaseModel):
+        reason: str
+
+    with serve(content="{" * 400) as base:
+        backend = LiteLLMBackend(
+            "openai_compatible_local/loop", api_base=base, api_key_env=None, timeout_s=10
+        )
+        client = LLMClient(
+            backend, None, Budget(max_usd=None, max_tokens=None), CallRecorder(),
+            LLMPolicy(LLMPolicyConfig()),
+        )  # fmt: skip
+        req = json_probe_request(max_tokens=64).model_copy(
+            update={"model": "openai_compatible_local/loop"}
+        )
+        with pytest.raises(Exception, match="256 KiB") as info:
+            await client.complete_json(req, Probe)
+    assert "1000" in str(info.value)

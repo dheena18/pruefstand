@@ -75,3 +75,8 @@ def test_prompt_id_cannot_escape_the_roots(prompt_id: str) -> None:
 def test_dotted_ids_are_fine() -> None:
     with pytest.raises(PromptError, match="not found"):
         PromptRegistry().get("datagen.private_docs.x", "v1")
+
+
+def test_prompt_id_with_a_trailing_newline_is_refused() -> None:
+    with pytest.raises(PromptError, match="prompt_id"):
+        PromptRegistry().get("echo\n", "v1")

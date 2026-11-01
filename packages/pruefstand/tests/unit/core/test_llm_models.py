@@ -79,3 +79,14 @@ def test_llm_error_defaults() -> None:
 def test_policy_violation_is_an_llm_error() -> None:
     assert issubclass(PolicyViolation, LLMError)
     assert PolicyViolation("p").transient is False
+
+
+@pytest.mark.parametrize("bad", [0, -1, 1_000_000_000])
+def test_max_tokens_is_bounded(bad: int) -> None:
+    with pytest.raises(ValidationError):
+        _request(max_tokens=bad)
+
+
+def test_max_tokens_bounds_accept_the_usual_values() -> None:
+    assert _request(max_tokens=1).max_tokens == 1
+    assert _request(max_tokens=65536).max_tokens == 65536

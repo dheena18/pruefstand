@@ -50,3 +50,10 @@ def test_changes_outside_the_cassettes_are_ignored(tmp_path: Path) -> None:
     repo = _repo(tmp_path)
     (repo / "other.txt").write_text("y\n", encoding="utf-8")
     assert _changed(repo) == "changed=false"
+
+
+def test_outside_a_repository_it_fails_closed(tmp_path: Path) -> None:
+    cmd = ["bash", str(SCRIPT)]
+    out = subprocess.run(cmd, cwd=tmp_path, capture_output=True, text=True, check=False)  # noqa: S603
+    assert out.returncode != 0
+    assert "changed=false" not in out.stdout

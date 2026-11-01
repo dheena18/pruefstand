@@ -1,6 +1,7 @@
 """Hard timeout and bounded responses: hostile loopback servers, real sockets."""
 
 import resource
+import socket
 import time
 
 import pytest
@@ -71,3 +72,38 @@ def test_response_limits_scale_with_max_tokens() -> None:
     assert big_text > small_text
     assert small_bytes > small_text * 4
     assert big_bytes > big_text * 4
+
+
+def _grown_kib(before: int) -> int:
+    return resource.getrusage(resource.RUSAGE_SELF).ru_maxrss - before
+
+
+@pytest.mark.parametrize("chunked", [False, True])
+async def test_github_provider_bodies_are_capped_too(
+    monkeypatch: pytest.MonkeyPatch, chunked: bool
+) -> None:
+    monkeypatch.setenv("LOOP_GH_TOKEN", "t0ken-for-loopback")
+    before = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss
+    with serve(huge_bytes=100 * 1024 * 1024, chunked=chunked) as base:
+        backend = LiteLLMBackend(
+            "github/openai/loop", api_base=base, api_key_env="LOOP_GH_TOKEN", timeout_s=60
+        )
+        req = _req().model_copy(update={"model": "github/openai/loop"})
+        with pytest.raises(LLMError) as info:
+            await backend.acomplete(req)
+    assert info.value.transient is False
+    assert "too large" in str(info.value)
+    assert _grown_kib(before) < 100 * 1024
+
+
+async def test_an_unresolvable_host_is_a_transient_connection_error() -> None:
+    host = "no-such-host.invalid"
+    with pytest.raises(socket.gaierror):
+        socket.getaddrinfo(host, 80)
+    backend = LiteLLMBackend(MODEL, api_base=f"http://{host}/v1", api_key_env=None, timeout_s=10)
+    with pytest.raises(LLMError) as info:
+        await backend.acomplete(_req())
+    assert info.value.transient is True
+    assert info.value.status is None
+    assert "HTTP 500" not in str(info.value)
+    assert "connection" in str(info.value).lower()
