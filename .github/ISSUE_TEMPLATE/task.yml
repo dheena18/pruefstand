@@ -1,0 +1,21 @@
+name: Task
+description: A unit of work from tasks/TASKS.md
+labels: [task]
+body:
+  - type: input
+    id: task_id
+    attributes:
+      label: Task ID
+      placeholder: T1.6
+    validations:
+      required: true
+  - type: textarea
+    id: goal
+    attributes:
+      label: Goal and Done-when items
+    validations:
+      required: true
+  - type: textarea
+    id: notes
+    attributes:
+      label: Dependencies and notes
