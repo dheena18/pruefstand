@@ -1,0 +1,101 @@
+"""html_to_text (T2.3): HTML of the court decisions -> plain text lines, hardened."""
+
+import time
+
+import pytest
+from pruefstand.ingest.html_text import html_to_text
+
+
+def test_blocks_become_lines_and_inline_tags_do_not_break_words() -> None:
+    assert html_to_text("<h2>Tenor</h2><p>Die K<b>ün</b>digung ist <i>wirksam</i>.</p>") == (
+        "Tenor\nDie Kündigung ist wirksam."
+    )
+
+
+def test_line_breaks_and_table_cells() -> None:
+    assert html_to_text(
+        "<p>Zeile eins<br>Zeile zwei</p><table><tr><td>1</td><td>Text</td></tr></table>"
+    ) == ("Zeile eins\nZeile zwei\n1 Text")
+
+
+def test_nested_randnummer_tables_keep_number_and_text_apart() -> None:
+    html = (
+        "<table><tr><td><table><tr><td>1&#160;</td></tr></table></td>"
+        '<td><table><tr><td><rd nr="1"/>Die Beteiligten streiten.</td></tr></table></td></tr></table>'
+    )
+    assert html_to_text(html).split("\n") == ["1", "Die Beteiligten streiten."]
+
+
+def test_entities_named_numeric_and_nbsp() -> None:
+    assert html_to_text(
+        "<p>K&uuml;ndigung&#160;&#8211; Gr&#252;&szlig;e&nbsp;&amp;&nbsp;Co</p>"
+    ) == ("Kündigung – Grüße & Co")
+
+
+def test_script_style_comment_and_processing_instructions_are_dropped() -> None:
+    html = "<?php echo 1 ?><p>a</p><script>x()</script><style>p{}</style><!-- c --><noscript>n</noscript><p>b</p>"
+    assert html_to_text(html) == "a\nb"
+
+
+def test_text_after_a_dropped_element_is_kept() -> None:
+    assert html_to_text("<p>vor <script>x()</script>nach</p>") == "vor nach"
+
+
+def test_plain_text_keeps_its_lines() -> None:
+    assert (
+        html_to_text("Gründe \n \nDas Gericht entscheidet.  ") == "Gründe\nDas Gericht entscheidet."
+    )
+
+
+def test_a_lone_ampersand_or_angle_bracket_is_text() -> None:
+    assert html_to_text("a < b & c > d") == "a < b & c > d"
+
+
+def test_broken_markup_recovers() -> None:
+    assert html_to_text("<p>eins<p>zwei</div></b>") == "eins\nzwei"
+
+
+def test_hyphenation_at_line_ends_is_joined() -> None:
+    assert (
+        html_to_text("<p>Arbeits-\nverhältnis und Ost-\nWest</p>")
+        == "Arbeitsverhältnis und Ost-\nWest"
+    )
+
+
+@pytest.mark.parametrize("markup", ["", "   ", "<p> </p>", "<!-- nur -->", "<script>x</script>"])
+def test_nothing_visible_gives_the_empty_string(markup: str) -> None:
+    assert html_to_text(markup) == ""
+
+
+def test_output_is_nfc() -> None:
+    assert html_to_text("<p>Kündigung</p>") == "Kündigung"
+
+
+def best_of(runs: int, markup: str) -> float:
+    best = float("inf")
+    for _ in range(runs):
+        start = time.perf_counter()
+        html_to_text(markup)
+        best = min(best, time.perf_counter() - start)
+    return best
+
+
+def test_time_is_linear_in_the_markup() -> None:
+    unit = "<div><p>Die <b>Kündigung</b> &uuml;ber § 622 BGB.</p><br></div>"
+    small, large = best_of(3, unit * 2_000), best_of(3, unit * 16_000)
+    assert large / small < 20  # linear = 8, quadratic = 64
+
+
+@pytest.mark.parametrize(
+    "markup",
+    ["<div>" * 100_000, "<" * 500_000, "<p>" * 200_000 + "x", "&" * 500_000, "<a " * 100_000],
+)
+def test_pathological_markup_terminates_quickly(markup: str) -> None:
+    start = time.perf_counter()
+    try:
+        result = html_to_text(markup)
+    except Exception as error:  # only the documented error type may escape
+        assert type(error).__name__ == "HtmlTextError"
+    else:
+        assert isinstance(result, str)
+    assert time.perf_counter() - start < 10
