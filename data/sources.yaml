@@ -1,0 +1,471 @@
+# Pinned source list of the data downloader (T2.1). Machine-managed by
+# `python data/download.py --update-pins`; edit by hand only to add a source.
+version: 1
+defaults:
+  gii:
+    license: official-work-5-urhg
+    license_config: laws_eurlex
+    redistribute: true
+    attribution: 'Gesetzestexte: Bundesministerium der Justiz / juris GmbH, www.gesetze-im-internet.de.
+      Amtliche Werke gemäß § 5 UrhG.'
+  eurlex:
+    license: eurlex-legal-notice
+    license_config: laws_eurlex
+    redistribute: true
+    attribution: 'Source: EUR-Lex, © European Union, https://eur-lex.europa.eu. Reuse authorised under
+      the EUR-Lex legal notice and Commission Decision 2011/833/EU. Consolidated versions are not authentic.
+      The content has been modified.'
+sources:
+- id: gii:bgb
+  kind: gii
+  abbrev: BGB
+  slug: bgb
+  pinned: '2026-10-31'
+  files:
+    xml.zip: a4f41098aad1932df88ba2743de4a650b931a23cf71958bf5fad1c0e3785284a
+- id: gii:egbgb
+  kind: gii
+  abbrev: EGBGB
+  slug: bgbeg
+  pinned: '2026-10-31'
+  files:
+    xml.zip: 097e524935f057895784ee2ef18ab73238b5b1d694d8f6d5dd67acfd4b5cf791
+- id: gii:hgb
+  kind: gii
+  abbrev: HGB
+  slug: hgb
+  pinned: '2026-10-31'
+  files:
+    xml.zip: 063bb99b4f50f63a6871cb02f276761393aff3593393a55671c725a900c55944
+- id: gii:bdsg
+  kind: gii
+  abbrev: BDSG
+  slug: bdsg_2018
+  pinned: '2026-10-31'
+  files:
+    xml.zip: 4b4161639fae051a43ad32bf85614a3e02e085c73f9a938694d3cc831b88e286
+- id: gii:kschg
+  kind: gii
+  abbrev: KSchG
+  slug: kschg
+  pinned: '2026-10-31'
+  files:
+    xml.zip: bfeebd2320aa0ddec074570f2705441e1b26639fb86839f80b1210d8bf2ed8a2
+- id: gii:arbzg
+  kind: gii
+  abbrev: ArbZG
+  slug: arbzg
+  pinned: '2026-10-31'
+  files:
+    xml.zip: 4d0d3c9d6d501f48bffd5c9d47d2cf6ad05369ffce709576ffa2f373d00aac38
+- id: gii:arbschg
+  kind: gii
+  abbrev: ArbSchG
+  slug: arbschg
+  pinned: '2026-10-31'
+  files:
+    xml.zip: e77664995ad16591c28d6b6fba114cdc1597af792150055415c05c9ed24cfc66
+- id: gii:urhg
+  kind: gii
+  abbrev: UrhG
+  slug: urhg
+  pinned: '2026-10-31'
+  files:
+    xml.zip: e95176f0e3c1b49f0c269ecdac2ecdd482e542a8d5d620251e1b1f67a94033e6
+- id: gii:vvg
+  kind: gii
+  abbrev: VVG
+  slug: vvg_2008
+  pinned: '2026-10-31'
+  files:
+    xml.zip: 5bd8bb3a800de10263400d76cb2d40f8fff57e321a2d9a04b69d04503b74aac6
+- id: gii:enwg
+  kind: gii
+  abbrev: EnWG
+  slug: enwg_2005
+  pinned: '2026-10-31'
+  files:
+    xml.zip: 4fa63c65ec0a89816bc1e0dd74a6a0eaa892e5b422dfe39b6ae96fc1f8809718
+- id: gii:ensig
+  kind: gii
+  abbrev: EnSiG
+  slug: ensig_1975
+  pinned: '2026-10-31'
+  files:
+    xml.zip: 48bacf28d7b8a13c1b5e1d9478e1d76668707fa91e26c7f9b33fa243374f195f
+- id: gii:bsig
+  kind: gii
+  abbrev: BSIG
+  slug: bsig_2025
+  pinned: '2026-10-31'
+  files:
+    xml.zip: 9a98e9d09a08705f2c4b3479f4a618c254b2f42e8ecb6f892b8d395e5ddd9750
+- id: gii:tzbfg
+  kind: gii
+  abbrev: TzBfG
+  slug: tzbfg
+  pinned: '2026-10-31'
+  files:
+    xml.zip: b75b56b35f34cc3e19d7b06f2f845e0670623ec4a21e9c488c398058e64e0fa6
+- id: gii:burlg
+  kind: gii
+  abbrev: BUrlG
+  slug: burlg
+  pinned: '2026-10-31'
+  files:
+    xml.zip: 2971ed0e0199fb11c240fc4ed8eb0b8f01c239112562935f9d9e1f89e000fdb0
+- id: gii:entgfg
+  kind: gii
+  abbrev: EntgFG
+  slug: entgfg
+  pinned: '2026-10-31'
+  files:
+    xml.zip: bd86a2caea5a457e7e34c0f5d2f721268008a5d49d9391b2dc06c8f3fe24bfad
+- id: gii:muschg
+  kind: gii
+  abbrev: MuSchG
+  slug: muschg_2018
+  pinned: '2026-10-31'
+  files:
+    xml.zip: 6270bf36d1dbb88def385f86f6e09904279485ca9b2e8d01b56361456631462b
+- id: gii:agg
+  kind: gii
+  abbrev: AGG
+  slug: agg
+  pinned: '2026-10-31'
+  files:
+    xml.zip: 71344610a0f24b9569d69b7428ed4cb9fbfab8eced8f04354a6dfbd997015c82
+- id: gii:betrvg
+  kind: gii
+  abbrev: BetrVG
+  slug: betrvg
+  pinned: '2026-10-31'
+  files:
+    xml.zip: 9e8f265657bb5a04502a892c4c5f0c899e7f4074db638ab7a694f9045fa6bbd5
+- id: gii:gewo
+  kind: gii
+  abbrev: GewO
+  slug: gewo
+  pinned: '2026-10-31'
+  files:
+    xml.zip: 300e2939e5dcd9a83b047303c70dc473e59eb923995aeb50d41e35adaa947b52
+- id: gii:nachwg
+  kind: gii
+  abbrev: NachwG
+  slug: nachwg
+  pinned: '2026-10-31'
+  files:
+    xml.zip: 92f1b2f5aecccde881bc59a90efccf424869258744e1a12c130a59cc2bf6e4d4
+- id: gii:arbgg
+  kind: gii
+  abbrev: ArbGG
+  slug: arbgg
+  pinned: '2026-10-31'
+  files:
+    xml.zip: 619fa826b178d56e74f26a81182baa3d5e3f146035dfc82493434f1c9b8b6344
+- id: gii:sgbiv
+  kind: gii
+  abbrev: SGB IV
+  slug: sgb_4
+  pinned: '2026-10-31'
+  files:
+    xml.zip: c0dbda08d0c7f045077cc3c66b39003c850db217731b3b7120f7d0ec3f960d33
+- id: gii:prodhaftg
+  kind: gii
+  abbrev: ProdHaftG
+  slug: prodhaftg
+  pinned: '2026-10-31'
+  files:
+    xml.zip: c156c3a9c6addce5d17ea34d7be23e8f16cb66177b26b7573dcbd713456b8ed7
+- id: gii:uwg
+  kind: gii
+  abbrev: UWG
+  slug: uwg_2004
+  pinned: '2026-10-31'
+  files:
+    xml.zip: ab59e944f8ffdd5f9b677808893372a5fb79bb596522eb4ac25d187d94cc6db1
+- id: gii:tdddg
+  kind: gii
+  abbrev: TDDDG
+  slug: ttdsg
+  pinned: '2026-10-31'
+  files:
+    xml.zip: 4627e5351b602270eaba241e29e756a7bef55de43d743102f3be43117032f1bb
+- id: gii:gmbhg
+  kind: gii
+  abbrev: GmbHG
+  slug: gmbhg
+  pinned: '2026-10-31'
+  files:
+    xml.zip: df2deac8fcbf049c3732199d4b904b82bce5f884cef90a8a642ac23940f93515
+- id: gii:aktg
+  kind: gii
+  abbrev: AktG
+  slug: aktg
+  pinned: '2026-10-31'
+  files:
+    xml.zip: 0a91a72369fd43995b2874f0380f3e4419b1ce9f205b162d053bbebe3e6ba10d
+- id: gii:inso
+  kind: gii
+  abbrev: InsO
+  slug: inso
+  pinned: '2026-10-31'
+  files:
+    xml.zip: a571214fd5a95139cf671989cdf5e657d7b946c25d56e942ee9956b94c5976d8
+- id: gii:kwg
+  kind: gii
+  abbrev: KWG
+  slug: kredwg
+  pinned: '2026-10-31'
+  files:
+    xml.zip: a3c89f594d682a619c8f5ac4a80d5b6fba3b44ad157fa9b248ecb9e37fe8c993
+- id: gii:vag
+  kind: gii
+  abbrev: VAG
+  slug: vag_2016
+  pinned: '2026-10-31'
+  files:
+    xml.zip: bbd8bd7255377663cdeed9f694fcd4ae0104e2da2caaa5f22c62bc8602b29e0d
+- id: eurlex:32016R0679
+  kind: eurlex
+  celex: 32016R0679
+  pinned: '2026-10-31'
+  files:
+    de.html: 219040a03cea829785c9f9752dcab9bfcee7b3c012092f5da8567640a816116d
+    en.html: 962539af03738bf552319ff4ce42d69e5f95a576307c4dfed7bf87e81b646b9d
+- id: eurlex:32024R1689
+  kind: eurlex
+  celex: 32024R1689
+  pinned: '2026-10-31'
+  files:
+    de.html: 126daa7d62d9b0e9f4700d9ba5504b4a59ca9205b8764a1a27e40817d3144b3b
+    en.html: 8f0b656302f9864cc87e040c371f209a9d65ae1a6cecc25ca5eb737e872d721a
+- id: eurlex:32022L2555
+  kind: eurlex
+  celex: 32022L2555
+  pinned: '2026-10-31'
+  files:
+    de.html: 48011abb43c5cc0b0aed6f7eea929a39e1f9c74134482072a5aacf28ff0ebd37
+    en.html: 6ee66d5c419d9a056fb98d94083cacf9b818803bd6b416435718e0d4919cb589
+- id: eurlex:32022R2065
+  kind: eurlex
+  celex: 32022R2065
+  pinned: '2026-10-31'
+  files:
+    de.html: 6df8ce92d6f6ce95ad7f8fa6705644d02c53336866dea61501369cb53f156bc4
+    en.html: 11b119a7d45f3a10cd41714061f9d907839ef5d1634e41774490f00b95856bbf
+- id: eurlex:32022R1925
+  kind: eurlex
+  celex: 32022R1925
+  pinned: '2026-10-31'
+  files:
+    de.html: 1abc8aebdf65f598acf294d4decdf83a241f3968b9a9920fe5d5cdf0098c732c
+    en.html: d6af21a4f11c2b001b0486391fbd0813deba32305fb0d3865fbceccd45b827eb
+- id: eurlex:32023R2854
+  kind: eurlex
+  celex: 32023R2854
+  pinned: '2026-10-31'
+  files:
+    de.html: 2997e96e3843b0ff1d4cbec6e33ad9d4a18ccbf54d803ca3d1a727ddb0f727d1
+    en.html: 1085b7fa3011970b65b1e4d56205202dceb37f72cd22336aa0c78af35ceaea66
+- id: eurlex:32022R0868
+  kind: eurlex
+  celex: 32022R0868
+  pinned: '2026-10-31'
+  files:
+    de.html: 4f711520f1edb619418b0c265081cefd994dec52112e4244b173c549bad04e7e
+    en.html: f67dabbce62b7f1b1dfbc03fb1ea29dad88e2370d47599a3b1802a3cd7f268d8
+- id: eurlex:32002L0058
+  kind: eurlex
+  celex: 32002L0058
+  pinned: '2026-10-31'
+  files:
+    de.html: 555fc31383dce649dc19124a7bafaa7dd53893f5588f91d5a790d38af7a6237f
+    en.html: 1b41bc43b88d8e8c2e9ea759e5ba0bad00cad268a5d6ffd1d4cee6fcc262cba8
+- id: eurlex:32024R2847
+  kind: eurlex
+  celex: 32024R2847
+  pinned: '2026-10-31'
+  files:
+    de.html: fc6657b1db56de3dd9c839686a4d3bf456836e996758f95cf3e9db36ec60566e
+    en.html: fe0cca4a0caec50e7cf5a91432b94a19b211f86be8584fdba56372bdcea571ed
+- id: eurlex:32022R2554
+  kind: eurlex
+  celex: 32022R2554
+  pinned: '2026-10-31'
+  files:
+    de.html: 1b935144ff7f773068daa470aeba4036873cf555c883ab389ab3cf45e1a93717
+    en.html: cf50d8f023d23b2a56f535aaee0760eba7f1925ef08a9858c5c31d43d414f46b
+- id: eurlex:32014R0910
+  kind: eurlex
+  celex: 32014R0910
+  pinned: '2026-10-31'
+  files:
+    de.html: 70da180d58cd95acf7ca34b12f4ad6b0da8c82a0efe12bc4148522c4e5a10999
+    en.html: b4fa35255bc0ad6b7a8275cfa329a1f17f91830299b8096e6d5e6a3169b27f33
+- id: eurlex:32019L0944
+  kind: eurlex
+  celex: 32019L0944
+  pinned: '2026-10-31'
+  files:
+    de.html: 4d59fb57766eec987ea4a9fe9a3c6983c926c3adca8ea739f67c8eeabe3b4c62
+    en.html: 68355ebfd4f4fe90c9e73bcdd1b44cc2b343d930d790e45f50d1118e54f254de
+- id: eurlex:32019R0943
+  kind: eurlex
+  celex: 32019R0943
+  pinned: '2026-10-31'
+  files:
+    de.html: af111cd8ef611622b79694e665515356ce1096f50d47624c02ece4c7a42dc38a
+    en.html: 8a22c5eb65231a40e1f8245fbc800badca86e1a16d63706187e3ebb01ce6b9af
+- id: eurlex:32023L1791
+  kind: eurlex
+  celex: 32023L1791
+  pinned: '2026-10-31'
+  files:
+    de.html: a6f939a4d146c2f0dac2e45800cde416b2c65838e6d55630c97d2a75510fb617
+    en.html: 548c95df9104ffb75a45cfb00630b83c5458918bdd25206ffdb450db95a724df
+- id: eurlex:32011R1227
+  kind: eurlex
+  celex: 32011R1227
+  pinned: '2026-10-31'
+  files:
+    de.html: c69858f4d427cc436b61c0ceb090c75dc82ac264ca3ba40c674d19be161c2dcf
+    en.html: 43c53b4f5fd13493f86426e2749fc989a39cdaa79f5653b5ffd2ba76cb97a1bb
+- id: eurlex:32019L1937
+  kind: eurlex
+  celex: 32019L1937
+  pinned: '2026-10-31'
+  files:
+    de.html: 15c8d3892628bf489cfacff305137d0e74b153327e6388e07ba24f3dfaaed15a
+    en.html: b20533b5d612f67bcadce9c9aa79769dbee0037e42f9adef4b07ebefd8dbf7e7
+- id: eurlex:32011L0083
+  kind: eurlex
+  celex: 32011L0083
+  pinned: '2026-10-31'
+  files:
+    de.html: 6538b6172dfecd38c0002c1e510036a1ac59759bc2bfaeb051d89aee3840ea48
+    en.html: 6e9c0ddd987ff051e2ca291bf04cc7891ec002e04e1e5ea4a00f3ba4845e1b3a
+- id: eurlex:32024L2853
+  kind: eurlex
+  celex: 32024L2853
+  pinned: '2026-10-31'
+  files:
+    de.html: 97711734dd242d2a36f8cd6f30c2bfefca92f742c367142456b6c3b5fdbd59cb
+    en.html: 5f20d9d33eb307683419f481f0e661e1be9d2daf186780a65c20d7690bf940b5
+- id: eurlex:32003L0088
+  kind: eurlex
+  celex: 32003L0088
+  pinned: '2026-10-31'
+  files:
+    de.html: fe927d5b5ec7ee08cc25202e691df73a4c38d7db3f6a39d5fb0e59e3e80c9ef5
+    en.html: 0d23ad4953be900de8a614fea4022aa46086e0bdc2fdfd6d0fde0cd84429e4b6
+- id: eurlex:32019L1152
+  kind: eurlex
+  celex: 32019L1152
+  pinned: '2026-10-31'
+  files:
+    de.html: fe84dfc5eedd3366cbe98abaaaa668ad975eda4b2d1954633a9d2e100331fe02
+    en.html: 0171763090878960e374c720487c9d38a7480cbc255eeddfdc9e7cf5bb4fb67c
+- id: oldp_decisions
+  kind: hf
+  repo_id: openlegaldata/court-decisions-germany
+  config: dump-20260520-1k
+  revision: 408eb916fab64080580e4d67bf4242fb10cdedf5
+  license: odbl
+  card_license: none
+  license_note: ODbL for the collection, para 5 UrhG (official works) for the individual decisions; the
+    Hub card has no license field (documented override, DATA_LICENSES.md section 7).
+  license_config: oldp_derived
+  redistribute: true
+  attribution: Contains information from Open Legal Data (openlegaldata.io), made available under the
+    Open Database License (ODbL) v1.0.
+  files:
+    dump-20260520-1k/train-00000-of-00001.parquet: 1a8ab31bb4c91f990ec02773f3e93a3fe561ac8aca85a32b0f1d98ef7f4d4d8a
+- id: oldp_laws
+  kind: hf
+  repo_id: openlegaldata/laws-germany
+  config: dump-20260520-1k
+  revision: ad694182262416ad204f43d0c13ca0a7dd12057e
+  license: odbl
+  license_config: oldp_derived
+  redistribute: true
+  attribution: Contains information from Open Legal Data (openlegaldata.io), made available under the
+    Open Database License (ODbL) v1.0.
+  files:
+    dump-20260520-1k/train-00000-of-00001.parquet: 9f65099376045df685691a3197b9c743089bda6d6852cc5c15735b7e0953d77d
+- id: oldp_citation_graph
+  kind: hf
+  repo_id: openlegaldata/legal-citation-graph-germany
+  config: dump-20260520-1k
+  revision: 061d0bda82a630de65fbf944a8fb65e184495650
+  license: odbl
+  license_config: oldp_derived
+  redistribute: true
+  attribution: Contains information from Open Legal Data (openlegaldata.io), made available under the
+    Open Database License (ODbL) v1.0.
+  files:
+    dump-20260520-1k/train-00000-of-00001.parquet: a7f88c3c4f985e594fdc3eef4170ea786d74ec77eeb9b943c267e35267592a66
+- id: germanquad
+  kind: hf
+  repo_id: deepset/germanquad
+  revision: a2f3a59f0be843fc305d0417d7292ef0b1a66884
+  ref: refs/convert/parquet
+  license: cc-by-4.0
+  license_config: germanquad_derived
+  redistribute: true
+  attribution: GermanQuAD and GermanDPR by deepset (Möller, Risch, Pietsch, 2021), CC BY 4.0, https://deepset.ai/germanquad.
+    Modified.
+  files:
+    plain_text/test/0000.parquet: c154513e016e73e4e32b46b48010f24a435ad7b0e96cc3858cfc20c7d29649bc
+    plain_text/train/0000.parquet: 319334092605ed9ade8a1e6535584debb2e99def474697417a06ad4a455bf0ec
+- id: germandpr
+  kind: hf
+  repo_id: deepset/germandpr
+  revision: d0b867a49c45a44d172041351b5df73a87714372
+  ref: refs/convert/parquet
+  license: cc-by-4.0
+  license_config: germanquad_derived
+  redistribute: true
+  attribution: GermanQuAD and GermanDPR by deepset (Möller, Risch, Pietsch, 2021), CC BY 4.0, https://deepset.ai/germanquad.
+    Modified.
+  files:
+    plain_text/test/0000.parquet: f6106a22d6d6a6cab1621d70a06e0edd8edea9d1428e52424b1610f83b6228f0
+    plain_text/train/0000.parquet: e8356a45e6bf41fee7007cf3f2444c7209351bf94baf71dac5f110a1117e09ff
+- id: germanrag
+  kind: hf
+  repo_id: DiscoResearch/germanrag
+  revision: dcaafc4bf5b44c96a1ced56c0a7d42da5a3a2c45
+  license: cc-by-sa-4.0
+  card_license: cc-by-4.0
+  license_note: README says the derived work inherits CC BY-SA 4.0 from GermanDPR; the card metadata says
+    cc-by-4.0 (documented override, DATA_LICENSES.md section 7).
+  license_config: germanrag_derived
+  redistribute: true
+  attribution: GermanRAG by DiscoResearch, based on GermanDPR, CC BY-SA 4.0 (inherited). Modified.
+  files:
+    germanrag.jsonl: b6703cd91cceaeda0babbc3ff56d3ec0d2f96e95cf929601989544803c865891
+- id: prompt_injections
+  kind: hf
+  repo_id: deepset/prompt-injections
+  revision: 4f61ecb038e9c3fb77e21034b22511b523772cdd
+  license: apache-2.0
+  license_config: own
+  redistribute: true
+  attribution: deepset/prompt-injections, Apache License 2.0. Strings embedded in synthetic documents.
+  files:
+    data/test-00000-of-00001-701d16158af87368.parquet: 39ac797cabc157eeed58435a08593b2952bb6cb16fc394a2d383f447cc7b246e
+    data/train-00000-of-00001-9564e8b05b4757ab.parquet: 2e10bc7ab30f542c97e4e83e2a5683000b5057d25ec10908784c631d44124c04
+- id: memerag
+  kind: github
+  repo: amazon-science/MEMERAG
+  commit: aa274f6e1faf8efed80ee41c3dbe24af0103a707
+  license: cc-by-nc-4.0
+  license_config: download_only
+  redistribute: false
+  attribution: Faithfulness labels from MEMERAG (Cruz Blandón et al., ACL 2025), CC BY-NC 4.0, https://github.com/amazon-science/MEMERAG.
+    Used for evaluation only; never redistributed, never used for training.
+  files:
+    LICENSE: 41003d4a74749c0220e33dd415042164b5a1093ed401f36277234f772d22d3d0
+    README.md: 95b9c31841d6436cf5830a9f4c3949d03c2ed9561da36187649c8a139d3f512e
+    data/memerag/de.jsonl: 09211617ab22668576862c4cc6c0a7466a92e4910174a34bad38d00274f8e60b
+    data/memerag_ext/de.jsonl: ebf085cf2c9a3cdc4a495aba3e4c21a890209fafcda49852166a3045d3cf7118

@@ -23,7 +23,8 @@ HF dataset `<HF_USER>/pruefstand-de` with these configs:
 | Config | Contents | Licence |
 | --- | --- | --- |
 | `laws_eurlex` | cases built from GII laws + EUR-Lex | CC BY 4.0 (source credited, changes marked) |
-| `germanquad_derived` | cases and refusals from GermanQuAD/DPR/RAG | CC BY 4.0 (CC BY-SA 4.0 only if T2.1 finds a share-alike card) |
+| `germanquad_derived` | cases and refusals from GermanQuAD/DPR | CC BY 4.0 |
+| `germanrag_derived` | cases and refusals from GermanRAG | CC BY-SA 4.0 (inherited from GermanDPR per its README; owner decision, T2.1) |
 | `oldp_derived` | cases built from OLDP decisions | ODbL 1.0 |
 | `own` | planted attacks, canary probes, synthetic docs | CC BY 4.0 |
 
@@ -32,7 +33,7 @@ HF dataset `<HF_USER>/pruefstand-de` with these configs:
 - **MEMERAG is never redistributed**: no config, no item text in any artefact (dataset, dashboard,
   report, repo). A download script fetches it at a pinned commit for T5.3/T5.4; only aggregate
   agreement numbers are published, with attribution.
-- `scripts/data/check_licenses.py` (T2.1) compares each HF card's licence field with
+- `data/download.py` (T2.1) compares each HF card's licence field with
   `DATA_LICENSES.md` and fails on a mismatch.
 - Public artefacts outside the HF dataset (dashboard data, demo index, PR comments) carry the
   attribution notices too (`DATA_LICENSES.md` §4).

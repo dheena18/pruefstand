@@ -105,14 +105,15 @@ manifests in `data/manifests/`.
 | --- | --- | --- |
 | `laws_eurlex` | Cases built from GII laws and EUR-Lex | CC BY 4.0 (with source credit) |
 | `oldp_derived` | Cases built from OLDP court decisions | ODbL v1.0 |
-| `germanquad_derived` | Cases/labels derived from GermanQuAD, GermanDPR, GermanRAG | CC BY 4.0 (CC BY-SA 4.0 only if T2.1 finds a share-alike card) |
+| `germanquad_derived` | Cases/labels derived from GermanQuAD, GermanDPR | CC BY 4.0 |
+| `germanrag_derived` | Cases/labels derived from GermanRAG | CC BY-SA 4.0 (inherited from GermanDPR; own config, never mixed) |
 | `own` | Planted attacks, canary probes, synthetic private docs | CC BY 4.0 |
 
 - ODbL material is **never combined** with material under another share-alike licence (e.g. CC BY-SA)
   in one config or derived artefact; there is no "most restrictive" common licence. A case that would
   need both is dropped. **CC BY-NC material (MEMERAG) never enters any released artefact**; only
   aggregate calibration numbers derived from it are published.
-- `scripts/data/check_licenses.py` (T2.1) reads the licence field of every HF card and fails when it
+- `data/download.py` (T2.1) reads the licence field of every HF card and fails when it
   differs from `DATA_LICENSES.md`.
 - Licence obligations also apply outside the HF dataset: dashboard data, the demo index and public
   PR comments carry the attribution notice of every source they show. OLDP-derived text in the
