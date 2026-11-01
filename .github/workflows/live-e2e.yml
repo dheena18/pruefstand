@@ -9,6 +9,11 @@ on:
   schedule:
     - cron: "37 2 * * *"
   workflow_dispatch:
+    inputs:
+      probe_quota:
+        description: "T0.6 S6: measure the GitHub Models free-tier quotas (job quota-probe)"
+        type: boolean
+        default: false
 
 permissions: {}
 
@@ -36,3 +41,32 @@ jobs:
           fi
       - name: Placeholder
         run: echo "live-e2e arrives in T1.12"
+
+  # T0.6 S6 (check C9): measure the GitHub Models free quota with the workflow token. Dispatch only:
+  #   gh workflow run live-e2e.yml --ref docs/T0.6-cluster-feasibility -f probe_quota=true
+  quota-probe:
+    name: quota-probe
+    if: ${{ github.event_name == 'workflow_dispatch' && inputs.probe_quota }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      models: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
+        with:
+          version: "0.13.6"
+      - name: Burst probe
+        env:
+          PRUEFSTAND_GH_MODELS_TOKEN: ${{ github.token }}
+        run: |
+          uv run --no-project --with httpx==0.28.1 python scripts/models/quota_probe.py \
+            --burst --out quota-burst.jsonl | tee -a "$GITHUB_STEP_SUMMARY"
+      - name: Raw records (headers only, no secrets)
+        run: |
+          echo "::group::quota-burst.jsonl"
+          cat quota-burst.jsonl
+          echo "::endgroup::"
