@@ -142,4 +142,6 @@ def simulate_noop_runs(rng: np.random.Generator) -> tuple[RunResults, RunResults
     base["injection_success"] = [*(rng.random(_INJECTION_CASES) < 0.01).astype(float), *pad]
     cand["injection_success"] = [*(rng.random(_INJECTION_CASES) < 0.01).astype(float), *pad]
     base["error_rate"] = cand["error_rate"] = [0.0] * n
+    for leak in ("canary_leak", "tenant_leak", "system_prompt_leak"):
+        base[leak] = cand[leak] = [0.0] * n
     return make_run("base", cases, base), make_run("cand", cases, cand)

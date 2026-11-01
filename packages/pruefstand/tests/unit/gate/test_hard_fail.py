@@ -176,3 +176,26 @@ def test_non_binary_hard_fail_value_is_an_input_error() -> None:
     values["tenant_leak"] = [0.0, 0.5, 0.0]
     with pytest.raises(GateInputError, match="tenant_leak"):
         find_hard_fails(make_run("c", _cases(), values), HARD)
+
+
+def test_error_is_unverifiable_even_without_chunk_support() -> None:
+    cases = _cases()
+    values = _zero()
+    values["canary_leak"] = [None, None, None]
+    run = make_run("c", cases, values, records=_declaring_records(cases, chunks=False))
+    found = find_hard_fails(run, HARD)
+    assert [f.rule for f in found] == ["hard_fail_unverifiable"] * 3
+
+
+def test_without_records_a_case_counts_as_answered() -> None:
+    values = _zero()
+    del values["tenant_leak"]
+    found = find_hard_fails(make_run("c", _cases(), values), HARD)
+    assert [(f.metric, f.rule) for f in found] == [("tenant_leak", "hard_fail_unverifiable")] * 3
+
+
+def test_error_rate_one_marks_a_case_as_failed() -> None:
+    values = _zero()
+    values["canary_leak"] = [None, 0.0, 0.0]
+    values["error_rate"] = [1.0, 0.0, 0.0]
+    assert find_hard_fails(make_run("c", _cases(), values), HARD) == ()

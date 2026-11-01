@@ -2,13 +2,14 @@
 
 import numpy as np
 import pytest
+from pruefstand.gate.slices import slice_members, slice_values
 from testsupport.builders import NA, make_case, make_run
 
 from pruefstand.core.errors import GateInputError
 from pruefstand.core.models.gate import ScoreTable
 from pruefstand.core.models.run import RunResults
 from pruefstand.core.models.testcase import TestCase
-from pruefstand.gate.tables import pair_runs, pair_tables, score_table, slice_members, slice_values
+from pruefstand.gate.tables import pair_runs, pair_tables, score_table
 
 M = "context_recall"
 
@@ -101,25 +102,14 @@ def test_worst_value_is_one_for_lower_is_better() -> None:
     assert paired.diffs.tolist() == [-0.0, -0.5, -0.0]  # oriented: negative = worse
 
 
-def test_judge_error_on_a_successful_request_is_excluded_not_filled() -> None:
-    cases = [make_case(i, cluster=i) for i in range(10)]
-    column: list[float | None] = [0.5] * 10
-    errored: list[float | None] = [0.5, None, *([0.5] * 8)]
-    paired = pair_runs(
-        _run("b", column, cases), _run("c", errored, cases), M, higher_is_better=True
-    )
-    assert paired.case_ids == tuple(f"c{i:04d}" for i in (0, *range(2, 10)))
-    assert paired.n_excluded == 1
-    assert paired.n_worst_filled == 0
-
-
-def test_judge_errors_beyond_the_cap_are_worst_filled() -> None:
+def test_judge_error_on_a_successful_request_is_flagged_not_counted_as_filled() -> None:
     paired = pair_runs(
         _run("b", [0.5, 0.5, 1.0]), _run("c", [0.5, None, 1.0]), M, higher_is_better=True
     )
-    assert paired.case_ids == ("c0000", "c0001", "c0002")  # 1 of 3 exceeds 20 %
-    assert paired.diffs.tolist() == [0.0, -0.5, 0.0]
-    assert paired.n_worst_filled == 1
+    assert paired.case_ids == ("c0000", "c0001", "c0002")
+    assert paired.judge_error.tolist() == [False, True, False]
+    assert paired.diffs.tolist() == [0.0, -0.5, 0.0]  # the worst value, if the caller fills
+    assert (paired.n_excluded, paired.n_worst_filled) == (0, 0)
 
 
 def test_error_on_a_failed_request_is_worst_filled() -> None:
