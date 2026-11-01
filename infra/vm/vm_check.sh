@@ -160,7 +160,7 @@ chains_exist() {
   for c in "$@"; do as_root iptables -w -S "$c" >/dev/null 2>&1 || return 1; done
 }
 docker_chains_ok() {
-  chains_exist DOCKER-FORWARD DOCKER-BRIDGE DOCKER-CT DOCKER-INTERNAL || chains_exist DOCKER-ISOLATION-STAGE-1 DOCKER-ISOLATION-STAGE-2 DOCKER
+  chains_exist DOCKER DOCKER-FORWARD DOCKER-BRIDGE DOCKER-CT DOCKER-INTERNAL || chains_exist DOCKER-ISOLATION-STAGE-1 DOCKER-ISOLATION-STAGE-2 DOCKER
 }
 fw_rules() {
   local user input net
@@ -178,7 +178,7 @@ fw_rules() {
   done
   as_root iptables -w -C INPUT -j PRUEFSTAND-INPUT >/dev/null 2>&1 || note FAIL "INPUT lacks the jump to PRUEFSTAND-INPUT"
   as_root iptables -w -S DOCKER-USER >/dev/null 2>&1 || note FAIL "Docker chain DOCKER-USER is gone"
-  docker_chains_ok || note FAIL "Docker's filter chains are gone: neither the Docker >= 28 set (DOCKER-FORWARD, DOCKER-BRIDGE, DOCKER-CT, DOCKER-INTERNAL) nor the legacy set (DOCKER-ISOLATION-STAGE-1/2, DOCKER) is present"
+  docker_chains_ok || note FAIL "Docker's filter chains are gone: neither the Docker >= 28 set (DOCKER, DOCKER-FORWARD, DOCKER-BRIDGE, DOCKER-CT, DOCKER-INTERNAL) nor the legacy set (DOCKER-ISOLATION-STAGE-1/2, DOCKER) is present"
   as_root iptables -w -t nat -S DOCKER >/dev/null 2>&1 || note FAIL "Docker nat chain DOCKER is gone"
 }
 # dcurl_state RC: reached (HTTP success) | timeout (28: what a DROP produces) | noroute (7) | dns (6) | error | other
