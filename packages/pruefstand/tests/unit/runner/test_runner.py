@@ -22,6 +22,8 @@ from pruefstand.core.errors import StoreError
 from pruefstand.core.hashing import stable_hash
 from pruefstand.core.models.metric import MetricStatus
 from pruefstand.runner.runner import case_rng
+from pruefstand.store.artifacts import ArtifactStore
+from pruefstand.core.models.run import RunArtifacts
 
 
 async def test_twenty_cases_all_ok_with_context_recall(
@@ -248,3 +250,19 @@ def test_negative_and_positive_seeds_give_different_streams() -> None:
     assert case_rng(5, 0).random() != case_rng(-5, 0).random()
     assert case_rng(5, 0).random() == case_rng(5, 0).random()
     assert case_rng(5, 0).random() != case_rng(5, 1).random()
+
+
+async def test_a_response_with_a_lone_surrogate_is_a_target_error_and_the_run_is_writable(
+    router: respx.MockRouter, adapter: HttpTargetAdapter, tmp_path: Path
+) -> None:
+    body = b'{"answer": "x\\ud800y", "citations": []}'
+    router.post("/v1/query").respond(200, content=body, headers={"content-type": "application/json"})
+    cache = DictCache()
+    results = await run_cases(make_runner(adapter, cache=cache), [make_case(0)])
+    assert results.records[0].response is None
+    assert results.records[0].error is not None
+    assert "unicode" in results.records[0].error
+    assert cache.data == {}
+    store = ArtifactStore(tmp_path)
+    path = store.write_run(RunArtifacts(results=results, root=tmp_path / results.manifest.run_id))
+    assert store.read_run(path).results == results

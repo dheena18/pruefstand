@@ -9,6 +9,7 @@ import pytest
 
 from pruefstand.core.errors import StoreError
 from pruefstand.core.protocols import KVCache
+from pruefstand.store import kv as kv_module
 from pruefstand.store.kv import DiskKVCache
 
 
@@ -162,3 +163,39 @@ def test_read_only_works_on_a_read_only_directory(tmp_path: Path) -> None:
             assert reader.get("k") == b"v"
     finally:
         Path(folder).chmod(stat.S_IRWXU)
+
+
+def test_namespace_is_validated_at_runtime(tmp_path: Path) -> None:
+    for bad in ("../escape", "", "other", "target/../x"):
+        with pytest.raises(StoreError, match="namespace"):
+            DiskKVCache(tmp_path, bad)  # type: ignore[arg-type]  # the point: runtime check
+    assert list(tmp_path.iterdir()) == []
+
+
+def test_wrong_value_and_key_types_are_store_errors(tmp_path: Path) -> None:
+    with DiskKVCache(tmp_path, "target") as cache:
+        with pytest.raises(StoreError):
+            cache.set("k", "text")  # type: ignore[arg-type]  # the point: runtime check
+        with pytest.raises(StoreError):
+            cache.set("lone\ud800surrogate", b"v")
+        with pytest.raises(StoreError):
+            cache.get("lone\ud800surrogate")
+        with pytest.raises(StoreError):
+            cache.get(5)  # type: ignore[arg-type]  # the point: runtime check
+
+
+def test_oversized_values_are_refused_on_write_and_ignored_on_read(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(kv_module, "MAX_VALUE_BYTES", 16)
+    with DiskKVCache(tmp_path, "target") as cache:
+        cache.set("small", b"x" * 16)
+        with pytest.raises(StoreError, match="larger"):
+            cache.set("big", b"x" * 17)
+    db = sqlite3.connect(tmp_path / "target" / "cache.sqlite3")
+    db.execute("INSERT INTO kv (key, value) VALUES ('planted', ?)", (b"y" * 1000,))
+    db.commit()
+    db.close()
+    with DiskKVCache(tmp_path, "target") as cache:
+        assert cache.get("small") == b"x" * 16
+        assert cache.get("planted") is None
