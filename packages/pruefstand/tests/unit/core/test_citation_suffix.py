@@ -115,7 +115,7 @@ def test_suffix_scan_is_linear(unit: str, count: int) -> None:
     ["§ 5abAbs. 2 BGB", "§ 5abc Abs. 2 BGB", "§ 5abc und 6 BGB", "§ 5abund 6 BGB"],
 )
 def test_suffix_must_end_at_a_word_boundary(text: str) -> None:
-    """A longer word after the digits is no suffix; without the word-end lookahead `5ab` would match."""
+    """A longer word after the digits is no suffix (else 5ab would match)."""
     assert all(c.number != "5ab" for c in extract_citations(text))
     assert _norm(text) == []
 
