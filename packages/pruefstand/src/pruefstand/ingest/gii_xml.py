@@ -24,12 +24,12 @@ reproducible for a given pin.
 EGBGB has 69 chunks) and so do the chunks of a split §; a § with 63 Absätze (§ 1 KWG) is 63 chunks
 with one key. Consumers (T2.5, the citation metrics) must treat it as a label, never as an id.
 
-A norm whose number core.citations cannot read is a counted ``bad_citation_key`` error, never a
+A norm whose number core.citations cannot read is a counted bad_citation_key error, never a
 document without a key (KWG § 53ca to § 53cq needed the two-letter suffix fix of the parser).
-Text that is only a gap marker (``-``, ``(Inkrafttreten)``, a heading plus ``(gegenstandslos)``) is skipped as
-``placeholder``.
-Anlagen and Anhänge are skipped as ``annex`` although 31 of them carry normative text (for example
-the EGBGB Muster-Widerrufsbelehrung and the BSIG Anlagen): a conscious scope choice.
+Text that is only a gap marker (-, (Inkrafttreten), a heading plus (gegenstandslos))
+is skipped as placeholder. Anlagen and Anhänge are skipped as annex although 31 of them
+carry normative text (for example the EGBGB Muster-Widerrufsbelehrung and the BSIG Anlagen):
+a conscious scope choice.
 
 A member that fails halfway keeps the documents already yielded; the failure is counted.
 Nothing raises past the loader for bad input: a broken archive, unsafe or malformed XML, an
