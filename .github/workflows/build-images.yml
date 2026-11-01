@@ -45,7 +45,7 @@ jobs:
             echo "run=true" >> "$GITHUB_OUTPUT"; echo "push to main: running all image checks"; exit 0
           fi
           changed=$(git diff --name-only "$BASE_SHA...$HEAD_SHA" | grep -E \
-            '(^|/)(Dockerfile[^/]*|[^/]*\.Dockerfile|docker-compose[^/]*\.ya?ml|compose[^/]*\.ya?ml)$|^\.hadolint\.yaml$|^\.dockerignore$|^scripts/check_compose\.py$|^uv\.lock$|^(packages|apps)/.*pyproject\.toml$|^\.github/workflows/build-images\.yml$' || true)
+            '(^|/)(Dockerfile[^/]*|[^/]*\.Dockerfile|docker-compose[^/]*\.ya?ml|compose[^/]*\.ya?ml)$|^\.hadolint\.yaml$|^\.dockerignore$|^scripts/check_compose\.py$|^pyproject\.toml$|^uv\.lock$|^(packages|apps)/.*pyproject\.toml$|^\.github/workflows/build-images\.yml$' || true)
           if [ -n "$changed" ]; then
             echo "run=true" >> "$GITHUB_OUTPUT"; echo "Docker-related files changed:"; echo "$changed"
           else
@@ -146,11 +146,12 @@ jobs:
           ignore-unfixed: true
           exit-code: "1"
       # Code scanning needs a public repo or GitHub Advanced Security: skipped while the repo is private (D-T0.3,
-      # revisit when the repo goes public). Same-repo runs only (fork tokens are read-only). always(): the SARIF is
+      # revisit when the repo goes public). Same-repo, non-Dependabot runs only (their tokens are read-only). always(): the SARIF is
       # uploaded even when the gate above fails; the gate, not the upload, decides the job.
       - name: Upload SARIF (public repo, same-repo runs only)
         if: >-
           always() && github.event.repository.private == false &&
+          github.actor != 'dependabot[bot]' &&
           (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
         uses: github/codeql-action/upload-sarif@1b549b9259bda1cb5ddde3b41741a82a2d15a841 # v3.28.13
         with:

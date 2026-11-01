@@ -151,3 +151,23 @@ def test_bracketed_ipv6_host_is_rejected_clearly() -> None:
     for spec in ("[::1]:${QDRANT_HTTP_PORT:-6333}:6333", "[::]:${QDRANT_HTTP_PORT:-6333}:6333"):
         problems = _problems(ports=[spec])
         assert any("IPv6" in p and "binds all interfaces" in p for p in problems)
+
+
+def test_secret_with_literal_prefix_or_suffix_next_to_a_variable_fails() -> None:
+    for value in ("pw${X}", "${X}suffix", "Bearer ${TOKEN}", "a${X:-}b"):
+        assert any("literal" in p for p in _problems(environment={"API_TOKEN": value})), value
+
+
+def test_secret_made_only_of_variables_passes() -> None:
+    for value in ("${A}${B}", "${A:?need}", "${A:-}", "${A:-${B}}"):
+        assert _problems(environment={"API_TOKEN": value}) == [], value
+
+
+def test_healthcheck_without_a_usable_test_counts_as_missing() -> None:
+    cases: list[dict[str, object]] = [{"test": []}, {"interval": "10s"}, {"test": ""}, {}]
+    for health in cases:
+        assert "qdrant: no healthcheck" in _problems(healthcheck=health), health
+
+
+def test_healthcheck_without_test_is_accepted_when_the_service_extends_another() -> None:
+    assert _problems(healthcheck={"interval": "5s"}, extends={"service": "base"}) == []

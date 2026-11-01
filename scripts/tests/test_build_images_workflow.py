@@ -39,3 +39,13 @@ def test_aggregate_accepts_skipped_but_not_failed() -> None:
     script = str(_steps("build")[0]["run"])
     assert "success|skipped" in script
     assert "exit 1" in script
+
+
+def test_sarif_upload_is_skipped_for_dependabot() -> None:
+    steps = _steps("trivy")
+    assert "github.actor != 'dependabot[bot]'" in str(steps[_index(steps, "Upload SARIF")]["if"])
+
+
+def test_change_detection_covers_the_root_pyproject() -> None:
+    script = WORKFLOW.read_text(encoding="utf-8")
+    assert "^pyproject\\.toml$" in script

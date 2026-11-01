@@ -24,7 +24,8 @@ REPO = Path(__file__).resolve().parents[1]
 LOOPBACK = "127.0.0.1"
 HOST_PORT_VAR = re.compile(r"^\$\{[A-Z][A-Z0-9_]*_PORT:-\d+\}$")
 DIGEST_PIN = re.compile(r"@sha256:[0-9a-f]{64}$")
-VAR_DEFAULT = re.compile(r"\$\{[^}:?-]*:?-([^}]+)\}")
+INNER_REF = re.compile(r"\$\{([^${}]*)\}")
+DEFAULT_PART = re.compile(r"^[^:?-]*:?-(.*)$", re.DOTALL)
 SECRET_NAME = re.compile(r"(?i)(key|token|secret|password)")
 VAR_REF = re.compile(r"\$\{[^}]*\}")
 SHORT_WITH_IP = 3
@@ -98,9 +99,16 @@ def _check_image(name: str, service: Mapping[str, object]) -> Iterator[str]:
 
 def _check_healthcheck(name: str, service: Mapping[str, object]) -> Iterator[str]:
     health = service.get("healthcheck")
-    test = health.get("test") if isinstance(health, Mapping) else None
-    none_test = test == "NONE" or (isinstance(test, Sequence) and list(test) == ["NONE"])
-    if not isinstance(health, Mapping) or health.get("disable") is True or none_test:
+    if not isinstance(health, Mapping) or health.get("disable") is True:
+        yield f"{name}: no healthcheck"
+        return
+    test = health.get("test")
+    no_test = test in (None, "", [], "NONE") or (
+        isinstance(test, Sequence) and list(test) == ["NONE"]
+    )
+    if (
+        no_test and "extends" not in service
+    ):  # without a test, only an extended service can inherit one
         yield f"{name}: no healthcheck"
 
 
@@ -114,14 +122,33 @@ def _env_pairs(environment: object) -> Iterator[tuple[str, str | None]]:
             yield key, value if sep else None
 
 
+def _analyse_refs(value: str) -> tuple[bool, str]:
+    """Return ``(has literal default, literal rest)`` of a value made of ``${...}`` references.
+
+    References go innermost first, so ``${A:-${B}}`` has an empty default and no literal rest.
+    """
+    literal_default = False
+    while True:
+        match = INNER_REF.search(value)
+        if match is None:
+            return literal_default, value
+        default = DEFAULT_PART.match(match.group(1))
+        literal_default = literal_default or bool(default and default.group(1).strip())
+        value = value[: match.start()] + value[match.end() :]
+
+
 def _check_secrets(name: str, service: Mapping[str, object]) -> Iterator[str]:
     for key, value in _env_pairs(service.get("environment")):
         if not SECRET_NAME.search(key) or not value:
             continue
         if "${" not in value:
             yield f"{name}: environment {key} looks like a secret with a literal value"
-        elif any(m.group(1).strip() for m in VAR_DEFAULT.finditer(value)):
+            continue
+        literal_default, rest = _analyse_refs(value)
+        if literal_default:
             yield f"{name}: environment {key} is a secret with a literal default in {value!r}"
+        elif rest.strip():
+            yield f"{name}: environment {key} is a secret with a literal part in {value!r}"
 
 
 def check_compose(data: Mapping[str, object]) -> list[str]:

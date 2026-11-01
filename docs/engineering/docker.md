@@ -106,7 +106,7 @@ and no `ollama` service in compose: Ollama runs only on the cluster, outside Doc
 Named volumes such as `qdrant_data` survive `make down`; `make down VOLUMES=1` removes them. `make stack-run CMD="…"`
 runs `up`, the command (in a subshell) and `down` under one `stack.lock` hold; an EXIT trap tears the stack down
 whatever the command does and the command's exit code is kept (`STACK_LOCK_WAIT=<s>` bounds the wait for the lock,
-default: wait). The `llm` service's llama.cpp image is a placeholder pin (`server`): T1.13 re-pins it to `server-<version>`.
+default: wait). The shell replaces `flock` (`flock -F`) and runs the command as its own process group, so a TERM/INT sent to `make` alone or to the whole group stops the command, tears the stack down and releases the lock. `make ports-env` also writes `COMPOSE_PROJECT_NAME=pruefstand-dev` into the managed block when `PORT_OFFSET` is non-zero and the file sets no project name elsewhere. The `llm` service's llama.cpp image is a placeholder pin (`server`): T1.13 re-pins it to `server-<version>`.
 Tier-2 VM services (`rerank-cpu`, `llm-proxy`) are added by T3.1a and T6.2a; GPU serving is Ollama on the cluster (`gpu-cluster.md`), never a compose service.
 
 **Port table (single source).** Every host port binds to `127.0.0.1` (no exception; the only non-loopback

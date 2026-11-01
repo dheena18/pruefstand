@@ -6,7 +6,12 @@
 
 ENV_FILE ?= .env
 # From the environment, else the PORT_OFFSET line of ENV_FILE, else 0. Validated before any shell use.
-PORT_OFFSET ?= $(shell sed -n 's/^PORT_OFFSET=//p' $(ENV_FILE) 2>/dev/null | tail -n 1)
+# $(value) keeps an environment value literal: a `$(shell ...)` in it must be rejected, never run.
+ifeq ($(origin PORT_OFFSET),undefined)
+PORT_OFFSET := $(shell sed -n 's/^PORT_OFFSET=//p' $(ENV_FILE) 2>/dev/null | tail -n 1)
+else
+PORT_OFFSET := $(value PORT_OFFSET)
+endif
 PORT_OFFSET := $(or $(strip $(PORT_OFFSET)),0)
 # The largest default port is 11500, so the offset must keep every port <= 65535.
 MAX_PORT_OFFSET := 54035
@@ -25,7 +30,11 @@ endif
 
 # Shared dev project (PARALLEL-PLAN section 7): with an offset, every worktree uses `pruefstand-dev` unless the
 # environment or ENV_FILE names another project. Without an offset compose keeps its own default.
-COMPOSE_PROJECT_NAME ?= $(shell sed -n 's/^COMPOSE_PROJECT_NAME=//p' $(ENV_FILE) 2>/dev/null | tail -n 1)
+ifeq ($(origin COMPOSE_PROJECT_NAME),undefined)
+COMPOSE_PROJECT_NAME := $(shell sed -n 's/^COMPOSE_PROJECT_NAME=//p' $(ENV_FILE) 2>/dev/null | tail -n 1)
+else
+COMPOSE_PROJECT_NAME := $(value COMPOSE_PROJECT_NAME)
+endif
 ifeq ($(strip $(COMPOSE_PROJECT_NAME)),)
 ifneq ($(PORT_OFFSET),0)
 COMPOSE_PROJECT_NAME := pruefstand-dev
@@ -80,7 +89,7 @@ stack-run:
 	@test -n '$(CMD)' || { echo 'usage: make stack-run CMD="..."' >&2; exit 2; }
 	$(if $(findstring ',$(CMD)),$(error CMD must not contain single quotes))
 	mkdir -p $(dir $(STACK_LOCK))
-	flock $(if $(STACK_LOCK_WAIT),-w $(STACK_LOCK_WAIT)) $(STACK_LOCK) sh -c 'trap "$(MAKE) --no-print-directory down" EXIT; trap "exit 130" INT; trap "exit 143" TERM; $(MAKE) --no-print-directory up WAIT=1 && ( $(CMD) )'
+	flock -F $(if $(STACK_LOCK_WAIT),-w $(STACK_LOCK_WAIT)) $(STACK_LOCK) sh -c 'trap "$(MAKE) --no-print-directory down" EXIT; trap "exit 143" TERM INT; $(MAKE) --no-print-directory up WAIT=1 || exit $$?; set -m; ( $(CMD) ) & pid=$$!; trap "kill -TERM -$$pid 2>/dev/null; exit 143" TERM INT; wait $$pid'
 
 compose-lint:
 	uv run python scripts/check_compose.py
@@ -100,6 +109,7 @@ ports-env:
 	awk '/^# >>> ports \(make ports-env\)/{skip=1;next} /^# <<< ports/{skip=0;next} !skip' $(ENV_FILE) > $$tmp && \
 	{ cat $$tmp; \
 	  echo '# >>> ports (make ports-env)'; \
+	  $(if $(filter-out 0,$(PORT_OFFSET)),grep -q '^COMPOSE_PROJECT_NAME=.' $$tmp || echo 'COMPOSE_PROJECT_NAME=pruefstand-dev';) \
 	  $(foreach e,$(PORT_TABLE),echo '$(call port_var,$(e))=$(call port_val,$(e))';) \
 	  echo '# <<< ports'; } > $(ENV_FILE) && rm -f $$tmp
 	@echo "ports-env: wrote the port block (PORT_OFFSET=$(PORT_OFFSET)) to $(ENV_FILE)"
@@ -113,9 +123,14 @@ check-ports:
 	for line in $$($(CHECK_PORTS_PS) | tr ' ' '|'); do \
 	  proj=$${line%%|*}; rest=$${line#*|}; name=$${rest%%|*}; \
 	  [ "$$proj" = "$(EXECUTOR_PROJECT)" ] && continue; \
-	  for p in $$(printf '%s' "$$rest" | grep -oE ':[0-9]+->' | tr -d ':>-'); do \
-	    case " $(DEFAULT_PORTS) " in *" $$p "*) \
-	      echo "WARNING: project $$proj, container $$name publishes default port $$p (executor port); run make ports-env or use make up" >&2; bad=1;; esac; \
+	  hosts=$$(printf '%s' "$$rest" | grep -oE ':[0-9]+(-[0-9]+)?->' | sed 's/^://;s/->$$//' | sort -u); \
+	  for p in $(DEFAULT_PORTS); do \
+	    for h in $$hosts; do \
+	      lo=$${h%-*}; hi=$${h#*-}; \
+	      if [ "$$p" -ge "$$lo" ] && [ "$$p" -le "$$hi" ]; then \
+	        echo "WARNING: project $$proj, container $$name publishes default port $$p (executor port); run make ports-env or use make up" >&2; bad=1; break; \
+	      fi; \
+	    done; \
 	  done; \
 	done; \
 	if [ $$bad -eq 1 ] && [ -n "$(STRICT)" ]; then exit 1; fi; exit 0

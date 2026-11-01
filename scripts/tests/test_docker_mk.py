@@ -1,6 +1,8 @@
 import os
 import shutil
+import signal
 import subprocess
+import time
 from pathlib import Path
 
 import pytest
@@ -113,7 +115,7 @@ def test_stack_run_tears_down_when_up_fails(tmp_path: Path) -> None:
 def test_stack_run_lock_wait_is_optional() -> None:
     plain = _make("-n", "stack-run", "CMD=true").stdout
     waiting = _make("-n", "stack-run", "CMD=true", "STACK_LOCK_WAIT=30").stdout
-    assert "flock -w 30 " in waiting
+    assert " -w 30 " in waiting
     assert "flock -w" not in plain
 
 
@@ -194,3 +196,104 @@ def test_check_ports_is_quiet_for_dev_ports() -> None:
     result = _make("check-ports", "STRICT=1", f"CHECK_PORTS_PS={stub}")
     assert result.returncode == 0
     assert result.stderr == ""
+
+
+@pytest.mark.skipif(shutil.which("flock") is None, reason="needs flock")
+@pytest.mark.parametrize("group", [False, True])
+def test_stack_run_signalled_tears_down_and_leaves_no_process(
+    tmp_path: Path, *, group: bool
+) -> None:
+    proc = subprocess.Popen(  # noqa: S603
+        [
+            MAKE,
+            "-C",
+            str(REPO),
+            "stack-run",
+            f"STACK_LOCK={tmp_path}/stack.lock",
+            "COMPOSE_BASE=echo compose",
+            "CMD=echo started; sleep 30",
+        ],
+        stdout=subprocess.PIPE,
+        text=True,
+        start_new_session=True,
+        env={**os.environ, "PORT_OFFSET": "0"},
+    )
+    assert proc.stdout is not None
+    lines: list[str] = []
+    for line in proc.stdout:
+        lines.append(line.rstrip())
+        if line.strip() == "started":
+            break
+    if group:
+        os.killpg(proc.pid, signal.SIGTERM)
+    else:
+        os.kill(proc.pid, signal.SIGTERM)  # make alone, not its children
+    try:
+        lines += proc.stdout.read().splitlines()
+        proc.wait(timeout=15)
+    finally:
+        deadline = time.monotonic() + 5
+        while time.monotonic() < deadline:
+            try:
+                os.killpg(proc.pid, 0)
+            except ProcessLookupError:
+                break
+            time.sleep(0.1)
+        else:
+            os.killpg(proc.pid, signal.SIGKILL)
+            pytest.fail("processes of the stack-run group survived the signal")
+    assert any("down --remove-orphans" in ln for ln in lines[lines.index("started") :])
+
+
+def test_environment_port_offset_is_not_expanded_by_make(tmp_path: Path) -> None:
+    marker = tmp_path / "pwned"
+    result = _make("-s", "ports", offset=f"$(shell touch {marker})")
+    assert result.returncode != 0
+    assert "PORT_OFFSET" in result.stderr
+    assert not marker.exists()
+
+
+def test_environment_project_name_is_not_expanded_by_make(tmp_path: Path) -> None:
+    marker = tmp_path / "pwned2"
+    out = _make("-s", "project", offset="10000", project=f"$(shell touch {marker})").stdout
+    assert not marker.exists()
+    assert "touch" in out
+
+
+def test_check_ports_expands_ranges_and_reports_each_port_once() -> None:
+    stub = (
+        "printf 'wt1 wt1-qdrant-1 0.0.0.0:6333-6334->6333-6334/tcp, "
+        "[::]:6333-6334->6333-6334/tcp\\n'"
+    )
+    result = _make("check-ports", f"CHECK_PORTS_PS={stub}")
+    assert result.stderr.count("default port 6333") == 1
+    assert result.stderr.count("default port 6334") == 1
+
+
+def test_check_ports_range_without_default_ports_is_quiet() -> None:
+    stub = "printf 'wt1 wt1-x-1 127.0.0.1:16000-16010->6000-6010/tcp\\n'"
+    assert _make("check-ports", f"CHECK_PORTS_PS={stub}").stderr == ""
+
+
+def test_ports_env_adds_the_shared_project_once_with_an_offset(tmp_path: Path) -> None:
+    env_file = tmp_path / ".env"
+    env_file.write_text("FOO=bar\n", encoding="utf-8")
+    for _ in range(2):
+        assert _make("ports-env", offset="10000", env_file=env_file).returncode == 0
+    text = env_file.read_text(encoding="utf-8")
+    assert text.count("COMPOSE_PROJECT_NAME=pruefstand-dev\n") == 1
+
+
+def test_ports_env_keeps_an_existing_project_name(tmp_path: Path) -> None:
+    env_file = tmp_path / ".env"
+    env_file.write_text("COMPOSE_PROJECT_NAME=mine\n", encoding="utf-8")
+    assert _make("ports-env", offset="10000", env_file=env_file).returncode == 0
+    text = env_file.read_text(encoding="utf-8")
+    assert text.count("COMPOSE_PROJECT_NAME") == 1
+
+
+def test_ports_env_without_an_offset_adds_no_project_name(tmp_path: Path) -> None:
+    env_file = tmp_path / ".env"
+    env_file.write_text("FOO=bar\n", encoding="utf-8")
+    assert _make("ports-env", offset="0", env_file=env_file).returncode == 0
+    assert "COMPOSE_PROJECT_NAME" not in env_file.read_text(encoding="utf-8")
