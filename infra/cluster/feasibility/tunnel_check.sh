@@ -7,6 +7,12 @@
 # --print-cmd            print the SSH commands and the API base URL, run nothing (unit test).
 # Env: PROBE_PORT0 (temporary local port, default 21434, never 11434), CLUSTER_ALIAS (default
 #      cairo-s101lp), GEN_MODEL (default qwen3.8:27b-q8_0), EMBED_MODEL (default bge-m3).
+# GPU work: this script sends REAL generation and embedding requests to the shared Ollama server, so it
+# runs only under the GPU lock and refuses otherwise (PRUEFSTAND_LOCK_HELD=1, as switch-mode.sh does):
+#   pruefstand-lock sudo -n -u pruefstand --preserve-env=PRUEFSTAND_LOCK_HELD \
+#     bash infra/cluster/feasibility/tunnel_check.sh --use-existing-tunnel
+# (the sudoers line for this form is not final until T0.7 is merged; see README.md). Never run it
+# during a gate job or the nightly window.
 # Output: `CHECK <id> <PASS|FAIL|WARN> <detail>` lines. Never pulls, never loads another model
 # (bge-m3 is only called when `/api/tags` lists it), never changes keep_alive. ADR-0018: one forward.
 set -euo pipefail
@@ -26,6 +32,11 @@ for arg in "$@"; do
     *) echo "unknown argument: $arg" >&2; exit 2 ;;
   esac
 done
+
+if [ "$PRINT" = 0 ] && [ "${PRUEFSTAND_LOCK_HELD:-}" != 1 ]; then
+  echo "refusing to send generation requests without the GPU lock: run it as 'pruefstand-lock ...' (PRUEFSTAND_LOCK_HELD=1)" >&2
+  exit 2
+fi
 
 if [ "$PORT0" = "11434" ]; then
   echo "PROBE_PORT0 must not be 11434 (that port belongs to pruefstand-tunnel.service)" >&2
@@ -100,6 +111,7 @@ check_fwd() {
     fi
     sleep 1
   done
+  kill "$FWD_PID" 2>/dev/null || true
   FWD_PID=""
   emit fwd FAIL "port forwarding failed: $(head -c 200 "$TMP/fwd.log")"
   return 1

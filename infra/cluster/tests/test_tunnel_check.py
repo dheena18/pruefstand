@@ -91,3 +91,18 @@ def test_unknown_argument_fails(arg: str) -> None:
         timeout=20,
     )
     assert proc.returncode != 0
+
+
+def test_real_run_refuses_without_the_gpu_lock() -> None:
+    env = {k: v for k, v in os.environ.items() if k != "PRUEFSTAND_LOCK_HELD"}
+    proc = subprocess.run(  # noqa: S603  # fixed argv, no shell
+        ["bash", str(SCRIPT), "--use-existing-tunnel"],  # noqa: S607  # bash from PATH
+        capture_output=True,
+        text=True,
+        check=False,
+        env=env,
+        timeout=20,
+    )
+    assert proc.returncode == 2
+    assert "pruefstand-lock" in proc.stderr
+    assert "CHECK" not in proc.stdout

@@ -24,7 +24,14 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 import httpx
-from models.quota_model import (
+
+if __package__ in (
+    None,
+    "",
+):  # run as `python scripts/models/quota_probe.py`: make `models` importable
+    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+
+from models.quota_model import (  # needs the sys.path line above
     BudgetResult,
     DailySummary,
     RateError,
@@ -59,7 +66,8 @@ __all__ = [
 
 ENDPOINT = "https://models.github.ai/inference/chat/completions"
 MAX_BURST = 30
-# Candidate non-qwen models; ids are verified against the GitHub Models catalogue by the first run.
+# Candidate non-qwen models. UNVERIFIED ids (the catalogue could not be read when this was written;
+# the Mistral id in particular may differ): a wrong id answers 4xx and stops after two requests.
 DEFAULT_MODELS = (
     "openai/gpt-4.1-mini",
     "openai/gpt-4o-mini",
@@ -80,7 +88,6 @@ def make_sender(token: str, timeout_s: float = 60.0) -> Sender:
     Returns:
         ``send(model, index)``; network errors become a record with ``status=0``.
     """
-    client = httpx.Client(timeout=timeout_s)
     headers = {
         "Authorization": f"Bearer {token}",
         "Accept": "application/vnd.github+json",
@@ -95,7 +102,8 @@ def make_sender(token: str, timeout_s: float = 60.0) -> Sender:
         }
         ts = datetime.now(UTC).isoformat(timespec="seconds")
         try:
-            resp = client.post(ENDPOINT, headers=headers, json=payload)
+            with httpx.Client(timeout=timeout_s) as client:
+                resp = client.post(ENDPOINT, headers=headers, json=payload)
         except httpx.HTTPError as exc:
             return Record(ts, model, index, 0, {}, None, type(exc).__name__)
         rate = {
@@ -110,7 +118,10 @@ def make_sender(token: str, timeout_s: float = 60.0) -> Sender:
 
 
 def run_burst(send: Sender, models: Sequence[str], max_requests: int) -> list[Record]:
-    """Send up to ``max_requests`` (capped at 30) per model, stopping at the first 429.
+    """Send up to ``max_requests`` per model (cap 30, so at most 30 per model in total).
+
+    A model stops at its first 429 and after two consecutive statuses other than 200 and 429
+    (bad token, wrong model id), so a typo never burns the budget.
 
     Args:
         send: One-request function, see ``make_sender``.
@@ -122,10 +133,14 @@ def run_burst(send: Sender, models: Sequence[str], max_requests: int) -> list[Re
     """
     records: list[Record] = []
     for model in models:
+        errors = 0
         for index in range(1, min(max_requests, MAX_BURST) + 1):
             record = send(model, index)
             records.append(record)
             if record.status == 429:
+                break
+            errors = errors + 1 if record.status != 200 else 0
+            if errors >= 2:
                 break
     return records
 

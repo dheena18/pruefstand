@@ -5,6 +5,10 @@
 #
 # (on the VM as `sudo -u pruefstand ssh ...`). Nothing is written on the cluster (the model disk is
 # nearly full, ADR-0019): no installs, no pulls, no server start or restart, no keep_alive change.
+# The probe is READ-ONLY except one OPT-IN step: with MEASURE_LOAD=1 `model-load` sends one empty
+# /api/generate (keep_alive 0) that loads the generator; it runs only when /api/ps lists NO model, and
+# only as an owner step under `pruefstand-lock` with MAINTENANCE set (nothing else may use the GPUs).
+# Default: SKIP. PROBE_CHECKS="id id" limits the run to those checks (tests).
 # Every check prints `CHECK <id> <PASS|FAIL|WARN> <detail>` on one line and never aborts the script.
 # All code is inside functions and `main` runs with stdin from /dev/null, so no command can swallow
 # the rest of the piped script. Env: MODELS_DIR (default /data/dheena/Models), GEN_MODEL, OLLAMA_URL.
@@ -108,14 +112,15 @@ check_ollama_store() {
   done
   dir="$(grep -E '^OLLAMA_MODELS=' <<<"$env_dump" | head -1 | cut -d= -f2- || true)"
   if [ -z "$dir" ]; then diffs="model dir ~/.ollama/models (OLLAMA_MODELS unset); $diffs"; fi
-  shown+="$(grep -E '^OLLAMA_HOST=' <<<"$env_dump" | head -1 || true) pid=$pid"
+  if grep -q '^OLLAMA_HOST=' <<<"$env_dump"; then shown+="OLLAMA_HOST=set "; else shown+="OLLAMA_HOST=unset "; fi
+  shown+="pid=$pid"
   if [ -n "$diffs" ]; then emit ollama-store WARN "${diffs}[${shown}]" 600; else emit ollama-store PASS "$shown" 600; fi
 }
 
 check_ollama_provenance() {
   have ollama || { emit ollama-provenance WARN "ollama binary not found"; return 0; }
   local from name tag path code
-  from="$(ollama show --modelfile "$GEN_MODEL" 2>&1 | grep -m1 '^FROM' || true)"
+  from="$(ollama show --modelfile "$GEN_MODEL" 2>&1 | grep -m1 '^FROM' | sed -E 's#^FROM .*/(sha256-[0-9a-f]{12})[0-9a-f]*$#FROM blob \1...#' || true)"
   name="${GEN_MODEL%%:*}"
   tag="${GEN_MODEL#*:}"
   path="$name"
@@ -181,11 +186,19 @@ check_models_space() {
 }
 
 check_model_load() {
-  have curl || { emit model-load WARN "curl missing"; return 0; }
+  if [ "${MEASURE_LOAD:-0}" != 1 ]; then
+    emit model-load PASS "SKIP: cold load not measured; opt-in MEASURE_LOAD=1, an owner step under pruefstand-lock and MAINTENANCE"
+    return 0
+  fi
+  have curl || { emit model-load WARN "curl missing, not measuring"; return 0; }
   local ps_out t0 t1 secs
   ps_out="$(curl -sS -m 10 "$OLLAMA_URL/api/ps" 2>/dev/null || true)"
-  if grep -q "\"name\":\"$GEN_MODEL\"" <<<"$ps_out"; then
-    emit model-load PASS "SKIP: $GEN_MODEL already loaded; unload it (keep_alive 0) to measure the cold load"
+  if [ -z "$ps_out" ]; then
+    emit model-load WARN "cannot read /api/ps, not measuring"
+    return 0
+  fi
+  if grep -q '"name"' <<<"$ps_out"; then
+    emit model-load PASS "SKIP: a model is loaded ($(grep -o '"name":"[^"]*"' <<<"$ps_out" | cut -d'"' -f4 | tr '\n' ' ')); unload it first, then rerun"
     return 0
   fi
   t0="$(date +%s%N)"
@@ -238,11 +251,13 @@ run_check() { "$1" || emit "${1#check_}" WARN "check function failed unexpectedl
 main() {
   OLLAMA_LIST=""
   echo "# probe $(date -u +%FT%TZ) MODELS_DIR=$MODELS_DIR GEN_MODEL=$GEN_MODEL"
-  local c
+  local c name wanted="${PROBE_CHECKS:-}"
   for c in check_os check_gpu check_gpu_procs check_ollama check_ollama_list check_ollama_store \
     check_ollama_provenance check_port check_logind check_tmux check_models_space check_model_load \
     check_local_disk check_net check_docker check_vllm; do
-    run_check "$c"
+    name="${c#check_}"
+    name="${name//_/-}"
+    if [ -z "$wanted" ] || [[ " $wanted " == *" $name "* ]]; then run_check "$c"; fi
   done
 }
 

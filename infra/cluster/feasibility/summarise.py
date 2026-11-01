@@ -134,6 +134,11 @@ def _verdict(checks: list[Check]) -> tuple[str, list[str]]:
             no_go = True
             conditions.append(_condition(check, by_id))
     for cid, check in by_id.items():
+        if cid == "model-load" and check.status == "PASS" and check.detail.startswith("SKIP"):
+            conditions.append(
+                "model-load: cold load not measured (opt-in MEASURE_LOAD=1, owner step)"
+            )
+            continue
         if cid in INFORMATIONAL or check.status == "PASS":
             continue
         if cid in GO_CHECKS and check.status == "FAIL":

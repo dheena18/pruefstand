@@ -6,6 +6,8 @@ a token.
 
 import json
 import os
+import subprocess
+import sys
 from collections.abc import Callable
 from pathlib import Path
 
@@ -197,3 +199,59 @@ def test_one_real_request_returns_rate_limit_headers() -> None:
     send: Callable[[str, int], Record] = make_sender(token, timeout_s=30.0)
     record = send(os.environ.get("PRUEFSTAND_GH_MODELS_MODEL", "openai/gpt-4.1-mini"), 1)
     assert record.status in {200, 429}
+    assert any(k.startswith("x-ratelimit-") for k in record.headers)
+
+
+def _run_script(cwd: Path, *args: str) -> subprocess.CompletedProcess[str]:
+    script = Path(__file__).resolve().parents[1] / "quota_probe.py"
+    env = {
+        k: v for k, v in os.environ.items() if k not in {"PYTHONPATH", "PRUEFSTAND_GH_MODELS_TOKEN"}
+    }
+    return subprocess.run(  # noqa: S603  # fixed argv, no shell
+        [sys.executable, str(script), *args],
+        capture_output=True,
+        text=True,
+        check=False,
+        cwd=cwd,
+        env=env,
+        timeout=60,
+    )
+
+
+@pytest.mark.parametrize("where", ["repo", "other"])
+def test_script_runs_as_a_subprocess_from_any_cwd(where: str, tmp_path: Path) -> None:
+    cwd = Path(__file__).resolve().parents[3] if where == "repo" else tmp_path
+    helped = _run_script(cwd, "--help")
+    assert helped.returncode == 0, helped.stderr
+    assert "--burst" in helped.stdout
+    sample = tmp_path / "daily.jsonl"
+    rec = _rec("a/m1", 1, headers={"x-ratelimit-limit-requests-day": "150"})
+    sample.write_text(json.dumps(rec.__dict__) + "\n", encoding="utf-8")
+    summary = _run_script(cwd, "--summarise", str(sample))
+    assert summary.returncode == 0, summary.stderr
+    assert "| a/m1 |" in summary.stdout
+
+
+def test_missing_token_exits_2_without_a_request(tmp_path: Path) -> None:
+    proc = _run_script(tmp_path, "--daily", "--models", "a/m1")
+    assert proc.returncode == 2
+    assert "PRUEFSTAND_GH_MODELS_TOKEN" in proc.stderr
+
+
+def test_run_burst_stops_after_two_consecutive_errors() -> None:
+    sent: list[int] = []
+
+    def send(model: str, index: int) -> Record:
+        sent.append(index)
+        return _rec(model, index, status=401)
+
+    records = run_burst(send, ["m1", "m2"], max_requests=30)
+    assert [r.index for r in records if r.model == "m1"] == [1, 2]
+    assert len(sent) == 4
+
+
+def test_a_single_error_does_not_stop_the_burst() -> None:
+    def send(model: str, index: int) -> Record:
+        return _rec(model, index, status=500 if index == 2 else 200)
+
+    assert len(run_burst(send, ["m1"], max_requests=5)) == 5

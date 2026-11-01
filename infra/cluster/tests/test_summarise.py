@@ -169,3 +169,9 @@ def test_worst_status_wins_for_duplicate_ids() -> None:
 def test_pipe_in_detail_is_escaped_in_the_table() -> None:
     out = summarise(_probe(os="PASS a | b"))
     assert "a \\| b" in out
+
+
+def test_model_load_skip_adds_the_not_measured_condition() -> None:
+    out = summarise(_probe(model_load="PASS SKIP: opt-in MEASURE_LOAD=1"))
+    assert _verdict(out) == "VERDICT: go-with-conditions"
+    assert "cold load not measured" in out
