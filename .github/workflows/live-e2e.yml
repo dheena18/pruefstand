@@ -60,12 +60,14 @@ jobs:
         with:
           version: "0.13.6"
       - name: Burst probe
+        shell: bash  # pipefail: a failing probe must fail the step despite `| tee`
         env:
           PRUEFSTAND_GH_MODELS_TOKEN: ${{ github.token }}
         run: |
           uv run --no-project --with httpx==0.28.1 python scripts/models/quota_probe.py \
             --burst --out quota-burst.jsonl | tee -a "$GITHUB_STEP_SUMMARY"
       - name: Raw records (headers only, no secrets)
+        if: always()
         run: |
           echo "::group::quota-burst.jsonl"
           cat quota-burst.jsonl

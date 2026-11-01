@@ -192,9 +192,9 @@ check_model_load() {
   fi
   have curl || { emit model-load WARN "curl missing, not measuring"; return 0; }
   local ps_out t0 t1 secs
-  ps_out="$(curl -sS -m 10 "$OLLAMA_URL/api/ps" 2>/dev/null || true)"
-  if [ -z "$ps_out" ]; then
-    emit model-load WARN "cannot read /api/ps, not measuring"
+  ps_out="$(curl -fsS -m 10 "$OLLAMA_URL/api/ps" 2>/dev/null || true)"
+  if ! grep -q '"models"' <<<"$ps_out"; then
+    emit model-load WARN "cannot read a valid /api/ps answer, not measuring"
     return 0
   fi
   if grep -q '"name"' <<<"$ps_out"; then

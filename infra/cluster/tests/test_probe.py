@@ -20,16 +20,17 @@ SCRIPT = Path(__file__).resolve().parents[1] / "feasibility" / "probe.sh"
 class _Handler(http.server.BaseHTTPRequestHandler):
     seen: ClassVar[list[str]] = []
     ps_body: ClassVar[bytes] = b'{"models":[]}'
+    ps_status: ClassVar[int] = 200
 
-    def _reply(self, body: bytes) -> None:
-        self.send_response(200)
+    def _reply(self, body: bytes, status: int = 200) -> None:
+        self.send_response(status)
         self.send_header("Content-Length", str(len(body)))
         self.end_headers()
         self.wfile.write(body)
 
     def do_GET(self) -> None:  # http.server API
         type(self).seen.append(f"GET {self.path}")
-        self._reply(type(self).ps_body)
+        self._reply(type(self).ps_body, type(self).ps_status)
 
     def do_POST(self) -> None:  # http.server API
         type(self).seen.append(f"POST {self.path}")
@@ -43,6 +44,7 @@ class _Handler(http.server.BaseHTTPRequestHandler):
 def server() -> Iterator[tuple[str, type[_Handler]]]:
     _Handler.seen = []
     _Handler.ps_body = b'{"models":[]}'
+    _Handler.ps_status = 200
     httpd = http.server.HTTPServer(("127.0.0.1", 0), _Handler)
     thread = threading.Thread(target=httpd.serve_forever, daemon=True)
     thread.start()
@@ -112,3 +114,19 @@ def test_probe_never_prints_the_ollama_host_value() -> None:
         timeout=60,
     )
     assert "10.9.8.7" not in proc.stdout
+
+
+@pytest.mark.parametrize(
+    ("status", "body"),
+    [(500, b'{"error":"boom"}'), (200, b"{}"), (200, b'{"error":"no models key"}')],
+)
+def test_measure_load_refuses_on_an_unusable_ps_answer(
+    server: tuple[str, type[_Handler]], status: int, body: bytes
+) -> None:
+    url, handler = server
+    handler.ps_status = status
+    handler.ps_body = body
+    lines = _probe(url, MEASURE_LOAD="1")
+    assert lines[0].startswith("CHECK model-load WARN")
+    assert "not measuring" in lines[0]
+    assert "POST /api/generate" not in handler.seen

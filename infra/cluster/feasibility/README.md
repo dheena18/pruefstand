@@ -15,6 +15,9 @@ the GPU lock and refuses without `PRUEFSTAND_LOCK_HELD=1`.
 | 4 Save | VM, owner user | `cat probe.out tunnel.out > infra/cluster/feasibility/probe-<date>.out` | no host, port, ngrok URL or secret in the file |
 | 5 Verdict | any | `uv run python infra/cluster/feasibility/summarise.py < infra/cluster/feasibility/probe-<date>.out` | last line `VERDICT: ...`; then fill `gpu-cluster.md` §0.2 C1-C8 and the Decision line |
 
+`sudo -u pruefstand ssh cairo-s101lp` in steps 1-2 is a T0.6 exception to the rule that the owner reaches the
+cluster only through the `pruefstand-cluster` wrapper (that wrapper arrives with T3.1a); do not copy the pattern.
+
 Quota probe (C9, `scripts/models/quota_probe.py`): see `docs/engineering/ci-cd.md` §1.1a. The candidate model
 ids in `DEFAULT_MODELS` are **unverified** against the GitHub Models catalogue; pass `--models` to override.
 After the first real run, commit the raw `quota-burst.jsonl` as a fixture for the parser tests (follow-up).
