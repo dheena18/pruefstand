@@ -122,9 +122,13 @@ ensure_lock() {
     run install -o "$SVC" -g "$SVC" -m 0660 /dev/null "$lock"
     return
   fi
-  # Open first, then verify and change through the descriptor: no window to swap in a symlink.
+  # Open first, then verify and change through the descriptor. A swap between the check above and the open is
+  # caught by comparing device:inode of the descriptor with the path; the descriptor itself cannot be swapped.
   exec 8<"$lock"
+  [ ! -L "$lock" ] || die "$lock is a symlink; refusing to follow it"
   [ -f /proc/self/fd/8 ] || die "$lock is not a regular file"
+  [ "$(stat -L -c %d:%i /proc/self/fd/8)" = "$(stat -c %d:%i "$lock")" ] ||
+    die "$lock changed while it was being opened; run again"
   if [ "$(stat -L -c '%a %U:%G' /proc/self/fd/8)" != "660 $SVC:$SVC" ]; then
     run chown "$SVC:$SVC" /proc/self/fd/8
     run chmod 0660 /proc/self/fd/8

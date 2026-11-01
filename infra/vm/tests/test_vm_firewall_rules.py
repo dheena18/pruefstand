@@ -12,13 +12,29 @@ DROP = "-d 172.17.0.1 -p tcp --dport 11434 -j DROP"
 EMPTY_USER = "-N DOCKER-USER\n-A DOCKER-USER -j RETURN"
 
 
-def _iptables(stubs: Stubs, *, present: bool, user: str = IPT_USER, inp: str = IPT_INPUT) -> None:
+JUMP_FIRST = "-P INPUT ACCEPT\n-A INPUT -j PRUEFSTAND-INPUT\n-A INPUT -j ufw-before-input"
+JUMP_SECOND = "-P INPUT ACCEPT\n-A INPUT -j ufw-before-input\n-A INPUT -j PRUEFSTAND-INPUT"
+LEGACY = "-s 10.231.0.0/24 -d 172.17.0.1 -p tcp --dport 11434 -j ACCEPT"
+
+
+def _iptables(
+    stubs: Stubs,
+    *,
+    present: bool,
+    user: str = IPT_USER,
+    inp: str = IPT_INPUT,
+    input_listing: str = JUMP_FIRST,
+    legacy_rc: int = 1,
+) -> None:
     rc = 0 if present else 1
     stubs.add(
         "iptables",
         [
+            ("*-C DOCKER-USER -s 10.231.0.0/24*", "", legacy_rc),
+            ("*-C PRUEFSTAND-INPUT -s 10.231.0.0/24*", "", legacy_rc),
             ("*-C *", "", rc),
             ("*-L PRUEFSTAND-INPUT*", "", rc),
+            ("*-S INPUT", input_listing if present else "-P INPUT ACCEPT", 0),
             ("*-S DOCKER-USER", user if present else EMPTY_USER, 0),
             ("*-S PRUEFSTAND-INPUT", inp if present else "", 0 if present else 1),
             ("*", "", 0),
@@ -195,3 +211,27 @@ def test_check_with_closed_demo_gate_is_3_only_when_the_gateway_is_fine(
     assert run_script("pruefstand-firewall.sh", "--check").rc == 3
     _iptables(stubs, present=False)
     assert run_script("pruefstand-firewall.sh", "--check").rc == 1
+
+
+def test_check_gateway_needs_the_jump_to_be_first(run_script: Runner, stubs: Stubs) -> None:
+    _iptables(stubs, present=True, input_listing=JUMP_SECOND)
+    res = run_script("pruefstand-firewall.sh", "--check-gateway")
+    assert res.rc == 1
+    assert "first" in res.out
+    _iptables(stubs, present=True)
+    assert run_script("pruefstand-firewall.sh", "--check-gateway").rc == 0
+
+
+def test_apply_moves_a_late_jump_to_the_top_without_a_gap(run_script: Runner, stubs: Stubs) -> None:
+    _iptables(stubs, present=True, input_listing=JUMP_SECOND)
+    plans = _plans(run_script("pruefstand-firewall.sh", "--dry-run").out)
+    insert = next(i for i, p in enumerate(plans) if "-I INPUT 1 -j PRUEFSTAND-INPUT" in p)
+    delete = next(i for i, p in enumerate(plans) if re.search(r"-D INPUT 3$", p))
+    assert insert < delete
+
+
+def test_a_legacy_accept_without_the_bridge_is_removed(run_script: Runner, stubs: Stubs) -> None:
+    _iptables(stubs, present=True, legacy_rc=0)
+    plans = _plans(run_script("pruefstand-firewall.sh", "--dry-run").out)
+    assert any(p.endswith(f"-D DOCKER-USER {LEGACY}") for p in plans)
+    assert any(p.startswith("iptables-restore --noflush :PRUEFSTAND-INPUT") for p in plans)

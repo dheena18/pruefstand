@@ -22,6 +22,7 @@ def _stubs(
     docker0: str = DOCKER0,
     restart_rc: int = 0,
     listen: str = BOTH,
+    need_reload: str = "no",
 ) -> None:
     stubs.add("id", [("-u", "0", 0)])
     stubs.add("autossh", [("*", "", 0)])
@@ -33,6 +34,7 @@ def _stubs(
         [
             ("is-active pruefstand-firewall", fw, 0 if fw == "active" else 3),
             ("is-active pruefstand-tunnel", "active", 0),
+            ("show -p NeedDaemonReload --value pruefstand-tunnel", need_reload, 0),
             ("restart pruefstand-tunnel", "", restart_rc),
             ("*", "", 0),
         ],
@@ -40,8 +42,8 @@ def _stubs(
 
 
 def _run(run_script: Runner, stubs: Stubs, unit_dir: Path) -> Result:
-    env = {"TUNNEL_WAIT_S": "1", "PRUEFSTAND_FIREWALL_BIN": str(stubs.bin / "fwbin")}
-    return run_script("install-tunnel.sh", "--unit-dir", unit_dir, env=env)
+    args = ["--unit-dir", unit_dir, "--firewall-bin", stubs.bin / "fwbin"]
+    return run_script("install-tunnel.sh", *args, env={"TUNNEL_WAIT_S": "1"})
 
 
 def _unit_dir(tmp_path: Path, content: str | None = "OLD\n", bak: str | None = None) -> Path:
@@ -139,3 +141,33 @@ def test_up_to_date_unit_still_waits_for_the_listeners(
     assert _run(run_script, stubs, unit_dir).rc == 1
     _stubs(stubs)
     assert _run(run_script, stubs, unit_dir).rc == 0
+
+
+def test_up_to_date_run_reloads_and_restarts_after_an_interrupted_install(
+    run_script: Runner, stubs: Stubs, tmp_path: Path
+) -> None:
+    _stubs(stubs, need_reload="yes")
+    unit_dir = _unit_dir(tmp_path, content=REPO_UNIT, bak="STALE\n")
+    res = _run(run_script, stubs, unit_dir)
+    assert res.rc == 0, res.err + res.out
+    calls = stubs.calls("systemctl")
+    assert any("daemon-reload" in c for c in calls)
+    assert any("restart pruefstand-tunnel" in c for c in calls)
+    assert not (unit_dir / f"{UNIT_NAME}.bak").exists(), "stale backup removed after success"
+
+
+def test_up_to_date_run_without_pending_reload_does_not_restart(
+    run_script: Runner, stubs: Stubs, tmp_path: Path
+) -> None:
+    _stubs(stubs, need_reload="no")
+    assert _run(run_script, stubs, _unit_dir(tmp_path, content=REPO_UNIT)).rc == 0
+    assert not [c for c in stubs.calls("systemctl") if "restart pruefstand-tunnel" in c]
+
+
+def test_firewall_bin_env_var_is_ignored(run_script: Runner, stubs: Stubs, tmp_path: Path) -> None:
+    _stubs(stubs)
+    env = {"TUNNEL_WAIT_S": "1", "PRUEFSTAND_FIREWALL_BIN": str(stubs.bin / "fwbin")}
+    unit_dir = _unit_dir(tmp_path)
+    res = run_script("install-tunnel.sh", "--unit-dir", unit_dir, env=env)
+    assert res.rc == 3
+    assert "--check-gateway" in res.err

@@ -107,9 +107,16 @@ def test_install_tunnel_second_run_with_same_unit_only_enables(
 def test_tunnel_fails_closed_without_the_firewall() -> None:
     unit = _section(TUNNEL, "Unit")
     assert "pruefstand-firewall.service" in unit["After"][0]
-    assert unit["Requires"] == ["pruefstand-firewall.service"]
     pre = _section(TUNNEL, "Service")["ExecStartPre"]
     assert pre == ["+/usr/local/sbin/pruefstand-firewall.sh --check-gateway"]
+
+
+def test_tunnel_does_not_require_the_firewall_unit() -> None:
+    """Requires= would make a failing firewall oneshot a dependency failure that is not retried."""
+    unit = _section(TUNNEL, "Unit")
+    assert "Requires" not in unit
+    assert "pruefstand-firewall.service" in unit["Wants"][0]
+    assert unit["PartOf"] == ["pruefstand-firewall.service"]
 
 
 def test_tunnel_notices_dead_connections() -> None:

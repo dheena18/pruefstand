@@ -297,3 +297,23 @@ def test_users_fixes_an_existing_lock_file_through_the_descriptor(
     assert str(tmp_path / "lib" / "gpu.lock") not in "".join(
         ln for ln in res.out.splitlines() if "chmod" in ln or "chown" in ln
     )
+
+
+def test_users_refuses_a_lock_file_that_is_not_the_one_it_opened(
+    run_script: Runner, stubs: Stubs, tmp_path: Path
+) -> None:
+    _user_stubs(stubs, user_exists=True, docker_members="alice,pruefstand", pf_members="alice")
+    (tmp_path / "lib").mkdir()
+    (tmp_path / "lib" / "gpu.lock").touch()
+    stubs.add(
+        "stat",
+        [
+            ("-L -c %d:%i /proc/self/fd/8", "64:1", 0),
+            ("-c %d:%i *gpu.lock", "64:2", 0),
+            ("-c %a %U:%G *lib", "2770 pruefstand:pruefstand", 0),
+            ("*", "660 pruefstand:pruefstand", 0),
+        ],
+    )
+    res = run_script("setup-users.sh", *_users_args(tmp_path))
+    assert res.rc == 3
+    assert "changed" in res.err

@@ -8,13 +8,14 @@
 # unit is saved as <unit>.bak, the tunnel is restarted once, and if it does not come up with both listeners within
 # TUNNEL_WAIT_S (20) seconds the backup is restored and the script exits 1.
 # This is a system unit owned by the system and run as user pruefstand (Y1.1), never a per-user unit.
-#   --unit-dir DIR   target directory (default /etc/systemd/system; tests only)
+#   --unit-dir DIR      target directory (default /etc/systemd/system; tests only)
+#   --firewall-bin F    firewall script to ask (default /usr/local/sbin/pruefstand-firewall.sh; tests only, no env override)
 set -euo pipefail
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 UNIT=pruefstand-tunnel.service
 UNIT_DIR=/etc/systemd/system
-FIREWALL_BIN="${PRUEFSTAND_FIREWALL_BIN:-/usr/local/sbin/pruefstand-firewall.sh}"
+FIREWALL_BIN=/usr/local/sbin/pruefstand-firewall.sh
 COPIED=0
 DRY=0
 
@@ -22,6 +23,7 @@ while [ "$#" -gt 0 ]; do
   case "$1" in
     --dry-run) DRY=1; shift ;;
     --unit-dir) UNIT_DIR="$2"; shift 2 ;;
+    --firewall-bin) FIREWALL_BIN="$2"; shift 2 ;;
     -h | --help) sed -n '2,9p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
     *) echo "unknown argument: $1" >&2; exit 2 ;;
   esac
@@ -77,9 +79,15 @@ rollback() {
 
 if cmp -s "$HERE/$UNIT" "$UNIT_DIR/$UNIT" 2>/dev/null; then
   echo "OK   $UNIT_DIR/$UNIT is up to date"
+  run systemctl daemon-reload
   run systemctl enable --now pruefstand-tunnel
   if [ "$DRY" -eq 0 ]; then
+    # an interrupted earlier run may have left a changed unit file that systemd has not applied
+    if [ "$(systemctl show -p NeedDaemonReload --value pruefstand-tunnel 2>/dev/null || true)" = yes ]; then
+      run systemctl restart pruefstand-tunnel
+    fi
     wait_ready || rollback
+    rm -f "$UNIT_DIR/$UNIT.bak"
     echo "OK   tunnel active with 127.0.0.1:11434 and 172.17.0.1:11434"
   fi
 else

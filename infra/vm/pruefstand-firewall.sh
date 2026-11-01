@@ -52,6 +52,7 @@ run() {
 
 BRIDGE=pfproxy0
 GW_ACCEPT="-i $BRIDGE -s 10.231.0.0/24 -d $GW -p tcp --dport $PORT -j ACCEPT"
+LEGACY_ACCEPT="-s 10.231.0.0/24 -d $GW -p tcp --dport $PORT -j ACCEPT"
 GW_DROP="-d $GW -p tcp --dport $PORT -j DROP"
 CT_DEMO="-s 10.233.0.0/24 -m conntrack --ctstate ESTABLISHED,RELATED -j RETURN"
 GW_USER_RULES=("$GW_ACCEPT" "$GW_DROP")
@@ -132,11 +133,19 @@ if [ "$DEMO_OK" -eq 1 ]; then
   INPUT_RULES+=("${DEMO_INPUT_RULES[@]}")
 fi
 
+# jump_first: the very first rule of INPUT is the jump to our chain
+jump_first() {
+  [ "$(ipt -S INPUT 2>/dev/null | grep '^-A' | head -1 || true)" = "-A INPUT -j $INPUT_CHAIN" ]
+}
+# jump_number: line number (among -A rules) of an existing jump to our chain, empty when absent
+jump_number() {
+  ipt -S INPUT 2>/dev/null | grep '^-A' | grep -nxF -- "-A INPUT -j $INPUT_CHAIN" | head -1 | cut -d: -f1 || true
+}
 # problems: print every missing rule / wrong order
 problems() {
   missing DOCKER-USER "${DOCKER_USER_RULES[@]}"
   missing "$INPUT_CHAIN" "${INPUT_RULES[@]}"
-  ipt -C INPUT -j "$INPUT_CHAIN" 2>/dev/null || echo "INPUT: -j $INPUT_CHAIN (jump missing)"
+  jump_first || echo "INPUT: -j $INPUT_CHAIN is missing or not the first rule (a rule ahead of it, e.g. ufw, can accept first)"
   gw_order_ok DOCKER-USER || echo "DOCKER-USER: wrong order (accept must stand before the drop)"
   gw_order_ok "$INPUT_CHAIN" || echo "$INPUT_CHAIN: wrong order (accept must stand before the drop)"
 }
@@ -192,15 +201,25 @@ if [ "$CHECK" -eq 1 ]; then
 fi
 
 changes=0
+# a legacy accept without the bridge match (older version of this script) is removed; idempotent
+if have DOCKER-USER "$LEGACY_ACCEPT"; then
+  read -r -a legacy_args <<<"$LEGACY_ACCEPT"
+  run -D DOCKER-USER "${legacy_args[@]}"
+  changes=1
+fi
+legacy_in_input=0
+if have "$INPUT_CHAIN" "$LEGACY_ACCEPT"; then legacy_in_input=1; fi
 docker_user_needs="$(missing DOCKER-USER "${DOCKER_USER_RULES[@]}")"
 if [ -n "$docker_user_needs" ] || ! gw_order_ok DOCKER-USER; then changes=1; fi
 input_needs="$(missing "$INPUT_CHAIN" "${INPUT_RULES[@]}")"
-if [ -n "$input_needs" ] || ! ipt -L "$INPUT_CHAIN" -n >/dev/null 2>&1 || ! gw_order_ok "$INPUT_CHAIN"; then
+if [ "$legacy_in_input" -eq 1 ] || [ -n "$input_needs" ] || ! ipt -L "$INPUT_CHAIN" -n >/dev/null 2>&1 || ! gw_order_ok "$INPUT_CHAIN"; then
   input_apply
   changes=1
 fi
-if ! ipt -C INPUT -j "$INPUT_CHAIN" 2>/dev/null; then
+if ! jump_first; then
+  old="$(jump_number)"
   run -I INPUT 1 -j "$INPUT_CHAIN"
+  if [ -n "$old" ]; then run -D INPUT "$((old + 1))"; fi
   changes=1
 fi
 docker_user_apply
