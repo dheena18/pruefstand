@@ -1,0 +1,39 @@
+{
+  "recorded_at": "2026-11-01T04:30:44+00:00",
+  "model_id": "openai_compatible_local/qwen2.5-0.5b-instruct",
+  "model_version": null,
+  "request": {
+    "role": "judge",
+    "model": "openai_compatible_local/qwen2.5-0.5b-instruct",
+    "messages": [
+      {
+        "role": "system",
+        "content": "Du bist ein präziser Assistent. Antworte knapp und ohne Zusatz."
+      },
+      {
+        "role": "user",
+        "content": "Antworte mit genau einem Wort: Müller"
+      }
+    ],
+    "temperature": 0.0,
+    "max_tokens": 16,
+    "seed": 0,
+    "prompt_id": "echo",
+    "prompt_version": "v1",
+    "response_format": "text"
+  },
+  "response": {
+    "text": "Schüler",
+    "model": "openai_compatible_local/qwen2.5-0.5b-instruct",
+    "usage": {
+      "prompt_tokens": 42,
+      "completion_tokens": 3
+    },
+    "cost_usd": 0.0,
+    "latency_ms": 85.7518330012681,
+    "cached": false,
+    "provider": "openai_compatible_local",
+    "fallback": false,
+    "model_version": null
+  }
+}

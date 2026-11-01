@@ -1,0 +1,25 @@
+# recorded: 2026-11-01, model: openai_compatible_local/qwen2.5-0.5b-instruct, sha256: 74a4da8c9fdbcd15bd1f6d01d621410d31c6fc00986f5eb687824e7b93d7a9db
+interactions:
+- request:
+    body: "{\"messages\":[{\"role\":\"system\",\"content\":\"Du bist ein pr\xE4ziser
+      Assistent. Antworte knapp und ohne Zusatz.\"},{\"role\":\"user\",\"content\":\"Antworte
+      mit genau einem Wort: M\xFCller\"}],\"model\":\"qwen2.5-0.5b-instruct\",\"max_tokens\":16,\"seed\":0,\"temperature\":0.0}"
+    headers:
+      accept:
+      - application/json
+      content-type:
+      - application/json
+    method: POST
+    uri: http://localhost:18080/v1/chat/completions
+  response:
+    body:
+      string: '{"error":{"message":"Loading model","type":"unavailable_error","code":503}}'
+    headers:
+      content-length:
+      - '75'
+      content-type:
+      - application/json; charset=utf-8
+    status:
+      code: 503
+      message: Service Unavailable
+version: 1

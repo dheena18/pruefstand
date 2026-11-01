@@ -17,6 +17,7 @@ dependencies = [
   "jinja2",
   "lingua-language-detector>=2.2.0",
   "regex>=2026.9.29",
+  "litellm>=1.103.10",
 ]
 
 [project.scripts]
