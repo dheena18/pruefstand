@@ -4,7 +4,7 @@ from pathlib import Path
 
 import httpx
 import respx
-from contract.adapter_contract import load_example
+from contract.adapter_contract import load_openapi_example
 from testsupport.run_builders import make_case, make_cases, unhashed
 from testsupport.runner_support import (
     DictCache,
@@ -30,7 +30,7 @@ from pruefstand.store.artifacts import ArtifactStore
 async def test_twenty_cases_all_ok_with_context_recall(
     router: respx.MockRouter, adapter: HttpTargetAdapter
 ) -> None:
-    router.post("/v1/query").respond(200, json=load_example("query_ok.json"))
+    router.post("/v1/query").respond(200, json=load_openapi_example("query_ok.json"))
     cases = [
         make_case(i, gold_doc_ids=["gii-bgb-622" if i < 10 else "other-doc"]) for i in range(20)
     ]
@@ -70,7 +70,7 @@ async def test_503_twice_then_200_is_attempt_three(
     route.side_effect = [
         httpx.Response(503),
         httpx.Response(503),
-        httpx.Response(200, json=load_example("query_ok.json")),
+        httpx.Response(200, json=load_openapi_example("query_ok.json")),
     ]
     results = await run_cases(make_runner(adapter, concurrency=1), [make_case(0)])
     assert route.call_count == 3
@@ -108,7 +108,7 @@ async def test_timeout_on_every_call_is_an_error_after_two_attempts(
     async def hang(request: httpx.Request) -> httpx.Response:
         started.append(1)  # respx records a call only when it completes; count the starts
         await asyncio.sleep(5)
-        return httpx.Response(200, json=load_example("query_ok.json"))
+        return httpx.Response(200, json=load_openapi_example("query_ok.json"))
 
     router.post("/v1/query").mock(side_effect=hang)
     runner = make_runner(adapter, timeout_s=0.05, max_retries=1)
@@ -122,7 +122,7 @@ async def test_timeout_on_every_call_is_an_error_after_two_attempts(
 async def test_cache_hit_does_not_call_the_adapter(
     router: respx.MockRouter, adapter: HttpTargetAdapter
 ) -> None:
-    route = router.post("/v1/query").respond(200, json=load_example("query_ok.json"))
+    route = router.post("/v1/query").respond(200, json=load_openapi_example("query_ok.json"))
     cache = DictCache()
     cases = make_cases(3)
     first = await run_cases(make_runner(adapter, cache=cache), cases)
@@ -148,7 +148,7 @@ async def test_errors_are_never_cached(
 async def test_manifest_carries_what_the_runner_knows(
     router: respx.MockRouter, adapter: HttpTargetAdapter
 ) -> None:
-    router.post("/v1/query").respond(200, json=load_example("query_ok.json"))
+    router.post("/v1/query").respond(200, json=load_openapi_example("query_ok.json"))
     results = await run_cases(make_runner(adapter), make_cases(3))
     manifest = results.manifest
     assert re.fullmatch(r"\d{8}T\d{6}-[0-9a-f]{6}", manifest.run_id)
@@ -165,7 +165,7 @@ async def test_manifest_carries_what_the_runner_knows(
 async def test_oversized_answer_surfaces_the_truncation_warning(
     router: respx.MockRouter, adapter: HttpTargetAdapter
 ) -> None:
-    body = {**load_example("query_ok.json"), "answer": "Kündigung " * 3000}
+    body = {**load_openapi_example("query_ok.json"), "answer": "Kündigung " * 3000}
     router.post("/v1/query").respond(200, json=body)
     results = await run_cases(make_runner(adapter), [make_case(0)])
     assert results.manifest.counts["metric_truncated"] >= 1
