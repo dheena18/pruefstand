@@ -61,21 +61,27 @@ def test_wilson_confidence_widens() -> None:
 
 
 @pytest.mark.parametrize(
-    ("k", "n", "conf"),
+    ("k", "n", "conf", "name"),
     [
-        (-1, 10, 0.95),
-        (11, 10, 0.95),
-        (1, -1, 0.95),
-        (1, 10, 0.0),
-        (1, 10, 1.0),
-        (1, 10, float("nan")),
+        (-1, 10, 0.95, "k"),
+        (11, 10, 0.95, "exceeds"),
+        (1, -1, 0.95, "n"),
+        (1, 10, 0.0, "confidence"),
+        (1, 10, 1.0, "confidence"),
+        (1, 10, float("nan"), "confidence"),
     ],
 )
-def test_wilson_rejects_invalid(k: int, n: int, conf: float) -> None:
-    with pytest.raises(GateInputError):
+def test_wilson_rejects_invalid(k: int, n: int, conf: float, name: str) -> None:
+    with pytest.raises(GateInputError, match=name):
         wilson_interval(k, n, conf)
 
 
 def test_wilson_rejects_non_int() -> None:
     with pytest.raises(GateInputError):
         wilson_interval(1.5, 10)  # type: ignore[arg-type]  # deliberately wrong type
+
+
+def test_wilson_upper_bound_is_one_when_all_events() -> None:
+    assert wilson_interval(5, 5)[1] == 1.0
+    assert wilson_interval(0, 5)[0] == 0.0
+    assert 0.0 < wilson_interval(2, 5)[0] < wilson_interval(2, 5)[1] < 1.0

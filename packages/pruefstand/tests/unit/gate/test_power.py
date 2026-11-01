@@ -64,19 +64,23 @@ def test_power_rejects_invalid(kwargs: dict[str, float]) -> None:
         power_estimate(**kwargs)  # type: ignore[arg-type]  # parametrised kwargs
 
 
+_MDE_OK = {"se": 0.01, "alpha": 0.025, "delta": 0.03}
+
+
 @pytest.mark.parametrize(
-    "kwargs",
+    ("name", "value"),
     [
-        {"se": -1.0, "alpha": 0.025, "delta": 0.03},
-        {"se": float("inf"), "alpha": 0.025, "delta": 0.03},
-        {"se": 0.01, "alpha": 0.0, "delta": 0.03},
-        {"se": 0.01, "alpha": 0.025, "delta": -1.0},
-        {"se": 0.01, "alpha": 0.025, "delta": 0.03, "power": 1.0},
-        {"se": 0.01, "alpha": 0.025, "delta": 0.03, "m": 0},
+        ("se", -1.0),
+        ("se", float("inf")),
+        ("alpha", 0.0),
+        ("delta", -1.0),
+        ("power", 1.0),
+        ("m", 0),
     ],
 )
-def test_mde_rejects_invalid(kwargs: dict[str, float]) -> None:
-    with pytest.raises(GateInputError):
+def test_mde_rejects_invalid(name: str, value: float) -> None:
+    kwargs = {**_MDE_OK, name: value}
+    with pytest.raises(GateInputError, match=name):
         minimum_detectable_effect(**kwargs)  # type: ignore[arg-type]  # parametrised kwargs
 
 
@@ -89,3 +93,7 @@ def test_power_tail_underflow_is_an_error() -> None:
 def test_power_rejects_non_numbers(bad: object) -> None:
     with pytest.raises(GateInputError):
         power_estimate(bad, 10, 0.03, 0.025)  # type: ignore[arg-type]  # deliberately wrong type
+
+
+def test_power_single_cluster_is_valid() -> None:
+    assert 0.0 <= power_estimate(0.2, 1, 0.03, 0.025) <= 1.0

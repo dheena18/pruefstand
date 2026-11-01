@@ -10,6 +10,7 @@ from pruefstand.gate._validate import as_float_vector, check_int, check_open_uni
 
 MAX_RESAMPLES = 10_000_000  # same cap as GatePolicy.n_resamples; bounds the work of one call
 MAX_INDEX_ELEMENTS = 50_000_000  # largest resample index array held in memory at once
+MAX_DRAWS = 10_000_000_000  # n_resamples * n_clusters: bounds the CPU time of one call
 
 
 def small_sample_factor(k: int, alpha: float) -> float:
@@ -60,6 +61,8 @@ def replicate_means(
     """Bootstrap means of k cluster draws; indices are drawn chunk by chunk from the same stream."""
     k = sums.size
     check_int("max_elements", max_elements, 1)
+    if n_resamples * k > MAX_DRAWS:
+        fail(f"n_resamples * n_clusters = {n_resamples * k} exceeds {MAX_DRAWS}")
     rows_per_chunk = max(1, max_elements // k)
     boot = np.empty(n_resamples, dtype=np.float64)
     done = 0

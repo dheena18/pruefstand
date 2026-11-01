@@ -213,3 +213,8 @@ def test_non_numeric_diffs_rejected() -> None:
 def test_huge_resamples_rejected_before_any_work() -> None:
     with pytest.raises(GateInputError):
         _boot(np.zeros(5), _ids(5), b=10**12)
+
+
+def test_total_work_is_bounded() -> None:
+    with pytest.raises(GateInputError, match="exceeds"):
+        _boot(np.zeros(2000), _ids(2000), b=10_000_000)
