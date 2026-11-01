@@ -1,4 +1,4 @@
-"""Malformed ``sources.yaml`` shapes end in ``SourcesError`` and exit code 1 (T2.1 follow-up, T2.2 PR)."""
+"""Malformed ``sources.yaml`` shapes end in ``SourcesError`` and exit code 1 (T2.1 follow-up)."""
 
 from pathlib import Path
 

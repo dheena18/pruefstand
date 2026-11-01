@@ -49,6 +49,9 @@ differs from this file.
 
 - **Gesetze im Internet:** "Gesetzestexte: Bundesministerium der Justiz / juris GmbH,
   www.gesetze-im-internet.de. Amtliche Werke gemäß § 5 UrhG."
+  Test fixtures `packages/pruefstand/tests/fixtures/gii/*.xml` (T2.2) are byte-exact excerpts of single
+  `<norm>` elements (BGB, KSchG, ArbZG, AktG, EGBGB, KWG) of the pinned files, trimmed only by dropping
+  norms. Basis: official works, § 5 Abs. 1 UrhG; they carry the attribution above (see the README there).
 - **Open Legal Data:** "Contains information from Open Legal Data (openlegaldata.io), made available
   under the Open Database License (ODbL) v1.0."
 - **EUR-Lex:** "Source: EUR-Lex, © European Union, https://eur-lex.europa.eu. Reuse authorised under

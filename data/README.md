@@ -38,7 +38,7 @@ is set. Set `HF_TOKEN` only in your shell (never in a file we commit); it is not
   pinned to a commit of the Hub's `refs/convert/parquet` branch (`ref: refs/convert/parquet` in the
   entry; `--update-pins` follows that ref). Their licence is read from the card on `main`.
 * GII and EUR-Lex change when a law is amended: the pin is the `pinned` download date plus the
-  SHA-256 of each file. `version_date` per law is parsed in T2.2.
+  SHA-256 of each file. `version_date` per law is the `builddate` of the file (T2.2, `ingest/gii_xml.py`).
 * The OLDP datasets use the `dump-20260520-1k` config. A larger config is an edit of `config:` and
   `files:` followed by `--update-pins`.
 * MEMERAG (CC BY-NC 4.0, `redistribute: false`) is download-only: calibration use, never copied into
