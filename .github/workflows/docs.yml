@@ -1,0 +1,219 @@
+name: docs
+
+# Documentation site and the single GitHub Pages writer (docs/engineering/ci-cd.md section 1, T0.4, D243).
+# Required check: `docs / build` (the aggregate job). Build jobs run on pull_request and push to main;
+# `deploy` runs only on workflow_run of a successful `deploy` workflow (N5.2). No workflow_dispatch.
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_run:  # zizmor: ignore[dangerous-triggers] mandated by N5.2: provenance check first, only main code, no secrets
+    workflows: [deploy]
+    types: [completed]
+
+permissions: {}
+
+# Keyed by event and PR/ref (N4.5, UI13-07): build runs of different PRs never cancel each other, and a
+# `push: main` build run can never replace a pending workflow_run deploy. The `pages` group is on `deploy` only.
+concurrency:
+  group: docs-${{ github.event_name }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  docs-build:
+    name: docs-build
+    if: github.event_name != 'workflow_run'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
+        with:
+          version: "0.13.6"
+          enable-cache: true
+      - name: Install
+        run: make install
+      - name: mkdocs build --strict
+        run: make docs
+
+  mermaid-render:
+    name: mermaid-render
+    if: github.event_name != 'workflow_run'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Render every mermaid block (pinned mermaid-cli)
+        run: make docs-mermaid
+
+  lychee:
+    name: lychee
+    if: github.event_name != 'workflow_run'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Install lychee (pinned release, SHA-256 checked)
+        run: |
+          curl -fsSL -o lychee.tar.gz \
+            https://github.com/lycheeverse/lychee/releases/download/lychee-v0.24.2/lychee-x86_64-unknown-linux-gnu.tar.gz
+          echo "1f4e0ef7f6554a6ed33dd7ac144fb2e1bbed98598e7af973042fc5cd43951c9a  lychee.tar.gz" | sha256sum -c -
+          tar -xzf lychee.tar.gz lychee
+      - name: Internal links (gating)
+        # Offline: only links to files in the checkout; the historical review rounds and the v1 spec are not checked.
+        run: |
+          ./lychee --offline --no-progress --root-dir "$PWD" \
+            --exclude-path docs/planning --exclude-path docs/spec/SPEC-v1-original.md \
+            'docs/**/*.md' README.md REVIEW.md CLAUDE.md 'tasks/*.md' 'prompts/*.md'
+      - name: External links (main only, reported, never gating)
+        if: github.event_name == 'push'
+        continue-on-error: true
+        run: |
+          ./lychee --no-progress --max-retries 3 --accept '200..=299,429' \
+            --exclude-path docs/planning --exclude-path docs/spec/SPEC-v1-original.md \
+            --exclude-path docs/ops 'docs/**/*.md' README.md REVIEW.md
+
+  pydeps:
+    name: pydeps
+    # main only: renders the module graph into the built site, so a broken graph is seen before a deploy
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
+        with:
+          version: "0.13.6"
+          enable-cache: true
+      - name: Install
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends graphviz
+          make install
+      - name: Build the site and render the module graph into it
+        run: |
+          make docs
+          make diagrams
+          test -s site/architecture/generated/module-deps.svg
+
+  build:
+    name: build
+    # The required check `docs / build`: success only when every build job succeeded. `pydeps` runs on
+    # main only and is not part of the aggregate; on workflow_run the build jobs are skipped, so this is too.
+    if: github.event_name != 'workflow_run' && always()
+    needs: [docs-build, mermaid-render, lychee]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions: {}
+    steps:
+      - name: Every docs job succeeded
+        env:
+          NEEDS: ${{ toJSON(needs) }}
+        run: |
+          echo "$NEEDS" | jq -r 'to_entries[] | "\(.key): \(.value.result)"'
+          echo "$NEEDS" | jq -e 'to_entries | all(.[]; .value.result == "success")' > /dev/null
+
+  deploy:
+    name: deploy
+    # The only Pages writer. Runs only for a finished `deploy` workflow run (dashboard-site artefact, T8.5).
+    if: github.event_name == 'workflow_run' && github.event.workflow_run.conclusion == 'success'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    permissions:
+      contents: read
+      pages: write
+      id-token: write  # actions/deploy-pages (OIDC)
+      actions: read  # download the dashboard-site artefact of the triggering run
+    concurrency:
+      group: pages
+      cancel-in-progress: false
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Provenance check (a failure ends the job, nothing is deployed, UI13-09)
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RUN_ID: ${{ github.event.workflow_run.id }}
+        run: |
+          run=$(gh api "repos/${GITHUB_REPOSITORY}/actions/runs/${RUN_ID}")
+          reason=$(echo "$run" | jq -r --arg repo "$GITHUB_REPOSITORY" '
+            if .path != ".github/workflows/deploy.yml" then "path is \(.path), not .github/workflows/deploy.yml"
+            elif .head_branch != "main" then "head_branch is \(.head_branch), not main"
+            elif .head_repository.full_name != $repo then "head repository is \(.head_repository.full_name)"
+            elif ([.event] | inside(["push", "schedule", "workflow_dispatch", "workflow_run"]) | not) then "event is \(.event)"
+            elif .conclusion != "success" then "conclusion is \(.conclusion)"
+            else "" end')
+          if [ -n "$reason" ]; then
+            echo "Provenance check failed for run ${RUN_ID}: ${reason}. Nothing was deployed." | tee -a "$GITHUB_STEP_SUMMARY" >&2
+            exit 1
+          fi
+          echo "Provenance check passed for deploy.yml run ${RUN_ID}." >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.workflow_run.head_sha }}
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
+        with:
+          version: "0.13.6"
+          enable-cache: true
+      - name: Install
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends graphviz
+          make install
+      - name: Build the docs and the module graph
+        run: |
+          make docs
+          make diagrams
+      - name: Find the dashboard-site artefact of the triggering run
+        id: find
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RUN_ID: ${{ github.event.workflow_run.id }}
+        run: |
+          count=$(gh api "repos/${GITHUB_REPOSITORY}/actions/runs/${RUN_ID}/artifacts" \
+            --jq '[.artifacts[] | select(.name == "dashboard-site" and .expired == false)] | length')
+          if [ "$count" -eq 0 ]; then
+            echo "placeholder=true" >> "$GITHUB_OUTPUT"
+            echo "No dashboard-site artefact on run ${RUN_ID}: deploying the placeholder page (pre-data bootstrap)." >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "placeholder=false" >> "$GITHUB_OUTPUT"
+          fi
+      - name: Download dashboard-site
+        if: steps.find.outputs.placeholder == 'false'
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: dashboard-site
+          path: dashboard
+          run-id: ${{ github.event.workflow_run.id }}
+          github-token: ${{ github.token }}
+      - name: Assemble the Pages site (size cap 800 MB, build-id.txt)
+        env:
+          BUILD_ID: ${{ github.event.workflow_run.head_sha }}-${{ github.event.workflow_run.id }}
+          PLACEHOLDER: ${{ steps.find.outputs.placeholder }}
+        run: |
+          if [ "$PLACEHOLDER" = "true" ]; then source_dir=--placeholder; else source_dir=dashboard; fi
+          scripts/deploy/assemble_pages_site.sh "$source_dir" site _pages
+      - uses: actions/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9 # v5.0.0
+        with:
+          path: _pages
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@368f82528645a54fb793d4d04e342629a3f51346 # v5.0.1
