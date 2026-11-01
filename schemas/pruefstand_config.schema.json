@@ -1,0 +1,500 @@
+{
+  "$defs": {
+    "BaselineStoreConfig": {
+      "additionalProperties": false,
+      "description": "Where baselines live.\n\nRaises:\n    ConfigError: ``local_dir`` without ``path``, ``git_branch`` without ``repo``, or a\n        ``repo`` that is not ``owner/name``.",
+      "properties": {
+        "branch": {
+          "default": "baselines",
+          "minLength": 1,
+          "title": "Branch",
+          "type": "string"
+        },
+        "data_root": {
+          "anyOf": [
+            {
+              "format": "path",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Data Root"
+        },
+        "path": {
+          "anyOf": [
+            {
+              "format": "path",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Path"
+        },
+        "repo": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Repo"
+        },
+        "type": {
+          "default": "git_branch",
+          "enum": [
+            "local_dir",
+            "git_branch"
+          ],
+          "title": "Type",
+          "type": "string"
+        }
+      },
+      "title": "BaselineStoreConfig",
+      "type": "object"
+    },
+    "BudgetConfig": {
+      "additionalProperties": false,
+      "description": "Per-run limits; free providers only, so the USD cap defaults to 0.\n\n``max_requests_per_run`` is the tier-1 judge cap (D143), counted in LLM calls.",
+      "properties": {
+        "max_requests_per_run": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Max Requests Per Run"
+        },
+        "max_tokens_per_run": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Max Tokens Per Run"
+        },
+        "max_usd_per_run": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": 0.0,
+          "title": "Max Usd Per Run"
+        }
+      },
+      "title": "BudgetConfig",
+      "type": "object"
+    },
+    "GatePolicy": {
+      "additionalProperties": false,
+      "description": "Gate settings (interfaces §9, decisions D51-D59).\n\nRaises:\n    ConfigError: unknown or misplaced metric, ``alpha >= warn_p``, or a gated slice that is\n        neither ``overall``, ``perturbed_all`` nor in ``slices``.\n\nWhen ``gated_slices`` is omitted (or ``None``) it is derived from ``slices``: ``overall`` and\n``perturbed_all`` always, ``tenant`` and ``lang`` only if they are in ``slices``. The stored\nvalue is always a tuple, so ``model_validate(model_dump())`` round-trips and\n``GatePolicy(metrics={}, slices=())`` is valid.",
+      "properties": {
+        "alpha": {
+          "default": 0.025,
+          "exclusiveMaximum": 1,
+          "exclusiveMinimum": 0,
+          "title": "Alpha",
+          "type": "number"
+        },
+        "correction": {
+          "default": "holm",
+          "enum": [
+            "holm",
+            "none"
+          ],
+          "title": "Correction",
+          "type": "string"
+        },
+        "gated_slices": {
+          "default": [
+            "overall",
+            "tenant",
+            "lang",
+            "perturbed_all"
+          ],
+          "items": {
+            "type": "string"
+          },
+          "title": "Gated Slices",
+          "type": "array"
+        },
+        "hard_fail": {
+          "default": [
+            "canary_leak",
+            "tenant_leak",
+            "system_prompt_leak"
+          ],
+          "items": {
+            "type": "string"
+          },
+          "title": "Hard Fail",
+          "type": "array"
+        },
+        "max_error_rate": {
+          "default": 0.02,
+          "exclusiveMaximum": 1,
+          "minimum": 0,
+          "title": "Max Error Rate",
+          "type": "number"
+        },
+        "metrics": {
+          "additionalProperties": {
+            "$ref": "#/$defs/MetricPolicy"
+          },
+          "title": "Metrics",
+          "type": "object"
+        },
+        "min_clusters": {
+          "default": 30,
+          "minimum": 1,
+          "title": "Min Clusters",
+          "type": "integer"
+        },
+        "n_resamples": {
+          "default": 10000,
+          "maximum": 10000000,
+          "minimum": 1,
+          "title": "N Resamples",
+          "type": "integer"
+        },
+        "slices": {
+          "default": [
+            "category",
+            "perturbation",
+            "tenant",
+            "lang",
+            "tags"
+          ],
+          "items": {
+            "type": "string"
+          },
+          "title": "Slices",
+          "type": "array"
+        },
+        "warn_p": {
+          "default": 0.1,
+          "exclusiveMaximum": 1,
+          "exclusiveMinimum": 0,
+          "title": "Warn P",
+          "type": "number"
+        }
+      },
+      "required": [
+        "metrics"
+      ],
+      "title": "GatePolicy",
+      "type": "object"
+    },
+    "JudgeConfig": {
+      "additionalProperties": false,
+      "description": "Judge models: PR, nightly and optional per-metric overrides (every one with its family).",
+      "properties": {
+        "nightly": {
+          "$ref": "#/$defs/ModelRef"
+        },
+        "per_metric": {
+          "additionalProperties": {
+            "$ref": "#/$defs/ModelRef"
+          },
+          "default": {},
+          "title": "Per Metric",
+          "type": "object"
+        },
+        "pr": {
+          "$ref": "#/$defs/ModelRef"
+        }
+      },
+      "required": [
+        "pr",
+        "nightly"
+      ],
+      "title": "JudgeConfig",
+      "type": "object"
+    },
+    "LLMPolicyConfig": {
+      "additionalProperties": false,
+      "description": "Which providers may be used; free-only by default (provider names are checked by T1.4).",
+      "properties": {
+        "allow_paid": {
+          "default": false,
+          "title": "Allow Paid",
+          "type": "boolean"
+        },
+        "allowed_providers": {
+          "default": [
+            "openai_compatible_local",
+            "ollama",
+            "github"
+          ],
+          "items": {
+            "type": "string"
+          },
+          "title": "Allowed Providers",
+          "type": "array"
+        },
+        "fallback_judge": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ModelRef"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        }
+      },
+      "title": "LLMPolicyConfig",
+      "type": "object"
+    },
+    "MetricPolicy": {
+      "additionalProperties": false,
+      "description": "Threshold of one gated metric; the direction comes from ``Metric.higher_is_better``.\n\nAttributes:\n    max_drop: Smallest paired drop versus the baseline that matters.\n    max_value: Absolute upper bound (Wilson lower bound rule, SPEC §7.2).\n    confidence: Confidence of the *displayed* CI only; never changes the decision.\n\nRaises:\n    ConfigError: neither ``max_drop`` nor ``max_value`` is set.",
+      "properties": {
+        "confidence": {
+          "default": 0.95,
+          "exclusiveMaximum": 1,
+          "exclusiveMinimum": 0,
+          "title": "Confidence",
+          "type": "number"
+        },
+        "max_drop": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Max Drop"
+        },
+        "max_value": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Max Value"
+        }
+      },
+      "title": "MetricPolicy",
+      "type": "object"
+    },
+    "ModelRef": {
+      "additionalProperties": false,
+      "description": "A model id with an explicit family (ADR-0009).",
+      "properties": {
+        "family": {
+          "minLength": 1,
+          "title": "Family",
+          "type": "string"
+        },
+        "id": {
+          "minLength": 1,
+          "title": "Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "family"
+      ],
+      "title": "ModelRef",
+      "type": "object"
+    },
+    "RunnerConfig": {
+      "additionalProperties": false,
+      "description": "Runner settings (interfaces §8); there is deliberately no judge field (D143).",
+      "properties": {
+        "backoff_s": {
+          "default": 1.0,
+          "minimum": 0,
+          "title": "Backoff S",
+          "type": "number"
+        },
+        "concurrency": {
+          "default": 8,
+          "minimum": 1,
+          "title": "Concurrency",
+          "type": "integer"
+        },
+        "max_retries": {
+          "default": 3,
+          "minimum": 0,
+          "title": "Max Retries",
+          "type": "integer"
+        },
+        "timeout_s": {
+          "default": 60,
+          "exclusiveMinimum": 0,
+          "title": "Timeout S",
+          "type": "number"
+        }
+      },
+      "title": "RunnerConfig",
+      "type": "object"
+    },
+    "Split": {
+      "description": "Dataset split (sizes and selection rules: interfaces §2 and §14).",
+      "enum": [
+        "smoke",
+        "smoke_live",
+        "core",
+        "robust_pr",
+        "full",
+        "human_labels",
+        "rq1"
+      ],
+      "title": "Split",
+      "type": "string"
+    },
+    "TargetConfig": {
+      "additionalProperties": false,
+      "description": "How to reach the system under test.\n\nAttributes:\n    type: Adapter type; only ``http`` exists (there is no simulated target, ADR-0008).\n    url: Base URL of the target API v1.\n    auth_env: *Name* of the env var that holds a bearer token, never the token itself.\n    timeout_s: Per-request timeout in seconds.",
+      "properties": {
+        "auth_env": {
+          "anyOf": [
+            {
+              "pattern": "^[A-Za-z_][A-Za-z0-9_]*$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Auth Env"
+        },
+        "timeout_s": {
+          "default": 60,
+          "exclusiveMinimum": 0,
+          "title": "Timeout S",
+          "type": "number"
+        },
+        "type": {
+          "const": "http",
+          "default": "http",
+          "title": "Type",
+          "type": "string"
+        },
+        "url": {
+          "minLength": 1,
+          "title": "Url",
+          "type": "string"
+        }
+      },
+      "required": [
+        "url"
+      ],
+      "title": "TargetConfig",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "description": "The root of ``pruefstand.yaml`` (interfaces §15).\n\nRaises:\n    ConfigError: a judge family equals ``generator_family`` (ADR-0009), a family is unknown\n        or contradicts the model id, or a ``per_metric`` key is not a known metric.",
+  "properties": {
+    "baseline_store": {
+      "$ref": "#/$defs/BaselineStoreConfig"
+    },
+    "budget": {
+      "$ref": "#/$defs/BudgetConfig"
+    },
+    "dataset": {
+      "minLength": 1,
+      "title": "Dataset",
+      "type": "string"
+    },
+    "gate": {
+      "$ref": "#/$defs/GatePolicy"
+    },
+    "generator_family": {
+      "minLength": 1,
+      "title": "Generator Family",
+      "type": "string"
+    },
+    "judge": {
+      "$ref": "#/$defs/JudgeConfig"
+    },
+    "llm": {
+      "$ref": "#/$defs/LLMPolicyConfig",
+      "default": {
+        "allow_paid": false,
+        "allowed_providers": [
+          "openai_compatible_local",
+          "ollama",
+          "github"
+        ],
+        "fallback_judge": null
+      }
+    },
+    "runner": {
+      "$ref": "#/$defs/RunnerConfig"
+    },
+    "seed": {
+      "default": 1234,
+      "title": "Seed",
+      "type": "integer"
+    },
+    "splits": {
+      "items": {
+        "$ref": "#/$defs/Split"
+      },
+      "minItems": 1,
+      "title": "Splits",
+      "type": "array"
+    },
+    "target": {
+      "$ref": "#/$defs/TargetConfig"
+    },
+    "version": {
+      "const": 1,
+      "title": "Version",
+      "type": "integer"
+    }
+  },
+  "required": [
+    "version",
+    "target",
+    "dataset",
+    "splits",
+    "judge",
+    "gate",
+    "budget",
+    "runner",
+    "generator_family",
+    "baseline_store"
+  ],
+  "title": "PruefstandConfig",
+  "type": "object"
+}
