@@ -21,3 +21,15 @@ paths = [
 regexes = [
   '''AKIAABCDEFGHIJKLMNOP''',
 ]
+
+[[allowlists]]
+description = "T1.13 slice corpus: the planted token canaries CANARY-KM-/CANARY-VN- are synthetic test data (CLAUDE.md section 9), not credentials; only these literals in the slice sources, the committed slice and its test"
+condition = "AND"
+paths = [
+  '''scripts/slice/handwritten/''',
+  '''scripts/slice/tests/''',
+  '''corpus/slice_v1/''',
+]
+regexes = [
+  '''CANARY-(KM|VN)-[0-9a-f]{6}''',
+]
