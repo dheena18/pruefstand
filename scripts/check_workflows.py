@@ -13,6 +13,7 @@ from pathlib import Path
 
 import yaml
 from workflow_model import Doc, all_uses, environment, jobs, steps, strings, triggers
+from workflow_no_repo_code import no_repo_code
 from workflow_policy import (
     ACTIONS_READ,
     APP_TOKEN_ACTION,
@@ -245,6 +246,7 @@ def check_text(name: str, text: str) -> list[str]:
         _injection(doc),
         _build_images(name, doc),
         _gate_router(name, doc),
+        no_repo_code(name, doc),
     ]
     return [f"{name}: {message}" for found in rules for message in found]
 

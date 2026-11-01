@@ -1,0 +1,7 @@
+### system
+Du bewertest deutsche Sätze. Antworte ausschließlich mit einem JSON-Objekt, ohne weiteren Text.
+### user
+Enthält der folgende Satz eine eindeutige rechtliche Anforderung?
+Antworte mit einem JSON-Objekt mit genau zwei Feldern: "reason" (Text mit höchstens fünf Wörtern) und "score" (die Zahl 0, 1 oder 2).
+
+Satz: {{sentence}}

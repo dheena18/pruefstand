@@ -1,0 +1,13 @@
+{
+  "answer": "Einen Monat zum Ende eines Kalendermonats (§ 622 Abs. 2 Nr. 1 BGB).",
+  "citations": ["§ 622 Abs. 2 Nr. 1 BGB"],
+  "chunks": [
+    {
+      "chunk_id": "gii-bgb-622-c2",
+      "doc_id": "gii-bgb-622",
+      "text": "Für eine Kündigung durch den Arbeitgeber beträgt die Kündigungsfrist einen Monat zum Ende eines Kalendermonats.",
+      "score": 0.71,
+      "rank": 1
+    }
+  ]
+}

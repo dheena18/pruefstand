@@ -124,7 +124,8 @@ def test_actions_read_allowlist() -> None:
 def test_contents_write_allowlist() -> None:
     assert _check(_perm("job", "contents", "write", "release-demo-ready"), "demo-ready.yml") == []
     assert _check(_perm("job", "contents", "write", "release-assets"), "release.yml") == []
-    assert _check(_perm("job", "contents", "write", "record"), "cassettes.yml") == []
+    assert _check(_perm("job", "contents", "write", "push"), "cassettes.yml") == []
+    assert _fails(_check(_perm("job", "contents", "write", "record"), "cassettes.yml"), "contents")
     assert _fails(
         _check(_perm("job", "contents", "write", "release-demo-ready"), "deploy.yml"), "contents"
     )

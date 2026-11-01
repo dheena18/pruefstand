@@ -1,0 +1,234 @@
+openapi: 3.1.0
+info:
+  title: Prüfstand Target API
+  version: "1"
+  description: |
+    Target HTTP API v1 (interfaces.md section 1.1): what a system under test exposes so Prüfstand
+    can gate it. Hand-written in T1.3; T3.2 generates the rag-demo spec from FastAPI and a contract
+    test there diffs it against this file. Third-party targets may omit `chunks`, `tenant_id` per
+    chunk, `used_in_prompt`, `refused`, `model`, `usage` and `stats`; metrics that need them are
+    `not_applicable`. `request_id` is random per call and never a test-case id. Authentication
+    is a bearer token supplied out of band; no credentials appear in this file. Requests are strict;
+    responses tolerate unknown keys and null optionals (third-party targets), while known fields keep
+    their types.
+servers:
+  - url: http://localhost:8000
+paths:
+  /v1/query:
+    post:
+      operationId: query
+      summary: Answer one question for one tenant (retrieval and generation).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/QueryRequest"
+      responses:
+        "200":
+          description: The answer with the retrieved chunks.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/QueryResponse"
+      security:
+        - bearer: []
+        - {}
+  /v1/retrieve:
+    post:
+      operationId: retrieve
+      summary: Retrieval only, no generator call (optional endpoint, R11 D218).
+      description: |
+        Same request as `/v1/query`; the response carries `chunks` only. A target without this
+        endpoint answers 404 or 405 and the runner falls back to `/v1/query`.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/QueryRequest"
+      responses:
+        "200":
+          description: The retrieved chunks in rank order.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RetrieveResponse"
+      security:
+        - bearer: []
+        - {}
+  /v1/info:
+    get:
+      operationId: info
+      summary: Static description of the running app (optional endpoint).
+      responses:
+        "200":
+          description: App, model and serving metadata; static fields only, no counters.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/InfoResponse"
+      security:
+        - bearer: []
+        - {}
+  /v1/health:
+    get:
+      operationId: health
+      summary: Liveness plus runtime counters.
+      responses:
+        "200":
+          description: Status and optional runtime counters.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HealthResponse"
+      security:
+        - bearer: []
+        - {}
+components:
+  securitySchemes:
+    bearer:
+      type: http
+      scheme: bearer
+  schemas:
+    QueryRequest:
+      type: object
+      additionalProperties: false
+      required: [tenant_id, question, request_id]
+      properties:
+        tenant_id:
+          type: string
+        question:
+          type: string
+        top_k:
+          type: [integer, "null"]
+        request_id:
+          type: string
+          description: Random per call (uuid4 hex); never a test-case id.
+    RetrievedChunk:
+      type: object
+      additionalProperties: true
+      required: [chunk_id, doc_id, text, score, rank]
+      properties:
+        chunk_id:
+          type: string
+        doc_id:
+          type: string
+        tenant_id:
+          type: [string, "null"]
+          description: Optional for third-party targets (tenant metrics become not_applicable).
+        text:
+          type: string
+        score:
+          type: number
+        rank:
+          type: integer
+          minimum: 1
+          description: 1..n without gaps.
+        used_in_prompt:
+          type: [boolean, "null"]
+          description: True when the chunk was in the generator prompt (API v1 addition, X3.14).
+    Usage:
+      type: object
+      additionalProperties: true
+      required: [prompt_tokens, completion_tokens]
+      properties:
+        prompt_tokens:
+          type: integer
+        completion_tokens:
+          type: integer
+    QueryResponse:
+      type: object
+      additionalProperties: true
+      required: [answer]
+      properties:
+        answer:
+          type: string
+        citations:
+          type: array
+          items:
+            type: string
+          description: As written by the app, for example "§ 622 Abs. 2 BGB".
+        chunks:
+          type: [array, "null"]
+          items:
+            $ref: "#/components/schemas/RetrievedChunk"
+        refused:
+          type: [boolean, "null"]
+          description: Informational self-report; refusal is decided by the gate (D116).
+        model:
+          type: [string, "null"]
+        usage:
+          oneOf:
+            - $ref: "#/components/schemas/Usage"
+            - type: "null"
+      examples:
+        - {"answer": "Einen Monat zum Ende eines Kalendermonats (§ 622 Abs. 2 Nr. 1 BGB).", "citations": ["§ 622 Abs. 2 Nr. 1 BGB"], "chunks": [{"chunk_id": "gii-bgb-622-c1", "doc_id": "gii-bgb-622", "tenant_id": "public", "text": "Das Arbeitsverhältnis eines Arbeiters oder eines Angestellten kann mit einer Frist von vier Wochen zum Fünfzehnten oder zum Ende eines Kalendermonats gekündigt werden.", "score": 0.83, "rank": 1, "used_in_prompt": true}, {"chunk_id": "gii-bgb-622-c2", "doc_id": "gii-bgb-622", "tenant_id": "public", "text": "Für eine Kündigung durch den Arbeitgeber beträgt die Kündigungsfrist, wenn das Arbeitsverhältnis in dem Betrieb oder Unternehmen zwei Jahre bestanden hat, einen Monat zum Ende eines Kalendermonats.", "score": 0.71, "rank": 2}], "refused": false, "model": "qwen3-1.7b-q4_k_m", "usage": {"prompt_tokens": 412, "completion_tokens": 21}}
+    RetrieveResponse:
+      type: object
+      additionalProperties: true
+      required: [chunks]
+      not:
+        required: [answer]
+      properties:
+        chunks:
+          type: array
+          items:
+            $ref: "#/components/schemas/RetrievedChunk"
+      examples:
+        - {"chunks": [{"chunk_id": "gii-bgb-622-c1", "doc_id": "gii-bgb-622", "tenant_id": "public", "text": "Das Arbeitsverhältnis eines Arbeiters oder eines Angestellten kann mit einer Frist von vier Wochen zum Fünfzehnten oder zum Ende eines Kalendermonats gekündigt werden.", "score": 0.83, "rank": 1}, {"chunk_id": "gii-bgb-622-c2", "doc_id": "gii-bgb-622", "tenant_id": "public", "text": "Für eine Kündigung durch den Arbeitgeber beträgt die Kündigungsfrist, wenn das Arbeitsverhältnis in dem Betrieb oder Unternehmen zwei Jahre bestanden hat, einen Monat zum Ende eines Kalendermonats.", "score": 0.71, "rank": 2}]}
+    InfoResponse:
+      type: object
+      additionalProperties: true
+      required: [app_version, git_sha, image_digest, config_hash, corpus_version, models]
+      properties:
+        app_version:
+          type: string
+        git_sha:
+          type: string
+        image_digest:
+          type: [string, "null"]
+        config_hash:
+          type: string
+        corpus_version:
+          type: string
+        models:
+          type: object
+          additionalProperties:
+            type: string
+          description: Role to model id, for example generator and embedding.
+        serving:
+          type: object
+          additionalProperties:
+            type: string
+          description: |
+            Static fields only (engine, engine_version, quantization, gpu, model_sha256);
+            counters live in /v1/health stats (X3.13).
+      examples:
+        - {"app_version": "0.1.0", "git_sha": "0000000000000000000000000000000000000000", "image_digest": null, "config_hash": "sha256:example", "corpus_version": "example-2026-01", "models": {"generator": "qwen3-1.7b-q4_k_m", "embedding": "bge-m3"}, "serving": {"engine": "llama.cpp", "engine_version": "b4000", "quantization": "Q4_K_M", "gpu": "cpu:example", "model_sha256": "0000000000000000000000000000000000000000000000000000000000000000"}}
+    Stats:
+      type: object
+      additionalProperties:
+        type: integer
+      properties:
+        think_stripped:
+          type: integer
+        truncated_chunks:
+          type: integer
+        requests:
+          type: integer
+        prompt_overflow:
+          type: integer
+    HealthResponse:
+      type: object
+      additionalProperties: true
+      required: [status]
+      properties:
+        status:
+          type: string
+        stats:
+          oneOf:
+            - $ref: "#/components/schemas/Stats"
+            - type: "null"
+      examples:
+        - {"status": "ok", "stats": {"think_stripped": 0, "truncated_chunks": 0, "requests": 3, "prompt_overflow": 0}}

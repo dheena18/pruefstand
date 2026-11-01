@@ -46,7 +46,10 @@ ACTIONS_READ: dict[tuple[str, str], str] = {
 # (file, job) -> reason, for ``contents: write``.
 CONTENTS_WRITE: dict[tuple[str, str], str] = {
     ("release.yml", "release-assets"): "attaches image-digests.json to the GitHub release",
-    ("cassettes.yml", "record"): "pushes its own cassettes/<date> branch, never opens a PR",
+    (
+        "cassettes.yml",
+        "push",
+    ): "pushes its own cassettes/<date>-<run> branch, runs no repo code, never opens a PR",
     ("demo-ready.yml", "release-demo-ready"): "uploads the demo-ready.json release asset (D318)",
 }
 
@@ -76,4 +79,17 @@ UNTRUSTED = re.compile(
 )
 FETCH_PR_CODE = re.compile(
     r"git\s+(fetch|clone)\b|gh\s+pr\s+checkout\b|gh\s+pr\s+diff\b[^\n]*--patch[^\n]*\|\s*(ba|z)?sh\b"
+)
+
+
+# (file, job) -> reason: jobs that hold a write token and therefore must run NO repository code
+# (no uv/make/python/scripts steps, only these actions, exactly the listed permissions).
+NO_REPO_CODE_JOBS: dict[tuple[str, str], dict[str, str]] = {
+    ("cassettes.yml", "push"): {"contents": "write"},
+}
+NO_REPO_CODE_ACTIONS = ("actions/checkout@", "actions/download-artifact@")
+REPO_CODE_RUN = re.compile(
+    r"(?:^|[\s;&|(])(?:(?:uv|make|python3?|pytest|pip|npm|pnpm|node)(?=$|[\s;&|)])"
+    r"|(?:bash|sh)\s+\S*scripts/|\./\S+)",
+    re.MULTILINE,
 )

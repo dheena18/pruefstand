@@ -11,3 +11,13 @@ paths = [
 regexes = [
   '''OLLAMA_KEEP_ALIVE=-1''',
 ]
+
+[[allowlists]]
+description = "T1.4 scrub test: a made-up AWS-shaped string that assert_no_secrets must refuse (history of commit af85041)"
+condition = "AND"
+paths = [
+  '''packages/pruefstand/tests/unit/llm/test_scrub\.py''',
+]
+regexes = [
+  '''AKIAABCDEFGHIJKLMNOP''',
+]
