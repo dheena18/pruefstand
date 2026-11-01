@@ -70,3 +70,36 @@ def test_use_after_close_is_a_store_error(tmp_path: Path) -> None:
     cache.close()  # idempotent
     with pytest.raises(StoreError):
         cache.get("k")
+
+
+def test_store_is_plain_sqlite_with_bytes_values_and_no_pickle(tmp_path: Path) -> None:
+    import sqlite3
+
+    with DiskKVCache(tmp_path, "target") as cache:
+        cache.set("k", b"\x80\x04pickle-looking bytes stay bytes")
+    files = list((tmp_path / "target").iterdir())
+    assert [f.name for f in files] == ["cache.sqlite3"]
+    row = sqlite3.connect(files[0]).execute("select key, value from kv").fetchone()
+    assert row == ("k", b"\x80\x04pickle-looking bytes stay bytes")
+
+
+def test_a_corrupt_cache_file_is_a_store_error(tmp_path: Path) -> None:
+    (tmp_path / "target").mkdir()
+    (tmp_path / "target" / "cache.sqlite3").write_bytes(b"this is not a database" * 100)
+    with pytest.raises(StoreError):
+        with DiskKVCache(tmp_path, "target") as cache:
+            cache.get("k")
+
+
+def test_overwriting_a_key_keeps_the_last_value(tmp_path: Path) -> None:
+    with DiskKVCache(tmp_path, "llm") as cache:
+        cache.set("k", b"1")
+        cache.set("k", b"2")
+        assert cache.get("k") == b"2"
+
+
+def test_the_package_no_longer_depends_on_diskcache() -> None:
+    import importlib.metadata as md
+
+    deps = md.requires("pruefstand") or []
+    assert not [d for d in deps if d.lower().startswith("diskcache")]
