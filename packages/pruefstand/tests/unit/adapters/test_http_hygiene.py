@@ -1,13 +1,18 @@
 """Review round 1: error hygiene, redaction and pinned parsing behaviour (T1.3)."""
 
+import asyncio
 import gzip
 import json
 import ssl
+import threading
+import urllib.parse
 from collections.abc import AsyncIterator, Iterator
+from concurrent.futures import ThreadPoolExecutor
 
 import httpx
 import pytest
 import respx
+from contract.adapter_contract import load_example
 
 from pruefstand.adapters.http import HttpTargetAdapter
 from pruefstand.core.config import HttpTargetConfig
@@ -152,3 +157,73 @@ async def test_info_is_none_only_for_404(
     router.get("/v1/info").respond(405)
     with pytest.raises(TargetError):
         await adapter.info()
+
+
+TRICKY = 'sec"ret/+&x\\y-9876543'
+
+
+@pytest.mark.parametrize("status", [200, 401, 500])
+async def test_token_is_redacted_in_every_echoed_form(
+    router: respx.MockRouter, monkeypatch: pytest.MonkeyPatch, status: int
+) -> None:
+    monkeypatch.setenv("TOK6", TRICKY)
+    forms = [
+        TRICKY,
+        json.dumps(TRICKY)[1:-1],
+        json.dumps(json.dumps(TRICKY))[1:-1],
+        urllib.parse.quote(TRICKY),
+        urllib.parse.quote(TRICKY, safe=""),
+        urllib.parse.quote_plus(TRICKY),
+    ]
+    router.post("/v1/query").respond(status, text="not json: " + " | ".join(forms))
+    adapter = HttpTargetAdapter(HttpTargetConfig(type="http", url=BASE, auth_env="TOK6"))
+    with pytest.raises(TargetError) as excinfo:
+        await adapter.query(REQ)
+    await adapter.aclose()
+    for form in forms:
+        assert form not in str(excinfo.value), form
+    assert "9876543" not in str(excinfo.value)
+
+
+@pytest.mark.parametrize(
+    ("citations", "expected"),
+    [([1, 2], ("1", "2")), (["§ 1", 7], ("§ 1", "7")), ([], ())],
+)
+async def test_integer_citation_ids_are_stringified(
+    router: respx.MockRouter,
+    adapter: HttpTargetAdapter,
+    citations: list[object],
+    expected: tuple[str, ...],
+) -> None:
+    router.post("/v1/query").respond(200, json={"answer": "a", "citations": citations})
+    assert (await adapter.query(REQ)).citations == expected
+
+
+@pytest.mark.parametrize("citations", [[True], [1.5], [None], [["x"]], [{"id": 1}]])
+async def test_other_non_string_citations_stay_permanent_errors(
+    router: respx.MockRouter, adapter: HttpTargetAdapter, citations: list[object]
+) -> None:
+    router.post("/v1/query").respond(200, json={"answer": "a", "citations": citations})
+    with pytest.raises(TargetError) as excinfo:
+        await adapter.query(REQ)
+    assert excinfo.value.transient is False
+
+
+async def test_wire_parsing_does_not_use_the_default_executor(
+    router: respx.MockRouter,
+) -> None:
+    loop = asyncio.get_running_loop()
+    default = ThreadPoolExecutor(max_workers=1)
+    loop.set_default_executor(default)
+    release = threading.Event()
+    blocker = loop.run_in_executor(None, release.wait)  # occupies the only default worker
+    router.post("/v1/query").respond(200, json=load_example("query_ok.json"))
+    adapter = HttpTargetAdapter(HttpTargetConfig(type="http", url=BASE, timeout_s=2))
+    try:
+        assert (await adapter.query(REQ)).answer.startswith("Einen Monat")
+    finally:
+        release.set()
+        await blocker
+        await adapter.aclose()
+        default.shutdown(wait=True)
+    assert adapter._executor._shutdown

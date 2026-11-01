@@ -48,10 +48,17 @@ Parser = Callable[[bytes, str, tuple[str, ...]], Any]
 
 
 def secret_forms(secret: str) -> tuple[str, ...]:
-    """Return the plain, JSON-escaped and URL-encoded forms of ``secret``, longest first."""
+    """Return the plain, JSON-escaped (once and twice) and URL-encoded forms, longest first."""
     if not secret:
         return ()
-    forms = {secret, json.dumps(secret)[1:-1], quote(secret, safe=""), quote_plus(secret)}
+    forms = {
+        secret,
+        json.dumps(secret)[1:-1],
+        json.dumps(json.dumps(secret))[1:-1],  # echoed inside a JSON string inside JSON
+        quote(secret),  # default safe="/"
+        quote(secret, safe=""),
+        quote_plus(secret),
+    }
     return tuple(sorted(forms, key=len, reverse=True))
 
 
@@ -114,14 +121,28 @@ def _chunks(raw: object, what: str) -> object:
     return [_pick(c, _CHUNK_KEYS) if isinstance(c, dict) else c for c in raw]
 
 
-def _citations(raw: object, what: str) -> object:
-    if not isinstance(raw, list) or not all(isinstance(c, str) for c in raw[: MAX_CITATIONS + 1]):
-        msg = f"{what}: citations must be a list of strings"
+def _citations(raw: object, what: str) -> list[str]:
+    """Validate citations: strings, plus integer ids (not bool) that are stringified.
+
+    Many third-party RAG targets cite by number (``[1, 2]``); ``"1"`` is the faithful string
+    form. Every other non-string item (bool, float, null, list, object) is a permanent error.
+    """
+    if not isinstance(raw, list):
+        msg = f"{what}: citations must be a list of strings or integers"
         raise TargetError(msg, transient=False)
     if len(raw) > MAX_CITATIONS:
         msg = f"{what}: too many citations ({len(raw)} > {MAX_CITATIONS})"
         raise TargetError(msg, transient=False)
-    return raw
+    out: list[str] = []
+    for item in raw:
+        if isinstance(item, str):
+            out.append(item)
+        elif isinstance(item, int) and not isinstance(item, bool):
+            out.append(str(item))
+        else:
+            msg = f"{what}: citations must be a list of strings or integers"
+            raise TargetError(msg, transient=False)
+    return out
 
 
 def _check_finite(chunks: tuple[RetrievedChunk, ...] | None, what: str) -> None:
@@ -131,7 +152,12 @@ def _check_finite(chunks: tuple[RetrievedChunk, ...] | None, what: str) -> None:
 
 
 def parse_query(data: bytes, what: str, secrets: tuple[str, ...]) -> TargetResponse:
-    """Parse a ``/v1/query`` body: unknown keys dropped, null optionals absent."""
+    """Parse a ``/v1/query`` body: unknown keys dropped, null optionals absent.
+
+    A ``usage`` object that lacks either token count is dropped as absent, so ``usage is None``
+    can also mean "partial usage reported" (a future token-cost metric must not read it as
+    "none reported"). Integer citation ids become strings.
+    """
     body = load_json(data, what, secrets)
     if isinstance(body, dict):
         body = _pick(body, _RESPONSE_KEYS)

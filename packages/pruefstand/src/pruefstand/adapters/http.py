@@ -8,9 +8,11 @@ exceptions or the body excerpts of error messages. There are no retries here (ru
 """
 
 import asyncio
+import functools
 import os
 import ssl
 import time
+from concurrent.futures import ThreadPoolExecutor
 from typing import Any
 from urllib.parse import urlsplit
 from uuid import uuid4
@@ -80,6 +82,8 @@ class HttpTargetAdapter(TargetAdapter):
         self._auth_env = cfg.auth_env
         self._timeout_s = cfg.timeout_s
         self._closed = False
+        # own pool: parsing must not queue behind getaddrinfo & co. in the loop's default executor
+        self._executor = ThreadPoolExecutor(max_workers=4, thread_name_prefix="pruefstand-wire")
         self._client = httpx.AsyncClient(
             timeout=httpx.Timeout(cfg.timeout_s, connect=min(cfg.timeout_s, _CONNECT_TIMEOUT_S)),
             follow_redirects=False,
@@ -136,6 +140,7 @@ class HttpTargetAdapter(TargetAdapter):
     async def aclose(self) -> None:
         """Close the connection pool; safe to call more than once."""
         self._closed = True
+        self._executor.shutdown(wait=False)
         await self._client.aclose()
 
     def _auth_headers(self) -> dict[str, str]:
@@ -158,7 +163,9 @@ class HttpTargetAdapter(TargetAdapter):
         secrets = secret_forms(self._secret())
         try:
             async with asyncio.timeout(self._timeout_s):
-                result: R = await asyncio.to_thread(parser, data, what, secrets)
+                result: R = await asyncio.get_running_loop().run_in_executor(
+                    self._executor, functools.partial(parser, data, what, secrets)
+                )
         except TimeoutError:
             msg = f"{what}: parsing the response timed out"
             raise TargetError(msg, transient=False) from None

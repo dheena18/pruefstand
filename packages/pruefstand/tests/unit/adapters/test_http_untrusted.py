@@ -111,7 +111,7 @@ async def test_event_loop_keeps_ticking_while_a_bomb_is_parsed(
 
 @pytest.mark.parametrize(
     ("citations", "ok"),
-    [(["§ 1"] * 1000, True), (["§ 1"] * 1001, False), ([1, 2], False), ("§ 1", False)],
+    [(["§ 1"] * 1000, True), (["§ 1"] * 1001, False), ([1] * 1001, False), ("§ 1", False)],
 )
 async def test_citation_bounds_and_types(
     router: respx.MockRouter,
