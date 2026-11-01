@@ -92,7 +92,12 @@ def write_files(root: Path, results: RunResults, llm_calls: pl.DataFrame | None)
     (root / "scored.jsonl").write_text(jsonl(results.values), encoding="utf-8")
     if llm_calls is not None:
         llm_calls.write_parquet(root / "llm_calls.parquet", compression="zstd")
-    sums = {name: sha256_file(root / name, MAX_FILE_BYTES) for name in CHECKED_FILES}
+    sums = {
+        name: sha256_file(
+            root / name, MAX_PARQUET_BYTES if name.endswith(".parquet") else MAX_FILE_BYTES
+        )
+        for name in CHECKED_FILES
+    }
     manifest = results.manifest.model_copy(update={"artifact_sha256": sums})
     (root / "run.json").write_text(manifest_text(manifest), encoding="utf-8")
 

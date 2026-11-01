@@ -184,3 +184,29 @@ def test_update_reads_run_json_with_the_bounded_reader(
     monkeypatch.setattr(artifacts_module, "MAX_MANIFEST_BYTES", 100)
     with pytest.raises(StoreError, match="larger"):
         store.add_counts(path, {"model_reloads": 1})
+
+
+def test_a_failing_hash_during_write_leaves_no_tmp_directory(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    def refuse(path: Path, limit: int) -> str:
+        msg = "file is larger than the limit"
+        raise StoreError(msg)
+
+    monkeypatch.setattr(_run_files, "sha256_file", refuse)
+    results = make_results(2)
+    store = ArtifactStore(tmp_path)
+    with pytest.raises(StoreError, match="larger"):
+        store.write_run(RunArtifacts(results=results, root=tmp_path / results.manifest.run_id))
+    assert list(tmp_path.iterdir()) == []
+
+
+def test_a_parquet_over_the_read_cap_is_refused_at_write_time(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(_run_files, "MAX_PARQUET_BYTES", 10)
+    results = make_results(2)
+    store = ArtifactStore(tmp_path)
+    with pytest.raises(StoreError, match="larger"):
+        store.write_run(RunArtifacts(results=results, root=tmp_path / results.manifest.run_id))
+    assert list(tmp_path.iterdir()) == []

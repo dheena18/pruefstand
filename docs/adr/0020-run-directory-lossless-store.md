@@ -34,6 +34,16 @@ and exposes no per-call usage.
 4. `DiskKVCache` uses stdlib `sqlite3` (BLOB values, no pickle) instead of `diskcache`, whose pickle-deserialisation advisory (PYSEC-2026-2447) fails the pip-audit gate; no ignore entry.
 5. Run id format: `<UTC yyyymmddTHHMMSS>-<6 hex>` (`store.artifacts.new_run_id`).
 
+## Threat model of the hashes
+`artifact_sha256` sits in `run.json`, in the same directory as the files it covers. It protects against
+corruption, partial or accidental edits, and planted parquet bombs (the file is refused before any
+parser sees it). It does **not** prove authenticity: whoever can rewrite the directory can rewrite the
+hashes too (the trust boundary is write access to the run directory, as for baselines, ADR-0004).
+Consumers (T6.1 baselines, T8.1 export, `RunIndex`) must hash and parse the **same in-memory bytes**
+(for example `pl.read_parquet(BytesIO(data))` after `hashlib.sha256(data)`), never re-open the parquet
+by name after hashing (a swap in between defeats the check). The write side refuses a parquet larger
+than the read cap (`MAX_PARQUET_BYTES`).
+
 ## Alternatives considered
 - Put the case body into `results.parquet`: breaks the 13-column contract the gate, `RunIndex` and the
   dashboard rely on.

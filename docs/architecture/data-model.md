@@ -36,6 +36,7 @@ erDiagram
         json judge_prompt_versions
         json judge_serving "metric to engine, version, quantization, digest[:12] of its gated judge (R9 X3.3)"
         int judge_epoch "calibration epoch, part of eval_fingerprint (R9 X3.3)"
+        json artifact_sha256 "SHA-256 of results.parquet, responses.jsonl, scored.jsonl, set by write_run; verify before parsing (T1.8, ADR-0020)"
         json metric_versions
         int seed
         json cost "CostSummary"

@@ -1,7 +1,7 @@
 """``DiskKVCache``: the persistent byte cache behind the ``target`` and ``llm`` namespaces.
 
 Backed by one SQLite file per namespace (stdlib ``sqlite3``). Values are stored as opaque BLOBs
-and returned as bytes; nothing is ever unpickled (D361).
+and returned as bytes; nothing is ever unpickled (D365).
 """
 
 import sqlite3

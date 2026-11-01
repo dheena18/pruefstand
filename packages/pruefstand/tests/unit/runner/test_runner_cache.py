@@ -103,6 +103,14 @@ PLANTED = {
     "negative_latency": _entry(latency_ms=-1.0),
     "lone_surrogate": b'{"mode":"answer","latency_ms":1.0,"response":{"answer":"x\\ud800y"}}',
     "extra_field": _entry(unexpected=1),
+    "nan_score": (
+        b'{"mode":"answer","latency_ms":1.0,"response":{"answer":"x","chunks":[{"chunk_id":"c",'
+        b'"doc_id":"d","text":"t","score":NaN,"rank":1}]}}'
+    ),
+    "infinite_score": (
+        b'{"mode":"answer","latency_ms":1.0,"response":{"answer":"x","chunks":[{"chunk_id":"c",'
+        b'"doc_id":"d","text":"t","score":1e999,"rank":1}]}}'
+    ),
 }
 
 

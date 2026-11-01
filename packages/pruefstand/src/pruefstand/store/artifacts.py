@@ -4,7 +4,7 @@ A run directory holds ``run.json`` (the manifest), ``results.parquet`` (the 13-c
 view), ``responses.jsonl`` (``CaseRecord`` per case), ``scored.jsonl`` (``ScoredCase`` per case;
 the lossless source of ``RunResults.values``, because the parquet view has no ``TestCase`` body
 or metric details) and optionally ``llm_calls.parquet``. Writes go to a temporary sibling
-directory that is renamed into place, so a failed write leaves nothing behind (D358).
+directory that is renamed into place, so a failed write leaves nothing behind (D362).
 """
 
 import fcntl
@@ -97,12 +97,12 @@ class ArtifactStore:
             tmp.mkdir()
             write_files(tmp, run.results, llm_calls)
             Path(tmp).replace(target)
-        except (OSError, pl.exceptions.PolarsError, ValueError) as exc:
+        except (OSError, pl.exceptions.PolarsError, ValueError, StoreError) as exc:
             # ValueError covers pydantic serialisation errors and UnicodeError (lone surrogates)
             shutil.rmtree(tmp, ignore_errors=True)
             detail = (
                 str(exc)
-                if isinstance(exc, OSError | pl.exceptions.PolarsError)
+                if isinstance(exc, OSError | pl.exceptions.PolarsError | StoreError)
                 else safe_error(exc)
             )
             msg = f"cannot write run {target.name}: {detail}"

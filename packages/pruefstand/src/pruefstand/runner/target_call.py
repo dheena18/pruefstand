@@ -2,6 +2,7 @@
 
 import asyncio
 import json
+import math
 import time
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
@@ -154,7 +155,7 @@ class TargetCaller:
             _log.warning("target_cache_entry_unreadable", key=key)
             return None
         checked = _require_valid_unicode(Attempts(entry.response, None, 0))
-        if entry.mode != mode or checked.value is None:
+        if entry.mode != mode or checked.value is None or not _scores_finite(entry.response):
             return None
         return entry.response, entry.latency_ms
 
@@ -176,6 +177,11 @@ class TargetCaller:
         """Skip the cache for the rest of the run after its first failure (locked, read-only)."""
         self._cache_failed = True
         _log.warning(event, error=error, note="cache skipped for the rest of the run")
+
+
+def _scores_finite(response: TargetResponse) -> bool:
+    """Same rule as the adapters' wire check: every chunk score is a finite number."""
+    return all(math.isfinite(chunk.score) for chunk in response.chunks or ())
 
 
 def _require_valid_unicode(
