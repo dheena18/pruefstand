@@ -36,12 +36,13 @@ _SKIP_PREFIXES = (
     ("anlage", "annex"),
     ("anhang", "annex"),
 )
+MAX_LABEL = 200  # real labels are shorter than 40 characters; the cap keeps the regexes cheap
 REPEALED = frozenset({"(weggefallen)", "(gegenstandslos)", "(aufgehoben)", "(entfallen)"})
 
 
 @dataclass(frozen=True)
 class NormMeta:
-    """The ``<metadaten>`` of a norm, whitespace-normalised."""
+    """The ``<metadaten>`` of a norm, whitespace-normalised; labels are cut at ``MAX_LABEL``."""
 
     jurabk: str
     enbez: str
@@ -87,21 +88,24 @@ class Reject:
     detail: str
 
 
-def _text(norm: etree._Element, path: str) -> str:
+def _text(norm: etree._Element, path: str, limit: int | None = None) -> str:
     found = norm.find(path)
-    return "" if found is None else normalise_line("".join(found.itertext()))
+    if found is None:
+        return ""
+    text = normalise_line("".join(found.itertext()))
+    return text if limit is None else text[:limit]
 
 
 def read_meta(norm: etree._Element) -> NormMeta:
     """Read the metadata of a ``<norm>`` element."""
     return NormMeta(
-        jurabk=_text(norm, "metadaten/jurabk"),
-        enbez=_text(norm, "metadaten/enbez"),
+        jurabk=_text(norm, "metadaten/jurabk", MAX_LABEL),
+        enbez=_text(norm, "metadaten/enbez", MAX_LABEL),
         titel=_text(norm, "metadaten/titel"),
         doknr=norm.get("doknr", ""),
         builddate=norm.get("builddate", ""),
         has_gliederung=norm.find("metadaten/gliederungseinheit") is not None,
-        gliederung_bez=_text(norm, "metadaten/gliederungseinheit/gliederungsbez"),
+        gliederung_bez=_text(norm, "metadaten/gliederungseinheit/gliederungsbez", MAX_LABEL),
     )
 
 

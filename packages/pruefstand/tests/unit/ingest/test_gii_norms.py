@@ -1,11 +1,13 @@
 """Classification of GII norms and builddate parsing (T2.2), driven by real `<norm>` metadata."""
 
+import time
 from datetime import date
 
 import pytest
 from lxml import etree
 
 from pruefstand.ingest.gii.norms import (
+    NormMeta,
     Reject,
     Skip,
     Unit,
@@ -25,7 +27,7 @@ GLIEDERUNG = (
 )
 
 
-def meta_of(enbez: str | None = None, gliederung: str | None = None):
+def meta_of(enbez: str | None = None, gliederung: str | None = None) -> NormMeta:
     en = "" if enbez is None else f"<enbez>{enbez}</enbez>"
     gl = "" if gliederung is None else GLIEDERUNG.format(bez=gliederung)
     return read_meta(etree.fromstring(NORM.format(enbez=en, gl=gl)))
@@ -95,3 +97,13 @@ def test_read_stand_takes_the_stand_remark_only() -> None:
     )
     assert read_stand(etree.fromstring(xml)) == "Zuletzt geändert durch Art. 2"
     assert read_stand(etree.fromstring("<norm><metadaten/></norm>")) is None
+
+
+def test_pathological_labels_are_cut_and_fast() -> None:
+    evil = "Art§§" * 200_000
+    start = time.perf_counter()
+    meta = meta_of(evil, evil)
+    verdict = classify(meta)
+    assert time.perf_counter() - start < 1.0
+    assert len(meta.enbez) == len(meta.gliederung_bez) == 200
+    assert isinstance(verdict, Reject | Skip)

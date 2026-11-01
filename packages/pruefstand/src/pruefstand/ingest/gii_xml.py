@@ -24,6 +24,7 @@ A norm whose number core.citations cannot read (two letters after the digits: KW
 § 53cq) is counted as skipped (``uncitable``) and logged, never emitted without a key
 (follow-up: T1.5a parser).
 
+A member that fails halfway keeps the documents already yielded; the failure is counted.
 Nothing raises past the loader for bad input: a broken archive, unsafe or malformed XML, an
 unknown law or ``enbez``, an unparsable citation key or a duplicate id is recorded in
 ``loader.stats.problems`` and loading continues. Run ``python -m pruefstand.ingest.gii_xml

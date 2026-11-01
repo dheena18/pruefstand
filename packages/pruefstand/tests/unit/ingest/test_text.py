@@ -5,7 +5,7 @@ import unicodedata
 from collections.abc import Callable
 
 import pytest
-from hypothesis import given
+from hypothesis import HealthCheck, given, settings
 from hypothesis import strategies as st
 
 from pruefstand.ingest.text import (
@@ -82,3 +82,15 @@ def test_helpers_run_in_linear_time(func: Callable[[str], object], unit: str) ->
     t_large = min(_seconds(func, large) for _ in range(3))
     assert t_large < 2.0
     assert t_large < 8 * 6 * max(t_small, 0.002)  # 8x the input: allow 6x the linear ratio
+
+
+@settings(deadline=2000, max_examples=25, suppress_health_check=[HealthCheck.too_slow])
+@given(
+    st.sampled_from(["a ", "\n", "(((", "\u00a0 \t", "-\n", "\u0308", "x" * 40 + " ", "ä-\nb "]),
+    st.integers(min_value=10_000, max_value=100_000),
+)
+def test_helpers_time_bound_on_generated_pathological_text(unit: str, repeat: int) -> None:
+    text = unit * repeat
+    count_tokens(text)
+    normalise_text(text)
+    join_hyphenation(text)

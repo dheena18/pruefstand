@@ -5,7 +5,7 @@ from datetime import date
 from pathlib import Path
 
 import pytest
-from hypothesis import given
+from hypothesis import HealthCheck, given, settings
 from hypothesis import strategies as st
 
 from pruefstand.core.enums import Lang
@@ -148,3 +148,23 @@ def test_chunker_is_linear_on_pathological_text(unit: str) -> None:
     large = min(run(40_000) for _ in range(3))
     assert large < 3.0
     assert large < 8 * 6 * max(small, 0.002)
+
+
+PATHOLOGICAL_UNITS = [
+    "(1) ",
+    "(",
+    "\n(1)",
+    "a ",
+    "(1)\n(2)\n",
+    "((((((((",
+    "ä" * 50 + "\n",
+    " \t",
+    "(1a) ",
+]
+
+
+@settings(deadline=3000, max_examples=25, suppress_health_check=[HealthCheck.too_slow])
+@given(st.sampled_from(PATHOLOGICAL_UNITS), st.integers(min_value=5_000, max_value=40_000))
+def test_chunker_time_bound_on_generated_pathological_text(unit: str, repeat: int) -> None:
+    chunks = ParagraphChunker(max_tokens=50).chunk(make_doc(unit * repeat))
+    assert all(c.text for c in chunks)
