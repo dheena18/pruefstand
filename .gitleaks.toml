@@ -1,0 +1,13 @@
+# Narrow allowlist for the Pruefstand secret scan (T0.2). Never add a broad path or rule here.
+[extend]
+useDefault = true
+
+[[allowlists]]
+description = "Review prose names the Ollama setting OLLAMA_KEEP_ALIVE=-1 (a config value, not a credential)"
+condition = "AND"
+paths = [
+  '''docs/planning/reviews/round12-ai\.md''',
+]
+regexes = [
+  '''OLLAMA_KEEP_ALIVE=-1''',
+]
