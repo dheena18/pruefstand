@@ -3,6 +3,7 @@
   "query_refused.json": {"source": "openapi-example"},
   "query_no_chunks.json": {"source": "openapi-example"},
   "query_chunks_no_tenant.json": {"source": "openapi-example"},
+  "query_other_tenant.json": {"source": "openapi-example"},
   "retrieve_ok.json": {"source": "openapi-example"},
   "info.json": {"source": "openapi-example"},
   "health.json": {"source": "openapi-example"}
