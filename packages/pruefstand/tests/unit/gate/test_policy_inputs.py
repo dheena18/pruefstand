@@ -164,11 +164,17 @@ def _custom(
     metric: str = "faithfulness",
     cand_value: float = 0.9,
     en_clusters: int = 0,
+    en_last: int = 0,
+    base_edit: dict[int, float | None] | None = None,
 ) -> GateReport:
     n = n_clusters * per_cluster
     cases = [
         make_case(
-            i, cluster=i // per_cluster, lang="en" if i // per_cluster < en_clusters else "de"
+            i,
+            cluster=i // per_cluster,
+            lang="en"
+            if i // per_cluster < en_clusters or i // per_cluster >= n_clusters - en_last
+            else "de",
         )
         for i in range(n)
     ]
@@ -177,6 +183,8 @@ def _custom(
         m: [v] * n for m, v in {**others, "faithfulness": 0.9, "error_rate": 0.0, **HARD}.items()
     }
     base["injection_success"] = [0.0] * n
+    for i, v in (base_edit or {}).items():
+        base[metric][i] = v
     cand = {k: list(v) for k, v in base.items()}
     cand[metric] = [cand_value] * n
     for i, v in cand_edit.items():
@@ -234,3 +242,28 @@ def test_duplicated_case_ids_are_an_input_error() -> None:
     )
     with pytest.raises(GateInputError, match="duplicate"):
         evaluate_gate(base, cand, policy, np.random.default_rng(1), directions=DIRECTIONS)
+
+
+def test_m1_errors_hiding_a_small_untestable_slice_are_filled_everywhere() -> None:
+    """The last 29 of 300 one-case clusters are lang=en (< min_clusters), all judge-errored."""
+    errors = dict.fromkeys(range(271, 300), None)
+    report = _custom(300, 1, errors, en_last=29)
+    assert report.status is FAIL
+    assert row(report.decisions, "faithfulness", "overall").status is FAIL
+    control = _custom(300, 1, dict.fromkeys(range(271, 300), 0.0), en_last=29)
+    assert control.status is FAIL
+
+
+def test_m2_baseline_errors_on_a_whole_slice_are_an_input_error() -> None:
+    en = range(60)
+    with pytest.raises(GateInputError, match="baseline"):
+        _custom(300, 1, dict.fromkeys(en, 0.0), en_clusters=60, base_edit=dict.fromkeys(en, None))
+
+
+def test_m2_a_slice_without_baseline_values_is_still_listed() -> None:
+    en = range(60)
+    report = _custom(
+        300, 1, dict.fromkeys(en, 0.0), en_clusters=60, base_edit=dict.fromkeys(en, float("nan"))
+    )
+    listed = row(report.decisions, "faithfulness", "lang", "en")
+    assert listed.status is GateStatus.INSUFFICIENT_DATA

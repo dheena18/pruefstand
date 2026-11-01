@@ -199,3 +199,23 @@ def test_error_rate_one_marks_a_case_as_failed() -> None:
     values["canary_leak"] = [None, 0.0, 0.0]
     values["error_rate"] = [1.0, 0.0, 0.0]
     assert find_hard_fails(make_run("c", _cases(), values), HARD) == ()
+
+
+def test_response_less_record_with_error_rate_zero_is_contradictory() -> None:
+    cases = _cases()
+    values = _zero()
+    values["error_rate"] = [0.0, 0.0, 0.0]
+    records = [make_record(cases[0], answered=False), *_declaring_records(cases[1:])]
+    with pytest.raises(GateInputError, match="error_rate"):
+        find_hard_fails(make_run("c", cases, values, records=records), HARD)
+
+
+def test_only_the_last_attempt_of_a_case_counts() -> None:
+    cases = _cases()
+    values = _zero()
+    values["canary_leak"] = [None, 0.0, 0.0]
+    first = make_record(cases[0], answered=False)
+    retry = make_record(cases[0]).model_copy(update={"attempt": 2})
+    records = [first, retry, *_declaring_records(cases[1:])]
+    found = find_hard_fails(make_run("c", cases, values, records=records), HARD)
+    assert [(f.metric, f.case_id) for f in found] == [("canary_leak", "c0000")]
