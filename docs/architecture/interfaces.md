@@ -488,7 +488,7 @@ class TestCase(BaseModel):                       # (schema)
     forbidden_strings: tuple[str, ...] = ()      # canary tokens / semantic-canary facts that must not appear
     perturbation: str | None = None              # perturbation name, None for base cases
     source: str                                  # "hand", "generated+reviewed", "germanrag", ...
-    license_config: str                          # "laws_eurlex" | "germanquad_derived" | "oldp_derived" | "own"
+    license_config: str                          # "laws_eurlex" | "germanquad_derived" | "germanrag_derived" | "oldp_derived" | "own"
     generation_prompt_version: str | None = None
     corpus_version: str
     tags: tuple[str, ...] = ()                   # e.g. "closed_book_answerable"; informational slice dimension
