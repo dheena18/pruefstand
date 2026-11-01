@@ -447,11 +447,11 @@ sequenceDiagram
         end
         R->>C: set(response) (never an error)
     end
-    R->>M: evaluate_deterministic, synchronously (shared regex budget); failed request -> error values, error_rate = 1
+    R->>M: evaluate_deterministic, synchronously (shared regex budget), failed request -> error values, error_rate = 1
     alt a hard-fail metric fired (canary_leak, tenant_leak, system_prompt_leak)
         R->>R: judged values not_applicable (hard_fail), no judge call
     else judged metric, judges given, case in scope
-        R->>B: reserve(2); refused -> not_applicable judge_cap, counts.judge_skipped
+        R->>B: reserve(2), refused -> not_applicable judge_cap, counts.judge_skipped
         R->>J: await metric.acompute(case, resp, judges)
         J-->>R: value | LLMError / PolicyViolation -> error value, counts.judge_error | QuotaExhausted -> judge_quota for the rest of the run
         R->>B: release(2 - requests this call charged)
