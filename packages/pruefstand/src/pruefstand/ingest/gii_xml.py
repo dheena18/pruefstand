@@ -24,10 +24,9 @@ reproducible for a given pin.
 EGBGB has 69 chunks) and so do the chunks of a split §; a § with 63 Absätze (§ 1 KWG) is 63 chunks
 with one key. Consumers (T2.5, the citation metrics) must treat it as a label, never as an id.
 
-A norm whose number core.citations cannot read (two letters after the digits: KWG § 53ca to
-§ 53cq) is counted as skipped (``uncitable``), logged, and `--stats` prints a WARNING; it is never
-emitted without a key (fix task: ``fix/T1.5a-two-letter-section-suffix``). Text that is only a gap
-marker (``-``, ``(Inkrafttreten)``, a heading plus ``(gegenstandslos)``) is skipped as
+A norm whose number core.citations cannot read is a counted ``bad_citation_key`` error, never a
+document without a key (KWG § 53ca to § 53cq needed the two-letter suffix fix of the parser).
+Text that is only a gap marker (``-``, ``(Inkrafttreten)``, a heading plus ``(gegenstandslos)``) is skipped as
 ``placeholder``.
 Anlagen and Anhänge are skipped as ``annex`` although 31 of them carry normative text (for example
 the EGBGB Muster-Widerrufsbelehrung and the BSIG Anlagen): a conscious scope choice.
@@ -39,7 +38,6 @@ unknown law or ``enbez``, an unparsable citation key or a duplicate id is record
 <raw_dir> --stats`` for per-law counts; the exit code is 1 when anything was counted.
 """
 
-import re
 from collections.abc import Iterator, Sequence
 from dataclasses import dataclass, field
 from datetime import date
@@ -78,7 +76,6 @@ from pruefstand.ingest.gii.xmlparse import XmlLimits, iter_norms
 
 _log = get_logger(__name__)
 LICENSE = "§5-UrhG"
-_TWO_LETTERS = re.compile(r"\d[a-z]{2,}\Z")
 UNASSIGNED = TenantId("unassigned")
 
 
@@ -233,12 +230,7 @@ class GiiXmlLoader:
         try:
             key = citation_key(unit.kind, unit.number, law)
         except CitationKeyError as err:
-            if _TWO_LETTERS.search(unit.number):
-                # core.citations reads one letter after a number; counted as a skip, never silent
-                _log.warning("gii_uncitable_number", law=law, number=unit.number)
-                arch.stats.skip("uncitable")
-            else:
-                self._reject(arch, "bad_citation_key", f"{meta.doknr}: {err}")
+            self._reject(arch, "bad_citation_key", f"{meta.doknr}: {err}")
             return None
         doc_id = f"gii-{slug_of(law)}-{unit.suffix}"
         if doc_id in arch.seen:

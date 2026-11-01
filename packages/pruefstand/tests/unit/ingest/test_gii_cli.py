@@ -63,16 +63,13 @@ def test_module_entry_point_runs(raw_dir: Path) -> None:
     assert "BGB" in result.stdout
 
 
-def test_uncitable_two_letter_number_is_a_counted_skip_not_an_error(
-    make_raw: RawFactory, fixture_dir: Path
-) -> None:
+def test_two_letter_suffix_paragraph_is_a_document(make_raw: RawFactory, fixture_dir: Path) -> None:
     raw = make_raw({"kwg": {"k.xml": (fixture_dir / "kwg_53ca.xml").read_bytes()}})
     loader = GiiXmlLoader()
-    docs = [str(d.doc_id) for d in loader.load(raw)]
-    assert docs == ["gii-kwg-25a"]
-    law = loader.stats.laws["KWG"]
-    assert law.skipped == {"header": 1, "uncitable": 1}
-    assert law.errors == 0
+    docs = {str(d.doc_id): d for d in loader.load(raw)}
+    assert sorted(docs) == ["gii-kwg-25a", "gii-kwg-53ca"]
+    assert docs["gii-kwg-53ca"].metadata["citation_key"] == "§ 53ca KWG"
+    assert loader.stats.laws["KWG"].skipped == {"header": 1}
     assert loader.stats.error_count == 0
 
 
@@ -83,23 +80,13 @@ def test_record_chunks_creates_the_law_row() -> None:
     assert stats.laws["BGB"].chunks == 5
 
 
-def test_stats_prints_skip_reasons_and_warns_about_uncitable_norms(
-    make_raw: RawFactory, fixture_dir: Path, capsys: pytest.CaptureFixture[str]
-) -> None:
-    raw = make_raw({"kwg": {"k.xml": (fixture_dir / "kwg_53ca.xml").read_bytes()}})
-    assert main([str(raw), "--stats"]) == 0
-    out = capsys.readouterr().out
-    assert "skipped by reason: header=1 uncitable=1" in out
-    assert "WARNING: 1 norm(s) skipped as uncitable" in out
-    assert "KWG" in out.split("WARNING")[1]
-
-
-def test_no_warning_without_uncitable_norms(
-    raw_dir: Path, capsys: pytest.CaptureFixture[str]
-) -> None:
+def test_stats_prints_the_skip_reasons(raw_dir: Path, capsys: pytest.CaptureFixture[str]) -> None:
     assert main([str(raw_dir), "--stats"]) == 0
     out = capsys.readouterr().out
-    assert "skipped by reason:" in out
+    last = out.splitlines()[-1]
+    assert last.startswith("skipped by reason: ")
+    assert "header=5" in last
+    assert "range=" in last
     assert "WARNING" not in out
 
 

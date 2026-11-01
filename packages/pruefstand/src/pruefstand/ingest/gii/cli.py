@@ -58,7 +58,7 @@ def main(argv: Sequence[str] | None = None) -> int:
 
     Returns:
         0 when nothing was counted as a problem, else 1 (the first problems go to stderr);
-        skipped norms (also ``uncitable``) never change the exit code.
+        skipped norms never change the exit code.
     """
     args = _parser().parse_args(argv)
     expected = [] if args.expect_laws is not None else pinned_slugs(args.raw_dir)
@@ -71,8 +71,6 @@ def main(argv: Sequence[str] | None = None) -> int:
         loader.stats.add_problem("gii", "missing_law", detail)
     if args.stats:
         sys.stdout.write(loader.stats.format_table() + "\n")
-        for warning in loader.stats.warnings():
-            sys.stdout.write(warning + "\n")
     for problem in loader.stats.problems[:20]:
         sys.stderr.write(f"error: {problem.law}: {problem.kind}: {problem.detail}\n")
     return 1 if loader.stats.error_count else 0

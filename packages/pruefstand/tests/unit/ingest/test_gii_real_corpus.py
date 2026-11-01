@@ -89,7 +89,8 @@ def test_totals_of_the_pinned_set(corpus: tuple[GiiXmlLoader, list[Document], li
         r: sum(law.skipped.get(r, 0) for law in loader.stats.laws.values())
         for r in ("placeholder", "uncitable")
     }
-    assert skipped["uncitable"] == 17
+    assert skipped["uncitable"] == 0
+    assert {"gii-kwg-53ca", "gii-kwg-53cq"} <= {str(d.doc_id) for d in docs}
     assert skipped["placeholder"] >= 14
     assert not [d for d in docs if d.text.strip() == "-"]
     assert not [c for c in chunks if c.text.strip() in ("(weggefallen)",)]

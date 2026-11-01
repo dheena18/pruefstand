@@ -83,19 +83,3 @@ class GiiStats:
                 reasons[reason] = reasons.get(reason, 0) + count
         rows.append("skipped by reason: " + " ".join(f"{k}={reasons[k]}" for k in sorted(reasons)))
         return "\n".join(rows)
-
-    def warnings(self) -> list[str]:
-        """Return warning lines for losses that are counted but not errors."""
-        lost = {
-            n: law.skipped["uncitable"]
-            for n, law in self.laws.items()
-            if law.skipped.get("uncitable")
-        }
-        if not lost:
-            return []
-        detail = ", ".join(f"{n}: {c}" for n, c in sorted(lost.items()))
-        return [
-            f"WARNING: {sum(lost.values())} norm(s) skipped as uncitable ({detail}); "
-            "core.citations cannot read their numbers "
-            "(fix task: fix/T1.5a-two-letter-section-suffix)"
-        ]

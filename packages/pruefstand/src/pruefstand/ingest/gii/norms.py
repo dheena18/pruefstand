@@ -10,7 +10,7 @@ Skip reasons: ``header`` (law-level norm), ``toc`` (Inhaltsübersicht), ``preamb
 (Eingangsformel), ``annex`` (Anlage, Anhang), ``range`` (``(XXXX) §§ 3 bis 6`` and
 ``Art 27 bis 37`` placeholders of repealed ranges), ``structure`` (headings without text),
 ``repealed``, ``placeholder`` (text is ``-`` or only parenthesised lines such as
-``(Inkrafttreten)``), ``empty`` and ``uncitable`` (decided by the loader after the text is
+``(Inkrafttreten)``), and ``empty`` (decided by the loader after the text is
 extracted).
 
 EGBGB nests paragraphs below articles: ``enbez="§ 1"`` inside ``gliederungsbez="Art 246a"``.
