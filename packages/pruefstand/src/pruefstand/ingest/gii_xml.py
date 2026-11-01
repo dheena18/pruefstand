@@ -20,9 +20,17 @@ text, ``YYYYMMDDhhmmss`` -> date), falling back to the ``builddate`` of the docu
 ``metadata["stand"]``. The pinned SHA-256 in ``data/sources.yaml`` fixes the file, so the date is
 reproducible for a given pin.
 
+``citation_key`` is **not unique**: the units nested in one EGBGB Artikel share its key (Art. 229
+EGBGB has 69 chunks) and so do the chunks of a split §; a § with 63 Absätze (§ 1 KWG) is 63 chunks
+with one key. Consumers (T2.5, the citation metrics) must treat it as a label, never as an id.
+
 A norm whose number core.citations cannot read (two letters after the digits: KWG § 53ca to
-§ 53cq) is counted as skipped (``uncitable``) and logged, never emitted without a key
-(follow-up: T1.5a parser).
+§ 53cq) is counted as skipped (``uncitable``), logged, and `--stats` prints a WARNING; it is never
+emitted without a key (fix task: ``fix/T1.5a-two-letter-section-suffix``). Text that is only a gap
+marker (``-``, ``(Inkrafttreten)``, a heading plus ``(gegenstandslos)``) is skipped as
+``placeholder``.
+Anlagen and Anhänge are skipped as ``annex`` although 31 of them carry normative text (for example
+the EGBGB Muster-Widerrufsbelehrung and the BSIG Anlagen): a conscious scope choice.
 
 A member that fails halfway keeps the documents already yielded; the failure is counted.
 Nothing raises past the loader for bad input: a broken archive, unsafe or malformed XML, an
@@ -31,9 +39,7 @@ unknown law or ``enbez``, an unparsable citation key or a duplicate id is record
 <raw_dir> --stats`` for per-law counts; the exit code is 1 when anything was counted.
 """
 
-import argparse
 import re
-import sys
 from collections.abc import Iterator, Sequence
 from dataclasses import dataclass, field
 from datetime import date
@@ -46,7 +52,6 @@ from pruefstand.core.hashing import stable_hash
 from pruefstand.core.ids import DocId, TenantId
 from pruefstand.core.logging import get_logger
 from pruefstand.core.models.corpus import Document
-from pruefstand.ingest.chunkers.paragraph import ParagraphChunker
 from pruefstand.ingest.gii.errors import (
     CitationKeyError,
     GiiParseError,
@@ -62,6 +67,7 @@ from pruefstand.ingest.gii.norms import (
     Skip,
     Unit,
     classify,
+    is_placeholder,
     parse_builddate,
     read_meta,
     read_stand,
@@ -103,25 +109,37 @@ class GiiXmlLoader:
     """
 
     def __init__(
-        self, *, zip_limits: ZipLimits | None = None, xml_limits: XmlLimits | None = None
+        self,
+        *,
+        zip_limits: ZipLimits | None = None,
+        xml_limits: XmlLimits | None = None,
+        expected: Sequence[str] | None = None,
     ) -> None:
         self.zip_limits = zip_limits or ZipLimits()
         self.xml_limits = xml_limits or XmlLimits()
+        self.expected = tuple(expected or ())
+        self.archives_seen = 0
         self.stats = GiiStats()
 
     def load(self, raw_dir: Path) -> Iterator[Document]:
         """Yield one document per citable norm of every ``<raw_dir>/<law>/xml.zip``.
 
         Args:
-            raw_dir: ``data/raw/gii``; a missing directory yields nothing.
+            raw_dir: ``data/raw/gii``; a missing directory yields nothing. Every slug in the
+                loader's ``expected`` without an archive is counted as ``missing_law``.
 
         Yields:
             Documents in a deterministic order (archives sorted by path, norms in file order).
         """
-        if not raw_dir.is_dir():
-            return
-        for zip_path in sorted(raw_dir.glob("*/xml.zip")):
-            yield from self._load_archive(zip_path)
+        seen: set[str] = set()
+        if raw_dir.is_dir():
+            for zip_path in sorted(raw_dir.glob("*/xml.zip")):
+                seen.add(zip_path.parent.name)
+                yield from self._load_archive(zip_path)
+        self.archives_seen = len(seen)
+        for slug in self.expected:
+            if slug not in seen:
+                self.stats.add_problem(slug, "missing_law", f"no {slug}/xml.zip under {raw_dir}")
 
     def _load_archive(self, zip_path: Path) -> Iterator[Document]:
         arch = _Archive(slug=zip_path.parent.name)
@@ -196,6 +214,8 @@ class GiiXmlLoader:
             arch.stats.skip("repealed")
         elif not text:
             arch.stats.skip("structure" if unit.from_gliederung else "empty")
+        elif is_placeholder(text):
+            arch.stats.skip("placeholder")
         else:
             return self._make(arch, meta, unit, law=law, text=text, version=version)
         return None
@@ -239,35 +259,7 @@ class GiiXmlLoader:
         )  # fmt: skip
 
 
-def _parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(
-        prog="python -m pruefstand.ingest.gii_xml", description="Load the GII laws and count."
-    )
-    parser.add_argument("raw_dir", type=Path, help="data/raw/gii")
-    parser.add_argument("--stats", action="store_true", help="print per-law counts")
-    return parser
-
-
-def main(argv: Sequence[str] | None = None) -> int:
-    """Load every law under ``raw_dir``, chunk it and print per-law counts with ``--stats``.
-
-    Args:
-        argv: Command line (default: ``sys.argv[1:]``).
-
-    Returns:
-        0 when nothing was counted as a problem, else 1 (the first problems go to stderr).
-    """
-    args = _parser().parse_args(argv)
-    loader = GiiXmlLoader()
-    chunker = ParagraphChunker()
-    for doc in loader.load(args.raw_dir):
-        loader.stats.record_chunks(doc.law_abbrev or doc.source, len(chunker.chunk(doc)))
-    if args.stats:
-        sys.stdout.write(loader.stats.format_table() + "\n")
-    for problem in loader.stats.problems[:20]:
-        sys.stderr.write(f"error: {problem.law}: {problem.kind}: {problem.detail}\n")
-    return 1 if loader.stats.error_count else 0
-
-
 if __name__ == "__main__":
+    from pruefstand.ingest.gii.cli import main
+
     raise SystemExit(main())

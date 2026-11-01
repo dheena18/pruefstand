@@ -80,6 +80,9 @@ def normalise_text(text: str) -> str:
 def join_hyphenation(text: str) -> str:
     r"""Join words split by a hyphen at a line end (``Kündi-\ngung``).
 
+    Kept here for T2.3 (court decisions) and T2.4 (EUR-Lex), whose text wraps at line ends; the
+    GII loader does not need it.
+
     Only a letter before the hyphen and a lower-case letter after the break are joined, so
     ``Ost-\nWest`` (a capital) and ``1-\n2`` keep their hyphen.
 

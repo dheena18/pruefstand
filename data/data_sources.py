@@ -101,7 +101,11 @@ def _build(raw: dict[str, Any], defaults: dict[str, Any]) -> Source:
 
 def load_raw(path: Path) -> dict[str, Any]:
     """Parse ``sources.yaml`` into its raw mapping."""
-    data = yaml.safe_load(path.read_text(encoding="utf-8"))
+    try:
+        data = yaml.safe_load(path.read_text(encoding="utf-8"))
+    except yaml.YAMLError as err:
+        msg = f"{path}: not valid YAML: {err}"
+        raise SourcesError(msg) from err
     if not isinstance(data, dict) or not isinstance(data.get("sources"), list):
         msg = f"{path}: expected a mapping with a 'sources' list"
         raise SourcesError(msg)

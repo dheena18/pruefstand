@@ -71,3 +71,25 @@ def test_peak_memory_stays_below_500_mb(
     corpus: tuple[GiiXmlLoader, list[Document], list[Chunk]],
 ) -> None:
     assert resource.getrusage(resource.RUSAGE_SELF).ru_maxrss < 500 * 1024  # KiB on Linux
+
+
+def test_citation_keys_are_not_unique(
+    corpus: tuple[GiiXmlLoader, list[Document], list[Chunk]],
+) -> None:
+    """Nested EGBGB paragraphs share the key of their Artikel; split chunks share their § key."""
+    _, _, chunks = corpus
+    keys = [c.citation_key for c in chunks]
+    assert len(set(keys)) < len(keys)
+    assert keys.count("Art. 229 EGBGB") > 10
+
+
+def test_totals_of_the_pinned_set(corpus: tuple[GiiXmlLoader, list[Document], list[Chunk]]) -> None:
+    loader, docs, chunks = corpus
+    skipped = {
+        r: sum(law.skipped.get(r, 0) for law in loader.stats.laws.values())
+        for r in ("placeholder", "uncitable")
+    }
+    assert skipped["uncitable"] == 17
+    assert skipped["placeholder"] >= 14
+    assert not [d for d in docs if d.text.strip() == "-"]
+    assert not [c for c in chunks if c.text.strip() in ("(weggefallen)",)]

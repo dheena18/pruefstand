@@ -6,8 +6,9 @@ The GII files are served by a remote site, so they are treated as hostile. Defen
   subset (the real files only *reference* ``gii-norm.dtd`` and never declare anything), only
   UTF-8 or ASCII;
 * an lxml parser that resolves no entities, loads no DTD, never opens the network and has no
-  ``huge_tree`` mode (so libxml2's own depth and node-size limits stay on);
-* our own limits on nesting depth and norm count while streaming with ``iterparse``.
+  ``huge_tree`` mode (so libxml2's own depth and node-size limits stay on); one dict,
+  :data:`PARSER_OPTIONS`, configures both the streaming parser and :func:`hardened_parser`;
+* our own limits on nesting depth, element count and norm count while streaming with ``iterparse``.
 
 The result is an iterator of ``<norm>`` elements; each is cleared after the consumer is done,
 so memory stays flat for the biggest law.
@@ -35,34 +36,40 @@ class XmlLimits:
     """Safety limits for one XML document.
 
     Attributes:
-        max_bytes: Size of the document in bytes.
+        max_bytes: Size of the document in bytes (the largest real file, BGB, is 2.5 MB).
         max_depth: Deepest element nesting (real GII files stay below 25).
+        max_elements: Elements of the whole document (libxml2 has no node limit without
+            ``huge_tree``; the tree of a hostile flat file costs about 100 to 250 bytes per element;
+            the 30 real laws together have about 100 000).
         max_norms: Number of ``<norm>`` elements (the largest law has about 3 000).
     """
 
-    max_bytes: int = 64 * _MIB
+    max_bytes: int = 16 * _MIB
     max_depth: int = 100
+    max_elements: int = 1_000_000
     max_norms: int = 100_000
+
+
+PARSER_OPTIONS: dict[str, bool] = {
+    "resolve_entities": False,
+    "no_network": True,
+    "load_dtd": False,
+    "dtd_validation": False,
+    "attribute_defaults": False,
+    "huge_tree": False,
+    "remove_comments": True,
+    "remove_pis": True,
+}
+"""The one parser configuration (``XMLParser`` and ``iterparse`` accept all of these keywords)."""
 
 
 def hardened_parser() -> etree.XMLParser:
     """Return an lxml parser that cannot read files, open sockets or expand entities.
 
     Returns:
-        A parser with ``resolve_entities=False``, ``no_network=True``, ``load_dtd=False``,
-        ``huge_tree=False``; comments and processing instructions are dropped.
+        A parser built from :data:`PARSER_OPTIONS`, the same options the loader streams with.
     """
-    return etree.XMLParser(
-        resolve_entities=False,
-        no_network=True,
-        load_dtd=False,
-        dtd_validation=False,
-        attribute_defaults=False,
-        huge_tree=False,
-        remove_comments=True,
-        remove_pis=True,
-        collect_ids=False,
-    )
+    return etree.XMLParser(**PARSER_OPTIONS)  # type: ignore[call-overload, no-any-return]  # mypy cannot match **dict[str, bool] to the overloads
 
 
 def _check_bytes(data: bytes, limits: XmlLimits) -> None:
@@ -85,17 +92,8 @@ def _check_bytes(data: bytes, limits: XmlLimits) -> None:
 
 
 def _iterparse(data: bytes) -> "etree.iterparse[tuple[str, etree._Element]]":
-    return etree.iterparse(
-        io.BytesIO(data),
-        events=("start", "end"),
-        resolve_entities=False,
-        no_network=True,
-        load_dtd=False,
-        dtd_validation=False,
-        attribute_defaults=False,
-        huge_tree=False,
-        remove_comments=True,
-        remove_pis=True,
+    return etree.iterparse(  # type: ignore[call-overload, no-any-return]  # same: **dict[str, bool]
+        io.BytesIO(data), events=("start", "end"), **PARSER_OPTIONS
     )
 
 
@@ -127,12 +125,17 @@ def iter_norms(data: bytes, limits: XmlLimits | None = None) -> Iterator[etree._
     _check_bytes(data, limits)
     depth = 0
     count = 0
+    elements = 0
     try:
         for event, elem in _iterparse(data):
             if event == "start":
                 depth += 1
+                elements += 1
                 if depth > limits.max_depth:
                     msg = f"xml nesting depth exceeds {limits.max_depth}"
+                    raise UnsafeXmlError(msg)
+                if elements > limits.max_elements:
+                    msg = f"xml holds more than {limits.max_elements} elements"
                     raise UnsafeXmlError(msg)
                 continue
             depth -= 1

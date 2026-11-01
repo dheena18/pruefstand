@@ -25,6 +25,8 @@ defaults:
 """
 
 CASES = {
+    "yaml_syntax_error": "version: 1\nsources: [\n",
+    "yaml_tab_error": "version: 1\nsources:\n\t- a\n",
     "kind_is_list": "version: 1\n" + DEFAULTS + "sources:\n- id: gii:kschg\n  kind: [gii]\n",
     "kind_is_mapping": "version: 1\n" + DEFAULTS + "sources:\n- id: gii:kschg\n  kind: {a: b}\n",
     "entry_is_string": "version: 1\n" + DEFAULTS + "sources:\n- just-a-string\n",

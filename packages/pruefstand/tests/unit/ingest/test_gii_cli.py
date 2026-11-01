@@ -2,13 +2,15 @@
 
 import subprocess
 import sys
+import zipfile
 from collections.abc import Callable, Mapping
 from pathlib import Path
 
 import pytest
 
+from pruefstand.ingest.gii.cli import main
 from pruefstand.ingest.gii.stats import GiiStats
-from pruefstand.ingest.gii_xml import GiiXmlLoader, main
+from pruefstand.ingest.gii_xml import GiiXmlLoader
 
 RawFactory = Callable[[Mapping[str, Mapping[str, bytes]]], Path]
 
@@ -27,7 +29,7 @@ def test_stats_table_lists_every_law_and_the_total(
         "errors",
         "version_date",
     ]
-    rows = {ln.split()[0]: ln.split() for ln in lines[1:]}
+    rows = {ln.split()[0]: ln.split() for ln in lines[1:-1]}
     assert rows["BGB"][1:6] == ["7", "4", "3", "3", "0"]
     assert rows["BGB"][6] == "2026-09-26"
     assert set(rows) == {"AktG", "ArbZG", "BGB", "EGBGB", "KSchG", "TOTAL"}
@@ -48,7 +50,7 @@ def test_problems_give_exit_code_1_and_are_listed_on_stderr(
     assert main([str(raw), "--stats"]) == 1
     captured = capsys.readouterr()
     assert "error: bad: unsafe_archive" in captured.err
-    assert captured.out.splitlines()[-1].split()[0] == "TOTAL"
+    assert captured.out.splitlines()[-2].split()[0] == "TOTAL"
     assert any(ln.startswith("bad ") for ln in captured.out.splitlines())
 
 
@@ -79,3 +81,66 @@ def test_record_chunks_creates_the_law_row() -> None:
     stats.record_chunks("BGB", 3)
     stats.record_chunks("BGB", 2)
     assert stats.laws["BGB"].chunks == 5
+
+
+def test_stats_prints_skip_reasons_and_warns_about_uncitable_norms(
+    make_raw: RawFactory, fixture_dir: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    raw = make_raw({"kwg": {"k.xml": (fixture_dir / "kwg_53ca.xml").read_bytes()}})
+    assert main([str(raw), "--stats"]) == 0
+    out = capsys.readouterr().out
+    assert "skipped by reason: header=1 uncitable=1" in out
+    assert "WARNING: 1 norm(s) skipped as uncitable" in out
+    assert "KWG" in out.split("WARNING")[1]
+
+
+def test_no_warning_without_uncitable_norms(
+    raw_dir: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    assert main([str(raw_dir), "--stats"]) == 0
+    out = capsys.readouterr().out
+    assert "skipped by reason:" in out
+    assert "WARNING" not in out
+
+
+def test_placeholder_norms_are_skipped(make_raw: RawFactory, fixture_dir: Path) -> None:
+    raw = make_raw(
+        {
+            "aktg": {"a.xml": (fixture_dir / "aktg_159.xml").read_bytes()},
+            "betrvg": {"b.xml": (fixture_dir / "betrvg_122.xml").read_bytes()},
+        }
+    )
+    loader = GiiXmlLoader()
+    docs = sorted(str(d.doc_id) for d in loader.load(raw))
+    assert docs == ["gii-aktg-95", "gii-betrvg-1"]
+    assert loader.stats.laws["AktG"].skipped == {"header": 1, "placeholder": 1}
+    assert loader.stats.laws["BetrVG"].skipped == {"header": 1, "placeholder": 2}
+
+
+def test_missing_expected_law_is_a_counted_problem(make_raw: RawFactory, fixture_dir: Path) -> None:
+    raw = make_raw({"kschg": {"k.xml": (fixture_dir / "kschg_1.xml").read_bytes()}})
+    loader = GiiXmlLoader(expected=["kschg", "bgb"])
+    assert [str(d.doc_id) for d in loader.load(raw)] == ["gii-kschg-1"]
+    assert [(p.law, p.kind) for p in loader.stats.problems] == [("bgb", "missing_law")]
+
+
+def test_expect_laws_option_exit_code(raw_dir: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    assert main([str(raw_dir), "--expect-laws", "5"]) == 0
+    assert main([str(raw_dir), "--expect-laws", "6", "--stats"]) == 1
+    assert "missing_law" in capsys.readouterr().err
+
+
+def test_default_expectation_comes_from_sources_yaml(
+    tmp_path: Path, fixture_dir: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    data = tmp_path / "data"
+    (data / "raw" / "gii" / "kschg").mkdir(parents=True)
+    with zipfile.ZipFile(data / "raw" / "gii" / "kschg" / "xml.zip", "w") as zf:
+        zf.writestr("k.xml", (fixture_dir / "kschg_1.xml").read_bytes())
+    (data / "sources.yaml").write_text(
+        "sources:\n- id: gii:kschg\n  kind: gii\n- id: gii:sgbiv\n  kind: gii\n"
+        "- id: germanrag\n  kind: hf\n",
+        encoding="utf-8",
+    )
+    assert main([str(data / "raw" / "gii")]) == 1
+    assert "sgbiv: missing_law" in capsys.readouterr().err

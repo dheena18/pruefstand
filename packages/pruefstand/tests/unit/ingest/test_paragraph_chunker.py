@@ -107,6 +107,21 @@ def test_oversize_text_without_markers_or_single_absatz_stays_whole() -> None:
     assert len(only_one) == 1
 
 
+def test_repealed_absaetze_do_not_become_chunks_of_their_own() -> None:
+    text = "(1) eins zwei drei\n(2) (weggefallen)\n(3) vier fünf sechs\n(4) (weggefallen)"
+    chunks = ParagraphChunker(max_tokens=5).chunk(make_doc(text))
+    assert [c.section for c in chunks] == ["Abs. 1", "Abs. 3"]
+    assert chunks[0].text == "(1) eins zwei drei\n(2) (weggefallen)"
+    assert chunks[1].text == "(3) vier fünf sechs\n(4) (weggefallen)"
+
+
+def test_leading_repealed_absatz_joins_the_next_chunk() -> None:
+    text = "(1) (weggefallen)\n(2) eins zwei drei vier"
+    chunks = ParagraphChunker(max_tokens=5).chunk(make_doc(text))
+    assert [c.section for c in chunks] == [None]  # one real Absatz left: no split
+    assert chunks[0].text == text
+
+
 def test_blank_document_yields_no_chunks() -> None:
     assert ParagraphChunker().chunk(make_doc("  \n ")) == []
 

@@ -8,7 +8,9 @@ than the limit stays whole (the limit is a split trigger, not a hard cap).
 
 An Absatz starts at a line ``(N)`` or ``(Na)``. Numbers must grow (``1, 1a, 2, 3``): a list inside
 an Absatz that restarts at ``(1)`` is not a new Absatz. Text before the first marker belongs to
-the first Absatz. The chunks together hold exactly the document text (up to whitespace).
+the first Absatz. An Absatz that is only ``(N) (weggefallen)`` is folded into the previous
+(or, at the start, the next) chunk instead of becoming a chunk of its own. The chunks together
+hold exactly the document text (up to whitespace).
 
 The scan is one pass over the lines and the token count one regex pass, so the time is linear.
 """
@@ -21,6 +23,7 @@ from pruefstand.ingest.text import count_tokens
 
 DEFAULT_MAX_TOKENS = 2000
 _MARKER = re.compile(r"\((\d{1,3})([a-z]{0,2})\)(?!\w)")
+_REPEALED_ABSATZ = re.compile(r"\(\d{1,3}[a-z]{0,2}\)\s*\(weggefallen\)\Z")
 
 
 def _marker(line: str, last: tuple[int, str] | None) -> tuple[int, str] | None:
@@ -61,7 +64,24 @@ def split_absaetze(text: str) -> list[tuple[str, str]]:
             preamble.append(line)
     if parts:
         parts[0] = [*preamble, *parts[0]]
-    return [(label, "\n".join(lines).strip()) for label, lines in zip(labels, parts, strict=True)]
+    pairs = [(label, "\n".join(lines).strip()) for label, lines in zip(labels, parts, strict=True)]
+    return _merge_repealed(pairs)
+
+
+def _merge_repealed(pairs: list[tuple[str, str]]) -> list[tuple[str, str]]:
+    """Fold ``(N) (weggefallen)`` Absätze into a neighbour: they are not worth a chunk."""
+    merged: list[tuple[str, str]] = []
+    carry: list[str] = []
+    for label, body in pairs:
+        if _REPEALED_ABSATZ.match(body):
+            if merged:
+                merged[-1] = (merged[-1][0], f"{merged[-1][1]}\n{body}")
+            else:
+                carry.append(body)
+        else:
+            merged.append((label, "\n".join([*carry, body])))
+            carry = []
+    return merged
 
 
 class ParagraphChunker:

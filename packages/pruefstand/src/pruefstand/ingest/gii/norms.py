@@ -9,7 +9,9 @@ text, and paragraphs have an ``<enbez>`` (``"§ 622"``). :func:`classify` return
 Skip reasons: ``header`` (law-level norm), ``toc`` (Inhaltsübersicht), ``preamble``
 (Eingangsformel), ``annex`` (Anlage, Anhang), ``range`` (``(XXXX) §§ 3 bis 6`` and
 ``Art 27 bis 37`` placeholders of repealed ranges), ``structure`` (headings without text),
-``repealed`` and ``empty`` (decided by the loader after the text is extracted).
+``repealed``, ``placeholder`` (text is ``-`` or only parenthesised lines such as
+``(Inkrafttreten)``), ``empty`` and ``uncitable`` (decided by the loader after the text is
+extracted).
 
 EGBGB nests paragraphs below articles: ``enbez="§ 1"`` inside ``gliederungsbez="Art 246a"``.
 core.citations has no combined form, so such a unit gets the key of its Artikel
@@ -37,6 +39,7 @@ _SKIP_PREFIXES = (
     ("anhang", "annex"),
 )
 MAX_LABEL = 200  # real labels are shorter than 40 characters; the cap keeps the regexes cheap
+_PAREN_LINE = re.compile(r"\([^()]*\)\Z")
 REPEALED = frozenset({"(weggefallen)", "(gegenstandslos)", "(aufgehoben)", "(entfallen)"})
 
 
@@ -169,3 +172,20 @@ def classify(meta: NormMeta) -> Unit | Skip | Reject:
     if art := _ART.match(meta.gliederung_bez):
         return Unit("art", art.group(1).lower(), from_gliederung=True)
     return Skip("structure")
+
+
+def is_placeholder(text: str) -> bool:
+    r"""Return True for text that only marks a gap: ``-`` or lines that are all in parentheses.
+
+    Examples: ``-`` (norms GII keeps as empty slots), ``(Inkrafttreten)`` and a heading
+    followed by ``(gegenstandslos)``. A real paragraph always has words outside parentheses.
+
+    Examples:
+        >>> is_placeholder("-")
+        True
+        >>> is_placeholder("(Änderung des Gesetzes)\n(gegenstandslos)")
+        True
+        >>> is_placeholder("(1) Das Gesetz gilt.")
+        False
+    """
+    return text == "-" or all(_PAREN_LINE.match(line) for line in text.split("\n"))

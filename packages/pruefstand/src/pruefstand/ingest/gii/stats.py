@@ -77,4 +77,25 @@ class GiiStats:
             f"{'TOTAL':<10} {total.norms:>6} {total.skipped_total:>7} {total.documents:>6} "
             f"{total.chunks:>6} {self.error_count:>6}"
         )
+        reasons: dict[str, int] = {}
+        for law in self.laws.values():
+            for reason, count in law.skipped.items():
+                reasons[reason] = reasons.get(reason, 0) + count
+        rows.append("skipped by reason: " + " ".join(f"{k}={reasons[k]}" for k in sorted(reasons)))
         return "\n".join(rows)
+
+    def warnings(self) -> list[str]:
+        """Return warning lines for losses that are counted but not errors."""
+        lost = {
+            n: law.skipped["uncitable"]
+            for n, law in self.laws.items()
+            if law.skipped.get("uncitable")
+        }
+        if not lost:
+            return []
+        detail = ", ".join(f"{n}: {c}" for n, c in sorted(lost.items()))
+        return [
+            f"WARNING: {sum(lost.values())} norm(s) skipped as uncitable ({detail}); "
+            "core.citations cannot read their numbers "
+            "(fix task: fix/T1.5a-two-letter-section-suffix)"
+        ]

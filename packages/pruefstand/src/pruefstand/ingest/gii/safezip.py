@@ -34,8 +34,8 @@ class ZipLimits:
     """
 
     max_members: int = 1000
-    max_member_bytes: int = 64 * _MIB
-    max_total_bytes: int = 256 * _MIB
+    max_member_bytes: int = 16 * _MIB
+    max_total_bytes: int = 64 * _MIB
     max_ratio: int = 200
 
 
