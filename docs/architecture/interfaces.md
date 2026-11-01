@@ -1043,6 +1043,10 @@ class GatePolicy(BaseModel):   hard_fail: tuple[str, ...] = ("canary_leak", "ten
                                metrics: dict[str, MetricPolicy]
                                slices: tuple[str, ...] = ("category", "perturbation", "tenant", "lang", "tags")
                                gated_slices: tuple[str, ...] = ("overall", "tenant", "lang", "perturbed_all")
+                               # T1.2 note: when omitted (None) the DEFAULT is derived from `slices` ("overall", "perturbed_all" always;
+                               # "tenant"/"lang" only if in `slices`) and stored as a tuple, so model_validate(model_dump()) round-trips and
+                               # a custom `slices` never gates a slice that is not computed; an explicit entry not in `slices` is a ConfigError
+                               # T1.2 note: every float is finite (allow_inf_nan=False); n_resamples <= 10_000_000; hard_fail=() is allowed (logs a warning)
                                # R9 X3.6: "overall", "tenant", "lang" use UNPERTURBED cases only (perturbation is None);
                                # "perturbed_all" = all ROBUST_PR perturbed cases vs their bases, retrieval metrics only
                                # (context_recall, ndcg_at_k); perturbed cases count only there and in the informational
@@ -1389,15 +1393,19 @@ def export_hf(dir: Path, repo_id: str, private: bool, *, dry_run: bool = False) 
 
 ```python
 class TargetConfig(BaseModel): type: Literal["http"] = "http"; url: str; auth_env: str | None = None
+                               # T1.2 notes: url must be http(s) with a host; auth_env must be a valid env-var NAME ([A-Za-z_][A-Za-z0-9_]*)
                                timeout_s: float = 60
 class HttpTargetConfig(TargetConfig): type: Literal["http"]; url: str
 class ModelRef(BaseModel):     id: str; family: str          # e.g. {id: "ollama/gemma3:12b", family: "gemma"} (R10, ADR-0019)
 class JudgeConfig(BaseModel):  pr: ModelRef; nightly: ModelRef; per_metric: dict[str, ModelRef] = {}
+                               # T1.2 note: per_metric keys must be judged metrics (faithfulness, answer_correctness,
+                               # perturbation_consistency, refusal_judged); T1.5b asserts this set equals the registry's judged kinds.
+                               # A declared family on an id the family table does not recognise is trusted (only a contradiction is an error)
 class BudgetConfig(BaseModel): max_usd_per_run: float | None = 0.0; max_tokens_per_run: int | None = None
                                max_requests_per_run: int | None = None        # free-tier quotas (GitHub Models)
 class LLMPolicyConfig(BaseModel):  # free-only by default
     allowed_providers: tuple[str, ...] = ("openai_compatible_local", "ollama", "github")   # R10 D209: ollama replaces hosted_vllm
-    allow_paid: bool = False
+    allow_paid: bool = False   # T1.2 only validates the shape; T1.4 (build_backend / LLMPolicy) owns provider-name and allow_paid enforcement at load
     fallback_judge: ModelRef | None = None    # tier 2 only (normally unset since ADR-0019: one judge for PR and nightly). Tier 1 has no
                                               # fallback: quota exhausted / no `models` permission -> judge_mode=skipped (D97)
 class BaselineStoreConfig(BaseModel): type: Literal["local_dir", "git_branch"] = "git_branch"

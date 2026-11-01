@@ -1,0 +1,38 @@
+# The ONLY model-id pattern -> family table (D74). infra/gpu/models.yaml references families by name;
+# pruefstand.core.models_family (and llm.families.family_of, T5.1) read this file.
+#
+# Matching (core/models_family.py): one provider prefix from `provider_prefixes` is stripped, then the
+# rows of `patterns` are tried in order against the rest, case-insensitively with re.search; first match wins.
+# Ollama reports the generator tag qwen3.8:27b-q8_0 as family `qwen35` (ADR-0018) and gemma3 as `gemma3`
+# (ADR-0019); both map to the plan families through the `qwen` and `gemma` rows.
+provider_prefixes:
+  - ollama/
+  - openai_compatible_local/
+  - github/
+  - mistral/
+  - gemini/
+  - groq/
+  - openrouter/
+
+patterns:
+  - {pattern: "qwen|qwq|tongyi", family: qwen}
+  - {pattern: "mistral|mixtral|magistral|ministral", family: mistral}
+  - {pattern: "llama", family: llama}
+  - {pattern: "gemma", family: gemma}
+  - {pattern: "gemini", family: gemini}   # gemini/ is an opt-in free tier; a judge only if it differs from the generator
+  - {pattern: "claude", family: claude}
+  - {pattern: "gpt-oss", family: gpt}
+  - {pattern: "gpt|(^|/)o\\d", family: gpt}
+  - {pattern: "deepseek", family: deepseek}
+  - {pattern: "phi", family: phi}
+  - {pattern: "command", family: command}
+
+# Family plan (round-8 W3.1, binding; ADR-0019, D329, D330): the single machine-readable record of the
+# role -> family plan. Exact model versions are pinned later (T1.13, T3.1b); gpu-cluster.md mirrors this block.
+plan:
+  generator: qwen
+  judge_pr: gemma          # the one A40 judge gemma3:12b for PR and nightly
+  judge_nightly: gemma
+  judge_tier1: gpt         # GitHub Models informational judge (T0.6 S4b / T1.12), any family except qwen
+  datagen: gpt             # public-text datagen via GitHub Models; T4.2 S0 confirms or changes it; never qwen or gemma
+  datagen_private: gemma   # private docs, canaries and held-out data are written locally by the judge model
