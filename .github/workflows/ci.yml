@@ -320,8 +320,11 @@ jobs:
             echo "mutmut: gate/ and metrics/ have no code yet, nothing to mutate"
             exit 0
           fi
+          # mutmut 3 derives module names from paths relative to its cwd and only knows ./, src/ and source/,
+          # so it must run inside the package (config: packages/pruefstand/pyproject.toml, T1.6)
+          cd packages/pruefstand
           if ! grep -q '^\[tool\.mutmut\]' pyproject.toml; then
-            echo "mutmut: no [tool.mutmut] section in pyproject.toml yet, nothing to run"
+            echo "mutmut: no [tool.mutmut] section in packages/pruefstand/pyproject.toml yet, nothing to run"
             exit 0
           fi
           uv run --with mutmut==3.8.1 mutmut run
