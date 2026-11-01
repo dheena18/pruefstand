@@ -136,7 +136,7 @@ def test_every_committed_backend_cassette_is_scrubbed() -> None:
         "BEARER abcdefgh12345",
         "GHP_abcdefghijkl",
         "?token=Bearer%20abcdefgh12345",
-        "AKIAABCDEFGHIJKLMNOP",
+        "AKIA" + "ABCDEFGHIJKLMNOP",
         "xoxb-1234-abcd",
         "glpat-abcdefgh1234",
         "AIzaSyA-abcdefghijklmnopqrstuvwxyz123",
