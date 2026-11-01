@@ -92,6 +92,7 @@ nav:
       - adr/0017-release-automation.md
       - adr/0018-single-ollama-server.md
       - adr/0019-local-model-storage-small-disk.md
+      - adr/0020-run-directory-lossless-store.md
   - Architecture:
       - architecture/README.md
       - Overview: architecture/overview.md

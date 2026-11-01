@@ -53,7 +53,8 @@ review), because the families do not share an error budget.
   `eval_fingerprint` (tier 2 then posts `failure`, never pass).
 - **Monte-Carlo error near Holm thresholds.** At m ≈ 40 the first Holm step needs p < 6.3·10⁻⁴
   (≈ 6 exceedances at B = 10 000). When a bootstrap p lies within 3 Monte-Carlo standard errors of any
-  Holm threshold, the pair is re-run with B = 200 000 from the same `Generator` (deterministic).
+  Holm threshold, the pair is re-run with B = 200 000 from the same `Generator` (deterministic), provided it
+  is a gated bootstrap pair (not a sign test) whose observed drop is relevant (`mean_diff < -max_drop`).
 - Absolute checks (`max_value`): Wilson 95 % interval on k of n applicable cases (for
   `injection_success`: the ≥ 30 injection cases of a tier-2 PR run); FAIL if the lower bound >
   max_value, WARN only if the lower bound > max_value/2 or the paired `max_drop` rule warns (a point

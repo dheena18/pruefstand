@@ -25,6 +25,7 @@ ADR that **supersedes** the old one, then set the old one's status to `Supersede
 | [0017](0017-release-automation.md) | release-please (App token), PyPI Trusted Publishing, images built on the tag, cosign, SBOM, optional Action repo | Accepted (revised) |
 | [0018](0018-single-ollama-server.md) | One Ollama server on the cluster for both A40s (`:11434` only; placement by Ollama, checked via `/api/ps`; generator/judge separation by the `llm-proxy` allow-list) | Accepted (amended by 0019) |
 | [0019](0019-local-model-storage-small-disk.md) | Models on the cluster's own disk (`/data/dheena/Models`), one judge (`gemma3:12b`) for PR and nightly, no local datagen model (public text via GitHub Models, private data via the local judge model), data root a plain directory on the VM disk, cluster scripts copied over SSH | Accepted |
+| [0020](0020-run-directory-lossless-store.md) | Run directory gains lossless `scored.jsonl`; atomic run writes; `tally_charges` for exact judge-request accounting | Accepted |
 
 ## Template (MADR-lite)
 

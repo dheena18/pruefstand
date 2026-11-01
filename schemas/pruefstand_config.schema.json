@@ -110,7 +110,7 @@
     },
     "GatePolicy": {
       "additionalProperties": false,
-      "description": "Gate settings (interfaces §9, decisions D51-D59).\n\nRaises:\n    ConfigError: unknown or misplaced metric, ``alpha >= warn_p``, or a gated slice that is\n        neither ``overall``, ``perturbed_all`` nor in ``slices``.\n\nWhen ``gated_slices`` is omitted (or ``None``) it is derived from ``slices``: ``overall`` and\n``perturbed_all`` always, ``tenant`` and ``lang`` only if they are in ``slices``. The stored\nvalue is always a tuple, so ``model_validate(model_dump())`` round-trips and\n``GatePolicy(metrics={}, slices=())`` is valid.",
+      "description": "Gate settings (interfaces §9, decisions D51-D59).\n\nRaises:\n    ConfigError: unknown or misplaced metric, ``alpha >= warn_p``, or a gated slice that is\n        neither ``overall``, ``perturbed_all`` nor in ``slices``.\n\nWhen ``gated_slices`` is omitted (or ``None``) it is derived from ``slices``: ``overall`` and\n``perturbed_all`` always, ``tenant`` and ``lang`` only if they are in ``slices``. The stored\nvalue is always a tuple, so ``model_validate(model_dump())`` round-trips and\n``GatePolicy(metrics={}, slices=())`` is valid. Derivation happens at validation time only:\n``model_copy(update={\"slices\": ...})`` does not re-derive ``gated_slices``.",
       "properties": {
         "alpha": {
           "default": 0.025,

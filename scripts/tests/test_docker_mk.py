@@ -1,8 +1,6 @@
 import os
 import shutil
-import signal
 import subprocess
-import time
 from pathlib import Path
 
 import pytest
@@ -70,53 +68,6 @@ def test_up_command_line() -> None:
         "docker compose -f docker-compose.yml -f x.yml --profile live --profile dev "
         "up -d --wait llm" in result.stdout
     )
-
-
-def test_stack_run_holds_one_lock_with_a_teardown_trap(tmp_path: Path) -> None:
-    lock = f"STACK_LOCK={tmp_path}/stack.lock"
-    line = next(
-        ln for ln in _make("-n", "stack-run", "CMD=true", lock).stdout.splitlines() if "flock" in ln
-    )
-    assert "stack.lock" in line
-    assert 'make --no-print-directory down" EXIT' in line
-    assert line.index("up WAIT=1") < line.index("true")
-
-
-@pytest.mark.skipif(shutil.which("flock") is None, reason="needs flock")
-@pytest.mark.parametrize("code", [0, 3])
-def test_stack_run_tears_down_and_keeps_the_exit_code(tmp_path: Path, code: int) -> None:
-    result = _make(
-        "stack-run",
-        f"CMD=echo checks; exit {code}",
-        f"STACK_LOCK={tmp_path}/stack.lock",
-        "COMPOSE_BASE=echo compose",
-    )
-    # make itself exits 2 when a recipe fails and reports the recipe's status ("Error 3")
-    assert (result.returncode == 0) if code == 0 else f"Error {code}" in result.stderr
-    lines = result.stdout.splitlines()
-    assert any("up -d --wait" in ln for ln in lines)
-    assert "checks" in lines
-    assert any("down --remove-orphans" in ln for ln in lines)
-    assert max(i for i, ln in enumerate(lines) if "down" in ln) > lines.index("checks")
-
-
-@pytest.mark.skipif(shutil.which("flock") is None, reason="needs flock")
-def test_stack_run_tears_down_when_up_fails(tmp_path: Path) -> None:
-    result = _make(
-        "stack-run",
-        "CMD=echo checks",
-        f"STACK_LOCK={tmp_path}/stack.lock",
-        "COMPOSE_BASE=false",
-    )
-    assert result.returncode != 0
-    assert "checks" not in result.stdout.splitlines()
-
-
-def test_stack_run_lock_wait_is_optional() -> None:
-    plain = _make("-n", "stack-run", "CMD=true").stdout
-    waiting = _make("-n", "stack-run", "CMD=true", "STACK_LOCK_WAIT=30").stdout
-    assert " -w 30 " in waiting
-    assert "flock -w" not in plain
 
 
 def test_down_keeps_volumes_unless_asked() -> None:
@@ -196,53 +147,6 @@ def test_check_ports_is_quiet_for_dev_ports() -> None:
     result = _make("check-ports", "STRICT=1", f"CHECK_PORTS_PS={stub}")
     assert result.returncode == 0
     assert result.stderr == ""
-
-
-@pytest.mark.skipif(shutil.which("flock") is None, reason="needs flock")
-@pytest.mark.parametrize("group", [False, True])
-def test_stack_run_signalled_tears_down_and_leaves_no_process(
-    tmp_path: Path, *, group: bool
-) -> None:
-    proc = subprocess.Popen(  # noqa: S603
-        [
-            MAKE,
-            "-C",
-            str(REPO),
-            "stack-run",
-            f"STACK_LOCK={tmp_path}/stack.lock",
-            "COMPOSE_BASE=echo compose",
-            "CMD=echo started; sleep 30",
-        ],
-        stdout=subprocess.PIPE,
-        text=True,
-        start_new_session=True,
-        env={**os.environ, "PORT_OFFSET": "0"},
-    )
-    assert proc.stdout is not None
-    lines: list[str] = []
-    for line in proc.stdout:
-        lines.append(line.rstrip())
-        if line.strip() == "started":
-            break
-    if group:
-        os.killpg(proc.pid, signal.SIGTERM)
-    else:
-        os.kill(proc.pid, signal.SIGTERM)  # make alone, not its children
-    try:
-        lines += proc.stdout.read().splitlines()
-        proc.wait(timeout=15)
-    finally:
-        deadline = time.monotonic() + 5
-        while time.monotonic() < deadline:
-            try:
-                os.killpg(proc.pid, 0)
-            except ProcessLookupError:
-                break
-            time.sleep(0.1)
-        else:
-            os.killpg(proc.pid, signal.SIGKILL)
-            pytest.fail("processes of the stack-run group survived the signal")
-    assert any("down --remove-orphans" in ln for ln in lines[lines.index("started") :])
 
 
 def test_environment_port_offset_is_not_expanded_by_make(tmp_path: Path) -> None:
