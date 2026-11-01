@@ -45,14 +45,12 @@ is set. Set `HF_TOKEN` only in your shell (never in a file we commit); it is not
   `datasets/`, never in the HF release, never used for training. The guard fails on any tracked
   path with a `memerag` component.
 
-## EUR-Lex source and pending pins
+## EUR-Lex source and gated datasets
 
 * **EUR-Lex** (eur-lex.europa.eu) answers automated requests with an AWS WAF challenge, which we never
   try to get around. The files come from the Publications Office **CELLAR**:
   `https://publications.europa.eu/resource/celex/<celex>` with `Accept-Language: deu|eng`, the official
   XHTML rendition of the act, stored as `raw/eurlex/<celex>/{de,en}.html`.
-* **`oldp_decisions` and `oldp_laws`** are gated on the Hub. Their sha256 stay `null` until pinned with
-  `HF_TOKEN=... python data/download.py --update-pins --only oldp_decisions --only oldp_laws` (token from
-  an account that accepted the terms; set it in your shell, never in a committed file). Until then
-  `make data` exits non-zero for these two.
+* **`oldp_decisions` and `oldp_laws`** are gated on the Hub: downloading them needs `HF_TOKEN` of an
+  account that accepted the terms, set in your shell (never in a committed file). Their sha256 are pinned.
 * Documented licence overrides (`card_license`) are listed in `DATA_LICENSES.md` section 7.

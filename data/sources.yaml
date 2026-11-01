@@ -373,14 +373,14 @@ sources:
   revision: 408eb916fab64080580e4d67bf4242fb10cdedf5
   license: odbl
   card_license: none
-  license_note: ODbL for the collection, para 5 UrhG (official works) for the individual decisions;
-    the Hub card has no license field (documented override, DATA_LICENSES.md section 7).
+  license_note: ODbL for the collection, para 5 UrhG (official works) for the individual decisions; the
+    Hub card has no license field (documented override, DATA_LICENSES.md section 7).
   license_config: oldp_derived
   redistribute: true
   attribution: Contains information from Open Legal Data (openlegaldata.io), made available under the
     Open Database License (ODbL) v1.0.
   files:
-    dump-20260520-1k/train-00000-of-00001.parquet: null
+    dump-20260520-1k/train-00000-of-00001.parquet: 1a8ab31bb4c91f990ec02773f3e93a3fe561ac8aca85a32b0f1d98ef7f4d4d8a
 - id: oldp_laws
   kind: hf
   repo_id: openlegaldata/laws-germany
@@ -392,7 +392,7 @@ sources:
   attribution: Contains information from Open Legal Data (openlegaldata.io), made available under the
     Open Database License (ODbL) v1.0.
   files:
-    dump-20260520-1k/train-00000-of-00001.parquet: null
+    dump-20260520-1k/train-00000-of-00001.parquet: 9f65099376045df685691a3197b9c743089bda6d6852cc5c15735b7e0953d77d
 - id: oldp_citation_graph
   kind: hf
   repo_id: openlegaldata/legal-citation-graph-germany
@@ -437,8 +437,8 @@ sources:
   revision: dcaafc4bf5b44c96a1ced56c0a7d42da5a3a2c45
   license: cc-by-sa-4.0
   card_license: cc-by-4.0
-  license_note: README says the derived work inherits CC BY-SA 4.0 from GermanDPR; the card metadata
-    says cc-by-4.0 (documented override, DATA_LICENSES.md section 7).
+  license_note: README says the derived work inherits CC BY-SA 4.0 from GermanDPR; the card metadata says
+    cc-by-4.0 (documented override, DATA_LICENSES.md section 7).
   license_config: germanrag_derived
   redistribute: true
   attribution: GermanRAG by DiscoResearch, based on GermanDPR, CC BY-SA 4.0 (inherited). Modified.

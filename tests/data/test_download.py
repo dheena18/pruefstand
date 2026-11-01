@@ -39,8 +39,6 @@ HF_IDS = {
     "oldp_decisions", "oldp_laws", "oldp_citation_graph", "germanquad", "germandpr",
     "germanrag", "prompt_injections",
 }  # fmt: skip
-# Gated on the Hub: pins need HF_TOKEN of an account that accepted the terms (data/README.md).
-PENDING_PINS = {"oldp_decisions", "oldp_laws"}
 
 
 def _kinds(kind: str) -> list[Any]:
@@ -73,23 +71,13 @@ def test_hf_entries_have_40_hex_revisions() -> None:
     assert "revision: main" not in text
 
 
-def test_every_file_entry_has_64_hex_sha_outside_pending_pins() -> None:
+def test_every_file_entry_has_64_hex_sha() -> None:
     for s in load_sources(SOURCES):
         assert s.files, s.id
-        if s.id in PENDING_PINS:
-            continue
         for name, sha in s.files.items():
             assert sha is not None, f"{s.id}/{name}"
             assert len(sha) == 64, f"{s.id}/{name}"
             assert set(sha) <= HEX64, f"{s.id}/{name}"
-
-
-@pytest.mark.xfail(strict=True, reason="gated OLDP datasets: pins pending (HF_TOKEN)")
-def test_all_file_entries_are_pinned() -> None:
-    for s in load_sources(SOURCES):
-        for sha in s.files.values():
-            assert sha is not None
-            assert len(sha) == 64
 
 
 def _write_sources(tmp_path: Path, entries: list[dict[str, Any]]) -> Path:
