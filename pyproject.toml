@@ -161,6 +161,11 @@ warn_unreachable = true
 enable_error_code = ["ignore-without-code", "redundant-expr", "truthy-bool", "possibly-undefined"]
 plugins = ["pydantic.mypy"]
 
+[[tool.mypy.overrides]]
+# pyarrow ships neither stubs nor py.typed; only ingest/records.py imports it (T2.3, D-row in decisions.md)
+module = ["pyarrow", "pyarrow.*"]
+ignore_missing_imports = true
+
 [tool.pydantic-mypy]
 init_forbid_extra = true
 init_typed = true

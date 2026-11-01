@@ -59,6 +59,10 @@ class StoreError(PruefstandError):
     """A run or baseline store operation failed."""
 
 
+class StoreIntegrityError(StoreError):
+    """A stored file does not match the SHA-256 recorded for it (corrupt or tampered)."""
+
+
 class GateInputError(PruefstandError):
     """The gate cannot decide on the given inputs (incomplete run, fingerprint mismatch)."""
 

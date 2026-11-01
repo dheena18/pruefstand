@@ -1,9 +1,47 @@
 """Run budget: USD, tokens and a request cap with atomic reservations (R9 X4.5, D9-06)."""
 
 import asyncio
+from collections.abc import Iterator
+from contextlib import contextmanager
+from contextvars import ContextVar
+from dataclasses import dataclass
 
 from pruefstand.core.errors import BudgetExceeded
 from pruefstand.core.models.llm import LLMResponse
+
+
+@dataclass
+class ChargeTally:
+    """What was charged to a ``Budget`` inside one ``tally_charges`` scope."""
+
+    requests: int = 0
+    usd: float = 0.0
+    prompt_tokens: int = 0
+    completion_tokens: int = 0
+
+
+_TALLIES: ContextVar[tuple[ChargeTally, ...]] = ContextVar("budget_tallies", default=())
+
+
+@contextmanager
+def tally_charges() -> Iterator[ChargeTally]:
+    """Count the ``Budget.charge`` calls made in this scope (and the tasks it spawns).
+
+    The runner (T1.8) uses it to release exactly the reserved requests a judge call did not
+    use, and to report the run's cost. Scopes nest: a charge counts in every open scope of its
+    task context, and concurrent tasks never see each other's charges.
+
+    Examples:
+        >>> with tally_charges() as tally:
+        ...     tally.requests
+        0
+    """
+    tally = ChargeTally()
+    token = _TALLIES.set((*_TALLIES.get(), tally))
+    try:
+        yield tally
+    finally:
+        _TALLIES.reset(token)
 
 
 class Budget:
@@ -110,6 +148,11 @@ class Budget:
         """
         self._usd += r.cost_usd
         self._tokens += r.usage.prompt_tokens + r.usage.completion_tokens
+        for tally in _TALLIES.get():
+            tally.requests += 1
+            tally.usd += r.cost_usd
+            tally.prompt_tokens += r.usage.prompt_tokens
+            tally.completion_tokens += r.usage.completion_tokens
         reserved = self._reserved > 0
         if reserved:
             self._reserved -= 1

@@ -101,7 +101,7 @@ owning module's unit test dir (`pt/unit/<module>/`, `rd/unit/…`).
 | `JudgeTask`, `JudgeVerdict` | `core.models.judge` | T1.8 | `pt/unit/core/test_judge_models.py` | round trip with „Kündigung“; extra field; frozen; `raw_score="2"` → error (strict int) | covered |
 | `KVCache`, `TargetAdapter`, `BaselineStore`, `Loader`, `Chunker`, `Metric`, `DeterministicMetric` | `core.protocols` | T1.1 | `test_protocols.py` | dummy classes satisfy the protocols under `isinstance` | covered |
 | `LLMBackend`, `LLMClientLike` (T1.4 part) | `core.protocols` | T1.4 | `test_factory.py` | `isinstance(LLMClient(...), LLMClientLike)` | covered |
-| `JudgeLike`, `JudgePoolLike`, `JudgedMetric` (T1.8 part) | `core.protocols` | T1.8 | `test_runner.py` | spy pool in the hard-fail test satisfies `JudgePoolLike` | covered |
+| `JudgeLike`, `JudgePoolLike`, `JudgedMetric` (T1.8 part) | `core.protocols` | T1.8 | `test_runner_modes.py` | spy pool in the hard-fail test satisfies `JudgePoolLike` | covered |
 | `Perturbation` (T4.4 part) | `core.protocols` | T4.4 | `pt/unit/perturb/test_*.py` | every deterministic perturbation implements it | covered |
 | `LLMPerturbation` (T4.5 part) | `core.protocols` | T4.5 | `pt/unit/perturb/test_*.py` | every LLM perturbation implements it | covered |
 | `EvidenceRecord` | `core.models.evidence` | T6.4 | `pt/unit/report/test_evidence.py` | validates against exported schema; hashes; no "konform" | covered |
@@ -135,7 +135,8 @@ owning module's unit test dir (`pt/unit/<module>/`, `rd/unit/…`).
 | `Budget.charge` (T5.1 part) | `llm.budget` | T5.1 | `test_costs_quotas.py` | every configured provider → `cost_usd == 0`; `ollama/*` → `gpu_seconds > 0`; `max_requests_per_run=3`: 4th `reserve()` refused | covered |
 | `Budget.reserve`, `Budget.release` (R9 X4.5) | `llm.budget` | T1.4 | `test_budget.py` | `max_requests=2`: `reserve(2)` → True, `reserve(1)` → False; `release(1)` then `reserve(1)` → True; `release` more than reserved → `ValueError`; 8 concurrent `reserve(2)` with cap 4 → exactly 2 succeed | covered |
 | `Budget.requests_remaining` (T1.4 part) | `llm.budget` | T1.4 | `test_budget.py` | = cap − charged − reserved; `None` without cap | covered |
-| `Budget.requests_remaining` (T1.8 part) | `llm.budget` | T1.8 | `test_judge_errors.py` | read by the runner for information only (never raises, never blocks) | covered |
+| `Budget.requests_remaining` (T1.8 part) | `llm.budget` | T1.8 | `test_judge_errors.py` | read by the runner for information only (never raises, never blocks); after a run every reservation is released (`requests_remaining == cap - charged`) | covered |
+| `tally_charges`, `ChargeTally` (T1.8, D364) | `llm.budget` | T1.8 | `pt/unit/llm/test_budget_tally.py` | counts requests, USD and tokens charged in a scope; nested scopes; concurrent tasks isolated; a charge that raises `BudgetExceeded` is still counted | covered |
 | `CallRecorder.record`, `.to_parquet` (T1.4 part) | `llm.recorder` | T1.4 | `test_recorder.py` | 3 rows → 13 columns; 0 records → same 13 columns with documented dtypes | covered |
 | `CallRecorder.record` (T5.1 part) | `llm.recorder` | T5.1 | `test_recorder.py` | Ollama and llama.cpp records fill the same 13 columns | covered |
 | `LLMPolicy.check` (T1.4 part) | `llm.policy` | T1.4 | `pt/unit/llm/test_factory.py` | provider not allowed; paid; provider ≠ model prefix; `openrouter` only `:free`; private-doc prompt prefix and canary token / fact to an external provider refused, local allowed | covered |
@@ -226,10 +227,14 @@ owning module's unit test dir (`pt/unit/<module>/`, `rd/unit/…`).
 
 | Symbol | Module | Task | Test file | Test cases (short) | Status |
 | --- | --- | --- | --- | --- | --- |
-| `DiskKVCache` (T1.8 part) | `store.kv` | T1.8 | `test_kv.py` | set/get; missing → `None`; namespaces; persistence | covered |
+| `DiskKVCache` (T1.8 part) | `store.kv` | T1.8 | `test_kv.py` | set/get; missing → `None`; namespaces; persistence; plain sqlite BLOB rows (no pickle); corrupt file → `StoreError` | covered |
 | `DiskKVCache` (T6.1 part: read-only mode) | `store.kv` | T6.1 | `test_kv.py` | read-only (PR jobs) → write raises `StoreError` | covered |
 | `LayeredKVCache` | `store.kv` | T6.1 | `test_layered_cache.py` | overlay write only; shadowing; base read-only | covered |
-| `ArtifactStore.write_run`, `.read_run` | `store.artifacts` | T1.8 | `test_artifacts.py` | round trip; 13 columns; atomic; „Kündigungsschutzgesetz“; root outside → `StoreError` | covered |
+| `ArtifactStore.write_run`, `.read_run` | `store.artifacts` | T1.8 | `test_artifacts.py` | round trip; 13 columns; atomic; „Kündigungsschutzgesetz“; root outside → `StoreError`; existing run dir never overwritten; `scored.jsonl` carries `TestCase` and metric details (D363) | covered |
+| `ArtifactStore.mark_aborted` (**R11** D245; T1.8) | `store.artifacts` | T1.8 | `test_budget_stop.py`, `test_artifacts.py` | `complete=False`, `stop_reason="aborted"`, `infra_error` set; `results.parquet` byte-identical | covered |
+| `RunManifest.artifact_sha256`, `StoreIntegrityError` (T1.8, D368) | `core.models.run`, `core.errors`, `store.artifacts` | T1.8 | `test_artifacts_checksums.py` | hashes recorded by `write_run`; tampered values with a valid footer, corrupted parquet, changed jsonl, missing hash → `StoreIntegrityError`; the 222-byte crafted footer is refused in a subprocess without polars being called; hashes survive `mark_aborted` / `add_counts` | covered |
+| Planted target-cache blobs (T1.8, D368) | `runner.target_call` | T1.8 | `test_runner_cache.py` | deep nesting, 400-digit / NaN / infinite / negative latency, lone surrogate, extra field → miss, run stays writable; a failing cache is skipped after its first failure | covered |
+| `new_run_id` (T1.8, D361) | `store.artifacts` | T1.8 | `test_artifacts.py` + doctest | `<UTC yyyymmddTHHMMSS>-<6 hex>`; two ids differ | covered |
 | `ArtifactStore.add_counts` (**R12** N6.4, D267) | `store.artifacts` | T1.8 | `test_artifacts.py` | `add_counts(run, {"model_reloads": 1, "upstream_errors": 0})` → `run.json` counts merged atomically, other files byte-identical; key `ok` → `StoreError`; existing counts kept | covered |
 | `LocalDirBaselineStore.get`, `.put` | `store.baselines_local` | T6.1 | `test_baselines_local.py` | refs isolated; unknown → `None`; partial write; `complete=False`; digest mismatch; **R12** (D251): refs `nightly-b0`…`nightly-b2` accepted and isolated from `main`; ref `nightly-b3` / `foo` → `StoreError` | covered |
 | Baseline refs `release-b0`…`release-b2`, promotion exclusion (**R13** D305, D309, D321) | `store.baselines_local`, `store.baselines_git`, `cli.baseline` | T6.1 | `test_baselines_local.py`, `pt/unit/cli/test_baseline_cli.py` | refs `release-b0`…`release-b2` accepted and isolated; ref `release` → `StoreError`; `promote --ref release-b1` on a block-2 run → exit 2; `promote --ref release-b1` on the release run (block `None`, stratum `all`) → stored record set = refusal stratum + block 1, `block == 1`, fingerprint equals the block-1 nightly's (D321); a run with `judge_drift=True`, `judge_fallback=True`, `judge_degraded=True`, a `judge_truncated`-informational metric or `infra_error` → not promoted (exit 1, store unchanged) | planned |
@@ -253,15 +258,17 @@ owning module's unit test dir (`pt/unit/<module>/`, `rd/unit/…`).
 
 | Symbol | Module | Task | Test file | Test cases (short) | Status |
 | --- | --- | --- | --- | --- | --- |
-| `Runner.run` (T1.8 part) | `runner.runner` | T1.8 | `test_runner.py`, `test_budget_stop.py`, `test_judge_errors.py`, `pt/live/test_runner_live.py` | order; 503×2 retry; non-transient; timeout; budget stop; **R9 X4.5:** concurrency 8, `max_requests=4`, metric always needing one repair → no `BudgetExceeded`, `complete is True`, ≤ 4 requests charged, rest `judge_cap`; **R9 D9-07:** `QuotaExhausted` → `counts["judge_skipped"]`, reason `judge_quota` | covered |
+| `Runner.run` (T1.8 part) | `runner.runner` | T1.8 | `test_runner.py`, `test_runner_modes.py`, `test_budget_stop.py`, `test_judge_errors.py`, `pt/live/test_runner_live.py` | order; 503×2 retry; non-transient; timeout; budget stop; **R9 X4.5:** concurrency 8, `max_requests=4`, metric always needing one repair → no `BudgetExceeded`, `complete is True`, ≤ 4 requests charged, rest `judge_cap`; **R9 D9-07:** `QuotaExhausted` → `counts["judge_skipped"]`, reason `judge_quota` | covered |
 | `Runner.run` (T5.2b part) | `runner.runner` | T5.2b | `test_runner_judges.py` | hard fail skips judges; `robust_pr` no judge | covered |
 | `Runner.run` (T6.1 part) | `runner.runner` | T6.1 | `test_target_cache.py` | cache hit → no target call | covered |
-| `Runner.run(..., judged_subset=True)` generation scope (**R13** P3.4, D295) | `runner.runner` | T1.8 | `test_runner.py` | `core` factual case outside the subset → `adapter.retrieve` only, `mode == "retrieve"`, retrieval metrics computed, answer + judged metrics `not_applicable` reason `not_in_judged_subset`; `core` injection and unanswerable cases outside the subset → `query`, deterministic metrics computed; subset cases → `query` + judged metrics | planned |
-| `robust_pr` via `/v1/retrieve` (**R11** D218, D222; T1.8 part) | `runner.runner` | T1.8 | `test_runner.py`, `test_budget_stop.py` | `robust_pr` case → `adapter.retrieve` called, `query` never; `CaseRecord.mode == "retrieve"`; retrieval metrics computed, every answer metric `not_applicable` (never 0); `retrieve()` → `None` → `query` used and `counts["retrieve_fallback"] == 1`; `core` case → `query`; `mark_aborted` gives `stop_reason="aborted"`, `infra_error` set (`str`, D245) | covered |
+| `Runner.run(..., judged_subset=True)` generation scope (**R13** P3.4, D295) | `runner.runner` | T1.8 | `test_runner_modes.py` | `core` factual case outside the subset → `adapter.retrieve` only, `mode == "retrieve"`, retrieval metrics computed, answer + judged metrics `not_applicable` reason `not_in_judged_subset`; `core` injection and unanswerable cases outside the subset → `query`, deterministic metrics computed; subset cases → `query` + judged metrics | covered |
+| `robust_pr` via `/v1/retrieve` (**R11** D218, D222; T1.8 part) | `runner.runner` | T1.8 | `test_runner_modes.py`, `test_budget_stop.py` | `robust_pr` case → `adapter.retrieve` called, `query` never; `CaseRecord.mode == "retrieve"`; retrieval metrics computed, every answer metric `not_applicable` (never 0); `retrieve()` → `None` → `query` used and `counts["retrieve_fallback"] == 1`; `core` case → `query`; `mark_aborted` gives `stop_reason="aborted"`, `infra_error` set (`str`, D245) | covered |
 | `robust_pr` via `/v1/retrieve` (T5.2b part) | `runner.runner` | T5.2b | `test_runner_judges.py` | no judge call for `mode=retrieve` records | covered |
 | Infra errors in the runner (**R11** D226; T6.2a part) | `runner.runner` | T6.2a | `pg/tests/test_health.py` | infra failure → no case scored as a candidate error | covered |
 | `finalise_refusal` (R9 D9-15) | `runner.refusal` | T5.2b | `test_runner_judges.py` | ambiguous answer, refusal judge says 1, `expect_refusal` → `refusal_correct == 1.0`, `refused_source == "judge"`; phrase match → source `phrase` | covered |
-| Retry policy | `runner.retry` | T1.8 | `test_runner.py` | exponential backoff with jitter, max 3, transient only | covered |
+| Retry policy | `runner.retry` | T1.8 | `test_retry.py`, `test_runner.py` | exponential backoff with seeded jitter (0-25 %), `max_retries + 1` tries, transient and timeouts only, error text ≤ 500 chars, bugs propagate | covered |
+| `route_case` (T1.8; R11 D218, R13 P3.4) | `runner.routing` | T1.8 | `test_runner_modes.py` | `robust_pr` → retrieve; `core` answerable outside the subset → retrieve; injection / unanswerable / smoke → answer | covered |
+| Target cache entries carry the mode (T1.8, D366) | `runner.target_call` | T1.8 | `test_runner_modes.py`, `test_runner.py` | answer entry is a miss for a retrieve-only case; errors never cached; hit → `cached=True`, adapter not called | covered |
 
 ## gate (§9)
 
@@ -324,12 +331,14 @@ owning module's unit test dir (`pt/unit/<module>/`, `rd/unit/…`).
 | `ParagraphChunker.chunk` | `ingest.chunkers.paragraph` | T2.2 | `test_paragraph_chunker.py` | one §; 3 Absätze (2 500 tokens); limit boundary; nested section; restarting lists; `(N) (weggefallen)` folded; Hypothesis concat == text; linear time | covered |
 | Shared text helpers | `ingest.text` | T2.2 | `test_text.py` | `count_tokens("§ 622 Abs. 2 BGB.") == 7`; NFC, whitespace, hyphenation; idempotence; linear time | covered |
 | Law-alias rows for the 21 GII laws | `core.data` (`law_aliases.yaml`) | T2.2 | `pt/unit/core/test_citations.py` | one row per added law incl. `SGB IV`, `SGB 4`, long names | covered |
-| `OldpLoader.load` | `ingest.oldp` | T2.3 | `test_oldp.py` | jurisdiction; ODbL; HTML stripped; `&uuml;` → „Kündigung“ | covered |
-| `DecisionSectionChunker.chunk` | `ingest.chunkers.decision` | T2.3 | `test_decision_chunker.py` | heading order; „Gründe“ alias; long section split; stable ids | covered |
-| `FixedTokenChunker.chunk` | `ingest.chunkers.fixed` | T2.3 | `pt/unit/ingest/test_fixed_chunker.py` | empty doc → `[]`; 10-token doc → 1 chunk; 25 tokens, `max_tokens=10, overlap=3` → windows 0, 7, 14, 21 (last shorter, R9 D9-24); union of windows = all tokens | covered |
+| `OldpLoader.load`, `OldpStats`, `iter_rows` | `ingest.oldp`, `ingest.records` | T2.3 | `test_oldp.py`, `test_oldp_hardening.py`, `test_oldp_memory.py` | dictionary-encoded parquet bomb read row by row (peak RSS), oversized row group skipped, boolean id rejected, `datetime.date` columns; jurisdiction `Arbeitsgericht`, title with Aktenzeichen, ODbL, HTML stripped, `&uuml;` → „Kündigung“; `tenant_domain`; parquet == JSONL; scripts/comments dropped, NFC, hyphenation, Randnummer lines; empty content kept; counted problems (bad record, duplicate, bad JSON, oversized line/content/file, unreadable parquet, `max_documents`, no files), missing dir raises, no socket opened; HTML bombs and linear time | covered |
+| `DecisionSectionChunker.chunk`, `split_sections`, `has_named_sections` | `ingest.chunkers.decision` | T2.3 | `test_decision_chunker.py` | heading order; „Gründe“ alias; heading variants (case, colon, letter-spaced, enumerator, `#`); heading is a whole line; unnamed boundaries; trailer dropped; no headings → 512/64 windows, `section is None`; 3 000-token Gründe → ≥ 6 chunks, stable ids; Randnummer blocks kept whole; restarting list; Randnummer gap 10 vs 11; trailer only in the last quarter, `dropped_trailer`; oversized Randnummer windows; real fixtures; linear time | covered |
+| `FixedTokenChunker.chunk`, `token_windows` | `ingest.chunkers.fixed` | T2.3 | `pt/unit/ingest/test_fixed_chunker.py` | empty doc → `[]`; 10-token doc → 1 chunk; 25 tokens, `max_tokens=10, overlap=3` → windows 0, 7, 14, 21 (last shorter, R9 D9-24); union of windows = all tokens (also Hypothesis over length, size, overlap); no split of „Kündigungsschutzgesetz“/„Straße"/combining characters; stable ids; invalid parameters; linear time | covered |
 | `EurLexLoader.load` | `ingest.eurlex` | T2.4 | `test_eurlex.py`, `test_eurlex_citation_keys.py` | CELEX; DE/EN; `citation_en` on `Document.metadata` (R9 D9-25) | covered |
 | `ArticleChunker.chunk` + alignment | `ingest.chunkers.article`, `ingest.align` | T2.4 | `test_article_chunker.py` | „Rechtmäßigkeit“; EN citation; `parallel_id`; missing article → error | covered |
-| `load_citation_graph` | `ingest.citation_graph` | T2.3 | `test_citation_graph.py` | sorted normalised edges; unknown law kept | covered |
+| `load_citation_graph` | `ingest.citation_graph` | T2.3 | `test_citation_graph.py` | sorted normalised edges; unknown law kept and logged once per code; Case→Case and unresolved slugs left out; `decisions_dir`; parquet with the real schema; bad rows skipped; 20 000 edges fast; fails closed (no file, corrupt only, all unresolved), `problems` returned, Case→Law filter, boolean ids | covered |
+| `html_to_text` | `ingest.html_text` | T2.3 | `test_html_text.py` | 4x markup ≤ 8x time for adjacent script/style/title; tail kept; parser built with `huge_tree=False`; blocks → lines, inline tags keep words, tables, entities, script/style/comment dropped, plain text, broken markup, NFC, hyphenation; linear time; pathological markup terminates | covered |
+| `classify_court`, `tenant_domain` | `ingest.oldp_courts` | T2.3 | `test_oldp_courts.py` | 25 court names → jurisdiction; level; labour / insurance / other with the 4 000-character head | covered |
 | `assign_tenants` | `ingest.tenants` | T2.5 | `test_tenants.py` | rule hits, no match, overlap | covered |
 | `write_corpus` | `ingest.writer` | T2.5 | `test_writer.py`, `test_ingest_fixtures.py` | byte-identical; order-independent; counts + sha256 | covered |
 
@@ -519,10 +528,10 @@ UI tests (pages × states × theme × locale × viewport) are specified in `docs
 
 | Status | Rows |
 | --- | --- |
-| covered | 340 |
-| planned | 31 (R13 rows and rows whose case round 13 changed; owners T1.8, T1.9, T1.10, T3.1a, T3.6, T4.1, T5.1, T5.4, T6.1, T6.2a, T6.2b, T7.1b, T7.2, T7.3, T8.1, T8.5) |
+| covered | 348 |
+| planned | 30 (R13 rows and rows whose case round 13 changed; owners T1.9, T1.10, T3.1a, T3.6, T4.1, T5.1, T5.4, T6.1, T6.2a, T6.2b, T7.1b, T7.2, T7.3, T8.1, T8.5) |
 | weak | 1 (backup bundle: drill only, acceptable for an ops script) |
-| **total** | **372** |
+| **total** | **379** |
 
 Round-13 changes (D296): the round-12 table (241 covered / 29 open / 1 weak = 271 rows) was re-derived: 40 multi-owner
 rows split into 90 single-owner rows (+50); 29 open rows flipped (`covered` unless round 13 changed the case); 21 new
