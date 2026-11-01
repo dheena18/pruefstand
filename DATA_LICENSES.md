@@ -54,9 +54,19 @@ differs from this file.
   norms. Basis: official works, § 5 Abs. 1 UrhG; they carry the attribution above (see the README there).
 - **Open Legal Data:** "Contains information from Open Legal Data (openlegaldata.io), made available
   under the Open Database License (ODbL) v1.0."
+  Confirmed in T2.3: the text is identical to `attribution` of the three `oldp_*` sources in `data/sources.yaml`;
+  every `Document` and `Chunk` of the loader carries `license="ODbL-1.0"` (collection; the individual decisions are
+  official works, § 5 UrhG, see the section 7 override). Test fixtures `packages/pruefstand/tests/fixtures/oldp/*.json`
+  and `oldp_graph/edges.jsonl` (T2.3) are three real records and five edges of the pinned `-1k` sample, trimmed; they
+  carry this attribution and stay in the OLDP-only `oldp_derived` scope (ODbL data is never mixed into another config).
 - **EUR-Lex:** "Source: EUR-Lex, © European Union, https://eur-lex.europa.eu. Reuse authorised under
   the EUR-Lex legal notice and Commission Decision 2011/833/EU. Consolidated versions are not
   authentic. The content has been modified (chunked, questions generated)."
+  Every EUR-Lex `Document` carries `license="EU-2011/833"` and `metadata["attribution"] = "© European
+  Union, https://eur-lex.europa.eu"` (T2.4); the files are the as-published OJ text (not a consolidated
+  version) fetched from the Publications Office CELLAR, split into recitals and Articles, with footnote
+  references removed and whitespace normalised. The German and English texts are the official language
+  versions; nothing is translated.
 - **GermanQuAD / GermanDPR:** "GermanQuAD and GermanDPR by deepset (Möller, Risch, Pietsch, 2021),
   CC BY 4.0, https://deepset.ai/germanquad. Modified."
 - **GermanRAG:** "GermanRAG by DiscoResearch, based on GermanDPR, CC BY-SA 4.0 (inherited). Modified."

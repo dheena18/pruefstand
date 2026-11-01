@@ -13,6 +13,7 @@ dependencies = [
   "numpy",
   "scipy>=1.13",
   "polars",
+  "pyarrow>=18",
   "httpx",
   "jinja2",
   "lxml>=5.3",
