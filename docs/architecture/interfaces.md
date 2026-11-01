@@ -39,7 +39,7 @@ uses it. Modules only implement behaviour. Concretely, these live in `core`:
 | `core.fingerprint` | `corpus_version`, `target_fingerprint`, `eval_fingerprint` (the only place fingerprints are computed) |
 | `core.hashing` | `stable_hash` |
 | `core.models.attacks` | `Canary`, `CanaryRegistry` (created in T1.1) |
-| `core.data` | `law_aliases.yaml` (T1.5a; incl. English statute names, D123), `model_families.yaml` (T1.2; the only model-family table; ADR-0018: the generator tag `qwen3.8:27b-q8_0`, which Ollama reports as family `qwen35`, maps to `qwen` (a pattern row for `qwen3.8` / `qwen35`); ADR-0019: Ollama family `gemma3` maps to `gemma`; it also records the **family plan** (D112, ADR-0019): generator = `qwen`; **one** A40 judge for PR and nightly = `gemma` (`gemma3:12b`); public-text datagen = a GitHub Models family ≠ `qwen`, ≠ `gemma` (pinned in T4.2); private-doc/canary datagen = the local `gemma` judge model; the judge reviews in reject-only mode and never writes or rewrites references; tier-1 informational judge = a GitHub Models model of a non-`qwen` family; exact versions pinned by benchmark in T1.13/T3.1b) |
+| `core.data` | `law_aliases.yaml` (T1.5a; incl. English statute names, D123; shape: `version: 1`, then `national:` and `eu:` maps of canonical abbreviation → list of aliases, unknown keys rejected; the abbreviation is always an alias, lookups fold case and whitespace; an alias naming two laws is a `ConfigError`; `§` is accepted only for `national` laws, `Art.` for both; other tasks append entries under the right map and never keep a second table), `model_families.yaml` (T1.2; the only model-family table; ADR-0018: the generator tag `qwen3.8:27b-q8_0`, which Ollama reports as family `qwen35`, maps to `qwen` (a pattern row for `qwen3.8` / `qwen35`); ADR-0019: Ollama family `gemma3` maps to `gemma`; it also records the **family plan** (D112, ADR-0019): generator = `qwen`; **one** A40 judge for PR and nightly = `gemma` (`gemma3:12b`); public-text datagen = a GitHub Models family ≠ `qwen`, ≠ `gemma` (pinned in T4.2); private-doc/canary datagen = the local `gemma` judge model; the judge reviews in reject-only mode and never writes or rewrites references; tier-1 informational judge = a GitHub Models model of a non-`qwen` family; exact versions pinned by benchmark in T1.13/T3.1b) |
 | `core.models.llm` | `LLMRole`, `Message`, `LLMRequest`, `LLMResponse`, `PromptTemplate` |
 | `core.models.judge` | `JudgeTask`, `JudgeVerdict` (created in T1.8) |
 | `core.models.dashboard` | `RunIndexEntry`, `DashboardRunIndex`, `DashboardSliceRow`, `DashboardSlices`, `DashboardCase`, `DashboardCases`, `LabelsDocument` (T8.1; `LabelsDocument` created in T1.9; fields in §10.1; R9 X5.3) |
@@ -761,7 +761,8 @@ faithfulness, answer_correctness, perturbation_consistency, refusal_judged
 #   "judge_quota" / "judge_cap" (R9 D9-07; the runner is the single owner of these counts).
 #   BudgetExceeded (USD / tokens) propagates to the runner (stop_reason="budget_exceeded").
 
-# core/citations.py  (lives in core so ingest and metrics share one normaliser)
+# core/citations/  (package, T1.5a: model.py, aliases.py, parser.py; __init__ re-exports; lives in core so ingest
+#                   and metrics share one normaliser; import path stays pruefstand.core.citations)
 def extract_citations(text: str) -> list[Citation]           # §, §§, Art., Artikel, Article, Abs., S., Nr., lit., i.V.m., ff.,
                                                              # plus English forms for German statutes: "Section 622 BGB",
                                                              # "Sec. 622", "Section 622(2) BGB" -> kind="para" (D123)
