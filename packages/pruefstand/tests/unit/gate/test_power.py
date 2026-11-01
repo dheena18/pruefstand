@@ -50,7 +50,13 @@ def test_mde_zero_se_is_delta() -> None:
         {"sigma_d": 0.2, "n_clusters": 10, "delta": 0.03, "alpha": 0.0},
         {"sigma_d": 0.2, "n_clusters": 10, "delta": 0.03, "alpha": 1.0},
         {"sigma_d": 0.2, "n_clusters": 10, "delta": 0.03, "alpha": 0.025, "m": 0},
-        {"sigma_d": 0.2, "n_clusters": 10, "delta": 0.03, "alpha": 0.025, "true_drop": float("inf")},
+        {
+            "sigma_d": 0.2,
+            "n_clusters": 10,
+            "delta": 0.03,
+            "alpha": 0.025,
+            "true_drop": float("inf"),
+        },
     ],
 )
 def test_power_rejects_invalid(kwargs: dict[str, float]) -> None:
@@ -72,3 +78,14 @@ def test_power_rejects_invalid(kwargs: dict[str, float]) -> None:
 def test_mde_rejects_invalid(kwargs: dict[str, float]) -> None:
     with pytest.raises(GateInputError):
         minimum_detectable_effect(**kwargs)  # type: ignore[arg-type]  # parametrised kwargs
+
+
+def test_power_tail_underflow_is_an_error() -> None:
+    with pytest.raises(GateInputError):
+        power_estimate(0.2, 10, 0.03, 1e-300, m=10**30)
+
+
+@pytest.mark.parametrize("bad", ["0.2", None, True, [0.2]])
+def test_power_rejects_non_numbers(bad: object) -> None:
+    with pytest.raises(GateInputError):
+        power_estimate(bad, 10, 0.03, 0.025)  # type: ignore[arg-type]  # deliberately wrong type

@@ -62,7 +62,14 @@ def test_wilson_confidence_widens() -> None:
 
 @pytest.mark.parametrize(
     ("k", "n", "conf"),
-    [(-1, 10, 0.95), (11, 10, 0.95), (1, -1, 0.95), (1, 10, 0.0), (1, 10, 1.0), (1, 10, float("nan"))],
+    [
+        (-1, 10, 0.95),
+        (11, 10, 0.95),
+        (1, -1, 0.95),
+        (1, 10, 0.0),
+        (1, 10, 1.0),
+        (1, 10, float("nan")),
+    ],
 )
 def test_wilson_rejects_invalid(k: int, n: int, conf: float) -> None:
     with pytest.raises(GateInputError):

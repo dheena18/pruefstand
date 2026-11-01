@@ -1,7 +1,7 @@
 """Monte-Carlo validation of the gate maths (testing-strategy §3.4, SPEC §7.2).
 
 Simulated numbers because the true delta must be known; this tests the statistics, not the product.
-Grid size via ``PRUEFSTAND_SIM_GRID``: ``reduced`` (default, 500 sims, bound alpha + 4 SE) or ``full``
+Grid size via ``PRUEFSTAND_SIM_GRID``: ``reduced`` (default: 500 sims, alpha + 4 SE) or ``full``
 (nightly, 4 000 sims, bound alpha + 3 SE). If a bound fails, report the numbers; never tune.
 """
 
@@ -32,9 +32,10 @@ TYPE1_BOUND = ALPHA + (3 if FULL else 4) * _SE  # 0.03241 (full) / 0.0529 (reduc
 POWER_FLOOR = 0.80 if FULL else 0.80 - 4 * math.sqrt(0.16 / N_SIMS)  # 0.728 (reduced)
 FORMULA_TOL = 0.05 if FULL else 0.05 + 4 * math.sqrt(0.25 / N_SIMS)  # 0.139 (reduced)
 OUT_DIR = Path("build/simulation")
-COLUMNS = (
-    "kind sigma_d discordance n_clusters cluster_size true_drop fail_rate warn_rate power_estimate"
-).split()
+COLUMNS = [
+    "kind", "sigma_d", "discordance", "n_clusters", "cluster_size", "true_drop", "fail_rate",
+    "warn_rate", "power_estimate",
+]  # fmt: skip
 Kind = Literal["gaussian", "binary"]
 
 
@@ -71,7 +72,7 @@ def _rates(  # noqa: PLR0913  (cell description)
 
 
 def _record(name: str, row: dict[str, object], out_dir: Path | None = None) -> None:
-    """Write one row for this cell and rebuild the combined CSV (cells run in parallel under xdist)."""
+    """Write one row for this cell and rebuild the combined CSV (xdist runs cells in parallel)."""
     out = out_dir or OUT_DIR
     cells = out / "cells"
     cells.mkdir(parents=True, exist_ok=True)
@@ -108,7 +109,8 @@ def _cell(  # noqa: PLR0913  (cell description)
         name,
         {
             "kind": kind, "sigma_d": sigma_d, "discordance": discordance, "n_clusters": n_clusters,
-            "cluster_size": cluster_size, "true_drop": true_drop, "fail_rate": fail,
+            "cluster_size": cluster_size if cluster_sizes is None else "40x10+180x1",
+            "true_drop": true_drop, "fail_rate": fail,
             "warn_rate": warn, "power_estimate": pe,
         },
     )  # fmt: skip
@@ -178,7 +180,7 @@ def test_formula_matches_simulation(sigma_d: float, n_clusters: int) -> None:
 
 @pytest.mark.slow
 def test_cluster_bootstrap_beats_naive_with_high_icc() -> None:
-    """With icc 0.8 the cluster bootstrap stays within the bound; the per-case bootstrap does not."""
+    """With icc 0.8 the cluster bootstrap stays within the bound, the per-case one does not."""
     rng = np.random.default_rng([SEED, 6])
     diffs, clusters = simulate_paired(
         30, 10, 0.0, sigma_d=0.25, icc=0.8, kind="gaussian", discordance=0.0, rng=rng,

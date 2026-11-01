@@ -6,7 +6,9 @@ import numpy as np
 import pytest
 
 from pruefstand.core.errors import GateInputError, PruefstandError
-from pruefstand.gate.stats import _small_sample_factor, paired_cluster_bootstrap
+from pruefstand.core.models.gate import BootstrapResult
+from pruefstand.gate._resample import small_sample_factor as _small_sample_factor
+from pruefstand.gate.stats import paired_cluster_bootstrap
 
 
 def _boot(
@@ -16,9 +18,14 @@ def _boot(
     seed: int = 1,
     b: int = 2000,
     **kw: object,
-):
+) -> BootstrapResult:
     return paired_cluster_bootstrap(
-        diffs, clusters, n_resamples=b, confidence=0.95, rng=np.random.default_rng(seed), **kw  # type: ignore[arg-type]  # forwarded test kwargs
+        diffs,
+        clusters,
+        n_resamples=b,
+        confidence=0.95,
+        rng=np.random.default_rng(seed),
+        **kw,  # type: ignore[arg-type]  # forwarded test kwargs
     )
 
 
@@ -161,7 +168,10 @@ def test_invalid_parameters(kwargs: dict[str, object]) -> None:
     base.update(kwargs)
     with pytest.raises(GateInputError):
         paired_cluster_bootstrap(
-            np.zeros(5), _ids(5), rng=np.random.default_rng(0), **base  # type: ignore[arg-type]  # parametrised
+            np.zeros(5),
+            _ids(5),
+            rng=np.random.default_rng(0),
+            **base,  # type: ignore[arg-type]  # parametrised
         )
 
 
@@ -193,3 +203,13 @@ def test_input_not_mutated() -> None:
     before = d.copy()
     _boot(d, _ids(20))
     assert np.array_equal(d, before)
+
+
+def test_non_numeric_diffs_rejected() -> None:
+    with pytest.raises(GateInputError):
+        _boot(np.array(["a", "b"]), np.array(["x", "y"]))
+
+
+def test_huge_resamples_rejected_before_any_work() -> None:
+    with pytest.raises(GateInputError):
+        _boot(np.zeros(5), _ids(5), b=10**12)

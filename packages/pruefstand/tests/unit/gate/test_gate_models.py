@@ -59,7 +59,7 @@ def test_score_table_length_mismatch(over: dict[str, object]) -> None:
 def test_score_table_frozen() -> None:
     t = _table()
     with pytest.raises(ValidationError):
-        t.metric = "other"
+        t.metric = "other"  # type: ignore[misc]  # frozen model
 
 
 def test_score_table_roundtrip_umlaut() -> None:

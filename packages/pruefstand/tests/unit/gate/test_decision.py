@@ -23,9 +23,17 @@ def _r(mean_diff: float = -0.06, n_clusters: int = 300) -> BootstrapResult:
     )
 
 
-def _decide(r: BootstrapResult, p: float, *, gated: bool = True, min_clusters: int = 30) -> GateStatus:
+def _decide(
+    r: BootstrapResult, p: float, *, gated: bool = True, min_clusters: int = 30
+) -> GateStatus:
     return decide(
-        r, max_drop=0.03, p_adjusted=p, alpha=0.025, warn_p=0.10, min_clusters=min_clusters, gated=gated
+        r,
+        max_drop=0.03,
+        p_adjusted=p,
+        alpha=0.025,
+        warn_p=0.10,
+        min_clusters=min_clusters,
+        gated=gated,
     )
 
 
@@ -89,7 +97,18 @@ def test_decide_absolute(k: int, n: int, expected: GateStatus) -> None:
     assert decide_absolute(k, n, max_value=0.02) is expected
 
 
-@pytest.mark.parametrize(("k", "n", "mv"), [(5, 3, 0.02), (-1, 3, 0.02), (1, 3, 0.0), (1, 3, float("nan"))])
+@pytest.mark.parametrize(
+    ("k", "n", "mv"), [(5, 3, 0.02), (-1, 3, 0.02), (1, 3, 0.0), (1, 3, float("nan"))]
+)
 def test_decide_absolute_rejects_invalid(k: int, n: int, mv: float) -> None:
     with pytest.raises(GateInputError):
         decide_absolute(k, n, max_value=mv)
+
+
+@pytest.mark.parametrize("max_drop", [float("nan"), float("inf"), -0.01])
+def test_decide_rejects_bad_max_drop(max_drop: float) -> None:
+    with pytest.raises(GateInputError):
+        decide(
+            _r(), max_drop=max_drop, p_adjusted=0.01, alpha=0.025, warn_p=0.10,
+            min_clusters=30, gated=True,
+        )  # fmt: skip

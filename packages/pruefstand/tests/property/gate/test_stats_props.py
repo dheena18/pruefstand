@@ -1,9 +1,12 @@
 """Hypothesis properties of the gate statistics (T1.6)."""
 
+from itertools import pairwise
+
 import numpy as np
 from hypothesis import assume, given
 from hypothesis import strategies as st
 
+from pruefstand.core.models.gate import BootstrapResult
 from pruefstand.gate.correction import bh_adjust, holm_adjust
 from pruefstand.gate.stats import paired_cluster_bootstrap
 
@@ -12,7 +15,7 @@ _diffs = st.lists(_diff, min_size=3, max_size=40)
 _ps = st.lists(st.floats(0.0, 1.0, allow_nan=False), min_size=0, max_size=30)
 
 
-def _run(diffs: list[float], n_clusters: int, shift: float = 0.0):
+def _run(diffs: list[float], n_clusters: int, shift: float = 0.0) -> BootstrapResult:
     d = np.array(diffs, dtype=np.float64) + shift
     clusters = np.array([f"d{i % n_clusters}" for i in range(len(d))])
     return paired_cluster_bootstrap(
@@ -47,7 +50,7 @@ def test_holm_properties(ps: list[float]) -> None:
     assert len(adj) == len(ps)
     assert all(a >= p - 1e-12 and a <= 1.0 for a, p in zip(adj, ps, strict=True))
     by_raw = [a for _, a in sorted(zip(ps, adj, strict=True), key=lambda t: t[0])]
-    assert all(x <= y + 1e-12 for x, y in zip(by_raw, by_raw[1:], strict=False))
+    assert all(x <= y + 1e-12 for x, y in pairwise(by_raw))
 
 
 @given(_ps)
