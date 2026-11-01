@@ -199,3 +199,19 @@ def test_oversized_values_are_refused_on_write_and_ignored_on_read(
     with DiskKVCache(tmp_path, "target") as cache:
         assert cache.get("small") == b"x" * 16
         assert cache.get("planted") is None
+
+
+@pytest.mark.parametrize("planted", [3_000_000_000, "plain text", 1.5, None])
+def test_non_blob_rows_planted_in_the_file_are_misses(tmp_path: Path, planted: object) -> None:
+    with DiskKVCache(tmp_path, "target") as cache:
+        cache.set("ok", b"v")
+    db = sqlite3.connect(tmp_path / "target" / "cache.sqlite3")
+    db.execute("DROP TABLE kv")
+    db.execute("CREATE TABLE kv (key TEXT PRIMARY KEY, value)")  # no type affinity: any value fits
+    db.execute("INSERT INTO kv VALUES ('ok', ?)", (b"v",))
+    db.execute("INSERT INTO kv VALUES ('planted', ?)", (planted,))
+    db.commit()
+    db.close()
+    with DiskKVCache(tmp_path, "target") as cache:
+        assert cache.get("ok") == b"v"
+        assert cache.get("planted") is None

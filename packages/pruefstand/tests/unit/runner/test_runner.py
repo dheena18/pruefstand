@@ -282,3 +282,27 @@ def test_a_response_that_cannot_be_encoded_becomes_a_target_error() -> None:
     assert out.attempts == 2
     good = Attempts(TargetResponse(answer="Kündigung"), None, 1)
     assert _require_valid_unicode(good) is good
+
+
+async def test_a_planted_integer_row_in_a_real_disk_cache_is_a_miss(
+    router: respx.MockRouter, adapter: HttpTargetAdapter, tmp_path: Path
+) -> None:
+    import sqlite3
+
+    from pruefstand.store.kv import DiskKVCache
+
+    route = router.post("/v1/query").respond(200, json=load_example("query_ok.json"))
+    case = make_case(0)
+    key = stable_hash("fp-test", case.id, case.question, case.tenant)
+    with DiskKVCache(tmp_path, "target"):
+        pass
+    db = sqlite3.connect(tmp_path / "target" / "cache.sqlite3")
+    db.execute("DROP TABLE kv")
+    db.execute("CREATE TABLE kv (key TEXT PRIMARY KEY, value)")
+    db.execute("INSERT INTO kv VALUES (?, ?)", (key, 3_000_000_000))
+    db.commit()
+    db.close()
+    with DiskKVCache(tmp_path, "target") as cache:
+        results = await run_cases(make_runner(adapter, cache=cache), [case])
+    assert route.call_count == 1
+    assert results.manifest.complete is True
