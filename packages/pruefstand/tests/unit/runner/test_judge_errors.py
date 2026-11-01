@@ -103,9 +103,15 @@ async def test_request_cap_leaves_one_request_unused_at_concurrency_one(
 
     pool = SpyPool(one_request)
     runner = make_runner(
-        adapter, metrics=registry_with_judged(), judges=pool, budget=budget, concurrency=1
+        adapter,
+        metrics=registry_with_judged(),
+        judges=pool,
+        budget=budget,
+        concurrency=1,
+        timeout_s=120,
     )
     results = await run_cases(runner, make_cases(20))
+    assert results.manifest.counts.get("error", 0) == 0, results.records  # no target errors
     assert len(pool.score_calls) == 3  # the 4th reservation of 2 would pass the cap of 4
     assert results.manifest.complete is True
     assert results.manifest.counts["judge_skipped"] == 17

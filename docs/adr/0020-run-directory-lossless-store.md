@@ -38,6 +38,7 @@ and exposes no per-call usage.
 ## Consequences
 - Positive: exact round trip; gate and report code can load a stored run as `RunArtifacts`.
 - Negative / cost: one more file per run (about the size of `responses.jsonl` without the chunks).
+- `scored.jsonl` is sensitive like `responses.jsonl` (full `TestCase`: canary tokens in `forbidden_strings`, gold text); same retention, never published unmasked.
 - Follow-ups: T6.1 `LocalDirBaselineStore` / `GitBranchBaselineStore` must keep `scored.jsonl` next to
   `results.parquet` (and compress it like `responses.jsonl.zst`) if baselines are to be read back as
   `RunArtifacts`; T8.1 sanitiser must mask `scored.jsonl` like `responses.jsonl`.

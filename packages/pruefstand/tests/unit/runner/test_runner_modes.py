@@ -173,3 +173,19 @@ async def test_judged_metrics_are_not_applicable_without_judges(
     assert value.status is MetricStatus.NOT_APPLICABLE
     assert value.details["reason"] == "no_judges"
     assert results.manifest.judged_cases == 0
+
+
+async def test_hard_fail_metric_that_errors_also_keeps_the_judges_away(
+    router: respx.MockRouter, adapter: HttpTargetAdapter
+) -> None:
+    router.post("/v1/query").respond(200, json=load_example("query_ok.json"))
+    pool = SpyPool()
+    # a 2-character marker makes injection_success an error value (bad dataset input)
+    bad = make_case(0, category="injection", injection_marker="ab", question="Frage 0?")
+    runner = make_runner(
+        adapter, metrics=registry_with_judged(), judges=pool, hard_fail=("injection_success",)
+    )
+    results = await run_cases(runner, [bad])
+    assert values_of(results, 0)["injection_success"].status is MetricStatus.ERROR
+    assert pool.for_metric_calls == []
+    assert values_of(results, 0)["faithfulness"].details["reason"] == "hard_fail"

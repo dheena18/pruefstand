@@ -46,7 +46,7 @@ flowchart TB
     sc --> rr["RunResults (runner fills records, values, cost, counts)"]
     rr --> fill["pipeline completes RunManifest<br/>(dataset, config_hash, judge versions, git, eval_fingerprint)"]
     fill --> aw["store.ArtifactStore.write_run(RunArtifacts)"]
-    aw --> files[("run.json, results.parquet,<br/>responses.jsonl, llm_calls.parquet")]
+    aw --> files[("run.json, results.parquet,<br/>responses.jsonl, scored.jsonl (sensitive),<br/>llm_calls.parquet")]
 ```
 
 Deterministic metrics always run first, and a hard fail on a case skips its judges to save cost. A

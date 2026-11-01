@@ -1,5 +1,9 @@
+import hashlib
 import importlib.metadata as md
+import os
+import pickle
 import sqlite3
+import stat
 from pathlib import Path
 
 import pytest
@@ -100,3 +104,56 @@ def test_overwriting_a_key_keeps_the_last_value(tmp_path: Path) -> None:
 def test_the_package_no_longer_depends_on_diskcache() -> None:
     deps = md.requires("pruefstand") or []
     assert not [d for d in deps if d.lower().startswith("diskcache")]
+
+
+class _Evil:
+    """Unpickling this creates ``marker`` (stands in for code execution)."""
+
+    def __init__(self, marker: Path) -> None:
+        self.marker = marker
+
+    def __reduce__(self) -> tuple[object, tuple[str, str]]:
+        return (open, (str(self.marker), "w"))
+
+
+def _digest(path: Path) -> str:
+    return hashlib.sha256(path.read_bytes()).hexdigest()
+
+
+def test_a_planted_pickle_blob_is_returned_as_bytes_and_never_executed(tmp_path: Path) -> None:
+    marker = tmp_path / "pwned"
+    blob = pickle.dumps(_Evil(marker))
+    with DiskKVCache(tmp_path, "target") as cache:
+        cache.set("other", b"x")
+    db = sqlite3.connect(tmp_path / "target" / "cache.sqlite3")
+    db.execute("INSERT INTO kv (key, value) VALUES (?, ?)", ("planted", blob))
+    db.commit()
+    db.close()
+    with DiskKVCache(tmp_path, "target") as cache:
+        assert cache.get("planted") == blob
+    assert not marker.exists()
+
+
+def test_read_only_get_leaves_every_byte_of_the_cache_directory_alone(tmp_path: Path) -> None:
+    with DiskKVCache(tmp_path, "target") as writer:
+        writer.set("k", b"v")
+    folder = tmp_path / "target"
+    before = ({p.name: _digest(p) for p in folder.iterdir()}, {p.name: p.stat().st_mtime_ns for p in folder.iterdir()})
+    with DiskKVCache(tmp_path, "target", read_only=True) as reader:
+        assert reader.get("k") == b"v"
+        assert reader.get("missing") is None
+    after = ({p.name: _digest(p) for p in folder.iterdir()}, {p.name: p.stat().st_mtime_ns for p in folder.iterdir()})
+    assert after == before
+
+
+def test_read_only_works_on_a_read_only_directory(tmp_path: Path) -> None:
+    with DiskKVCache(tmp_path, "target") as writer:
+        writer.set("k", b"v")
+    folder = tmp_path / "target"
+    os.chmod(folder / "cache.sqlite3", stat.S_IRUSR)
+    os.chmod(folder, stat.S_IRUSR | stat.S_IXUSR)
+    try:
+        with DiskKVCache(tmp_path, "target", read_only=True) as reader:
+            assert reader.get("k") == b"v"
+    finally:
+        os.chmod(folder, stat.S_IRWXU)
