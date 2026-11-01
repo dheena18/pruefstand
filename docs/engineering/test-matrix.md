@@ -56,7 +56,7 @@ owning module's unit test dir (`pt/unit/<module>/`, `rd/unit/…`).
 | --- | --- | --- | --- | --- | --- |
 | `CaseId`, `TenantId`, `DocId`, `ChunkId`, `RunId` | `core.ids` | T1.1 | – | NewType aliases; no behaviour | covered |
 | `Lang`, `Category`, `Difficulty`, `Split` (incl. `SMOKE_LIVE`), `MetricStatus`, `GateStatus`, `MetricKind` | `core.enums`, `core.models.metric` | T1.1 | `pt/unit/core/test_enums.py` | serialised values (`smoke_live`, `robust_pr`, `insufficient_data`, `unsupported_config`, `human_labels`, `multi_hop`) parse and round-trip; unknown value → error | covered |
-| `Split.RQ1` (**R13** P3.2, D293) | `core.enums` | T1.1 | `pt/unit/core/test_enums.py` | `Split("rq1") is Split.RQ1`; round-trips; existing values unchanged | planned |
+| `Split.RQ1` (**R13** P3.2, D293) | `core.enums` | T1.1 | `pt/unit/core/test_enums.py` | `Split("rq1") is Split.RQ1`; round-trips; existing values unchanged | covered |
 | `TestCase` (+ `evidence_span`, `__test__ = False`, R9) | `core.models.testcase` | T1.1 | `pt/unit/core/test_testcase.py` | SPEC §3.3 row with „Kündigungsfrist“; `cluster_id` defaults; validators; extra field; frozen; **R9:** `evidence_span` optional, round trip with umlauts; collecting a module that imports `TestCase` emits no `PytestCollectionWarning` | covered |
 | `TestCase.block`, `TestCase.judged_subset` (**R12** N1.1, D248) | `core.models.testcase` | T1.1 | `pt/unit/core/test_testcase.py` | defaults `block is None`, `judged_subset is False`; `block=2` and `judged_subset=True` round-trip; `block="x"` → error; old JSON without both fields parses | covered |
 | `TargetRequest`, `RetrievedChunk` (+ `used_in_prompt`, R9), `Usage`, `TargetResponse`, `TargetInfo`, `CaseRecord` | `core.models.target` | T1.1 | `pt/unit/core/test_target.py` | interfaces §1.1 JSON with `chunks: null` → `None`; `RetrievedChunk(tenant_id=None)` ok; extra field → error; **R9:** chunk without `used_in_prompt` → `None`, with `true` round-trips | covered |
@@ -64,7 +64,7 @@ owning module's unit test dir (`pt/unit/<module>/`, `rd/unit/…`).
 | `MetricValue` | `core.models.metric` | T1.1 | `pt/unit/core/test_metric.py` | 1.2 → error; `latency_ms` 834 ok; `not_applicable` with value → error | covered |
 | `CostSummary`, `RunManifest` (+ `judge_serving`, `judge_epoch`, R9), `ScoredCase`, `RunResults`, `RunArtifacts` | `core.models.run` | T1.1 | `pt/unit/core/test_run.py` | `complete` ⇔ `stop_reason`; JSON round trip; `judge_mode` rejects `cpu`; flags default `False`; **R9:** `judge_epoch` default 0, `judge_serving` default `{}` | covered |
 | `RunManifest.block`, `.judged_subset`, `infra_error` kind `window_exceeded`, counts `model_reloads`/`upstream_errors` (**R12** D250, D256, D267) | `core.models.run` | T1.1 | `pt/unit/core/test_run.py` | defaults `None`/`False`; `block=1` round-trips; `infra_error="window_exceeded: judge"` with `stop_reason="aborted"` valid, with `"completed"` → error; `counts={"model_reloads": 0, "upstream_errors": 2}` round-trips | covered |
-| `RunManifest.stratum` (**R13** P4.3, D298) | `core.models.run` | T1.1 | `pt/unit/core/test_run.py` | default `"all"`; `"refusal"` and `"blocks"` round-trip; `"x"` → error; old JSON without the field parses | planned |
+| `RunManifest.stratum` (**R13** P4.3, D298) | `core.models.run` | T1.1 | `pt/unit/core/test_run.py` | default `"all"`; `"refusal"` and `"blocks"` round-trip; `"x"` → error; old JSON without the field parses | covered |
 | `stable_hash` | `core.hashing` | T1.1 | `test_hashing.py`, `test_hashing_props.py` | exact sha of `{"a":"ä"}`; variadic ≠ concat; NFC ≠ NFD „Kündigung“; bytes; `object()` → `TypeError`; Hypothesis | covered |
 | `corpus_version` | `core.fingerprint` | T1.1 | `pt/unit/core/test_fingerprint.py` | format regex; key-order invariance; `created_at` ignored; bad `date_tag` → `ValueError` | covered |
 | `target_fingerprint` (T1.1 part) | `core.fingerprint` | T1.1 | `test_fingerprint.py` | digest vs `git_sha` fallback; static `serving`/`models` change → new fp; `info=None` → run-id based | covered |
@@ -72,7 +72,7 @@ owning module's unit test dir (`pt/unit/<module>/`, `rd/unit/…`).
 | `eval_fingerprint` (R9 signature; T1.1 part) | `core.fingerprint` | T1.1 | `test_fingerprint.py` | prompt/metric version changes fp; split order irrelevant; empty `judge_models` stable whether the judge ran or not; **R9 X3.3:** `judge_serving` change → new fp; `judge_epoch` 0 → 1 → new fp; no run-time flag is a parameter | covered |
 | `eval_fingerprint` (T6.1 part: store keying) | `core.fingerprint` | T6.1 | `test_baselines_local.py` | baselines are keyed by the run's `eval_fingerprint`; a run with another fingerprint is not returned for that key | covered |
 | `eval_fingerprint(..., block, judged_subset)` (**R12** N1.3, D250) | `core.fingerprint` | T1.1 | `test_fingerprint.py` | `block=None` vs `block=0` → different fp; `block=0` vs `block=1` → different; `judged_subset=False` vs `True` → different; same inputs twice → same fp; `judge_serving` value with `digest[:12]` changed → new fp (D279) | covered |
-| `eval_fingerprint(..., stratum)` (**R13** P4.3, D298) | `core.fingerprint` | T1.1 | `test_fingerprint.py` | `stratum="all"` vs `"refusal"` → different fp; default equals explicit `"all"`, and both equal the fp computed before `stratum` existed (hashed only when not `"all"`, D322); same inputs twice → same fp | planned |
+| `eval_fingerprint(..., stratum)` (**R13** P4.3, D298) | `core.fingerprint` | T1.1 | `test_fingerprint.py` | `stratum="all"` vs `"refusal"` → different fp; default equals explicit `"all"`, and both equal the fp computed before `stratum` existed (hashed only when not `"all"`, D322); same inputs twice → same fp | covered |
 | `PruefstandError` hierarchy (incl. `PolicyViolation`, `QuotaExhausted` R9) | `core.errors` | T1.1 | `pt/unit/core/test_errors.py` | parametrised: every class subclasses `PruefstandError`; `PolicyViolation`, `QuotaExhausted` ⊂ `LLMError` | covered |
 | `get_logger`, `configure_logging` | `core.logging` | T1.1 | `test_logging.py` | `api_key` redacted, tenant kept, secret never printed | covered |
 | `export_schemas`, `register_schema` | `core.schema` | T1.1 | `test_schema.py` | files exported, byte-identical rerun, `additionalProperties: false` | covered |
@@ -483,8 +483,8 @@ UI tests (pages × states × theme × locale × viewport) are specified in `docs
 
 | Status | Rows |
 | --- | --- |
-| covered | 307 |
-| planned | 34 (R13 rows and rows whose case round 13 changed; owners T0.2, T1.1, T1.8, T1.9, T1.10, T3.1a, T3.6, T4.1, T5.4, T6.1, T6.2a, T6.2b, T7.1b, T7.2, T7.3, T8.1, T8.5) |
+| covered | 311 |
+| planned | 30 (R13 rows and rows whose case round 13 changed; owners T1.8, T1.9, T1.10, T3.1a, T3.6, T4.1, T5.4, T6.1, T6.2a, T6.2b, T7.1b, T7.2, T7.3, T8.1, T8.5) |
 | weak | 1 (backup bundle: drill only, acceptable for an ops script) |
 | **total** | **342** |
 

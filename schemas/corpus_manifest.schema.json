@@ -1,0 +1,45 @@
+{
+  "additionalProperties": false,
+  "description": "``corpus/<corpus_version>/manifest.json``.\n\n``corpus_version`` and ``created_at`` are excluded from ``fingerprint.corpus_version``.",
+  "properties": {
+    "corpus_version": {
+      "title": "Corpus Version",
+      "type": "string"
+    },
+    "created_at": {
+      "format": "date-time",
+      "title": "Created At",
+      "type": "string"
+    },
+    "sha256": {
+      "additionalProperties": {
+        "type": "string"
+      },
+      "title": "Sha256",
+      "type": "object"
+    },
+    "sources": {
+      "additionalProperties": {
+        "type": "string"
+      },
+      "title": "Sources",
+      "type": "object"
+    },
+    "tenants": {
+      "additionalProperties": {
+        "type": "integer"
+      },
+      "title": "Tenants",
+      "type": "object"
+    }
+  },
+  "required": [
+    "corpus_version",
+    "created_at",
+    "sources",
+    "tenants",
+    "sha256"
+  ],
+  "title": "CorpusManifest",
+  "type": "object"
+}

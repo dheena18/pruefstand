@@ -1,0 +1,109 @@
+{
+  "$defs": {
+    "Lang": {
+      "description": "Language of a question or chunk.",
+      "enum": [
+        "de",
+        "en"
+      ],
+      "title": "Lang",
+      "type": "string"
+    }
+  },
+  "additionalProperties": false,
+  "description": "One retrievable chunk (one line of ``corpus/<version>/<tenant>.chunks.jsonl``).\n\n``citation_key`` is the normalised citation, e.g. ``\"§ 622 BGB\"``. Text is stored as given\n(no Unicode normalisation).",
+  "properties": {
+    "chunk_id": {
+      "title": "Chunk Id",
+      "type": "string"
+    },
+    "citation_key": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "title": "Citation Key"
+    },
+    "doc_id": {
+      "title": "Doc Id",
+      "type": "string"
+    },
+    "is_attack": {
+      "default": false,
+      "title": "Is Attack",
+      "type": "boolean"
+    },
+    "lang": {
+      "$ref": "#/$defs/Lang"
+    },
+    "license": {
+      "title": "License",
+      "type": "string"
+    },
+    "parallel_id": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "title": "Parallel Id"
+    },
+    "section": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "title": "Section"
+    },
+    "source": {
+      "title": "Source",
+      "type": "string"
+    },
+    "tenant": {
+      "title": "Tenant",
+      "type": "string"
+    },
+    "text": {
+      "title": "Text",
+      "type": "string"
+    },
+    "version_date": {
+      "anyOf": [
+        {
+          "format": "date",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "title": "Version Date"
+    }
+  },
+  "required": [
+    "chunk_id",
+    "doc_id",
+    "tenant",
+    "lang",
+    "text",
+    "citation_key",
+    "section",
+    "parallel_id",
+    "version_date",
+    "license",
+    "source"
+  ],
+  "title": "Chunk",
+  "type": "object"
+}
