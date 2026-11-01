@@ -1,4 +1,5 @@
 import json
+import os
 from pathlib import Path
 
 import polars as pl
@@ -7,7 +8,6 @@ from testsupport.run_builders import make_results
 
 from pruefstand.core.errors import StoreError
 from pruefstand.core.models.run import RunArtifacts
-from pruefstand.store import artifacts as artifacts_module
 from pruefstand.store.artifacts import ArtifactStore, new_run_id
 
 COLUMNS = [
@@ -124,7 +124,7 @@ def test_missing_files_and_unknown_runs_are_store_errors(tmp_path: Path) -> None
     with pytest.raises(StoreError):
         store.read_run("20990101T000000-ffffff")
     (path / "responses.jsonl").unlink()
-    with pytest.raises(StoreError, match="responses.jsonl"):
+    with pytest.raises(StoreError, match=r"responses\.jsonl"):
         store.read_run(path)
 
 
@@ -188,7 +188,7 @@ def test_failed_rename_keeps_the_old_run_json(
         msg = "rename failed"
         raise OSError(msg)
 
-    monkeypatch.setattr(artifacts_module.os, "replace", boom)
+    monkeypatch.setattr(os, "replace", boom)
     with pytest.raises(StoreError, match="rename failed"):
         store.add_counts(path, {"model_reloads": 1})
     assert snapshot(path) == before

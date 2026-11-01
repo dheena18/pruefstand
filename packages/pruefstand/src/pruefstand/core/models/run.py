@@ -30,7 +30,8 @@ class RunManifest(BaseModel):
 
     ``counts`` keys (single owner = the runner): ``ok``, ``error``, ``cached``, ``not_applicable``,
     ``judge_error``, ``judge_skipped`` (details reason ``judge_quota`` | ``judge_cap``),
-    ``judge_truncated``, ``think_stripped``, ``corpus_mismatch``, ``retrieve`` (``robust_pr``
+    ``judge_truncated``, ``metric_truncated`` (deterministic values with ``details.truncated``),
+    ``think_stripped``, ``corpus_mismatch``, ``retrieve`` (``robust_pr``
     cases sent to ``/v1/retrieve``, R11 D218), ``retrieve_fallback`` (target without
     ``/v1/retrieve``), and ``model_reloads`` / ``upstream_errors`` (R12 N6.4: ``llm-proxy``
     ``/health`` differences over the run, written by the T6.2a executor; absent in tier 1 and in

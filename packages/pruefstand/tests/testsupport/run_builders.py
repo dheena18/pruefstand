@@ -123,4 +123,6 @@ def make_results(count: int = 2) -> RunResults:
             ),
         )
         scored.append(ScoredCase(case=case, values=values))
-    return RunResults(manifest=make_manifest(n_cases=count), records=tuple(records), values=tuple(scored))
+    return RunResults(
+        manifest=make_manifest(n_cases=count), records=tuple(records), values=tuple(scored)
+    )

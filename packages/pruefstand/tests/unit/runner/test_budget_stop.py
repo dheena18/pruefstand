@@ -74,7 +74,9 @@ async def test_mark_aborted_rewrites_only_run_json(
     results = await run_cases(make_runner(adapter), make_cases(3))
     assert results.manifest.complete is True
     store = ArtifactStore(tmp_path)
-    run_dir = store.write_run(RunArtifacts(results=results, root=tmp_path / results.manifest.run_id))
+    run_dir = store.write_run(
+        RunArtifacts(results=results, root=tmp_path / results.manifest.run_id)
+    )
     parquet_before = (run_dir / "results.parquet").read_bytes()
 
     store.mark_aborted(run_dir, "tunnel_lost: ssh exit 255")
@@ -84,5 +86,7 @@ async def test_mark_aborted_rewrites_only_run_json(
     assert manifest.stop_reason == "aborted"
     assert manifest.infra_error == "tunnel_lost: ssh exit 255"
     assert (run_dir / "results.parquet").read_bytes() == parquet_before
-    assert json.loads((run_dir / "run.json").read_text(encoding="utf-8"))["stop_reason"] == "aborted"
+    assert (
+        json.loads((run_dir / "run.json").read_text(encoding="utf-8"))["stop_reason"] == "aborted"
+    )
     assert store.read_run(run_dir).results.records == results.records

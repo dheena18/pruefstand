@@ -145,6 +145,8 @@ runs/<run_id>/
   run.json            RunManifest (schema)
   results.parquet     one row per (case_id, metric) — columns in §8
   responses.jsonl     CaseRecord per case (request, response or error, timings)
+  scored.jsonl        ScoredCase per case (TestCase + all MetricValues with details): the lossless source of
+                      RunResults.values (T1.8, D359, ADR-0020); results.parquet is the 13-column analytics view
   llm_calls.parquet   one row per LLM call (judge + datagen), §3
   gate.json           GateReport (schema)  — only after `pruefstand gate`
   report.html         optional
@@ -547,6 +549,7 @@ class RunManifest(BaseModel):    # (schema) -> run.json
     # counts keys (R9, single owner = the runner, D9-07/D9-21): ok, error, cached, not_applicable, judge_error,
     #   judge_skipped (details reason "judge_quota" | "judge_cap"), judge_truncated (X3.9), think_stripped, corpus_mismatch,
     #   retrieve (R11 D218: robust_pr cases sent to /v1/retrieve), retrieve_fallback (target without /v1/retrieve),
+    #   metric_truncated (T1.8, D362: deterministic metric values with details.truncated; logged as well),
     #   model_reloads, upstream_errors (R12 N6.4, D267: llm-proxy /health differences over the run, measured by the
     #   orchestrator and written with ArtifactStore.add_counts; absent in tier 1 and in local runs),
     #   (no infra_error count: the infra failure is the field below, R11 integration D245)
@@ -647,6 +650,9 @@ class Budget:  def __init__(self, max_usd: float | None, max_tokens: int | None,
                async def release(self, n: int) -> None    # returns unused reserved requests (n <= currently reserved)
                def charge(self, r: LLMResponse) -> None  # raises BudgetExceeded (USD / tokens); a request charged against
                                                          # a reservation never raises for the request cap
+# tally_charges() -> ContextManager[ChargeTally]   # T1.8 (D360): counts requests, usd, prompt_tokens, completion_tokens charged
+#   by Budget.charge inside the scope (nested scopes all count; concurrent tasks stay separate); the runner releases
+#   exactly 2 - used per judge call and fills RunManifest.cost from it
                @property
                def requests_remaining(self) -> int | None  # None = no request cap; = cap - charged - reserved (read-only info)
                # Runner rule (R9 X4.5, D9-06): before every judge call the runner reserves 2 requests (the call + one
@@ -878,7 +884,11 @@ class DiskKVCache(KVCache)     # store/kv.py (created in T1.8, used by T5.1); di
                                # read-only mode for PR jobs
 class LayeredKVCache(KVCache): def __init__(self, base: KVCache, overlay: KVCache) -> None   # read overlay then base; write overlay only
 class ArtifactStore:           def __init__(self, root: Path) -> None
-                               def write_run(self, run: RunArtifacts) -> Path; def read_run(self, run_id_or_path: str | Path) -> RunArtifacts
+                               def write_run(self, run: RunArtifacts, *, llm_calls: pl.DataFrame | None = None) -> Path   # T1.8, D359
+                               def read_run(self, run_id_or_path: str | Path) -> RunArtifacts
+                               # atomic (hidden tmp dir + os.replace, D358); an existing run dir is never overwritten; writes
+                               # run.json, results.parquet, responses.jsonl, scored.jsonl (+ llm_calls.parquet); new_run_id() -> RunId
+                               # = <UTC yyyymmddTHHMMSS>-<6 hex> (D357)
                                def mark_aborted(self, run_id_or_path: str | Path, infra_error: str) -> None
                                # R11 D245 (T1.8; called only by the executor, T6.2a): rewrites run.json atomically with
                                # complete=False, stop_reason="aborted", infra_error="<kind>: <detail>"; other files untouched

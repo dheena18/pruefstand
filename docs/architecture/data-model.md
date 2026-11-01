@@ -303,7 +303,7 @@ datasets/<name>/<version>/
 datasets/fixtures/                  hand-written + synthetic_v1 cases committed for CI
 data/sources.yaml  data/manifests/  data/raw/ (git-ignored)
 runs/<run_id>/                      local; on the executor VM: $PRUEFSTAND_HOME/runs/<run_id>/ (VM disk)
-  run.json  results.parquet  responses.jsonl  llm_calls.parquet  gate.json  report.html
+  run.json  results.parquet  responses.jsonl  scored.jsonl  llm_calls.parquet  gate.json  report.html
 data root $PRUEFSTAND_DATA_ROOT/baselines/ (= /mnt/pruefstand/baselines, plain dir on the VM disk, ADR-0019; baseline FILES, X2.7, D209;
   written only by baseline-promote.yml, write-then-rename):
   <eval_fingerprint>/<ref>/run.json                            ref = main | nightly-b0..b2 | release-b0..b2 (current baseline; R12 N1.4, R13 D305 block-wise release anchor)

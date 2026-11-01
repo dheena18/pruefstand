@@ -38,7 +38,10 @@ async def test_one_judge_failure_in_twenty_is_an_error_value_but_not_degraded(
     assert bad.status is MetricStatus.ERROR
     assert bad.value is None
     assert bad.details["error"] == "LLMError"
-    assert sum(values_of(results, i)["faithfulness"].status is MetricStatus.OK for i in range(20)) == 19
+    assert (
+        sum(values_of(results, i)["faithfulness"].status is MetricStatus.OK for i in range(20))
+        == 19
+    )
     assert results.manifest.counts["judge_error"] == 1
     assert results.manifest.judge_degraded is False  # 1/20 = 5 %, not more than 5 %
     assert results.manifest.complete is True
@@ -133,8 +136,6 @@ async def test_request_cap_holds_at_concurrency_eight_with_repairs(
     assert len(pool.score_calls) == 2
     assert results.manifest.counts["judge_skipped"] == 18
     assert budget.requests_remaining == 0
-    reasons = [
-        values_of(results, i)["faithfulness"].details.get("reason") for i in range(20)
-    ]
+    reasons = [values_of(results, i)["faithfulness"].details.get("reason") for i in range(20)]
     assert reasons.count("judge_cap") == 18
     assert results.manifest.cost.llm_calls == 4

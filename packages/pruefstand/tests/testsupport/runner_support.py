@@ -1,7 +1,13 @@
-"""Helpers of the runner tests: a real ``HttpTargetAdapter`` under ``respx`` and test-only judged metrics."""
+"""Runner test helpers: a real ``HttpTargetAdapter`` under ``respx``, test-only judged metrics."""
 
+import json
+import re
 from collections.abc import Awaitable, Callable, Sequence
 from typing import Any
+
+import httpx
+from contract.adapter_contract import load_example
+from testsupport.run_builders import make_case
 
 from pruefstand.adapters.http import HttpTargetAdapter
 from pruefstand.core.config import HttpTargetConfig, RunnerConfig
@@ -75,7 +81,7 @@ class StubJudgedMetric:
     requires: frozenset[str] = frozenset()
     applies_to: frozenset[Category] | None = None
 
-    async def acompute(self, case: TestCase, resp: TargetResponse, judges: Any) -> MetricValue:  # noqa: ANN401
+    async def acompute(self, case: TestCase, resp: TargetResponse, judges: Any) -> MetricValue:
         task = JudgeTask(
             metric=self.name,
             prompt_id="faithfulness_de",
@@ -100,7 +106,7 @@ def make_runner(  # noqa: PLR0913
     *,
     metrics: MetricRegistry | None = None,
     judges: SpyPool | None = None,
-    cache: Any = None,  # noqa: ANN401
+    cache: Any = None,
     budget: Budget | None = None,
     concurrency: int = 4,
     timeout_s: float = 5,
@@ -126,8 +132,38 @@ def make_runner(  # noqa: PLR0913
 async def run_cases(
     runner: Runner, cases: Sequence[TestCase], *, judged_subset: bool = False
 ) -> RunResults:
-    return await runner.run(cases, target_fingerprint="fp-test", seed=7, judged_subset=judged_subset)
+    return await runner.run(
+        cases, target_fingerprint="fp-test", seed=7, judged_subset=judged_subset
+    )
 
 
 def values_of(results: RunResults, index: int) -> dict[str, MetricValue]:
     return {v.metric: v for v in results.values[index].values}
+
+
+class DictCache:
+    """A real in-memory ``KVCache`` (the protocol is two methods)."""
+
+    def __init__(self) -> None:
+        self.data: dict[str, bytes] = {}
+
+    def get(self, key: str) -> bytes | None:
+        return self.data.get(key)
+
+    def set(self, key: str, value: bytes) -> None:
+        self.data[key] = value
+
+
+def index_of(request: httpx.Request) -> int:
+    match = re.search(r"Frage (\d+)", json.loads(request.content)["question"])
+    assert match is not None
+    return int(match.group(1))
+
+
+def numbered(count: int, **changes: Any) -> list[Any]:
+    return [make_case(i, question=f"Frage {i}: Kündigungsfrist?", **changes) for i in range(count)]
+
+
+def echo_answer(request: httpx.Request) -> httpx.Response:
+    body = load_example("query_ok.json")
+    return httpx.Response(200, json={**body, "answer": f"Antwort {index_of(request)}"})

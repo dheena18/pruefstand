@@ -55,12 +55,12 @@ async def test_concurrent_tasks_do_not_see_each_others_charges() -> None:
                 await asyncio.sleep(0)
         return tally.requests
 
-    assert await asyncio.gather(worker(1), worker(3), worker(2)) == [1, 3, 2]
+    counts = list(await asyncio.gather(worker(1), worker(3), worker(2)))
+    assert counts == [1, 3, 2]
 
 
 def test_a_failing_charge_is_still_tallied() -> None:
     budget = Budget(max_usd=0.0, max_tokens=None)
-    with tally_charges() as tally:
-        with pytest.raises(BudgetExceeded):
-            budget.charge(response(1.0, 1, 1))
+    with tally_charges() as tally, pytest.raises(BudgetExceeded):
+        budget.charge(response(1.0, 1, 1))
     assert tally.requests == 1
