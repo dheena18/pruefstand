@@ -13,7 +13,7 @@ exhaust memory.
 """
 
 import json
-from collections.abc import Iterator, Sequence
+from collections.abc import Iterable, Iterator, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 from typing import IO
@@ -41,6 +41,45 @@ class Problem:
     detail: str
 
 
+class ProblemLog(list[Problem]):
+    """A list of problems that stores only the first examples but counts every one.
+
+    A hostile file can produce millions of bad rows; keeping one object per row would exhaust
+    memory. ``counts`` (per kind) and ``total`` are exact, the list holds the first
+    ``max_examples`` problems plus the first problem of every kind. Exit codes and statistics must
+    use ``total`` / ``counts``, not ``len()``.
+
+    Args:
+        max_examples: How many problems to keep verbatim.
+
+    Examples:
+        >>> log = ProblemLog(max_examples=1)
+        >>> for n in range(3):
+        ...     log.append(Problem("f", "bad_json", str(n)))
+        >>> (log.total, log.counts, len(log))
+        (3, {'bad_json': 3}, 1)
+    """
+
+    def __init__(self, max_examples: int = 100) -> None:
+        super().__init__()
+        self.max_examples = max_examples
+        self.counts: dict[str, int] = {}
+        self.total = 0
+
+    def append(self, problem: Problem) -> None:
+        """Count ``problem`` and keep it when it is among the first examples or a new kind."""
+        new_kind = problem.kind not in self.counts
+        self.counts[problem.kind] = self.counts.get(problem.kind, 0) + 1
+        self.total += 1
+        if new_kind or len(self) < self.max_examples:
+            super().append(problem)
+
+    def extend(self, problems: Iterable[Problem]) -> None:
+        """Append every problem of ``problems`` (counted individually)."""
+        for problem in problems:
+            self.append(problem)
+
+
 @dataclass(frozen=True)
 class OldpLimits:
     """Size limits for the OLDP loaders (the pinned 1k sample is far below all of them).
@@ -51,7 +90,8 @@ class OldpLimits:
         max_record_bytes: Longest JSON line accepted.
         max_file_bytes: Largest data file accepted (the 1k sample's parquet is 27 MB).
         max_documents: Most decisions one load yields; the full dump is a later scale-up.
-        max_rows: Most rows one pass over a directory reads (citation graph edges).
+        max_rows: Most rows or lines one pass reads per file and per directory, good or bad;
+            the excess is one counted ``too_many_rows`` (the 1k sample has about 1 000).
         max_group_bytes: Largest *uncompressed* parquet row group read (from the footer, before
             decoding). Parquet is streamed one row at a time; dictionary pages can decode far
             larger than the footer says, so ``max_record_bytes`` also caps the decoded row.
@@ -61,8 +101,8 @@ class OldpLimits:
     max_record_bytes: int = 16 * _MIB
     max_file_bytes: int = 512 * _MIB
     max_documents: int = 10_000
-    max_rows: int = 2_000_000
-    max_group_bytes: int = 512 * _MIB
+    max_rows: int = 100_000
+    max_group_bytes: int = 128 * _MIB
 
 
 def data_files(directory: Path) -> list[Path]:
@@ -119,7 +159,42 @@ def iter_rows(
     if path.suffix == ".parquet":
         yield from _parquet_rows(path, columns, limits, problems)
     else:
-        yield from _jsonl_rows(path, limits.max_record_bytes, problems)
+        yield from _jsonl_rows(path, limits, problems)
+
+
+def _cap_reached(source: str, limits: OldpLimits, problems: list[Problem]) -> None:
+    problems.append(Problem(source, "too_many_rows", f"more than {limits.max_rows} rows"))
+
+
+def iter_dir_rows(
+    files: Sequence[Path], columns: Sequence[str], limits: OldpLimits, problems: list[Problem]
+) -> Iterator[tuple[str, dict[str, object]]]:
+    """Yield ``(file name, row)`` over ``files``, at most ``limits.max_rows`` rows in total.
+
+    Args:
+        files: Result of :func:`data_files`.
+        columns: Columns to read (see :func:`iter_rows`).
+        limits: Size limits.
+        problems: Where problems (including ``too_many_rows``) are recorded.
+
+    Yields:
+        The rows in file order; stops with one ``too_many_rows`` problem at the cap.
+    """
+    rows = 0
+    for path in files:
+        for row in iter_rows(path, columns, limits, problems):
+            rows += 1
+            if rows > limits.max_rows:
+                _cap_reached(str(path.parent), limits, problems)
+                return
+            yield path.name, row
+
+
+def valid_id(value: object) -> int | None:
+    """Return ``value`` if it is a positive 63-bit integer (not a bool or float), else ``None``."""
+    if isinstance(value, bool) or not isinstance(value, int):
+        return None
+    return value if 1 <= value < 2**63 else None
 
 
 def _parquet_rows(
@@ -138,9 +213,14 @@ def _parquet_rows(
                 problems.append(Problem(f"{path.name}[{index}]", "row_group_too_large", detail))
             else:
                 groups.append(index)
+        examined = 0
         for batch in parquet.iter_batches(
             batch_size=_BATCH_ROWS, row_groups=groups, columns=wanted
         ):
+            examined += 1
+            if examined > limits.max_rows:
+                _cap_reached(path.name, limits, problems)
+                return
             if batch.nbytes > limits.max_record_bytes:
                 detail = f"decoded row of {batch.nbytes} bytes > {limits.max_record_bytes}"
                 problems.append(Problem(path.name, "record_too_large", detail))
@@ -151,7 +231,7 @@ def _parquet_rows(
 
 
 def _jsonl_rows(
-    path: Path, max_record_bytes: int, problems: list[Problem]
+    path: Path, limits: OldpLimits, problems: list[Problem]
 ) -> Iterator[dict[str, object]]:
     try:
         handle = path.open("rb")
@@ -160,11 +240,15 @@ def _jsonl_rows(
         return
     with handle:
         number = 0
+        max_record_bytes = limits.max_record_bytes
         while True:
             line = handle.readline(max_record_bytes + 1)
             if not line:
                 return
             number += 1
+            if number > limits.max_rows:
+                _cap_reached(path.name, limits, problems)
+                return
             where = f"{path.name}:{number}"
             if len(line) > max_record_bytes and not line.endswith(b"\n"):
                 _drain(handle)
@@ -188,7 +272,7 @@ def _drain(handle: IO[bytes]) -> None:
 def _parse_line(line: bytes, where: str, problems: list[Problem]) -> dict[str, object] | None:
     try:
         parsed = json.loads(line)
-    except (json.JSONDecodeError, UnicodeDecodeError, RecursionError) as error:
+    except (ValueError, RecursionError) as error:  # JSONDecodeError, 4300-digit ints, nesting
         problems.append(Problem(where, "bad_json", f"{type(error).__name__}: {error}"[:200]))
         return None
     if not isinstance(parsed, dict):

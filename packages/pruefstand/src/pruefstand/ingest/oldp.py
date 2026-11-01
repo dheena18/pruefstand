@@ -44,8 +44,10 @@ from pruefstand.ingest.records import (
     OldpDataError,
     OldpLimits,
     Problem,
+    ProblemLog,
     data_files,
-    iter_rows,
+    iter_dir_rows,
+    valid_id,
 )
 
 __all__ = ["OldpDataError", "OldpLimits", "OldpLoader", "OldpStats", "main"]
@@ -62,7 +64,7 @@ class OldpStats:
 
     decisions: int = 0
     empty: int = 0
-    problems: list[Problem] = field(default_factory=list)
+    problems: ProblemLog = field(default_factory=ProblemLog)
 
 
 def _text(value: object) -> str:
@@ -72,12 +74,29 @@ def _text(value: object) -> str:
 
 
 def _decision_date(value: object) -> date | None:
+    if isinstance(value, datetime):
+        return value.date()
     if isinstance(value, date):
         return value
     try:
-        return date.fromisoformat(str(value)[:10])
+        return date.fromisoformat(str(value).strip()[:10])
     except ValueError:
         return None
+
+
+def _unencodable_field(row: dict[str, object]) -> str:
+    """Name of the first text field holding a lone surrogate (it cannot be encoded), else ``""``."""
+    court = row.get("court")
+    values = (
+        {**row, **{f"court.{k}": v for k, v in court.items()}} if isinstance(court, dict) else row
+    )
+    for name, value in values.items():
+        if isinstance(value, str) and not value.isascii():
+            try:
+                value.encode("utf-8")
+            except UnicodeEncodeError:
+                return str(name)
+    return ""
 
 
 class OldpLoader:
@@ -113,25 +132,27 @@ class OldpLoader:
                 Problem(str(raw_dir), "no_files", "no parquet or jsonl file")
             )
         seen: set[int] = set()
-        for path in files:
-            for row in iter_rows(path, COLUMNS, self.limits, self.stats.problems):
-                if self.stats.decisions >= self.limits.max_documents:
-                    detail = f"more than {self.limits.max_documents} decisions"
-                    self.stats.problems.append(Problem(path.name, "too_many_documents", detail))
-                    return
-                doc = self._document(row, path.name, seen)
-                if doc is not None:
-                    self.stats.decisions += 1
-                    self.stats.empty += 0 if doc.text else 1
-                    yield doc
+        for name, row in iter_dir_rows(files, COLUMNS, self.limits, self.stats.problems):
+            if self.stats.decisions >= self.limits.max_documents:
+                detail = f"more than {self.limits.max_documents} decisions"
+                self.stats.problems.append(Problem(name, "too_many_documents", detail))
+                return
+            doc = self._document(row, name, seen)
+            if doc is not None:
+                self.stats.decisions += 1
+                self.stats.empty += 0 if doc.text else 1
+                yield doc
 
     def _fail(self, source: str, kind: str, detail: str) -> None:
         self.stats.problems.append(Problem(source, kind, detail))
 
     def _document(self, row: dict[str, object], source: str, seen: set[int]) -> Document | None:
         number, content, court = row.get("id"), row.get("content"), row.get("court")
-        if isinstance(number, bool) or not isinstance(number, int) or number < 1:
+        bad_field = _unencodable_field(row)
+        if valid_id(number) is None or not isinstance(number, int):
             self._fail(source, "bad_record", f"id is not a positive integer: {number!r}"[:100])
+        elif bad_field:
+            self._fail(f"{source}#{number}", "bad_record", f"lone surrogate in {bad_field}")
         elif not isinstance(content, str):
             self._fail(f"{source}#{number}", "bad_record", "content is not text")
         elif court is not None and not isinstance(court, dict):
@@ -160,7 +181,13 @@ class OldpLoader:
             jurisdiction_field if isinstance(jurisdiction_field, str) else None,
             level_field if isinstance(level_field, str) else None,
         )
-        file_number, day = _text(row.get("file_number")), _text(row.get("date"))
+        file_number = _text(row.get("file_number"))
+        decided = _decision_date(row.get("date"))
+        if decided is None and _text(row.get("date")):
+            self._fail(
+                f"oldp-{number}", "bad_date", f"not a date: {_text(row.get('date'))!r}"[:100]
+            )
+        day = decided.isoformat() if decided else ""
         metadata = {
             "court": name, "court_level": kind.level, "jurisdiction": kind.jurisdiction,
             "tenant_domain": tenant_domain(kind.jurisdiction, text), "file_number": file_number,
@@ -170,7 +197,7 @@ class OldpLoader:
         return Document(
             doc_id=DocId(f"oldp-{number}"), tenant=UNASSIGNED, source=SOURCE, lang=Lang.DE,
             title=" ".join(part for part in (name, day, file_number) if part), law_abbrev=None,
-            version_date=_decision_date(row.get("date")), text=text, license=LICENSE, url=None,
+            version_date=decided, text=text, license=LICENSE, url=None,
             metadata={k: v for k, v in metadata.items() if v},
         )  # fmt: skip
 
@@ -204,10 +231,12 @@ def main(argv: Sequence[str] | None = None) -> int:
     stats = loader.stats
     if args.stats:
         line = f"decisions={stats.decisions} chunks={chunks} no_sections={no_sections}"
-        sys.stdout.write(f"{line} errors={len(stats.problems)} trailer_chars={trailer_chars}\n")
+        sys.stdout.write(f"{line} errors={stats.problems.total} trailer_chars={trailer_chars}\n")
+    if stats.problems.total > len(stats.problems):
+        sys.stderr.write(f"error: counts per kind: {stats.problems.counts}\n")
     for problem in stats.problems[:20]:
         sys.stderr.write(f"error: {problem.source}: {problem.kind}: {problem.detail}\n")
-    return 1 if stats.problems else 0
+    return 1 if stats.problems.total else 0
 
 
 if __name__ == "__main__":

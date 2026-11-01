@@ -1588,7 +1588,7 @@ requires-dist = [
     { name = "lxml", specifier = ">=5.3" },
     { name = "numpy" },
     { name = "polars" },
-    { name = "pyarrow" },
+    { name = "pyarrow", specifier = ">=18" },
     { name = "pydantic", specifier = ">=2.7" },
     { name = "pydantic-settings" },
     { name = "pyyaml" },
