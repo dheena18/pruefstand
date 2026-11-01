@@ -1,0 +1,26 @@
+{
+  "answer": "Einen Monat zum Ende eines Kalendermonats (§ 622 Abs. 2 Nr. 1 BGB).",
+  "citations": ["§ 622 Abs. 2 Nr. 1 BGB"],
+  "chunks": [
+    {
+      "chunk_id": "gii-bgb-622-c1",
+      "doc_id": "gii-bgb-622",
+      "tenant_id": "public",
+      "text": "Das Arbeitsverhältnis eines Arbeiters oder eines Angestellten kann mit einer Frist von vier Wochen zum Fünfzehnten oder zum Ende eines Kalendermonats gekündigt werden.",
+      "score": 0.83,
+      "rank": 1,
+      "used_in_prompt": true
+    },
+    {
+      "chunk_id": "gii-bgb-622-c2",
+      "doc_id": "gii-bgb-622",
+      "tenant_id": "public",
+      "text": "Für eine Kündigung durch den Arbeitgeber beträgt die Kündigungsfrist, wenn das Arbeitsverhältnis in dem Betrieb oder Unternehmen zwei Jahre bestanden hat, einen Monat zum Ende eines Kalendermonats.",
+      "score": 0.71,
+      "rank": 2
+    }
+  ],
+  "refused": false,
+  "model": "qwen3-1.7b-q4_k_m",
+  "usage": {"prompt_tokens": 412, "completion_tokens": 21}
+}

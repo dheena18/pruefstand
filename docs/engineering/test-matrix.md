@@ -105,7 +105,7 @@ owning module's unit test dir (`pt/unit/<module>/`, `rd/unit/…`).
 | `Perturbation` (T4.4 part) | `core.protocols` | T4.4 | `pt/unit/perturb/test_*.py` | every deterministic perturbation implements it | covered |
 | `LLMPerturbation` (T4.5 part) | `core.protocols` | T4.5 | `pt/unit/perturb/test_*.py` | every LLM perturbation implements it | covered |
 | `EvidenceRecord` | `core.models.evidence` | T6.4 | `pt/unit/report/test_evidence.py` | validates against exported schema; hashes; no "konform" | covered |
-| `ScoreTable` (T1.6 part: model) | `core.models.gate` | T1.6 | `pt/unit/gate/test_gate_models.py` | 3 aligned tuples + `slices` valid; mismatched lengths → `ValidationError` | covered |
+| `ScoreTable` (T1.6 part: model) | `core.models.gate` | T1.6 | `pt/unit/gate/test_gate_models.py` | 3 aligned tuples + `slices` valid; mismatched lengths, duplicate `case_ids`, NaN/inf values → `ValidationError` | covered |
 | `ScoreTable` (T1.7 part: `pair_runs`) | `core.models.gate` | T1.7 | `pt/unit/gate/test_tables.py` | `pair_runs` equals hand-paired tables, cases in one run only dropped | covered |
 | `BootstrapResult` | `core.models.gate` | T1.6 | `test_bootstrap.py` | every field asserted in cases (a)–(j) | covered |
 | `HardFailFinding`, `SliceDecision`, `GateReport` (R9: `baseline_run_id: RunId \| None`), `CauseCode`, `CAUSE_MESSAGES` | `core.models.gate` | T1.7 | `test_policy.py`, `test_cause.py`, `test_hard_fail.py` | R1–R18; every code has a message; evidence ≤ 200 chars, canary masked; `max_drop`/`max_value`/`n_clusters`; `not_applicable_counts`; **R9:** `informational_reason` set ⇒ `gated is False` (validator); `no_baseline=True` with `baseline_run_id=None` valid | covered |
@@ -152,7 +152,7 @@ owning module's unit test dir (`pt/unit/<module>/`, `rd/unit/…`).
 
 | Symbol | Module | Task | Test file | Test cases (short) | Status |
 | --- | --- | --- | --- | --- | --- |
-| `HttpTargetAdapter.info`, `.query`, `.aclose` | `adapters.http` | T1.3 | `test_http.py`, `pt/contract/test_target_api_v1.py` | 503/400/timeout/invalid JSON; auth header not logged; info 404 → `None`; random `request_id`; contract suite; chunk with `used_in_prompt` parsed (R9) | covered |
+| `HttpTargetAdapter.info`, `.query`, `.aclose` | `adapters.http` | T1.3 | `test_http.py`, `pt/contract/test_target_api_v1.py` | 503/400/timeout/invalid JSON; auth header not logged; info 404 → `None`; random `request_id`; contract suite; chunk with `used_in_prompt` parsed (R9); chunk without `tenant_id` parses to `None`; untrusted target (D352, `test_http_hardening.py`): size cap, no redirects, total deadline, hostile JSON, token redaction, call-time auth env, no retries; bounded parsing (citations bomb), tolerant third-party responses, loopback transport tests (`test_http_untrusted.py`, `test_http_hygiene.py`, `test_http_loopback.py`) | covered |
 | `HttpTargetAdapter.retrieve` (**R11** D218) | `adapters.http` | T1.3 | `test_http.py`, `pt/contract/test_target_api_v1.py` | `POST /v1/retrieve` with the same random `request_id` rule → `RetrieveResponse`; 404 / 405 → `None` (caller falls back to `query`); 503 retried like `query`; `/v1/retrieve` path; contract suite validates against the OpenAPI file. Missing case T1.3 adds (DEV12-07): response containing `answer` → `TargetError` | covered |
 | `build_adapter` (T1.3 part) | `adapters.factory` | T1.3 | `test_factory.py` | `http`; unknown → `ConfigError`; no store/judges import | covered |
 | `build_adapter` (T10.3 part: new types) | `adapters.factory` | T10.3 | `test_factory.py` | each new adapter type resolves; unknown still → `ConfigError` | covered |
@@ -162,17 +162,17 @@ owning module's unit test dir (`pt/unit/<module>/`, `rd/unit/…`).
 
 | Symbol | Module | Task | Test file | Test cases (short) | Status |
 | --- | --- | --- | --- | --- | --- |
-| `MetricRegistry.default`, `.get`, `.all`, `.directions`, `KNOWN_METRICS` (T1.5b part) | `metrics.registry` | T1.5b | `test_registry.py` | deterministic names == `KNOWN_METRICS` (incl. `citation_grounded`, `system_prompt_similarity`, R9); directions for 3 metrics | covered |
+| `MetricRegistry.default`, `.get`, `.all`, `.directions`, `KNOWN_METRICS` (T1.5b part) | `metrics.registry` | T1.5b | `test_registry.py` | deterministic names == `KNOWN_METRICS` minus judged (incl. `citation_grounded`, `system_prompt_similarity`, R9); constructor and `default()` fail on drift/duplicates; directions for 3 metrics | covered |
 | `MetricRegistry` (T5.2b part: judged metrics) | `metrics.registry` | T5.2b | `test_registry.py` | judged metrics registered; `.all()` covers deterministic + judged names | covered |
 | `evaluate_deterministic` | `metrics.registry` | T1.5b | `test_registry.py` | factual case + response without chunks → retrieval/tenant metrics NA, one value per metric | covered |
 | `context_recall` | `metrics.deterministic.retrieval` | T1.5b | `test_retrieval.py` | 0.5; `chunks=None` → NA | covered |
 | `ndcg_at_k` | `metrics.deterministic.retrieval` | T1.5b | `test_retrieval.py` | 0.9197 worked value | covered |
 | `citation_precision`, `citation_recall`, `citation_f1` | `metrics.deterministic.citation` | T1.5b | `test_citation_metrics.py` | 1/1/1, 0.5/1/0.667, Abs. mismatch (0.5 credit, R9), none predicted, gold empty → NA | covered |
-| `citation_grounded` (R9 X3.2) | `metrics.deterministic.citation` | T1.5b | `test_citation_grounded.py` | cited § present in a retrieved chunk's `citation_key` or text → 1.0; hallucinated § → 0.0; no predicted citation → NA | covered |
-| `system_prompt_similarity` (R9 X3.2, report-only) | `metrics.deterministic.security` | T1.5b | `test_system_prompt_similarity.py` | verbatim system-prompt sentence → high overlap; unrelated answer → ≈ 0; EN paraphrase rows | covered |
-| `security_normalise`, `contains_forbidden` | `metrics.deterministic.normalise` | T1.5b | `test_normalise.py` | canary spellings; `re:` semantic form with „tägige“; invalid regex at construction | covered |
-| `canary_leak` | `metrics.deterministic.security` | T1.5b | `test_security.py` | token in chunk → 1 | covered |
-| `tenant_leak` | `metrics.deterministic.security` | T1.5b | `test_security.py` | foreign → 1, `shared_public` → 0, `None` → NA | covered |
+| `citation_grounded` (R9 X3.2) | `metrics.deterministic.citation` | T1.5b | `test_citation_grounded.py` | cited § present in a retrieved chunk's text (no `citation_key` in API v1, D348) → 1.0; hallucinated § → 0.5/0.0; Abs. mismatch → ungrounded; no predicted citation / `chunks=None` → NA | covered |
+| `system_prompt_similarity` (R9 X3.2, report-only) | `metrics.deterministic.security` | T1.5b | `test_system_prompt_similarity.py` | verbatim sentence → 1.0; 6-word run → 2/11; unrelated → 0.0; DE and EN sentences (best pair); canary/`re:` entries ignored; factual → NA | covered |
+| `security_normalise`, `contains_forbidden` | `metrics.deterministic.normalise` | T1.5b | `test_normalise.py` | canary spellings (NBSP, `_`, `-`); `re:` semantic form with „tägige“ incl. NFD and `siebenundvierzigtägige`; number words 0-100; invalid / empty / over-long / empty-matching regex → `ValueError` at `compile_forbidden`; linear-time property; canary not swallowed by earlier `canary` words; ReDoS patterns rejected + timeout → `status=error`; Cf/homoglyph/width/markdown evasions; `ß` in `re:` | covered |
+| `canary_leak` | `metrics.deterministic.security` | T1.5b | `test_security.py` | token in chunk → 1; reformatted token in answer; `re:` fact; no forbidden strings / `system_prompt_extraction` → NA; invalid entry → `status=error` | covered |
+| `tenant_leak` | `metrics.deterministic.security` | T1.5b | `test_security.py` | foreign → 1 (also with other `tenant_id` missing, D349), `shared_public` → 0, only-`None` → NA | covered |
 | `injection_success` | `metrics.deterministic.security` | T1.5b | `test_security.py` | marker → 1; factual → NA | covered |
 | `system_prompt_leak` | `metrics.deterministic.security` | T1.5b | `test_security.py` | sentence in answer → 1 | covered |
 | `refusal_correct`, `false_refusal` | `metrics.deterministic.refusal` | T1.5b | `test_refusal.py` | phrase match; factual refused; `refused=False` flag with a refusal phrase → refused (D116) | covered |

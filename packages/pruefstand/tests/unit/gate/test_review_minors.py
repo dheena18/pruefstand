@@ -91,7 +91,15 @@ def test_zero_tolerance_is_relative_to_largest_diff() -> None:
     assert _boot(_with_nonzero(9, tiny=2e-12)).method == "bootstrap"  # counts as non-zero
 
 
-@pytest.mark.parametrize("rng", [None, 7, "x"])
+class _GeneratorLike:
+    def integers(self, low: int, high: int, size: tuple[int, int]) -> np.ndarray:
+        return np.zeros(size, dtype=np.int64)
+
+
+@pytest.mark.parametrize(
+    "rng",
+    [None, 7, "x", np.random.RandomState(1), _GeneratorLike()],
+)
 def test_rng_must_be_a_generator(rng: object) -> None:
     with pytest.raises(GateInputError, match="rng"):
         paired_cluster_bootstrap(
@@ -126,7 +134,7 @@ def test_sign_test_matches_binomial_cdf(m: int) -> None:
     x = rng.choice([-1.0, 1.0], size=m).astype(np.float64)
     n_pos = int((x > 0).sum())
     assert sign_test_p(x) == pytest.approx(
-        float(sps.binom.cdf(n_pos, m, 0.5)), rel=1e-9, abs=1e-300
+        float(sps.binom.cdf(n_pos, m, 0.5)), rel=1e-14, abs=1e-300
     )
 
 
@@ -136,3 +144,54 @@ def test_importing_the_gate_does_not_import_scipy() -> None:
         " sys.exit('scipy' in sys.modules)"
     )
     assert subprocess.run([sys.executable, "-c", code], check=False).returncode == 0  # noqa: S603
+
+
+def test_sign_test_upper_tail_matches_binomial_cdf_exactly() -> None:
+    m = 1001
+    x = np.full(m, -1.0)
+    x[: m - 1] = 1.0  # n_pos = m - 1, so P(X <= m - 1) is just below 1
+    assert sign_test_p(x) == float(sps.binom.cdf(m - 1, m, 0.5))
+
+
+def test_multi_case_clusters_match_an_independent_recomputation() -> None:
+    sizes = [1, 2, 3, 4, 5] * 8  # 40 clusters of unequal size
+    rng0 = np.random.default_rng(11)
+    ids = np.concatenate([np.full(n, f"c{i:02d}") for i, n in enumerate(sizes)])
+    d = rng0.normal(-0.03, 0.2, size=ids.size)
+    k, b, seed = len(sizes), 1500, 9
+    idx = np.random.default_rng(seed).integers(0, k, size=(b, k))
+    groups = [d[ids == f"c{i:02d}"] for i in range(k)]  # sorted-id order == creation order
+    csum = np.array([g.sum() for g in groups])
+    ccount = np.array([g.size for g in groups], dtype=float)
+    boot = csum[idx].sum(axis=1) / ccount[idx].sum(axis=1)  # ratio of sums: weight = case count
+    mean = float(d.mean())
+    c = math.sqrt(k / (k - 1)) * sps.t.isf(ALPHA, k - 1) / sps.norm.isf(ALPHA)
+    bc = mean + (boot - mean) * c
+    r = paired_cluster_bootstrap(
+        d, ids, n_resamples=b, confidence=0.95, rng=np.random.default_rng(seed)
+    )
+    assert r.mean_diff == pytest.approx(mean, abs=1e-15)
+    assert r.p_value == pytest.approx((1 + (bc >= 0).sum()) / (b + 1), abs=1e-15)
+    assert r.se == pytest.approx(bc.std(ddof=1), rel=1e-12)
+    lo, hi = np.quantile(bc, [0.025, 0.975])
+    assert (r.ci_low, r.ci_high) == pytest.approx((lo, hi), abs=1e-12)
+    naive = np.array([g.mean() for g in groups])[idx].mean(axis=1)  # wrong: weight by cluster
+    assert not np.allclose(naive, boot)  # the reference really distinguishes the two weightings
+
+
+@pytest.mark.parametrize("code", ["import pruefstand", "from pruefstand.cli import app"])
+def test_no_scipy_on_package_and_cli_import(code: str) -> None:
+    probe = f"import sys; {code}; sys.exit('scipy' in sys.modules)"
+    assert subprocess.run([sys.executable, "-c", probe], check=False).returncode == 0  # noqa: S603
+
+
+def test_no_scipy_when_the_cli_runs_help() -> None:
+    probe = (
+        "import sys\n"
+        "from typer.testing import CliRunner\n"
+        "from pruefstand.cli import app\n"
+        "res = CliRunner().invoke(app, ['--help'])\n"
+        "sys.exit(res.exit_code or ('scipy' in sys.modules))"
+    )
+    res = subprocess.run([sys.executable, "-c", probe], check=False, capture_output=True)  # noqa: S603
+    assert res.returncode == 0, res.stderr.decode()[-300:]
