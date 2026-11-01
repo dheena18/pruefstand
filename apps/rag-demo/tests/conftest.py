@@ -29,7 +29,7 @@ def _scrub_response(response: dict[str, Any]) -> dict[str, Any]:
 def vcr_config() -> dict[str, object]:
     """Replay-only vcr with an allow-list of headers (no Authorization ever reaches a cassette)."""
     return {
-        "match_on": ["method", "path"],
+        "match_on": ["method", "path", "body"],
         "before_record_request": _scrub_request,
         "before_record_response": _scrub_response,
     }

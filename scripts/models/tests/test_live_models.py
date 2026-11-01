@@ -36,7 +36,7 @@ def test_compose_defaults_equal_the_pins() -> None:
     (entry,) = load_models(ROOT / "infra" / "models" / "live-models.yaml")
     (emb,) = PINS["embeddings"]
     assert f"LIVE_LLM_GGUF:-{entry.file}" in COMPOSE
-    assert f"LIVE_LLM_SHA256:-{entry.sha256}" in COMPOSE
+    assert f"MODEL_PIN: {entry.file}={entry.sha256}" in COMPOSE
     assert f"--model-id {emb['repo']}" in COMPOSE
     assert f"--revision {emb['revision']}" in COMPOSE
 

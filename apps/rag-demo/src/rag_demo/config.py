@@ -29,7 +29,27 @@ class Settings(BaseSettings):
     git_sha: str = "unknown"
     image_digest: str | None = None
     llama_cpp_version: str = "unknown"
-    model_sha256: str = "unknown"
+    model_sha256: str = ""
+    model_file: str = ""
+    model_pin: str = ""
+
+
+def resolve_model_sha(settings: Settings) -> str:
+    """SHA-256 of the served GGUF: ``MODEL_SHA256`` if set, else the pin for the pinned file.
+
+    ``MODEL_PIN`` is ``<file>=<sha256>``. With another ``MODEL_FILE`` (an overridden generator)
+    and no explicit hash the answer is ``unknown``, never a hash of a different file.
+
+    Examples:
+        >>> resolve_model_sha(Settings(model_file="a.gguf", model_pin="a.gguf=abc"))
+        abc
+        >>> resolve_model_sha(Settings(model_file="b.gguf", model_pin="a.gguf=abc"))
+        unknown
+    """
+    if settings.model_sha256:
+        return settings.model_sha256
+    pinned_file, _, pinned_sha = settings.model_pin.partition("=")
+    return pinned_sha if pinned_file and pinned_file == settings.model_file else "unknown"
 
 
 def parse_config(text: str) -> RagConfig:

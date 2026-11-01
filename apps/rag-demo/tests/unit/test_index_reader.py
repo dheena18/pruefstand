@@ -7,7 +7,7 @@ from pathlib import Path
 import pytest
 from rd_support import CONFIGS, REPO, SLICE
 
-from rag_demo.config import Settings, parse_config, prompt_path
+from rag_demo.config import Settings, parse_config, prompt_path, resolve_model_sha
 from rag_demo.errors import ConfigError, CorpusError
 from rag_demo.index import index_text, point_id, read_corpus
 
@@ -81,3 +81,14 @@ def test_settings_read_the_environment(monkeypatch: pytest.MonkeyPatch) -> None:
     settings = Settings()
     assert settings.collection == "other"
     assert settings.qdrant_url == "http://qdrant:6333"
+
+
+def test_model_sha_is_only_reported_for_the_served_file() -> None:
+    pin = "a.gguf=" + "a" * 64
+    assert resolve_model_sha(Settings(model_file="a.gguf", model_pin=pin)) == "a" * 64
+    assert resolve_model_sha(Settings(model_file="b.gguf", model_pin=pin)) == "unknown"
+    assert (
+        resolve_model_sha(Settings(model_file="b.gguf", model_pin=pin, model_sha256="c" * 64))
+        == "c" * 64
+    )
+    assert resolve_model_sha(Settings()) == "unknown"

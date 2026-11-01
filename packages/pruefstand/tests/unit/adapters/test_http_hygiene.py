@@ -12,7 +12,7 @@ from concurrent.futures import ThreadPoolExecutor
 import httpx
 import pytest
 import respx
-from contract.adapter_contract import load_example
+from contract.adapter_contract import load_openapi_example
 
 from pruefstand.adapters.http import HttpTargetAdapter
 from pruefstand.core.config import HttpTargetConfig
@@ -217,10 +217,10 @@ async def test_wire_parsing_does_not_use_the_default_executor(
     loop.set_default_executor(default)
     release = threading.Event()
     blocker = loop.run_in_executor(None, release.wait)  # occupies the only default worker
-    router.post("/v1/query").respond(200, json=load_example("query_ok.json"))
+    router.post("/v1/query").respond(200, json=load_openapi_example("query_ok.json"))
     adapter = HttpTargetAdapter(HttpTargetConfig(type="http", url=BASE, timeout_s=2))
     try:
-        assert (await adapter.query(REQ)).answer == load_example("query_ok.json")["answer"]
+        assert (await adapter.query(REQ)).answer.startswith("Einen Monat")
     finally:
         release.set()
         await blocker

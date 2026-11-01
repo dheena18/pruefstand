@@ -91,3 +91,32 @@ def test_health_counters_are_ints(client: TestClient) -> None:
     assert body["status"] == "ok"
     for key in ("think_stripped", "truncated_chunks", "requests"):
         assert isinstance(body["stats"][key], int)
+
+
+def test_validation_error_does_not_echo_the_question(client: TestClient) -> None:
+    resp = client.post("/v1/query", json=_request(question="Geheim" * 400))
+    assert resp.status_code == 422
+    assert "Geheim" not in resp.text
+
+
+def test_overlong_ids_are_422(client: TestClient) -> None:
+    assert client.post("/v1/query", json={**_request(), "request_id": "r" * 129}).status_code == 422
+    assert client.post("/v1/query", json=_request(tenant="t" * 65)).status_code == 422
+
+
+def test_oversized_body_is_413(client: TestClient) -> None:
+    resp = client.post(
+        "/v1/query",
+        content=b"{" + b" " * 20_000 + b"}",
+        headers={"content-type": "application/json"},
+    )
+    assert resp.status_code == 413
+
+
+@respx.mock
+def test_collection_metadata_without_tenants_is_503(client: TestClient) -> None:
+    body = {"result": {"config": {"metadata": {"corpus_version": "slice-x"}}}}
+    respx.get("http://qdrant.test:6333/collections/slice_v1").mock(
+        return_value=httpx.Response(200, json=body)
+    )
+    assert client.post("/v1/query", json=_request()).status_code == 503

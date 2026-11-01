@@ -8,10 +8,10 @@ class QueryRequest(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
-    tenant_id: str
+    tenant_id: str = Field(min_length=1, max_length=64)
     question: str = Field(min_length=1, max_length=2000)
     top_k: int | None = Field(default=None, ge=1, le=50)
-    request_id: str
+    request_id: str = Field(min_length=1, max_length=128)
 
 
 class RetrievedChunk(BaseModel):

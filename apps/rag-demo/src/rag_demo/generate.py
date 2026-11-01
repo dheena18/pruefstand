@@ -62,8 +62,13 @@ def count_truncated(hits: list[Hit], cfg: RagConfig) -> int:
     return sum(1 for h in hits if truncate_to_tokens(h.text, cfg.chunk_prompt_tokens) != h.text)
 
 
+_CLOSING_TAG = re.compile(r"</(?=dokument)", re.IGNORECASE)
+
+
 def _guarded(text: str) -> str:
-    return "\n".join(line for line in text.split("\n") if not _INSTRUCTION.search(line))
+    """Drop instruction-like lines and defuse a ``</dokument>`` that would close the block early."""
+    kept = (line for line in text.split("\n") if not _INSTRUCTION.search(line))
+    return _CLOSING_TAG.sub("&lt;/", "\n".join(kept))
 
 
 def _document_blocks(hits: list[Hit], cfg: RagConfig) -> str:

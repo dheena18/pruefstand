@@ -122,7 +122,9 @@ services:
       LLM_URL: http://llm:8080
       EMBED_URL: http://embed:80
       LLAMA_CPP_VERSION: ${LIVE_LLAMA_CPP_VERSION:-b12019}
-      MODEL_SHA256: ${LIVE_LLM_SHA256:-74a4da8c9fdbcd15bd1f6d01d621410d31c6fc00986f5eb687824e7b93d7a9db}
+      MODEL_FILE: ${LIVE_LLM_GGUF:-qwen2.5-0.5b-instruct-q4_k_m.gguf}
+      MODEL_PIN: qwen2.5-0.5b-instruct-q4_k_m.gguf=74a4da8c9fdbcd15bd1f6d01d621410d31c6fc00986f5eb687824e7b93d7a9db
+      MODEL_SHA256: ${LIVE_LLM_SHA256:-}
     ports:
       - "127.0.0.1:${RAG_DEMO_HOST_PORT:-8000}:8000"
     mem_limit: 1g

@@ -57,3 +57,9 @@ Environment (`config.Settings`): `RAG_CONFIG` (path of the YAML inside the conta
 `tests/unit` (pure functions on real slice text, respx for HTTP plumbing, vcr cassettes recorded from the real
 llama.cpp and TEI servers by `make cassettes`), `tests/contract` (OpenAPI), `tests/integration`
 (Testcontainers Qdrant + TEI), `tests/live` (the running `live` stack).
+
+## Open follow-ups
+
+- Build and Trivy-scan the rag-demo image in `build-images.yml`, push and sign it: T6.2b (`push-sign`).
+- Check the TEI weights SHA-256 (`live-models.yaml` `weights_sha256`) in the live stack, not only in the integration fixture: T1.12.
+- Measure the p95 margin (14.2 s against 15 s on the VM) and the guard-on injection result on the hosted runner: T1.12.

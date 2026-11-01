@@ -5,7 +5,7 @@ from collections.abc import AsyncIterator, Iterator
 import httpx
 import pytest
 import respx
-from contract.adapter_contract import load_example
+from contract.adapter_contract import load_example, load_openapi_example
 
 from pruefstand.adapters.http import HttpTargetAdapter
 from pruefstand.core.config import HttpTargetConfig
@@ -40,15 +40,37 @@ async def adapter() -> AsyncIterator[HttpTargetAdapter]:
 async def test_query_ok_parses_answer_citations_and_chunks(
     router: respx.MockRouter, adapter: HttpTargetAdapter
 ) -> None:
-    router.post("/v1/query").respond(200, json=load_example("query_ok.json"))
+    router.post("/v1/query").respond(200, json=load_openapi_example("query_ok.json"))
     response = await adapter.query(request())
+    assert response.answer == "Einen Monat zum Ende eines Kalendermonats (§ 622 Abs. 2 Nr. 1 BGB)."
+    assert response.citations == ("§ 622 Abs. 2 Nr. 1 BGB",)
+    assert response.chunks is not None
+    assert response.chunks[0].doc_id == "gii-bgb-622"
+    assert response.chunks[0].used_in_prompt is True
+    assert response.chunks[1].used_in_prompt is None
+
+
+async def test_recorded_query_ok_parses(
+    router: respx.MockRouter, adapter: HttpTargetAdapter
+) -> None:
     example = load_example("query_ok.json")  # recorded from the real rag-demo (T1.13)
+    router.post("/v1/query").respond(200, json=example)
+    response = await adapter.query(request())
     assert response.answer == example["answer"]
     assert response.citations == tuple(example["citations"])
     assert response.chunks is not None
-    assert response.chunks[0].doc_id == example["chunks"][0]["doc_id"]
-    assert response.chunks[0].used_in_prompt is True
-    assert response.chunks[1].used_in_prompt is example["chunks"][1].get("used_in_prompt")
+    assert [c.chunk_id for c in response.chunks] == [c["chunk_id"] for c in example["chunks"]]
+    assert all(c.used_in_prompt is True for c in response.chunks)
+
+
+async def test_recorded_refusal_parses(
+    router: respx.MockRouter, adapter: HttpTargetAdapter
+) -> None:
+    example = load_example("query_refused.json")
+    router.post("/v1/query").respond(200, json=example)
+    response = await adapter.query(request())
+    assert response.refused is True
+    assert len(response.chunks or ()) == len(example["chunks"])
 
 
 async def test_query_without_chunks_gives_none(
@@ -68,10 +90,10 @@ async def test_chunk_without_tenant_id_parses(
 
 
 async def test_refused_example_parses(router: respx.MockRouter, adapter: HttpTargetAdapter) -> None:
-    router.post("/v1/query").respond(200, json=load_example("query_refused.json"))
+    router.post("/v1/query").respond(200, json=load_openapi_example("query_refused.json"))
     response = await adapter.query(request())
     assert response.refused is True
-    assert len(response.chunks or ()) == len(load_example("query_refused.json")["chunks"])
+    assert response.chunks == ()
 
 
 @pytest.mark.parametrize(
@@ -133,7 +155,7 @@ async def test_auth_header_sent_and_secret_never_logged(
     capfd: pytest.CaptureFixture[str],
 ) -> None:
     monkeypatch.setenv("T", "s3cr3t-value-123456")
-    route = router.post("/v1/query").respond(200, json=load_example("query_ok.json"))
+    route = router.post("/v1/query").respond(200, json=load_openapi_example("query_ok.json"))
     adapter = HttpTargetAdapter(HttpTargetConfig(type="http", url=BASE, auth_env="T"))
     with caplog.at_level(logging.DEBUG):
         await adapter.query(request())
@@ -150,7 +172,7 @@ async def test_auth_header_sent_and_secret_never_logged(
 async def test_no_auth_header_without_auth_env(
     router: respx.MockRouter, adapter: HttpTargetAdapter
 ) -> None:
-    route = router.post("/v1/query").respond(200, json=load_example("query_ok.json"))
+    route = router.post("/v1/query").respond(200, json=load_openapi_example("query_ok.json"))
     await adapter.query(request())
     assert "authorization" not in route.calls[0].request.headers
 
@@ -182,7 +204,7 @@ async def test_info_server_error_raises(
 async def test_request_ids_are_random_and_never_the_case_id(
     router: respx.MockRouter, adapter: HttpTargetAdapter
 ) -> None:
-    route = router.post("/v1/query").respond(200, json=load_example("query_ok.json"))
+    route = router.post("/v1/query").respond(200, json=load_openapi_example("query_ok.json"))
     await adapter.query(request("case-0001"))
     await adapter.query(request("case-0001"))
     bodies = [json.loads(call.request.content) for call in route.calls]
@@ -246,7 +268,9 @@ async def test_aclose_is_idempotent_and_query_after_close_raises(
 
 
 async def test_base_url_with_path_prefix_is_kept(router: respx.MockRouter) -> None:
-    route = router.post("/api/rag/v1/query").respond(200, json=load_example("query_ok.json"))
+    route = router.post("/api/rag/v1/query").respond(
+        200, json=load_openapi_example("query_ok.json")
+    )
     adapter = HttpTargetAdapter(HttpTargetConfig(type="http", url=BASE + "/api/rag/"))
     await adapter.query(request())
     await adapter.aclose()

@@ -2,17 +2,19 @@
 
 import asyncio
 import logging
-from collections.abc import Mapping
+from collections.abc import Awaitable, Callable, Mapping
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
 import httpx
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Request, Response
+from fastapi.exceptions import RequestValidationError
+from fastapi.responses import JSONResponse
 
 from rag_demo import __version__
 from rag_demo.analysis import GermanAnalyzer
-from rag_demo.config import Settings, config_hash, load_config
+from rag_demo.config import Settings, config_hash, load_config, resolve_model_sha
 from rag_demo.dense import TeiDenseEncoder
 from rag_demo.errors import RagDemoError
 from rag_demo.generate import LlamaCppGenerator
@@ -119,7 +121,7 @@ class _CorpusMeta:
             try:
                 resp = httpx.get(self._url, timeout=10)
                 meta = resp.json()["result"]["config"]["metadata"]
-                if resp.status_code != 200 or "corpus_version" not in meta:
+                if resp.status_code != 200 or not {"corpus_version", "tenants"} <= meta.keys():
                     raise KeyError("metadata")  # noqa: EM101, TRY301
             except (httpx.HTTPError, KeyError, TypeError, ValueError):
                 raise HTTPException(503, "index unavailable") from None
@@ -152,7 +154,7 @@ def _build_parts(cfg: RagConfig, s: Settings) -> _Parts:
         "GIT_SHA": s.git_sha,
         "IMAGE_DIGEST": s.image_digest or "",
         "LLAMA_CPP_VERSION": s.llama_cpp_version,
-        "MODEL_SHA256": s.model_sha256,
+        "MODEL_SHA256": resolve_model_sha(s),
     }
     return _Parts(
         stats=stats,
@@ -193,6 +195,26 @@ def _add_routes(app: FastAPI, cfg: RagConfig, parts: _Parts) -> None:
         return build_health(parts.stats)
 
 
+MAX_BODY_BYTES = 16 * 1024
+
+
+def _add_guards(app: FastAPI) -> None:
+    """Body size limit (413) and validation errors that never echo the input (422)."""
+
+    @app.middleware("http")
+    async def limit_body(
+        request: Request, call_next: Callable[[Request], Awaitable[Response]]
+    ) -> Response:
+        if int(request.headers.get("content-length") or 0) > MAX_BODY_BYTES:
+            return JSONResponse({"detail": "request body too large"}, status_code=413)
+        return await call_next(request)
+
+    @app.exception_handler(RequestValidationError)
+    async def invalid(_: Request, exc: RequestValidationError) -> JSONResponse:
+        errors = [{"loc": e["loc"], "msg": e["msg"], "type": e["type"]} for e in exc.errors()]
+        return JSONResponse({"detail": errors}, status_code=422)
+
+
 def create_app(cfg: RagConfig, *, settings: Settings | None = None) -> FastAPI:
     """Build the FastAPI app that implements Target HTTP API v1.
 
@@ -204,6 +226,7 @@ def create_app(cfg: RagConfig, *, settings: Settings | None = None) -> FastAPI:
         The app. Collaborator clients connect lazily, so building it needs no running service.
     """
     app = FastAPI(title="Prüfstand Target API", version="1")
+    _add_guards(app)
     _add_routes(app, cfg, _build_parts(cfg, settings or Settings()))
     return app
 
