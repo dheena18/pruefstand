@@ -151,6 +151,9 @@ def test_stack_run_signalled_tears_down_and_leaves_no_process(
     and signal-to-exit time is bounded far below CMD's 120 s, so a surviving CMD fails the test.
     """
     lock = tmp_path / "stack.lock"
+    # A parent started with `&` leaves INT/QUIT ignored; a shell cannot trap an ignored signal:
+    # give make default dispositions, as a terminal or CI step does.
+    saved = {s: signal.signal(s, signal.SIG_DFL) for s in (signal.SIGINT, signal.SIGQUIT)}
     proc = subprocess.Popen(  # noqa: S603
         [
             MAKE,
@@ -166,6 +169,8 @@ def test_stack_run_signalled_tears_down_and_leaves_no_process(
         start_new_session=True,
         env={**os.environ, "PORT_OFFSET": "0"},
     )
+    for number, handler in saved.items():
+        signal.signal(number, handler)
     lines, started, cmd_pgid, reader = _collect(proc)
     try:
         assert started.wait(timeout=120), f"CMD never started: {lines}"
