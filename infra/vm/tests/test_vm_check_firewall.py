@@ -43,7 +43,16 @@ def test_gh_scope_fails_when_the_token_can_read_actions_permissions(
 
 
 def test_gh_scope_unexpected_error_is_not_a_pass(world: World, run_script: Runner) -> None:
-    errors = ((1, "gh: Not Found (HTTP 404)"), (1, "error connecting to api.github.com"), (124, ""))
+    errors = (
+        (1, "gh: Not Found (HTTP 404)"),
+        (1, "error connecting to api.github.com"),
+        (124, ""),
+        (1, "gh: API rate limit exceeded for user ID 1. (HTTP 403)"),
+        (1, "gh: Resource protected by organization SAML enforcement. (HTTP 403)"),
+        (1, "gh: Resource not accessible by integration (HTTP 403)"),
+        (1, "gh: Bad credentials (HTTP 401)"),
+        (1, "gh: Resource not accessible by personal access token"),  # no HTTP 403 marker
+    )
     for rc, err in errors:
         world.override("gh", ("api repos/dheena18/pruefstand/actions/permissions", "", rc, err))
         status, detail = check(world, run_script, "gh-scope")["gh-scope"]
@@ -111,7 +120,19 @@ def test_firewall_fails_when_docker_user_is_missing_in_the_new_set(
 ) -> None:
     _chains(world, NEW_DOCKER_CHAINS)
     world.override("iptables", ("*-S DOCKER-USER", "", 1))
-    assert check(world, run_script, "firewall")["firewall"][0] == "FAIL"
+    status, detail = check(world, run_script, "firewall")["firewall"]
+    assert status == "FAIL"
+    assert "DOCKER-USER is gone" in detail
+
+
+def test_firewall_new_chain_set_needs_the_docker_chain_too(
+    world: World, run_script: Runner
+) -> None:
+    _chains(world, tuple(c for c in NEW_DOCKER_CHAINS if c != "DOCKER"))
+    world.override("iptables", ("*-t nat -S DOCKER", "-N DOCKER", 0), ("*-S DOCKER", "", 1))
+    status, detail = check(world, run_script, "firewall")["firewall"]
+    assert status == "FAIL"
+    assert "filter chains are gone" in detail
 
 
 def test_firewall_behavioural_probes(world: World, run_script: Runner) -> None:
