@@ -114,7 +114,7 @@ GET  /v1/health -> {"status": "ok",
                                                               # report warning (absent key = 0)
 ```
 
-Tolerance (T1.3, D344): the core target models stay `extra="forbid"` and requests stay strict, but `HttpTargetAdapter` normalises the response before validating it: unknown keys are dropped at each known level, null optionals and a `usage` lacking either token count are treated as absent, and integer citation ids are stringified; type errors in known fields remain permanent `TargetError`s.
+Tolerance (T1.3, D345): the core target models stay `extra="forbid"` and requests stay strict, but `HttpTargetAdapter` normalises the response before validating it: unknown keys are dropped at each known level, null optionals and a `usage` lacking either token count are treated as absent, and integer citation ids are stringified; type errors in known fields remain permanent `TargetError`s.
 
 Rules: `request_id` is random per call, never the test case id (the target must not be able to
 recognise test cases). Third-party targets may omit `chunks`, `tenant_id` per chunk, `used_in_prompt`,

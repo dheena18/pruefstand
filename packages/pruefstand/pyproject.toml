@@ -11,6 +11,7 @@ dependencies = [
   "structlog",
   "pyyaml",
   "numpy",
+  "scipy>=1.13",
   "polars",
   "httpx",
   "jinja2",
@@ -25,3 +26,12 @@ build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/pruefstand"]
+
+# T1.6: nightly mutation testing of gate/ (ci.yml job `mutmut`, informational, target score >= 80 %,
+# testing-strategy §3.11); runs with cwd packages/pruefstand. T1.5b appends metrics/ to source_paths.
+# The isolated pytest config keeps the mutated copy first on sys.path (root pytest config points at the originals).
+[tool.mutmut]
+source_paths = ["src/pruefstand/gate/"]
+also_copy = ["src/pruefstand/__init__.py", "src/pruefstand/core/", "tests/", "mutmut_pytest.ini"]
+pytest_add_cli_args = ["-c", "mutmut_pytest.ini", "-m", "not slow"]
+pytest_add_cli_args_test_selection = ["tests/unit/gate/", "tests/property/gate/"]
