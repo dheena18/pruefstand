@@ -80,7 +80,9 @@ class TargetCaller:
         if mode == "retrieve" and result.error is None and result.value is None:
             mode, fallback = "answer", True  # target without /v1/retrieve (404/405)
             result = await self._attempt(self._timed(self._call(mode, request), timing), rng)
-        record = _record(case, request, result, timing[0], mode, cached=False)
+        record = _record(
+            case, request, _require_valid_unicode(result), timing[0], mode, cached=False
+        )
         if record.response is not None:
             await self._store(key, record)
         return Fetched(record, fallback=fallback)
@@ -149,16 +151,31 @@ class TargetCaller:
             "latency_ms": record.latency_ms,
             "response": record.response.model_dump(mode="json"),
         }
-        payload = json.dumps(entry, ensure_ascii=False).encode("utf-8")
         try:
+            payload = json.dumps(entry, ensure_ascii=False).encode("utf-8")
             await asyncio.to_thread(self._cache.set, key, payload)
-        except StoreError as exc:
+        except (StoreError, UnicodeError) as exc:
             self._warn_once("target_cache_write_failed", str(exc))
 
     def _warn_once(self, event: str, error: str) -> None:
         if event not in self._warned:
             self._warned.add(event)
             _log.warning(event, error=error, note="logged once per run; later cases skip the cache")
+
+
+def _require_valid_unicode(
+    result: Attempts[TargetResponse | None],
+) -> Attempts[TargetResponse | None]:
+    """Turn a response with lone surrogates into a target error (it cannot be stored or written)."""
+    if result.value is None:
+        return result
+    try:
+        result.value.model_dump_json().encode("utf-8")
+    except ValueError:
+        return Attempts(
+            None, "target response is not valid unicode (lone surrogate)", result.attempts
+        )
+    return result
 
 
 def _record(

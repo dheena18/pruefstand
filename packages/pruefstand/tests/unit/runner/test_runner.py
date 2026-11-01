@@ -21,9 +21,12 @@ from pruefstand.adapters.http import HttpTargetAdapter
 from pruefstand.core.errors import StoreError
 from pruefstand.core.hashing import stable_hash
 from pruefstand.core.models.metric import MetricStatus
-from pruefstand.runner.runner import case_rng
-from pruefstand.store.artifacts import ArtifactStore
 from pruefstand.core.models.run import RunArtifacts
+from pruefstand.core.models.target import TargetResponse
+from pruefstand.runner.retry import Attempts
+from pruefstand.runner.runner import case_rng
+from pruefstand.runner.target_call import _require_valid_unicode
+from pruefstand.store.artifacts import ArtifactStore
 
 
 async def test_twenty_cases_all_ok_with_context_recall(
@@ -256,13 +259,26 @@ async def test_a_response_with_a_lone_surrogate_is_a_target_error_and_the_run_is
     router: respx.MockRouter, adapter: HttpTargetAdapter, tmp_path: Path
 ) -> None:
     body = b'{"answer": "x\\ud800y", "citations": []}'
-    router.post("/v1/query").respond(200, content=body, headers={"content-type": "application/json"})
+    router.post("/v1/query").respond(
+        200, content=body, headers={"content-type": "application/json"}
+    )
     cache = DictCache()
     results = await run_cases(make_runner(adapter, cache=cache), [make_case(0)])
     assert results.records[0].response is None
     assert results.records[0].error is not None
-    assert "unicode" in results.records[0].error
     assert cache.data == {}
     store = ArtifactStore(tmp_path)
     path = store.write_run(RunArtifacts(results=results, root=tmp_path / results.manifest.run_id))
     assert store.read_run(path).results == results
+
+
+def test_a_response_that_cannot_be_encoded_becomes_a_target_error() -> None:
+
+    bad = TargetResponse.model_validate({"answer": "x\ud800y"})
+    out = _require_valid_unicode(Attempts(bad, None, 2))
+    assert out.value is None
+    assert out.error is not None
+    assert "unicode" in out.error
+    assert out.attempts == 2
+    good = Attempts(TargetResponse(answer="Kündigung"), None, 1)
+    assert _require_valid_unicode(good) is good

@@ -14,6 +14,9 @@ from pruefstand.core.errors import StoreError
 
 _FILE = "cache.sqlite3"
 _BUSY_TIMEOUT_S = 2.0
+MAX_VALUE_BYTES = 16 * 1024 * 1024
+"""Largest value ``set`` stores; a bigger row found on read is treated as a miss."""
+_NAMESPACES = frozenset({"target", "llm"})
 
 
 class DiskKVCache:
@@ -35,6 +38,9 @@ class DiskKVCache:
     def __init__(
         self, directory: Path, namespace: Literal["target", "llm"], *, read_only: bool = False
     ) -> None:
+        if namespace not in _NAMESPACES:
+            msg = f"unknown cache namespace {namespace!r}; use one of {sorted(_NAMESPACES)}"
+            raise StoreError(msg)
         self._read_only = read_only
         self._closed = False
         self._lock = threading.Lock()  # one connection shared with worker threads (to_thread)
@@ -71,12 +77,16 @@ class DiskKVCache:
             StoreError: The cache is closed or unreadable.
         """
         db = self._open_db()
+        _check_key(key)
         if db is None:
             return None
         try:
             with self._lock:
-                row = db.execute("SELECT value FROM kv WHERE key = ?", (key,)).fetchone()
-        except sqlite3.Error as exc:
+                row = db.execute(
+                    "SELECT value FROM kv WHERE key = ? AND length(value) <= ?",
+                    (key, MAX_VALUE_BYTES),
+                ).fetchone()
+        except (sqlite3.Error, UnicodeError, TypeError, OverflowError) as exc:
             msg = f"cache read failed: {exc}"
             raise StoreError(msg) from exc
         return None if row is None else bytes(row[0])
@@ -88,13 +98,21 @@ class DiskKVCache:
             StoreError: The cache is read-only or closed, or the write failed.
         """
         db = self._open_db()
+        _check_key(key)
         if self._read_only or db is None:
             msg = "cache is read-only"
+            raise StoreError(msg)
+        untyped: object = value  # callers can be untyped: check at runtime
+        if not isinstance(untyped, bytes):
+            msg = f"cache values must be bytes, not {type(untyped).__name__}"
+            raise StoreError(msg)
+        if len(value) > MAX_VALUE_BYTES:
+            msg = f"cache value of {len(value)} bytes is larger than the {MAX_VALUE_BYTES} limit"
             raise StoreError(msg)
         try:
             with self._lock, db:
                 db.execute("INSERT OR REPLACE INTO kv (key, value) VALUES (?, ?)", (key, value))
-        except sqlite3.Error as exc:
+        except (sqlite3.Error, UnicodeError, TypeError, OverflowError) as exc:
             msg = f"cache write failed: {exc}"
             raise StoreError(msg) from exc
 
@@ -125,3 +143,9 @@ class DiskKVCache:
             msg = "cache is closed"
             raise StoreError(msg)
         return self._db
+
+
+def _check_key(key: object) -> None:
+    if not isinstance(key, str):
+        msg = f"cache keys must be str, not {type(key).__name__}"
+        raise StoreError(msg)

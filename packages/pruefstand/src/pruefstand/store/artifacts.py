@@ -10,6 +10,7 @@ directory that is renamed into place, so a failed write leaves nothing behind (D
 import fcntl
 import json
 import os
+import re
 import secrets
 import shutil
 import time
@@ -28,6 +29,7 @@ from pruefstand.store._run_files import (
     manifest_text,
     read_manifest,
     read_results,
+    safe_error,
     write_files,
 )
 
@@ -92,9 +94,15 @@ class ArtifactStore:
             tmp.mkdir()
             write_files(tmp, run.results, llm_calls)
             Path(tmp).replace(target)
-        except (OSError, pl.exceptions.PolarsError) as exc:
+        except (OSError, pl.exceptions.PolarsError, ValueError) as exc:
+            # ValueError covers pydantic serialisation errors and UnicodeError (lone surrogates)
             shutil.rmtree(tmp, ignore_errors=True)
-            msg = f"cannot write run {target.name}: {exc}"
+            detail = (
+                str(exc)
+                if isinstance(exc, OSError | pl.exceptions.PolarsError)
+                else safe_error(exc)
+            )
+            msg = f"cannot write run {target.name}: {detail}"
             raise StoreError(msg) from exc
         return target
 
@@ -171,7 +179,7 @@ class ArtifactStore:
         try:
             manifest = RunManifest.model_validate(change(data))
         except ValueError as exc:
-            msg = f"invalid manifest for {path.name}: {exc}"
+            msg = f"invalid manifest for {path.name}: {safe_error(exc)}"
             raise StoreError(msg) from exc
         tmp = path / f"run.json.{secrets.token_hex(4)}.tmp"
         try:
@@ -192,12 +200,23 @@ class ArtifactStore:
         return path
 
 
+_STALE_NAME = re.compile(r"^\.[A-Za-z0-9_-]+\.[0-9a-f]{8}\.tmp$")
+
+
+def _newest_mtime(directory: Path) -> float:
+    newest = directory.lstat().st_mtime
+    for entry in directory.rglob("*"):
+        newest = max(newest, entry.lstat().st_mtime)
+    return newest
+
+
 def _remove_stale_tmp_dirs(parent: Path, max_age_s: float = 86400.0) -> None:
-    """Delete hidden ``.<run>.<hex>.tmp`` directories that a crashed write left behind."""
+    """Delete ``.<run>.<8 hex>.tmp`` directories whose newest file is older than a day."""
     cutoff = time.time() - max_age_s
-    for entry in parent.glob(".*.tmp"):
+    for entry in parent.iterdir():
         try:
-            if entry.is_dir() and entry.stat().st_mtime < cutoff:
+            stale_name = _STALE_NAME.match(entry.name) and not entry.is_symlink()
+            if stale_name and entry.is_dir() and _newest_mtime(entry) < cutoff:
                 shutil.rmtree(entry, ignore_errors=True)
         except OSError:
             continue

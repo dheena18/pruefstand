@@ -1,6 +1,8 @@
 """Serialisation of one run directory: ``run.json``, ``results.parquet`` and the JSONL files."""
 
 import json
+import os
+import stat
 from pathlib import Path
 
 import polars as pl
@@ -10,8 +12,8 @@ from pruefstand.core.errors import StoreError
 from pruefstand.core.models.run import RunManifest, RunResults, ScoredCase
 from pruefstand.core.models.target import CaseRecord
 
-MAX_FILE_BYTES = 512 * 1024 * 1024
-"""Largest run file ``read_results`` opens; bigger files are refused before reading."""
+MAX_FILE_BYTES = 128 * 1024 * 1024
+"""Largest run file ``read_results`` accepts; a bigger file is refused before it is read."""
 MAX_MANIFEST_BYTES = 4 * 1024 * 1024
 
 RESULT_COLUMNS = (
@@ -82,42 +84,77 @@ def write_files(root: Path, results: RunResults, llm_calls: pl.DataFrame | None)
         llm_calls.write_parquet(root / "llm_calls.parquet", compression="zstd")
 
 
-def _checked_size(path: Path, limit: int) -> None:
+def safe_error(exc: BaseException) -> str:
+    """Describe ``exc`` without any value taken from file content (no pydantic ``input_value``)."""
+    if isinstance(exc, ValidationError):
+        items = exc.errors(include_url=False, include_context=False, include_input=False)
+        return "; ".join(f"{'.'.join(str(p) for p in e['loc'])}: {e['type']}" for e in items[:5])
+    if isinstance(exc, UnicodeDecodeError):
+        return f"invalid UTF-8 at byte {exc.start}"
+    if isinstance(exc, OSError):
+        return type(exc).__name__
+    return type(exc).__name__
+
+
+def read_bounded(path: Path, limit: int) -> bytes:
+    """Read a regular, non-symlink file of at most ``limit`` bytes.
+
+    Raises:
+        StoreError: The path is a symlink or not a regular file, is larger than ``limit``, or
+            cannot be read. Nothing is followed and no special file is ever opened.
+    """
     try:
-        size = path.stat().st_size
+        info = os.lstat(path)
     except OSError as exc:
-        msg = f"cannot read {path.name} in {path.parent}: {exc}"
+        msg = f"cannot read {path.name} in {path.parent}: {safe_error(exc)}"
         raise StoreError(msg) from exc
-    if size > limit:
-        msg = f"{path.name} in {path.parent} is {size} bytes, larger than the {limit} byte limit"
+    if stat.S_ISLNK(info.st_mode):
+        msg = f"{path.name} in {path.parent} is a symlink; run files must be regular files"
         raise StoreError(msg)
+    if not stat.S_ISREG(info.st_mode):
+        msg = f"{path.name} in {path.parent} is not a regular file"
+        raise StoreError(msg)
+    if info.st_size > limit:
+        msg = f"{path.name} in {path.parent} is {info.st_size} bytes, larger than the {limit} limit"
+        raise StoreError(msg)
+    try:
+        fd = os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
+        with os.fdopen(fd, "rb") as handle:
+            data = handle.read(limit + 1)
+    except OSError as exc:
+        msg = f"cannot read {path.name} in {path.parent}: {safe_error(exc)}"
+        raise StoreError(msg) from exc
+    if len(data) > limit:
+        msg = f"{path.name} in {path.parent} grew beyond the {limit} byte limit while reading"
+        raise StoreError(msg)
+    return data
 
 
 def read_manifest(root: Path) -> RunManifest:
     """Parse ``run.json``.
 
     Raises:
-        StoreError: The file is missing, too large, not JSON, or not a valid manifest.
+        StoreError: The file is missing, special, too large, not JSON, or not a valid manifest.
     """
-    path = root / "run.json"
-    _checked_size(path, min(MAX_MANIFEST_BYTES, MAX_FILE_BYTES))
+    data = read_bounded(root / "run.json", min(MAX_MANIFEST_BYTES, MAX_FILE_BYTES))
     try:
-        return RunManifest.model_validate_json(path.read_text(encoding="utf-8"))
-    except (OSError, ValidationError, ValueError) as exc:
-        msg = f"cannot read run.json in {root}: {exc}"
+        return RunManifest.model_validate_json(data)
+    except ValueError as exc:
+        msg = f"cannot read run.json in {root}: {safe_error(exc)}"
         raise StoreError(msg) from exc
 
 
 def read_results(root: Path) -> RunResults:
     """Parse a run directory into ``RunResults``, failing closed.
 
-    Checks: the directory is named after ``manifest.run_id``; every file is within the size
-    limit; ``results.parquet`` parses and equals the view derived from ``scored.jsonl``;
-    ``responses.jsonl`` and ``scored.jsonl`` list the same cases; a complete run has exactly
-    ``n_cases`` of them.
+    Checks: the directory is named after ``manifest.run_id``; every file is a regular file within
+    the size limit; case ids are unique and equal in ``responses.jsonl`` and ``scored.jsonl``; a
+    complete run has exactly ``n_cases`` of them; ``results.parquet`` has the expected columns and
+    row count (read from its footer) and equals the view derived from ``scored.jsonl``.
 
     Raises:
-        StoreError: Any check fails or a file is missing or invalid.
+        StoreError: Any check fails or a file is missing or invalid. Messages never contain
+            text taken from the files.
     """
     manifest = read_manifest(root)
     if root.name != manifest.run_id:
@@ -125,8 +162,12 @@ def read_results(root: Path) -> RunResults:
         raise StoreError(msg)
     records = tuple(_read_lines(root / "responses.jsonl", CaseRecord))
     values = tuple(_read_lines(root / "scored.jsonl", ScoredCase))
-    if [r.case_id for r in records] != [s.case.id for s in values]:
+    ids = [s.case.id for s in values]
+    if [r.case_id for r in records] != ids:
         msg = f"responses.jsonl and scored.jsonl disagree in {root}"
+        raise StoreError(msg)
+    if len(set(ids)) != len(ids):
+        msg = f"duplicate case ids in {root}"
         raise StoreError(msg)
     if manifest.complete and len(values) != manifest.n_cases:
         msg = (
@@ -143,11 +184,22 @@ def read_results(root: Path) -> RunResults:
 
 
 def _check_parquet(path: Path, values: tuple[ScoredCase, ...]) -> None:
-    _checked_size(path, MAX_FILE_BYTES)
+    read_bounded(path, MAX_FILE_BYTES)  # regular file, size limit (content read again by polars)
     try:
+        columns = tuple(pl.read_parquet_schema(path))
+        if columns != RESULT_COLUMNS:
+            msg = f"results.parquet in {path.parent} has unexpected columns"
+            raise StoreError(msg)
+        rows = int(pl.scan_parquet(path).select(pl.len()).collect().item())
+        expected = sum(len(s.values) for s in values)
+        if rows != expected:
+            msg = (
+                f"results.parquet in {path.parent} has {rows} rows, scored.jsonl implies {expected}"
+            )
+            raise StoreError(msg)
         frame = pl.read_parquet(path)
     except (OSError, pl.exceptions.PolarsError) as exc:
-        msg = f"cannot read results.parquet in {path.parent}: {exc}"
+        msg = f"cannot read results.parquet in {path.parent}: {safe_error(exc)}"
         raise StoreError(msg) from exc
     if not frame.equals(results_frame(values)):
         msg = f"results.parquet and scored.jsonl disagree in {path.parent}"
@@ -155,11 +207,11 @@ def _check_parquet(path: Path, values: tuple[ScoredCase, ...]) -> None:
 
 
 def _read_lines[M: (CaseRecord, ScoredCase)](path: Path, model: type[M]) -> list[M]:
-    _checked_size(path, MAX_FILE_BYTES)
+    data = read_bounded(path, MAX_FILE_BYTES)
     try:
-        text = path.read_text(encoding="utf-8")
+        text = data.decode("utf-8")
         # split on "\n" only: str.splitlines() also cuts at U+2028, U+2029, U+0085, \x0b, \x0c ...
         return [model.model_validate_json(line) for line in text.split("\n") if line.strip()]
-    except (OSError, ValidationError, ValueError) as exc:
-        msg = f"cannot read {path.name} in {path.parent}: {exc}"
+    except ValueError as exc:
+        msg = f"cannot read {path.name} in {path.parent}: {safe_error(exc)}"
         raise StoreError(msg) from exc

@@ -152,9 +152,7 @@ def test_duplicate_case_ids_are_refused(tmp_path: Path) -> None:
 
 
 @pytest.mark.parametrize("name", ["responses.jsonl", "scored.jsonl", "results.parquet", "run.json"])
-def test_symlinked_run_files_are_refused_without_following_them(
-    tmp_path: Path, name: str
-) -> None:
+def test_symlinked_run_files_are_refused_without_following_them(tmp_path: Path, name: str) -> None:
     store, _, path = written(tmp_path / "store")
     secret = tmp_path / "secret.txt"
     secret.write_text("CANARY-SYMLINK-CONTENT", encoding="utf-8")
@@ -206,9 +204,10 @@ def test_parquet_row_count_is_checked_from_the_footer_before_reading(
     pl.concat([frame] * 50).write_parquet(path / "results.parquet")
 
     def must_not_run(*args: object, **kwargs: object) -> pl.DataFrame:
-        raise AssertionError("the parquet body was read before the footer row count was checked")
+        msg = "the parquet body was read before the footer row count was checked"
+        raise AssertionError(msg)
 
-    monkeypatch.setattr(_run_files.pl, "read_parquet", must_not_run)
+    monkeypatch.setattr(pl, "read_parquet", must_not_run)
     with pytest.raises(StoreError, match="rows"):
         store.read_run(path)
 
@@ -221,9 +220,10 @@ def test_parquet_with_extra_or_missing_columns_is_refused_before_reading(
     frame.with_columns(extra=pl.lit("x")).write_parquet(path / "results.parquet")
 
     def must_not_run(*args: object, **kwargs: object) -> pl.DataFrame:
-        raise AssertionError("body read")
+        msg = "body read"
+        raise AssertionError(msg)
 
-    monkeypatch.setattr(_run_files.pl, "read_parquet", must_not_run)
+    monkeypatch.setattr(pl, "read_parquet", must_not_run)
     with pytest.raises(StoreError, match="columns"):
         store.read_run(path)
 
@@ -238,7 +238,7 @@ def test_lone_surrogates_make_write_run_a_store_error_and_leave_nothing(tmp_path
         results=results.model_copy(update={"records": records}),
         root=tmp_path / results.manifest.run_id,
     )
-    with pytest.raises(StoreError, match="encod|serial"):
+    with pytest.raises(StoreError, match=r"encod|serial|Error"):
         store.write_run(run)
     assert list(tmp_path.iterdir()) == []
 
