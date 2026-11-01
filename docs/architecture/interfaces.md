@@ -39,7 +39,7 @@ uses it. Modules only implement behaviour. Concretely, these live in `core`:
 | `core.fingerprint` | `corpus_version`, `target_fingerprint`, `eval_fingerprint` (the only place fingerprints are computed) |
 | `core.hashing` | `stable_hash` |
 | `core.models.attacks` | `Canary`, `CanaryRegistry` (created in T1.1) |
-| `core.data` | `law_aliases.yaml` (T1.5a; incl. English statute names, D123), `model_families.yaml` (T1.2; the only model-family table; ADR-0018: the generator tag `qwen3.8:27b-q8_0`, which Ollama reports as family `qwen35`, maps to `qwen` (a pattern row for `qwen3.8` / `qwen35`); ADR-0019: Ollama family `gemma3` maps to `gemma`; it also records the **family plan** (D112, ADR-0019): generator = `qwen`; **one** A40 judge for PR and nightly = `gemma` (`gemma3:12b`); public-text datagen = a GitHub Models family ≠ `qwen`, ≠ `gemma` (pinned in T4.2); private-doc/canary datagen = the local `gemma` judge model; the judge reviews in reject-only mode and never writes or rewrites references; tier-1 informational judge = a GitHub Models model of a non-`qwen` family; exact versions pinned by benchmark in T1.13/T3.1b) |
+| `core.data` | `law_aliases.yaml` (T1.5a; incl. English statute names, D123; shape: `version: 1`, then `national:` and `eu:` maps of canonical abbreviation → list of aliases, unknown keys rejected; the abbreviation is always an alias, lookups fold case and whitespace; an alias naming two laws is a `ConfigError`; `§` is accepted only for `national` laws, `Art.` for both; other tasks append entries under the right map and never keep a second table), `model_families.yaml` (T1.2; the only model-family table; ADR-0018: the generator tag `qwen3.8:27b-q8_0`, which Ollama reports as family `qwen35`, maps to `qwen` (a pattern row for `qwen3.8` / `qwen35`); ADR-0019: Ollama family `gemma3` maps to `gemma`; it also records the **family plan** (D112, ADR-0019): generator = `qwen`; **one** A40 judge for PR and nightly = `gemma` (`gemma3:12b`); public-text datagen = a GitHub Models family ≠ `qwen`, ≠ `gemma` (pinned in T4.2); private-doc/canary datagen = the local `gemma` judge model; the judge reviews in reject-only mode and never writes or rewrites references; tier-1 informational judge = a GitHub Models model of a non-`qwen` family; exact versions pinned by benchmark in T1.13/T3.1b) |
 | `core.models.llm` | `LLMRole`, `Message`, `LLMRequest`, `LLMResponse`, `PromptTemplate` |
 | `core.models.judge` | `JudgeTask`, `JudgeVerdict` (created in T1.8) |
 | `core.models.dashboard` | `RunIndexEntry`, `DashboardRunIndex`, `DashboardSliceRow`, `DashboardSlices`, `DashboardCase`, `DashboardCases`, `LabelsDocument` (T8.1; `LabelsDocument` created in T1.9; fields in §10.1; R9 X5.3) |
@@ -761,7 +761,8 @@ faithfulness, answer_correctness, perturbation_consistency, refusal_judged
 #   "judge_quota" / "judge_cap" (R9 D9-07; the runner is the single owner of these counts).
 #   BudgetExceeded (USD / tokens) propagates to the runner (stop_reason="budget_exceeded").
 
-# core/citations.py  (lives in core so ingest and metrics share one normaliser)
+# core/citations/  (package, T1.5a: model.py, aliases.py, parser.py; __init__ re-exports; lives in core so ingest
+#                   and metrics share one normaliser; import path stays pruefstand.core.citations)
 def extract_citations(text: str) -> list[Citation]           # §, §§, Art., Artikel, Article, Abs., S., Nr., lit., i.V.m., ff.,
                                                              # plus English forms for German statutes: "Section 622 BGB",
                                                              # "Sec. 622", "Section 622(2) BGB" -> kind="para" (D123)
@@ -1042,6 +1043,10 @@ class GatePolicy(BaseModel):   hard_fail: tuple[str, ...] = ("canary_leak", "ten
                                metrics: dict[str, MetricPolicy]
                                slices: tuple[str, ...] = ("category", "perturbation", "tenant", "lang", "tags")
                                gated_slices: tuple[str, ...] = ("overall", "tenant", "lang", "perturbed_all")
+                               # T1.2 note: when omitted (None) the DEFAULT is derived from `slices` ("overall", "perturbed_all" always;
+                               # "tenant"/"lang" only if in `slices`) and stored as a tuple, so model_validate(model_dump()) round-trips and
+                               # a custom `slices` never gates a slice that is not computed; an explicit entry not in `slices` is a ConfigError
+                               # T1.2 note: every float is finite (allow_inf_nan=False); n_resamples <= 10_000_000; hard_fail=() is allowed (logs a warning)
                                # R9 X3.6: "overall", "tenant", "lang" use UNPERTURBED cases only (perturbation is None);
                                # "perturbed_all" = all ROBUST_PR perturbed cases vs their bases, retrieval metrics only
                                # (context_recall, ndcg_at_k); perturbed cases count only there and in the informational
@@ -1388,15 +1393,19 @@ def export_hf(dir: Path, repo_id: str, private: bool, *, dry_run: bool = False) 
 
 ```python
 class TargetConfig(BaseModel): type: Literal["http"] = "http"; url: str; auth_env: str | None = None
+                               # T1.2 notes: url must be http(s) with a host; auth_env must be a valid env-var NAME ([A-Za-z_][A-Za-z0-9_]*)
                                timeout_s: float = 60
 class HttpTargetConfig(TargetConfig): type: Literal["http"]; url: str
 class ModelRef(BaseModel):     id: str; family: str          # e.g. {id: "ollama/gemma3:12b", family: "gemma"} (R10, ADR-0019)
 class JudgeConfig(BaseModel):  pr: ModelRef; nightly: ModelRef; per_metric: dict[str, ModelRef] = {}
+                               # T1.2 note: per_metric keys must be judged metrics (faithfulness, answer_correctness,
+                               # perturbation_consistency, refusal_judged); T1.5b asserts this set equals the registry's judged kinds.
+                               # A declared family on an id the family table does not recognise is trusted (only a contradiction is an error)
 class BudgetConfig(BaseModel): max_usd_per_run: float | None = 0.0; max_tokens_per_run: int | None = None
                                max_requests_per_run: int | None = None        # free-tier quotas (GitHub Models)
 class LLMPolicyConfig(BaseModel):  # free-only by default
     allowed_providers: tuple[str, ...] = ("openai_compatible_local", "ollama", "github")   # R10 D209: ollama replaces hosted_vllm
-    allow_paid: bool = False
+    allow_paid: bool = False   # T1.2 only validates the shape; T1.4 (build_backend / LLMPolicy) owns provider-name and allow_paid enforcement at load
     fallback_judge: ModelRef | None = None    # tier 2 only (normally unset since ADR-0019: one judge for PR and nightly). Tier 1 has no
                                               # fallback: quota exhausted / no `models` permission -> judge_mode=skipped (D97)
 class BaselineStoreConfig(BaseModel): type: Literal["local_dir", "git_branch"] = "git_branch"

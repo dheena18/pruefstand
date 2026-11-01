@@ -31,3 +31,6 @@ corpus/*
 .cache/
 datasets/private/
 site/
+
+# T0.4: assembled Pages site (scripts/deploy/assemble_pages_site.sh)
+_pages/

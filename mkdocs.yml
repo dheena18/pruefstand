@@ -1,0 +1,124 @@
+# Documentation site (T0.4). `make docs` = `mkdocs build --strict`; docs.yml publishes it under /pruefstand/docs/ (D243).
+site_name: Prüfstand
+site_description: Open-source release gate for German-language RAG
+site_url: https://dheena18.github.io/pruefstand/docs/
+repo_url: https://github.com/dheena18/pruefstand
+docs_dir: docs
+site_dir: site
+strict: true
+
+theme:
+  name: material
+  language: en
+  features:
+    - navigation.sections
+    - navigation.top
+    - content.code.copy
+    - search.suggest
+  palette:
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      toggle:
+        icon: material/weather-night
+        name: Switch to dark mode
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      toggle:
+        icon: material/weather-sunny
+        name: Switch to light mode
+
+# Strict mode turns every `warn` into an error: broken links and anchors fail the build.
+validation:
+  omitted_files: info
+  absolute_links: warn
+  unrecognized_links: warn
+  anchors: warn
+
+# Historical material stays out of the site and is never edited to satisfy strict mode.
+exclude_docs: |
+  planning/
+  spec/SPEC-v1-original.md
+  ops/setup-log.md
+  architecture/generated/module-deps.svg
+
+# Relative links that leave docs/ (REVIEW.md, tasks/, prompts/) become GitHub URLs (scripts/mkdocs_hooks.py).
+hooks:
+  - scripts/mkdocs_hooks.py
+
+plugins:
+  - search
+  - include-markdown
+
+markdown_extensions:
+  - admonition
+  - attr_list
+  - tables
+  - toc:
+      permalink: true
+      # GitHub-compatible heading ids, so anchors like #15-pipeline--cli work on GitHub and on the site
+      slugify: !!python/object/apply:pymdownx.slugs.slugify {kwds: {case: lower}}
+  - pymdownx.details
+  - pymdownx.highlight
+  - pymdownx.inlinehilite
+  - pymdownx.superfences:
+      custom_fences:
+        - name: mermaid
+          class: mermaid
+          format: !!python/name:pymdownx.superfences.fence_code_format
+
+nav:
+  - Home: index.md
+  - Review: _external/review.md
+  - Spec: spec/SPEC.md
+  - Decisions: decisions.md
+  - ADRs:
+      - adr/README.md
+      - adr/0001-monorepo-uv-pnpm.md
+      - adr/0002-walking-skeleton-first.md
+      - adr/0003-files-source-of-truth-duckdb.md
+      - adr/0004-baseline-store-git-branch.md
+      - adr/0005-two-tier-ci.md
+      - adr/0006-two-caches-fingerprints.md
+      - adr/0007-paired-cluster-bootstrap.md
+      - adr/0008-real-stack-testing.md
+      - adr/0009-litellm-providers.md
+      - adr/0010-qdrant-hybrid-tenant-filter.md
+      - adr/0011-dashboard-static-nextjs.md
+      - adr/0012-demo-hosting-separate.md
+      - adr/0013-observability.md
+      - adr/0014-typed-config.md
+      - adr/0015-license-homogeneous-configs.md
+      - adr/0016-import-linter.md
+      - adr/0017-release-automation.md
+      - adr/0018-single-ollama-server.md
+      - adr/0019-local-model-storage-small-disk.md
+  - Architecture:
+      - architecture/README.md
+      - Overview: architecture/overview.md
+      - Components: architecture/components.md
+      - Interfaces: architecture/interfaces.md
+      - Call graph: architecture/call-graph.md
+      - Sequences: architecture/sequences.md
+      - Data model: architecture/data-model.md
+      - Deployment: architecture/deployment.md
+      - Generated graph: architecture/generated/README.md
+  - Engineering:
+      - engineering/README.md
+      - Coding standards: engineering/coding-standards.md
+      - Testing strategy: engineering/testing-strategy.md
+      - Test matrix: engineering/test-matrix.md
+      - CI/CD: engineering/ci-cd.md
+      - Docker: engineering/docker.md
+      - Git workflow: engineering/git-workflow.md
+      - Security: engineering/security.md
+      - GPU cluster: engineering/gpu-cluster.md
+      - AI workflow: engineering/ai-workflow.md
+      - Release: engineering/release.md
+  - Design:
+      - UI spec: design/ui-spec.md
+  - Operations:
+      - Runbook: ops/runbook.md
+      - Secrets: ops/secrets.md
+      - Bypass log: ops/bypass-log.md
+  - Tasks: _external/tasks.md
+  - Prompts: _external/prompts.md

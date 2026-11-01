@@ -5,6 +5,7 @@ from pathlib import Path
 
 from pydantic import BaseModel
 
+from pruefstand.core.config import PruefstandConfig
 from pruefstand.core.models.attacks import CanaryRegistry
 from pruefstand.core.models.corpus import Chunk, CorpusManifest
 from pruefstand.core.models.run import RunManifest
@@ -58,3 +59,4 @@ register_schema("chunk", Chunk)
 register_schema("corpus_manifest", CorpusManifest)
 register_schema("run_manifest", RunManifest)
 register_schema("canary_registry", CanaryRegistry)
+register_schema("pruefstand_config", PruefstandConfig)
