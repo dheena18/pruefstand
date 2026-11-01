@@ -1,6 +1,5 @@
 """Structural protocols implemented by other modules (interfaces §4, §5, §7, §11).
 
-``JudgePoolLike`` / ``JudgedMetric`` (T1.8) and
 ``Perturbation`` / ``LLMPerturbation`` (T4.4, T4.5) are added by their owning tasks.
 """
 
@@ -12,6 +11,7 @@ from pydantic import BaseModel
 
 from pruefstand.core.enums import Category
 from pruefstand.core.models.corpus import Chunk, Document
+from pruefstand.core.models.judge import JudgeTask, JudgeVerdict
 from pruefstand.core.models.llm import LLMRequest, LLMResponse
 from pruefstand.core.models.metric import MetricKind, MetricValue
 from pruefstand.core.models.run import RunArtifacts
@@ -132,4 +132,33 @@ class DeterministicMetric(Metric, Protocol):
 
     def compute(self, case: TestCase, resp: TargetResponse) -> MetricValue:
         """Compute the metric for one case."""
+        ...
+
+
+@runtime_checkable
+class JudgeLike(Protocol):
+    """One judge model (``judges.Judge``, T5.2a)."""
+
+    async def score(self, task: JudgeTask) -> JudgeVerdict:
+        """Judge one task. Raises ``LLMError``, ``PolicyViolation``, ``QuotaExhausted``."""
+        ...
+
+
+@runtime_checkable
+class JudgePoolLike(Protocol):
+    """The judges of a run, by metric (``judges.JudgePool``, T5.2a)."""
+
+    def for_metric(self, metric: str) -> JudgeLike:
+        """Return the judge that scores ``metric``."""
+        ...
+
+
+@runtime_checkable
+class JudgedMetric(Metric, Protocol):
+    """A metric computed with an LLM judge."""
+
+    async def acompute(
+        self, case: TestCase, resp: TargetResponse, judges: JudgePoolLike
+    ) -> MetricValue:
+        """Compute the metric for one case. Raises ``LLMError``, ``BudgetExceeded``."""
         ...

@@ -145,6 +145,9 @@ runs/<run_id>/
   run.json            RunManifest (schema)
   results.parquet     one row per (case_id, metric) — columns in §8
   responses.jsonl     CaseRecord per case (request, response or error, timings)
+  scored.jsonl        ScoredCase per case (TestCase + all MetricValues with details): the lossless source of
+                      RunResults.values (T1.8, D363, ADR-0020); results.parquet is the 13-column analytics view;
+                      their hashes are in run.json artifact_sha256 (verify before parsing, never parse results.parquet unverified)
   llm_calls.parquet   one row per LLM call (judge + datagen), §3
   gate.json           GateReport (schema)  — only after `pruefstand gate`
   report.html         optional
@@ -547,6 +550,7 @@ class RunManifest(BaseModel):    # (schema) -> run.json
     # counts keys (R9, single owner = the runner, D9-07/D9-21): ok, error, cached, not_applicable, judge_error,
     #   judge_skipped (details reason "judge_quota" | "judge_cap"), judge_truncated (X3.9), think_stripped, corpus_mismatch,
     #   retrieve (R11 D218: robust_pr cases sent to /v1/retrieve), retrieve_fallback (target without /v1/retrieve),
+    #   metric_truncated (T1.8, D366: deterministic metric values with details.truncated; logged as well),
     #   model_reloads, upstream_errors (R12 N6.4, D267: llm-proxy /health differences over the run, measured by the
     #   orchestrator and written with ArtifactStore.add_counts; absent in tier 1 and in local runs),
     #   (no infra_error count: the infra failure is the field below, R11 integration D245)
@@ -571,6 +575,8 @@ class RunManifest(BaseModel):    # (schema) -> run.json
                                       # -> that judge's cache is invalidated
                                       # and its judged metrics are informational until re-calibration bumps judge_epoch.
                                       # Run-time flags (judge_drift, judge_degraded, judge_fallback) NEVER change eval_fingerprint
+    artifact_sha256: dict[str, str] = {}   # T1.8 (D368, ADR-0020): SHA-256 of results.parquet, responses.jsonl, scored.jsonl, set by
+                                      # ArtifactStore.write_run; readers verify it BEFORE parsing (StoreIntegrityError)
     judged_cases: int = 0             # cases sent to a judge (tier 1: as many as fit in 10 judge CALLS per PR, D97/D9-06)
     # the gate refuses (GateInputError) to decide on a run with complete == False
 
@@ -607,7 +613,7 @@ def eval_fingerprint(*, dataset_name: str, dataset_version: str, splits: Sequenc
 class PruefstandError(Exception); class ConfigError; class TargetError; class LLMError(message, *, transient: bool = False, status: int | None = None); class PolicyViolation(LLMError); class BudgetExceeded
 class QuotaExhausted(LLMError)        # R9 (D9-07): provider quota exhausted (GitHub Models 429 + exhausted headers); raised by
                                       # LLMClient (T5.1), caught by the runner -> counts["judge_skipped"], reason "judge_quota"
-class DatasetError; class StoreError; class GateInputError; class PromptError; class CorpusMismatch   # all subclass PruefstandError
+class DatasetError; class StoreError; class StoreIntegrityError(StoreError)   # T1.8: stored file does not match its SHA-256; class GateInputError; class PromptError; class CorpusMismatch   # all subclass PruefstandError
 ```
 
 ## 3. llm
@@ -647,6 +653,9 @@ class Budget:  def __init__(self, max_usd: float | None, max_tokens: int | None,
                async def release(self, n: int) -> None    # returns unused reserved requests (n <= currently reserved)
                def charge(self, r: LLMResponse) -> None  # raises BudgetExceeded (USD / tokens); a request charged against
                                                          # a reservation never raises for the request cap
+# tally_charges() -> ContextManager[ChargeTally]   # T1.8 (D364): counts requests, usd, prompt_tokens, completion_tokens charged
+#   by Budget.charge inside the scope (nested scopes all count; concurrent tasks stay separate); the runner releases
+#   exactly 2 - used per judge call and fills RunManifest.cost from it
                @property
                def requests_remaining(self) -> int | None  # None = no request cap; = cap - charged - reserved (read-only info)
                # Runner rule (R9 X4.5, D9-06): before every judge call the runner reserves 2 requests (the call + one
@@ -878,7 +887,11 @@ class DiskKVCache(KVCache)     # store/kv.py (created in T1.8, used by T5.1); di
                                # read-only mode for PR jobs
 class LayeredKVCache(KVCache): def __init__(self, base: KVCache, overlay: KVCache) -> None   # read overlay then base; write overlay only
 class ArtifactStore:           def __init__(self, root: Path) -> None
-                               def write_run(self, run: RunArtifacts) -> Path; def read_run(self, run_id_or_path: str | Path) -> RunArtifacts
+                               def write_run(self, run: RunArtifacts, *, llm_calls: pl.DataFrame | None = None) -> Path   # T1.8, D363
+                               def read_run(self, run_id_or_path: str | Path) -> RunArtifacts
+                               # atomic (hidden tmp dir + os.replace, D362); an existing run dir is never overwritten; writes
+                               # run.json, results.parquet, responses.jsonl, scored.jsonl (+ llm_calls.parquet); new_run_id() -> RunId
+                               # = <UTC yyyymmddTHHMMSS>-<6 hex> (D361)
                                def mark_aborted(self, run_id_or_path: str | Path, infra_error: str) -> None
                                # R11 D245 (T1.8; called only by the executor, T6.2a): rewrites run.json atomically with
                                # complete=False, stop_reason="aborted", infra_error="<kind>: <detail>"; other files untouched
@@ -1086,6 +1099,7 @@ class GatePolicy(BaseModel):   hard_fail: tuple[str, ...] = ("canary_leak", "ten
                                warn_p: float = 0.10
                                max_error_rate: float = 0.02   # absolute check on error_rate; baseline above it -> GateInputError
 class HardFailFinding(BaseModel): rule: str; case_id: CaseId; metric: str; evidence: str  # redacted: ≤200 chars, canaries masked
+                               # rule = "hard_fail" (metric == 1) | "hard_fail_unverifiable" (error, absent, or non-exempt not_applicable on a chunk-declaring target, D359)
 class SliceDecision(BaseModel):   metric: str; dimension: str; value: str; status: GateStatus; gated: bool
                                   notable: bool = False          # informational slices only (BH q = 0.10)
                                   baseline_mean: float; candidate_mean: float; result: BootstrapResult | None
@@ -1111,6 +1125,7 @@ class GateReport(BaseModel):      # (schema) -> gate.json
     absolute_checks: tuple[SliceDecision, ...]; notable_slices: tuple[SliceDecision, ...]
     likely_cause: CauseCode | None; top_failing_cases: tuple[CaseId, ...]
     not_applicable_counts: dict[str, int] = {}   # metric -> candidate cases with status not_applicable (D135)
+    n_unmatched: dict[str, int] = {}; n_excluded: dict[str, int] = {}   # metric -> cases dropped from pairing (non-zero only; T1.7 review)
     no_baseline: bool = False                    # True when --from-store found no baseline (D103; status then
                                                  # INSUFFICIENT_DATA locally, `failure` on a gated PR; baseline_run_id None;
                                                  # title emoji ⚪ "NO BASELINE" in the PR comment and dashboard (R9 X5.5, ui-spec)
@@ -1127,7 +1142,12 @@ def evaluate_gate(baseline: RunResults, candidate: RunResults, policy: GatePolic
     #   `overall` slice has < 30 applicable clusters (D117). Informational pairs are PASS, leave the Holm family, carry
     #   informational_reason and have gated=False (R9 X5.4). Judge-ERROR values are excluded from pairing, never worst-filled.
     #   overall / tenant / lang are built from unperturbed cases only; perturbed_all from perturbed cases (R9 X3.6).
-    # raises GateInputError on eval_fingerprint mismatch, incomplete runs, or baseline error_rate > max_error_rate
+    # raises GateInputError on eval_fingerprint mismatch, incomplete runs, or baseline error_rate > max_error_rate, or when baseline and candidate
+    #   hold different case ids / cluster or slice attributes. `directions` is NOT cross-checked against the registry here
+    #   (gate never imports metrics); T1.10's pipeline passes MetricRegistry.directions() unchanged and tests the equality.
+    #   A judge-error pair is excluded only if every gated slice holding it (testable or not) stays within 20 %; otherwise it is
+    #   filled with the worst value everywhere, `overall` included (D360h). Further GateInputError cases: baseline `error` above
+    #   20 % of a testable gated slice, a response-less record whose error_rate is 0, a gated metric with no usable baseline value.
 CauseCode = Literal["retrieval", "generation", "citation_format", "language", "refusal_policy", "errors", "mixed"]
 def likely_cause(decisions: Sequence[SliceDecision]) -> CauseCode | None   # gate/cause.py (T1.7); rule table: SPEC §7.4
     # tests assert these string codes, never rule numbers

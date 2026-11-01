@@ -1,0 +1,17 @@
+# Oneshot (R12 N4.2): re-applies the Pruefstand rules whenever Docker (re)starts, because PartOf= makes a
+# docker restart restart this unit and WantedBy=docker.service starts it with Docker.
+# Installed by setup-proxy-net.sh; the script never flushes the ruleset (A12-02).
+[Unit]
+Description=Pruefstand firewall rules (DOCKER-USER and PRUEFSTAND-INPUT)
+After=docker.service
+PartOf=docker.service
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/usr/local/sbin/pruefstand-firewall.sh
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=docker.service
