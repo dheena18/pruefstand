@@ -1,6 +1,6 @@
 # Prüfstand compose stack (T0.3; docs/engineering/docker.md section 3 is the port table).
-# Profiles: core (Qdrant) | live (CPU stack of tier 1: Qdrant + llama.cpp [+ embed, rag-demo from T1.13]) |
-# dev (rag-demo built from source, T1.13). gpu (T3.1a) and demo (T8.5) are added by those tasks in their own hunks.
+# Profiles: core (Qdrant) | live (CPU stack of tier 1: Qdrant + llama.cpp + TEI embeddings + rag-demo) |
+# dev (reserved: rag-demo from source with reload). gpu (T3.1a) and demo (T8.5) are added by those tasks in their own hunks.
 # Start it with `make up PROFILES="core live"` (mk/docker.mk exports the host ports = default + PORT_OFFSET,
 # D214); a raw `docker compose` needs `make ports-env` first. Every host port binds 127.0.0.1 only and is a
 # variable (scripts/check_compose.py). No secrets here: only ${VAR} references.
@@ -51,7 +51,7 @@ services:
     # --parallel 1: greedy outputs must not depend on batch composition (AI-36); --jinja: the chat template
     # honours enable_thinking=false for Qwen3 (W1.2). The model file comes from scripts/models/fetch.py (T1.4).
     command: >-
-      --model /models/${LIVE_LLM_GGUF:-model.gguf}
+      --model /models/${LIVE_LLM_GGUF:-qwen2.5-0.5b-instruct-q4_k_m.gguf}
       --host 0.0.0.0 --port 8080
       --ctx-size 4096
       --threads ${LIVE_LLM_THREADS:-4}
@@ -69,14 +69,65 @@ services:
       retries: 30
       start_period: 20s
 
-  # Note for T1.13: scripts/check_compose.py exempts a service with `build:` and no `image:`; a service that has
-  # both `build:` and `image:` must pin that image by digest.
-  # rag-demo (T1.13 adds apps/rag-demo/Dockerfile; then uncomment, set profiles and fill the blocks below):
-  #   live: built from the T0.3 template, depends_on qdrant + llm (condition: service_healthy),
-  #         ports: ["127.0.0.1:${RAG_DEMO_HOST_PORT:-8000}:8000"], healthcheck on /v1/health
-  #   dev:  same service from source with reload: build: {context: apps/rag-demo}, profiles: [dev]
-  # rag-demo:
-  #   profiles: [live, dev]
+  # TEI CPU embedding server (T1.13). The model is downloaded on first start into ${LIVE_MODEL_DIR}/tei (pinned
+  # revision, license MIT); infra/models/live-models.yaml holds the pin and the SHA-256 of its weights.
+  embed:
+    <<: *service-defaults
+    image: ghcr.io/huggingface/text-embeddings-inference:cpu-1.8@sha256:8de25e75ce39617f17f2f6c77d60a4f75b65e779ed5005420eb1400072a15c1c
+    profiles: [live]
+    command: >-
+      --model-id intfloat/multilingual-e5-small
+      --revision 614241f622f53c4eeff9890bdc4f31cfecc418b3
+      --port 80
+      --tokenization-workers 2
+    environment:
+      OMP_NUM_THREADS: ${LIVE_EMBED_THREADS:-4}
+      MKL_NUM_THREADS: ${LIVE_EMBED_THREADS:-4}
+    ports:
+      - "127.0.0.1:${EMBED_HOST_PORT:-8090}:80"
+    volumes:
+      - ${LIVE_MODEL_DIR:-${HOME}/.cache/pruefstand/models}/tei:/data
+    mem_limit: 2g
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:80/health"]
+      interval: 5s
+      timeout: 3s
+      retries: 60
+      start_period: 20s
+
+  # The reference RAG app (system under test), built from apps/rag-demo/Dockerfile (T0.3 template). RAG_CONFIG
+  # (RAG_DEMO_CONFIG; not RAG_CONFIG, which .env sets to a host path) selects the config inside the image (/app/configs/rag.yaml or /app/configs/bugs/<name>.yaml).
+  rag-demo:
+    <<: *service-defaults
+    profiles: [live]
+    build:
+      context: .
+      dockerfile: apps/rag-demo/Dockerfile
+      args:
+        GIT_SHA: ${GIT_SHA:-unknown}
+    depends_on:
+      qdrant:
+        condition: service_healthy
+      llm:
+        condition: service_healthy
+      embed:
+        condition: service_healthy
+    environment:
+      RAG_CONFIG: ${RAG_DEMO_CONFIG:-/app/configs/rag.yaml}
+      QDRANT_URL: http://qdrant:6333
+      LLM_URL: http://llm:8080
+      EMBED_URL: http://embed:80
+      LLAMA_CPP_VERSION: ${LIVE_LLAMA_CPP_VERSION:-b12019}
+      MODEL_SHA256: ${LIVE_LLM_SHA256:-74a4da8c9fdbcd15bd1f6d01d621410d31c6fc00986f5eb687824e7b93d7a9db}
+    ports:
+      - "127.0.0.1:${RAG_DEMO_HOST_PORT:-8000}:8000"
+    mem_limit: 1g
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8000/v1/health', timeout=2).status==200 else 1)"]
+      interval: 10s
+      timeout: 3s
+      retries: 6
+      start_period: 10s
 
 volumes:
   qdrant_data:
