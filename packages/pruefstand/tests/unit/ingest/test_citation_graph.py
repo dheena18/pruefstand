@@ -7,9 +7,11 @@ from pathlib import Path
 
 import polars as pl
 import pytest
+from structlog.testing import capture_logs
+
+from pruefstand.core.ids import DocId
 from pruefstand.ingest.citation_graph import load_citation_graph
 from pruefstand.ingest.records import OldpDataError
-from structlog.testing import capture_logs
 
 Writer = Callable[[Path, Sequence[Mapping[str, object]]], Path]
 
@@ -28,13 +30,13 @@ LABOUR = "laghe-2014-02-26-2-sa-37213"
 
 def test_edges_become_sorted_normalised_keys_per_decision(oldp_graph_raw: Path) -> None:
     graph = load_citation_graph(oldp_graph_raw)
-    assert graph["oldp-446202"] == ("§ 1 KSchG", "§ 622 BGB")
+    assert graph[DocId("oldp-446202")] == ("§ 1 KSchG", "§ 622 BGB")
 
 
 def test_unknown_law_is_kept_as_is_and_logged(oldp_graph_raw: Path) -> None:
     with capture_logs() as logs:
         graph = load_citation_graph(oldp_graph_raw)
-    assert graph["oldp-299231"] == ("§ 5 FMStFG",)
+    assert graph[DocId("oldp-299231")] == ("§ 5 FMStFG",)
     unknown = [entry for entry in logs if entry["event"] == "citation_unknown_law"]
     assert [entry["law"] for entry in unknown] == ["FMStFG"]
 
@@ -56,7 +58,7 @@ def test_explicit_decisions_directory(oldp_graph_raw: Path, tmp_path: Path, oldp
     (moved / "edges.jsonl").write_bytes((oldp_graph_raw / "edges.jsonl").read_bytes())
     with pytest.raises(OldpDataError):
         load_citation_graph(moved)  # no ../oldp_decisions next to it
-    assert load_citation_graph(moved, decisions_dir=oldp_raw)["oldp-446202"] == (
+    assert load_citation_graph(moved, decisions_dir=oldp_raw)[DocId("oldp-446202")] == (
         "§ 1 KSchG",
         "§ 622 BGB",
     )
@@ -109,7 +111,7 @@ def test_rows_with_missing_fields_are_skipped(oldp_graph_raw: Path) -> None:
         )
         handle.write("{broken\n")
         handle.write(json.dumps(edge(LABOUR, "BGB", "")) + "\n")
-    assert load_citation_graph(oldp_graph_raw)["oldp-446202"] == ("§ 1 KSchG", "§ 622 BGB")
+    assert load_citation_graph(oldp_graph_raw)[DocId("oldp-446202")] == ("§ 1 KSchG", "§ 622 BGB")
 
 
 def test_result_is_stable_across_runs(oldp_graph_raw: Path) -> None:
@@ -126,5 +128,5 @@ def test_many_distinct_unknown_laws_are_logged_once_each_and_fast(
     with capture_logs() as logs:
         graph = load_citation_graph(graph_dir)
     assert time.perf_counter() - start < 20
-    assert len(graph["oldp-446202"]) == 20_000
+    assert len(graph[DocId("oldp-446202")]) == 20_000
     assert len([entry for entry in logs if entry["event"] == "citation_unknown_law"]) == 50

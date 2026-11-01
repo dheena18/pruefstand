@@ -1,9 +1,11 @@
 """html_to_text (T2.3): HTML of the court decisions -> plain text lines, hardened."""
 
+import contextlib
 import time
 
 import pytest
-from pruefstand.ingest.html_text import html_to_text
+
+from pruefstand.ingest.html_text import HtmlTextError, html_to_text
 
 
 def test_blocks_become_lines_and_inline_tags_do_not_break_words() -> None:
@@ -21,7 +23,8 @@ def test_line_breaks_and_table_cells() -> None:
 def test_nested_randnummer_tables_keep_number_and_text_apart() -> None:
     html = (
         "<table><tr><td><table><tr><td>1&#160;</td></tr></table></td>"
-        '<td><table><tr><td><rd nr="1"/>Die Beteiligten streiten.</td></tr></table></td></tr></table>'
+        '<td><table><tr><td><rd nr="1"/>Die Beteiligten streiten.</td></tr></table></td>'
+        "</tr></table>"
     )
     assert html_to_text(html).split("\n") == ["1", "Die Beteiligten streiten."]
 
@@ -33,7 +36,10 @@ def test_entities_named_numeric_and_nbsp() -> None:
 
 
 def test_script_style_comment_and_processing_instructions_are_dropped() -> None:
-    html = "<?php echo 1 ?><p>a</p><script>x()</script><style>p{}</style><!-- c --><noscript>n</noscript><p>b</p>"
+    html = (
+        "<?php echo 1 ?><p>a</p><script>x()</script><style>p{}</style><!-- c -->"
+        "<noscript>n</noscript><p>b</p>"
+    )
     assert html_to_text(html) == "a\nb"
 
 
@@ -92,10 +98,6 @@ def test_time_is_linear_in_the_markup() -> None:
 )
 def test_pathological_markup_terminates_quickly(markup: str) -> None:
     start = time.perf_counter()
-    try:
-        result = html_to_text(markup)
-    except Exception as error:  # only the documented error type may escape
-        assert type(error).__name__ == "HtmlTextError"
-    else:
-        assert isinstance(result, str)
+    with contextlib.suppress(HtmlTextError):  # the one documented way to refuse
+        assert isinstance(html_to_text(markup), str)
     assert time.perf_counter() - start < 10

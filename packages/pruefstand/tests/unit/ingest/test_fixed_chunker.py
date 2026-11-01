@@ -4,16 +4,17 @@ import math
 import time
 import unicodedata
 from datetime import date
+from itertools import pairwise
 
 import pytest
 from hypothesis import given, settings
 from hypothesis import strategies as st
-from pruefstand.ingest.chunkers.fixed import FixedTokenChunker, token_windows
 
 from pruefstand.core.enums import Lang
 from pruefstand.core.ids import DocId, TenantId
 from pruefstand.core.models.corpus import Document
 from pruefstand.core.protocols import Chunker
+from pruefstand.ingest.chunkers.fixed import FixedTokenChunker, token_windows
 from pruefstand.ingest.text import count_tokens
 
 
@@ -43,7 +44,7 @@ def test_25_tokens_make_four_windows_at_0_7_14_21() -> None:
     starts = [int(c.text.split()[0][1:]) for c in chunks]
     assert starts == [0, 7, 14, 21]
     assert [len(c.text.split()) for c in chunks] == [10, 10, 10, 4]  # the last one is shorter
-    for first, second in zip(chunks, chunks[1:], strict=False):
+    for first, second in pairwise(chunks):
         assert first.text.split()[-3:] == second.text.split()[:3]
     assert {w for c in chunks for w in c.text.split()} == {f"w{i}" for i in range(25)}
 
@@ -128,7 +129,7 @@ def test_windows_cover_every_token_with_exact_overlap(
     expected = 1 if n <= max_tokens else 1 + math.ceil((n - max_tokens) / step)
     assert len(windows) == expected
     assert {t for w in windows for t in w.split()} == {f"w{i}" for i in range(n)}
-    for first, second in zip(windows, windows[1:], strict=False):
+    for first, second in pairwise(windows):
         assert len(first.split()) == max_tokens
         if overlap:
             assert first.split()[-overlap:] == second.split()[:overlap]

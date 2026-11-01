@@ -1,6 +1,7 @@
 """Court classification for T2.5 tenant planning (T2.3 S5): jurisdiction, level, domain."""
 
 import pytest
+
 from pruefstand.ingest.oldp_courts import classify_court, tenant_domain
 
 

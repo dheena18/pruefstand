@@ -45,7 +45,7 @@ def raw_dir(make_raw: RawFactory) -> Path:
     )
 
 
-# --- T2.3: OLDP decisions (three real trimmed records of the pinned 1k sample, see tests/fixtures/oldp) ---
+# --- T2.3: OLDP decisions (three real trimmed records of the 1k sample, tests/fixtures/oldp) ---
 
 OLDP_FIXTURES = Path(__file__).resolve().parents[2] / "fixtures" / "oldp"
 OLDP_GRAPH_FIXTURES = Path(__file__).resolve().parents[2] / "fixtures" / "oldp_graph"

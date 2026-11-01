@@ -3,24 +3,25 @@
 import re
 import time
 from datetime import date
+from itertools import pairwise
 from pathlib import Path
 
 import pytest
+
+from pruefstand.core.enums import Lang
+from pruefstand.core.ids import DocId, TenantId
+from pruefstand.core.models.corpus import Chunk, Document
+from pruefstand.core.protocols import Chunker
 from pruefstand.ingest.chunkers.decision import (
     DecisionSectionChunker,
     has_named_sections,
     split_sections,
 )
 from pruefstand.ingest.oldp import OldpLoader
-
-from pruefstand.core.enums import Lang
-from pruefstand.core.ids import DocId, TenantId
-from pruefstand.core.models.corpus import Chunk, Document
-from pruefstand.core.protocols import Chunker
 from pruefstand.ingest.text import count_tokens
 
-SENTENCE = "Der Arbeitnehmer verlangt die Zahlung der Vergütung nach § 611a BGB. "  # 13 tokens
-PARAGRAPH = SENTENCE * 5  # 65 tokens
+SENTENCE = "Der Arbeitnehmer verlangt die Zahlung der Vergütung nach § 611a BGB. "  # 12 tokens
+PARAGRAPH = SENTENCE * 5  # 60 tokens
 
 
 def make_doc(text: str, doc_id: str = "oldp-123") -> Document:
@@ -44,7 +45,10 @@ def test_protocol_conformance() -> None:
 
 
 def test_headings_give_sections_in_document_order() -> None:
-    text = "Tenor\nDie Klage wird abgewiesen.\nTatbestand\nDie Parteien streiten.\nEntscheidungsgründe\nDie Klage ist unbegründet."
+    text = (
+        "Tenor\nDie Klage wird abgewiesen.\nTatbestand\nDie Parteien streiten.\n"
+        "Entscheidungsgründe\nDie Klage ist unbegründet."
+    )
     chunks = DecisionSectionChunker().chunk(make_doc(text))
     assert sections(chunks) == ["Tenor", "Tatbestand", "Entscheidungsgründe"]
     assert [c.text for c in chunks] == [
@@ -85,7 +89,10 @@ def test_heading_variants(heading: str, expected: str) -> None:
 
 
 def test_a_heading_is_the_whole_line_never_a_word_in_a_sentence() -> None:
-    text = "Das Tenor der Entscheidung und die Gründe sind klar.\nTatbestand\nEs geht um Tenor und Gründe."
+    text = (
+        "Das Tenor der Entscheidung und die Gründe sind klar.\n"
+        "Tatbestand\nEs geht um Tenor und Gründe."
+    )
     chunks = DecisionSectionChunker().chunk(make_doc(text))
     assert sections(chunks) == [None, "Tatbestand"]
 
@@ -106,7 +113,10 @@ def test_verfahrensgang_ends_a_section_but_is_not_one() -> None:
 
 
 def test_trailing_apparatus_is_dropped() -> None:
-    text = "Tenor\nAbgewiesen.\nDiese Entscheidung zitiert\nBGH, 1. Januar 2000, I ZR 1/00\nFußnoten\nx"
+    text = (
+        "Tenor\nAbgewiesen.\nDiese Entscheidung zitiert\n"
+        "BGH, 1. Januar 2000, I ZR 1/00\nFußnoten\nx"
+    )
     chunks = DecisionSectionChunker().chunk(make_doc(text))
     assert sections(chunks) == ["Tenor"]
     assert all("BGH" not in c.text for c in chunks)
@@ -120,14 +130,14 @@ def test_no_headings_falls_back_to_fixed_windows_of_512_with_overlap_64() -> Non
     assert len(chunks) >= 5
     assert all(c.section is None for c in chunks)
     assert all(count_tokens(c.text) <= 512 for c in chunks)
-    for first, second in zip(chunks, chunks[1:], strict=False):
+    for first, second in pairwise(chunks):
         assert count_tokens(first.text) == 512
         assert tokens(first.text)[-64:] == tokens(second.text)[:64]  # the 64-token overlap
     assert [c.chunk_id for c in chunks] == [f"oldp-123#{i}" for i in range(len(chunks))]
 
 
 def test_long_entscheidungsgruende_are_split_and_keep_the_section() -> None:
-    body = "\n".join([PARAGRAPH] * 47)  # 3 055 tokens
+    body = "\n".join([PARAGRAPH] * 52)  # 3 120 tokens
     assert count_tokens(body) > 3000
     chunks = DecisionSectionChunker().chunk(
         make_doc(f"Tenor\nAbgewiesen.\nEntscheidungsgründe\n{body}")
@@ -148,13 +158,13 @@ def test_chunk_ids_are_stable_across_runs() -> None:
 
 
 def test_randnummer_blocks_are_kept_whole_and_start_the_chunks() -> None:
-    blocks = [f"{n}\n{PARAGRAPH}\n{PARAGRAPH}" for n in range(1, 13)]  # 130 tokens + marker each
+    blocks = [f"{n}\n{PARAGRAPH}\n{PARAGRAPH}\n{PARAGRAPH}" for n in range(1, 13)]  # 181 tokens
     chunks = DecisionSectionChunker().chunk(make_doc("Entscheidungsgründe\n" + "\n".join(blocks)))
-    assert len(chunks) == 4  # three blocks (391 tokens) per chunk, a fourth would exceed 512
+    assert len(chunks) == 6  # two blocks (362 tokens) per chunk, a third would exceed 512
     for chunk in chunks:
         assert chunk.text.split("\n")[0].isdigit()
         assert count_tokens(chunk.text) <= 512
-    assert [c.text.split("\n")[0] for c in chunks] == ["1", "4", "7", "10"]
+    assert [c.text.split("\n")[0] for c in chunks] == ["1", "3", "5", "7", "9", "11"]
 
 
 def test_a_numbered_list_that_restarts_is_not_a_new_randnummer() -> None:

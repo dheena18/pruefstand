@@ -1318,7 +1318,10 @@ class CorpusManifest(BaseModel): corpus_version: str; created_at: datetime; sour
 class Loader(Protocol):  def load(self, raw_dir: Path) -> Iterator[Document]: ...
 class Chunker(Protocol): def chunk(self, doc: Document) -> list[Chunk]: ...
 GiiXmlLoader, OldpLoader, EurLexLoader; ParagraphChunker, DecisionSectionChunker, ArticleChunker, FixedTokenChunker
-def load_citation_graph(raw_dir: Path) -> dict[DocId, tuple[str, ...]]   # ingest/citation_graph.py (T2.3), OLDP edges
+def load_citation_graph(raw_dir: Path, *, decisions_dir: Path | None = None,
+                        limits: OldpLimits | None = None) -> dict[DocId, tuple[str, ...]]
+    # ingest/citation_graph.py (T2.3): OLDP Case->Law edges, slug -> `oldp-<id>` via the sibling oldp_decisions dir
+    # (or decisions_dir), values = sorted distinct normalised law keys; unknown law codes kept as "§ 5 FMStFG" and logged
 def assign_tenants(docs: Iterable[Document], plan: TenantPlan) -> Iterator[Document]
 # TenantPlan, CorpusBuildConfig (core.config): fields defined by T2.5 and recorded here in that PR
 def write_corpus(chunks: Iterable[Chunk], out_dir: Path, corpus_version: str) -> CorpusManifest
