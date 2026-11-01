@@ -30,6 +30,7 @@ def test_parquet_bomb_is_not_decoded(tmp_path: Path) -> None:
     """A tiny zstd file whose single value decodes to 60 MB must not be materialised."""
     _, path = written(tmp_path / "store")
     frame = pl.read_parquet(path / "results.parquet")
+    pl.DataFrame({"a": [1]}).write_parquet(tmp_path / "small.parquet")
     huge = frame.with_columns(
         tenant=pl.when(pl.int_range(pl.len()) == 0)
         .then(pl.lit("a" * 60_000_000))
@@ -39,18 +40,24 @@ def test_parquet_bomb_is_not_decoded(tmp_path: Path) -> None:
     assert (path / "results.parquet").stat().st_size < 1_000_000
     script = textwrap.dedent(
         f"""
-        import resource, sys
+        import sys
         from pathlib import Path
         from pruefstand.store.artifacts import ArtifactStore
         from pruefstand.core.errors import StoreError
         store = ArtifactStore(Path({str(tmp_path / "store")!r}))
-        store.read_run({str(path)!r}) if False else None
-        before = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss
+        def hwm_mb():
+            lines = open('/proc/self/status').read().splitlines()
+            return int([x for x in lines if x.startswith('VmHWM')][0].split()[1]) / 1024
+        import polars as pl
+        small = {str(tmp_path / "small.parquet")!r}
+        pl.scan_parquet(small).select(pl.len()).collect()  # warm up polars' thread pool
+        pl.read_parquet_schema(small)
+        before = hwm_mb()
         try:
             store.read_run({str(path)!r})
         except StoreError:
             pass
-        grown_mb = (resource.getrusage(resource.RUSAGE_SELF).ru_maxrss - before) / 1024
+        grown_mb = hwm_mb() - before
         print(grown_mb)
         sys.exit(0 if grown_mb < 30 else 1)
         """
