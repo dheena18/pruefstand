@@ -111,3 +111,29 @@ async def test_fifty_concurrent_reservations_respect_the_cap() -> None:
     await asyncio.gather(*(worker() for _ in range(50)))
     assert granted == 5
     assert budget.requests_remaining == 10 - 5
+
+
+async def test_negative_reservations_are_refused() -> None:
+    budget = Budget(max_usd=None, max_tokens=None, max_requests=4)
+    with pytest.raises(ValueError, match="negative"):
+        await budget.reserve(-1)
+    with pytest.raises(ValueError, match="negative"):
+        await budget.release(-1)
+    assert budget.requests_remaining == 4
+
+
+def test_check_raises_once_a_limit_is_passed_and_not_before() -> None:
+    budget = Budget(max_usd=None, max_tokens=10)
+    budget.check()
+    with pytest.raises(BudgetExceeded):
+        budget.charge(_resp(tokens=20))
+    with pytest.raises(BudgetExceeded):
+        budget.check()
+
+
+def test_check_stops_at_the_request_cap() -> None:
+    budget = Budget(max_usd=None, max_tokens=None, max_requests=1)
+    budget.check()
+    budget.charge(_resp())
+    with pytest.raises(BudgetExceeded):
+        budget.check()

@@ -4,7 +4,12 @@ import pytest
 from testsupport.llm_scenarios import TEST_API_BASE, TEST_MODEL, echo_request
 
 from pruefstand.core.errors import LLMError
-from pruefstand.llm.backends.litellm import LiteLLMBackend, completion_kwargs, strip_think
+from pruefstand.llm.backends.litellm import (
+    LiteLLMBackend,
+    completion_kwargs,
+    map_error,
+    strip_think,
+)
 from pruefstand.llm.recorder import COLUMNS
 
 
@@ -111,3 +116,31 @@ async def test_missing_token_names_the_variable_but_no_value(
     with pytest.raises(LLMError, match="PRUEFSTAND_GH_MODELS_TOKEN") as info:
         await backend.acomplete(req)
     assert info.value.transient is False
+
+
+class APIConnectionError(Exception):
+    """Same class name as LiteLLM's connection error."""
+
+
+class WithStatus(Exception):
+    def __init__(self, status: int) -> None:
+        super().__init__("boom SECRETKEY")
+        self.status_code = status
+
+
+def test_unknown_exceptions_are_not_transient() -> None:
+    err = map_error(RuntimeError("weird"), "github", "k")
+    assert err.transient is False
+    assert err.status is None
+
+
+def test_connection_errors_and_retryable_statuses_are_transient() -> None:
+    assert map_error(APIConnectionError("x"), "p", "k").transient is True
+    for status in (408, 429, 500, 503):
+        assert map_error(WithStatus(status), "p", "k").transient is True
+    assert map_error(WithStatus(400), "p", "k").transient is False
+    assert map_error(WithStatus(401), "p", "k").status == 401
+
+
+def test_error_text_never_holds_the_key() -> None:
+    assert "SECRETKEY" not in str(map_error(WithStatus(500), "p", "SECRETKEY"))

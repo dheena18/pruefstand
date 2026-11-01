@@ -11,11 +11,11 @@ from testsupport.llm_scenarios import (
 )
 
 from pruefstand.core.config import LLMPolicyConfig
-from pruefstand.core.errors import BudgetExceeded, LLMError
+from pruefstand.core.errors import BudgetExceeded, LLMError, PolicyViolation
 from pruefstand.core.models.llm import LLMRequest, LLMResponse
 from pruefstand.llm.backends.litellm import LiteLLMBackend
 from pruefstand.llm.budget import Budget
-from pruefstand.llm.client import LLMClient, cache_key
+from pruefstand.llm.client import LLMClient, cache_key, repair_max_tokens
 from pruefstand.llm.json_extract import extract_json_object
 from pruefstand.llm.policy import LLMPolicy
 from pruefstand.llm.recorder import CallRecorder
@@ -136,5 +136,29 @@ async def test_policy_violation_makes_no_call_and_is_recorded() -> None:
     client, recorder, _ = _client()
     req: LLMRequest = echo_request().model_copy(update={"model": "openai/gpt-4o"})
     with pytest.raises(LLMError, match="not in allowed_providers"):
+        await client.complete(req)
+    assert recorder.rows[0]["error"]
+
+
+@pytest.mark.default_cassette("echo_ok.yaml")
+@pytest.mark.vcr
+async def test_after_a_budget_overrun_no_further_call_is_made() -> None:
+    client, recorder, _ = _client(budget=Budget(max_usd=None, max_tokens=1))
+    with pytest.raises(BudgetExceeded):
+        await client.complete(echo_request())
+    with pytest.raises(BudgetExceeded):  # a second HTTP exchange would fail the vcr instead
+        await client.complete(echo_request(word="Meier"))
+    assert len(recorder.rows) == 1
+
+
+@pytest.mark.parametrize(("given", "expected"), [(12, 24), (9000, 16384), (20000, 20000), (1, 2)])
+def test_repair_max_tokens_is_doubled_but_capped(given: int, expected: int) -> None:
+    assert repair_max_tokens(given) == expected
+
+
+async def test_a_model_id_without_provider_is_a_policy_violation() -> None:
+    client, recorder, _ = _client()
+    req = echo_request().model_copy(update={"model": "github"})
+    with pytest.raises(PolicyViolation):
         await client.complete(req)
     assert recorder.rows[0]["error"]

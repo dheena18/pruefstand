@@ -64,3 +64,14 @@ def test_substituted_value_is_not_expanded_again(tmp_path: Path) -> None:
     (tmp_path / "t_v1.txt").write_text("### user\n{{a}} {{b}}\n", encoding="utf-8")
     messages = PromptRegistry([tmp_path]).get("t", "v1").render(a="{{b}}", b="x")
     assert messages[0].content == "{{b}} x"
+
+
+@pytest.mark.parametrize("prompt_id", ["../echo", "a/b", "Echo", "", "echo\x00", "ec ho", "..\\x"])
+def test_prompt_id_cannot_escape_the_roots(prompt_id: str) -> None:
+    with pytest.raises(PromptError, match="prompt_id"):
+        PromptRegistry().get(prompt_id, "v1")
+
+
+def test_dotted_ids_are_fine() -> None:
+    with pytest.raises(PromptError, match="not found"):
+        PromptRegistry().get("datagen.private_docs.x", "v1")
