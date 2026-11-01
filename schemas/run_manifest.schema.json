@@ -109,8 +109,16 @@
     }
   },
   "additionalProperties": false,
-  "description": "``run.json``: everything needed to interpret a run.\n\n``counts`` keys (single owner = the runner): ``ok``, ``error``, ``cached``, ``not_applicable``,\n``judge_error``, ``judge_skipped`` (details reason ``judge_quota`` | ``judge_cap``),\n``judge_truncated``, ``think_stripped``, ``corpus_mismatch``, ``retrieve`` (``robust_pr``\ncases sent to ``/v1/retrieve``, R11 D218), ``retrieve_fallback`` (target without\n``/v1/retrieve``), and ``model_reloads`` / ``upstream_errors`` (R12 N6.4: ``llm-proxy``\n``/health`` differences over the run, written by the T6.2a executor; absent in tier 1 and in\nlocal runs). An infra failure is the ``infra_error`` field, never a count.\n\n``infra_error`` is ``\"<kind>: <detail>\"`` (kind ``ollama_down`` | ``tunnel_lost`` |\n``data_root_unavailable`` | ``proxy_upstream`` | ``model_reload`` | ``window_exceeded``).\n\nRun-time flags (``judge_drift``, ``judge_degraded``, ``judge_fallback``) never change\n``eval_fingerprint``; ``block``, ``judged_subset`` and a ``stratum`` other than ``\"all\"`` do.\n\nRaises:\n    ValidationError: ``complete`` differs from ``stop_reason == \"completed\"``, or\n        ``infra_error`` is set with a ``stop_reason`` other than ``\"aborted\"``.",
+  "description": "``run.json``: everything needed to interpret a run.\n\n``counts`` keys (single owner = the runner): ``ok``, ``error``, ``cached``, ``not_applicable``,\n``judge_error``, ``judge_skipped`` (details reason ``judge_quota`` | ``judge_cap``),\n``judge_truncated``, ``metric_truncated`` (deterministic values with ``details.truncated``),\n``think_stripped``, ``corpus_mismatch``, ``retrieve`` (``robust_pr``\ncases sent to ``/v1/retrieve``, R11 D218), ``retrieve_fallback`` (target without\n``/v1/retrieve``), and ``model_reloads`` / ``upstream_errors`` (R12 N6.4: ``llm-proxy``\n``/health`` differences over the run, written by the T6.2a executor; absent in tier 1 and in\nlocal runs). An infra failure is the ``infra_error`` field, never a count.\n\n``infra_error`` is ``\"<kind>: <detail>\"`` (kind ``ollama_down`` | ``tunnel_lost`` |\n``data_root_unavailable`` | ``proxy_upstream`` | ``model_reload`` | ``window_exceeded``).\n\nRun-time flags (``judge_drift``, ``judge_degraded``, ``judge_fallback``) never change\n``eval_fingerprint``; ``block``, ``judged_subset`` and a ``stratum`` other than ``\"all\"`` do.\n\n``artifact_sha256`` is set by ``ArtifactStore.write_run`` (T1.8): file name -> SHA-256 of\n``results.parquet``, ``responses.jsonl`` and ``scored.jsonl``. Readers must stream-hash a file\nand compare *before* they parse it (a hostile parquet footer can abort a parser); the runner\nleaves it empty.\n\nRaises:\n    ValidationError: ``complete`` differs from ``stop_reason == \"completed\"``, or\n        ``infra_error`` is set with a ``stop_reason`` other than ``\"aborted\"``.",
   "properties": {
+    "artifact_sha256": {
+      "additionalProperties": {
+        "type": "string"
+      },
+      "default": {},
+      "title": "Artifact Sha256",
+      "type": "object"
+    },
     "block": {
       "anyOf": [
         {

@@ -30,7 +30,8 @@ class RunManifest(BaseModel):
 
     ``counts`` keys (single owner = the runner): ``ok``, ``error``, ``cached``, ``not_applicable``,
     ``judge_error``, ``judge_skipped`` (details reason ``judge_quota`` | ``judge_cap``),
-    ``judge_truncated``, ``think_stripped``, ``corpus_mismatch``, ``retrieve`` (``robust_pr``
+    ``judge_truncated``, ``metric_truncated`` (deterministic values with ``details.truncated``),
+    ``think_stripped``, ``corpus_mismatch``, ``retrieve`` (``robust_pr``
     cases sent to ``/v1/retrieve``, R11 D218), ``retrieve_fallback`` (target without
     ``/v1/retrieve``), and ``model_reloads`` / ``upstream_errors`` (R12 N6.4: ``llm-proxy``
     ``/health`` differences over the run, written by the T6.2a executor; absent in tier 1 and in
@@ -41,6 +42,11 @@ class RunManifest(BaseModel):
 
     Run-time flags (``judge_drift``, ``judge_degraded``, ``judge_fallback``) never change
     ``eval_fingerprint``; ``block``, ``judged_subset`` and a ``stratum`` other than ``"all"`` do.
+
+    ``artifact_sha256`` is set by ``ArtifactStore.write_run`` (T1.8): file name -> SHA-256 of
+    ``results.parquet``, ``responses.jsonl`` and ``scored.jsonl``. Readers must stream-hash a file
+    and compare *before* they parse it (a hostile parquet footer can abort a parser); the runner
+    leaves it empty.
 
     Raises:
         ValidationError: ``complete`` differs from ``stop_reason == "completed"``, or
@@ -86,6 +92,7 @@ class RunManifest(BaseModel):
     judge_degraded: bool = False
     judge_drift: bool = False
     judged_cases: int = 0
+    artifact_sha256: dict[str, str] = {}
 
     @model_validator(mode="after")
     def _check_stop_state(self) -> Self:

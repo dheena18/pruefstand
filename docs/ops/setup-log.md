@@ -243,8 +243,15 @@ IF=$(ip route get 1.1.1.1 | awk '{for(i=1;i<=NF;i++) if($i=="dev") print $(i+1)}
 #   pkill -x ollama; cd ~; fuser -vm /data/dheena/truenas-ollama; fusermount3 -u /data/dheena/truenas-ollama
 ```
 
-Note: the NAS folder `/mnt/SDD/SSD/Ollama` also contained an SSH private key (`id_ed25519`); it should be
-moved out of the share (and replaced if it was ever exposed).
+Note: the NAS folder `/mnt/SDD/SSD/Ollama` also contained Ollama's own identity key pair (`id_ed25519`, created by
+Ollama in its home folder; not an SSH login key). Done 2026-11-01: moved out of the share into a root-only folder
+on the NAS (mode 700, key 600); nothing uses it since the models moved to the cluster disk.
+
+```bash
+# TrueNAS shell
+sudo mkdir -p -m 700 /root/ollama-identity && sudo mv /mnt/SDD/SSD/Ollama/id_ed25519 /mnt/SDD/SSD/Ollama/id_ed25519.pub /root/ollama-identity/ && sudo chmod 600 /root/ollama-identity/id_ed25519
+sudo zfs list -t snapshot -o name,creation | grep -i ollama   # older snapshots still hold a copy
+```
 
 ### Adding or swapping a model (disk is small: ~14 GB free next to the generator)
 

@@ -417,3 +417,48 @@ The public demo has no write paths and a fixed tenant list. A per-IP rate limit 
 (ADR-0012) are checked before any LLM call, and every error carries a JSON body, so the page never has
 to read the `Retry-After` header (D138). The optional demo runs on the VM on its own Docker network
 `demo-net` behind an outbound Cloudflare Tunnel (Y7.5), never on `gate-net` or the A40 cluster.
+
+## 8. Runner: one case (T1.8)
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant R as Runner (semaphore = concurrency)
+    participant C as target cache (namespace target)
+    participant T as TargetAdapter
+    participant M as deterministic metrics
+    participant J as JudgeStage
+    participant B as Budget
+    R->>R: route: robust_pr (or core answerable outside --judged-subset) -> retrieve, else answer
+    R->>C: get(stable_hash(target_fp, case.id, question, tenant)), a hit of the other mode is a miss
+    alt cache hit
+        C-->>R: response (cached=True, attempt=0)
+    else miss
+        loop at most max_retries + 1 tries
+            R->>T: query / retrieve under asyncio.wait_for(timeout_s)
+            alt TargetError(transient) or timeout
+                R->>R: sleep backoff_s * 2^k * (1 + 0..25 % seeded jitter)
+            else ok, or non-transient error
+                T-->>R: response or error (error text <= 500 chars)
+            end
+        end
+        opt retrieve answered None (404/405)
+            R->>T: query instead (counts.retrieve_fallback, mode=answer)
+        end
+        R->>C: set(response) (never an error)
+    end
+    R->>M: evaluate_deterministic, synchronously (shared regex budget), failed request -> error values, error_rate = 1
+    alt a hard-fail metric fired (canary_leak, tenant_leak, system_prompt_leak)
+        R->>R: judged values not_applicable (hard_fail), no judge call
+    else judged metric, judges given, case in scope
+        R->>B: reserve(2), refused -> not_applicable judge_cap, counts.judge_skipped
+        R->>J: await metric.acompute(case, resp, judges)
+        J-->>R: value | LLMError / PolicyViolation -> error value, counts.judge_error | QuotaExhausted -> judge_quota for the rest of the run
+        R->>B: release(2 - requests this call charged)
+    end
+    Note over R,B: BudgetExceeded (USD / tokens) cancels the pending cases: complete=False, stop_reason=budget_exceeded, finished cases kept. Cancellation / KeyboardInterrupt: stop_reason=aborted, infra_error unset
+```
+
+Results keep the input order. After the run, `judge_error / judged_cases > 5 %` sets `judge_degraded`. An
+executor infra failure is a different path: the executor calls `ArtifactStore.mark_aborted(run, infra_error)`
+(R11 D245) on a finished or partial run.
