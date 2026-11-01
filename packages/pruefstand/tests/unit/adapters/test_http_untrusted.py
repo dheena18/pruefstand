@@ -106,7 +106,7 @@ async def test_event_loop_keeps_ticking_while_a_bomb_is_parsed(
         await adapter.query(REQ)
     task.cancel()
     assert gaps
-    assert max(gaps) < 0.5
+    assert max(gaps) < 1.5  # the unbounded parse blocked for ~8 s; json.loads holds the GIL briefly
 
 
 @pytest.mark.parametrize(
