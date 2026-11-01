@@ -65,7 +65,8 @@ def test_judge_errors_and_exclusions_are_reported() -> None:
 
 
 def test_m4_judge_errors_up_to_the_cap_are_excluded() -> None:
-    report = gate({"faithfulness": dict.fromkeys(range(24), None)})  # 24 of 120 = 20 %
+    # 24 of 120 = 20 %, spread so that no slice (tenant, lang) is above 20 % either
+    report = gate({"faithfulness": dict.fromkeys(range(0, 120, 5), None)})
     assert report.status is PASS
     assert report.n_excluded == {"faithfulness": 24}
 
@@ -194,7 +195,7 @@ def test_m1_a_slice_that_loses_its_cases_to_judge_errors_cannot_vanish() -> None
 
 
 def test_m1_exclusion_cannot_push_overall_below_the_cluster_minimum() -> None:
-    """35 clusters of 3; 7 whole clusters (21 cases = 20 %) judge-errored; faithfulness 0.4 vs 0.9."""
+    """35 clusters of 3; 7 whole clusters judge-errored (20 %); faithfulness 0.4 vs 0.9."""
     report = _custom(35, 3, dict.fromkeys(range(21), None), cand_value=0.4)
     overall = row(report.decisions, "faithfulness", "overall")
     assert overall.informational_reason is None

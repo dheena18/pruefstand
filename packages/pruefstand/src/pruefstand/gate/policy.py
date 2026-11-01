@@ -51,7 +51,8 @@ from pruefstand.gate.pairs import (
     informational_reason,
     metric_pairs,
 )
-from pruefstand.gate.tables import OVERALL, PairedTable, pair_runs, slice_members
+from pruefstand.gate.slices import slice_members
+from pruefstand.gate.tables import OVERALL, PairedTable, pair_runs
 
 _NO_INFORMATIONAL: Mapping[str, str] = MappingProxyType({})
 _TOP_CASES = 5
@@ -74,6 +75,11 @@ def _check_same_cases(baseline: RunResults, candidate: RunResults) -> None:
     A candidate that lost cases (or a whole slice) cannot be judged: without this check the
     pairing would silently compare what is left (review of PR #22, B1).
     """
+    for name, run in (("baseline", baseline), ("candidate", candidate)):
+        if not run.values:
+            fail(f"the {name} run has no cases")
+        if len({s.case.id for s in run.values}) != len(run.values):
+            fail(f"the {name} run has duplicate case ids")
     base, cand = _case_keys(baseline), _case_keys(candidate)
     if base.keys() != cand.keys():
         missing = len(base.keys() - cand.keys())
@@ -109,6 +115,13 @@ def _validate(
     for metric in policy.metrics:
         if metric not in directions:
             fail(f"directions has no entry for policy metric {metric!r}")
+
+
+def _n_excluded(tables: Mapping[str, PairedTable], pairs: list[Pair]) -> dict[str, int]:
+    """Cases left out of each metric's pairing: baseline not ``ok`` plus judge errors excluded."""
+    judge = {p.metric: p.n_judge_excluded for p in pairs if p.dimension == OVERALL}
+    counts = {m: t.n_excluded + judge.get(m, 0) for m, t in tables.items()}
+    return {m: n for m, n in counts.items() if n}
 
 
 def _not_applicable_counts(candidate: RunResults) -> dict[str, int]:
@@ -165,6 +178,8 @@ def _collect_pairs(
         if max_drop is None:
             continue
         table = pair_runs(baseline, candidate, metric, higher_is_better=directions[metric])
+        if not table.case_ids and metric not in informational:
+            fail(f"{metric}: the baseline has no usable value on any case; nothing to compare")
         tables[metric] = table
         reason = informational_reason(table, metric, informational)
         pairs.extend(metric_pairs(table, policy, max_drop, reason))
@@ -225,5 +240,5 @@ def evaluate_gate(
         not_applicable_counts=_not_applicable_counts(candidate),
         no_baseline=False,
         n_unmatched={m: t.n_unmatched for m, t in tables.items() if t.n_unmatched},
-        n_excluded={m: t.n_excluded for m, t in tables.items() if t.n_excluded},
+        n_excluded=_n_excluded(tables, pairs),
     )

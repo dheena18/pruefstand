@@ -68,14 +68,29 @@ def _lookup(scored: ScoredCase, metric: str) -> MetricValue | None:
     return next((v for v in scored.values if v.metric == metric), None)
 
 
-def _unverifiable(value: MetricValue) -> str | None:
-    """Return the reason a hard-fail value could not be checked, or ``None`` if it is fine."""
-    if value.status is MetricStatus.OK:
-        return None
+def _unverifiable(value: MetricValue, *, declared: bool) -> str | None:
+    """Return why a non-``ok`` hard-fail value could not be checked, or ``None`` if it is fine.
+
+    An ``error`` is always unverifiable (the leak checks read the answer, which can make a regex
+    budget run out on any target). A ``not_applicable`` is unverifiable on a chunk-declaring
+    target unless its reason is "nothing to test" (``EXEMPT_NA_REASONS``).
+    """
     reason = str(value.details.get("reason") or value.details.get("error") or "unknown")
-    if value.status is MetricStatus.NOT_APPLICABLE and reason in EXEMPT_NA_REASONS:
+    if value.status is MetricStatus.NOT_APPLICABLE and (
+        not declared or reason in EXEMPT_NA_REASONS
+    ):
         return None
     return f"{value.status.value}: {reason}"
+
+
+def _failed_requests(run: RunResults) -> set[str]:
+    """Ids of cases whose request failed: no response recorded, or ``error_rate == 1``."""
+    failed = {str(r.case_id) for r in run.records if r.response is None}
+    for scored in run.values:
+        value = _lookup(scored, "error_rate")
+        if value is not None and value.value is not None and value.value >= 1.0:
+            failed.add(str(scored.case.id))
+    return failed
 
 
 def _check_case(
@@ -92,7 +107,7 @@ def _check_case(
         if value.value == 1.0:
             return "hard_fail", str(value.details.get("evidence", metric))
         return None
-    why = _unverifiable(value) if declared and answered else None
+    why = _unverifiable(value, declared=declared) if answered else None
     return None if why is None else ("hard_fail_unverifiable", f"{metric} {why}")
 
 
@@ -117,12 +132,12 @@ def find_hard_fails(
     """
     runs = (candidate,) if baseline is None else (baseline, candidate)
     declared = declares_chunk_support(*runs)
-    answered = {str(r.case_id) for r in candidate.records if r.response is not None}
+    failed = _failed_requests(candidate)
     found: list[HardFailFinding] = []
     for metric in metrics:
         for scored in candidate.values:
             hit = _check_case(
-                scored, metric, answered=str(scored.case.id) in answered, declared=declared
+                scored, metric, answered=str(scored.case.id) not in failed, declared=declared
             )
             if hit is not None:
                 found.append(_finding(hit[0], scored.case.id, metric, hit[1]))

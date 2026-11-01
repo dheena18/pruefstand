@@ -24,7 +24,6 @@ OVERALL = "overall"
 PERTURBED_ALL = "perturbed_all"
 DIMENSIONS = ("category", "perturbation", "tenant", "lang", "tags")
 TAG_SEP = "|"
-MAX_EXCLUDED_FRACTION = 0.20  # more judge errors than this share are worst-filled, not excluded
 
 
 @dataclass(frozen=True, eq=False)
@@ -47,6 +46,7 @@ class PairedTable:
     n_unmatched: int
     n_excluded: int
     n_worst_filled: int
+    judge_error: NDArray[np.bool_]
 
 
 def _lookup(scored: ScoredCase, metric: str) -> MetricValue | None:
@@ -86,11 +86,12 @@ def _build(
     higher_is_better: bool,
     fill_worst: bool,
     fill_errors: bool = False,
-) -> tuple[ScoreTable, frozenset[str]]:
+) -> tuple[ScoreTable, frozenset[str], frozenset[str]]:
     worst = 0.0 if higher_is_better else 1.0
     kept: list[ScoredCase] = []
     values: list[float] = []
     filled: set[str] = set()
+    errors: set[str] = set()
     for scored in run.values:
         value = _lookup(scored, metric)
         if value is not None and value.status is MetricStatus.OK and value.value is not None:
@@ -98,6 +99,12 @@ def _build(
         elif fill_worst and _fillable(scored, value, fill_errors=fill_errors):
             values.append(worst)
             filled.add(str(scored.case.id))
+            if (
+                value is not None
+                and value.status is MetricStatus.ERROR
+                and not _request_failed(scored)
+            ):
+                errors.add(str(scored.case.id))
         else:
             continue
         kept.append(scored)
@@ -113,7 +120,7 @@ def _build(
     except ValidationError as exc:
         reason = exc.errors()[0]["msg"]
         fail(f"run {run.manifest.run_id}: cannot build a score table for {metric}: {reason}")
-    return table, frozenset(filled)
+    return table, frozenset(filled), frozenset(errors)
 
 
 def score_table(
@@ -146,6 +153,7 @@ def pair_tables(
     cand: ScoreTable,
     *,
     filled: frozenset[str] = frozenset(),
+    judge_errors: frozenset[str] = frozenset(),
     n_unmatched: int = 0,
     n_shared: int | None = None,
 ) -> PairedTable:
@@ -155,6 +163,8 @@ def pair_tables(
         base: Baseline table.
         cand: Candidate table; its cluster ids and slice columns are used.
         filled: Case ids whose candidate value was worst-filled (for ``n_worst_filled``).
+        judge_errors: Case ids among ``filled`` that are judge errors on a successful request;
+            they are flagged in ``judge_error`` and the caller decides per slice (exclude or fill).
         n_unmatched: Number of cases in only one run (counted by the caller).
         n_shared: Number of cases in both runs; default: the cases both tables list. The
             difference to the paired count is ``n_excluded``.
@@ -187,7 +197,8 @@ def pair_tables(
         attrs={k: tuple(v[j] for j in cand_idx) for k, v in cand.slices.items()},
         n_unmatched=n_unmatched,
         n_excluded=shared - len(case_ids),
-        n_worst_filled=len(filled.intersection(case_ids)),
+        n_worst_filled=len((filled - judge_errors).intersection(case_ids)),
+        judge_error=np.array([cid in judge_errors for cid in case_ids], dtype=np.bool_),
     )
 
 
@@ -196,12 +207,12 @@ def pair_runs(
 ) -> PairedTable:
     """Pair two runs for one metric (T1.7 step 3).
 
-    Cases in only one run are excluded and counted (``n_unmatched``). A baseline value that is not
-    ``ok`` excludes the pair; a candidate ``error`` on a successful request (a judge error) excludes
-    it as well (``n_excluded``, never worst-filled) unless more than ``MAX_EXCLUDED_FRACTION`` of
-    the baseline-``ok`` cases would go that way, then they are worst-filled; a candidate
-    ``not_applicable`` or request error against an ``ok`` baseline gets the worst value
-    (``n_worst_filled``).
+    Rows are the cases whose baseline value is ``ok`` and that both runs hold (cases in one run
+    only: ``n_unmatched``; baseline not ``ok``: ``n_excluded``). A candidate ``not_applicable`` or
+    request error gets the worst value (``n_worst_filled``). A candidate ``error`` on a
+    successful request (a judge error) also carries the worst value but is flagged in
+    ``judge_error``: ``gate.pairs`` excludes the flagged rows of a slice unless they are more
+    than 20 % of it (W3.9), so a slice cannot vanish through judge errors.
 
     Args:
         base: Baseline run.
@@ -218,81 +229,14 @@ def pair_runs(
     base_ids = {str(s.case.id) for s in base.values}
     cand_ids = {str(s.case.id) for s in cand.values}
     base_table = score_table(base, metric, higher_is_better=higher_is_better)
-    cand_table, filled = _build(cand, metric, higher_is_better=higher_is_better, fill_worst=True)
-    comparable = set(base_table.case_ids) & cand_ids
-    dropped = comparable - set(cand_table.case_ids)  # candidate judge errors, excluded
-    if len(dropped) > MAX_EXCLUDED_FRACTION * len(comparable) + 1e-9:
-        cand_table, filled = _build(
-            cand, metric, higher_is_better=higher_is_better, fill_worst=True, fill_errors=True
-        )
+    cand_table, filled, errors = _build(
+        cand, metric, higher_is_better=higher_is_better, fill_worst=True, fill_errors=True
+    )
     return pair_tables(
         base_table,
         cand_table,
         filled=filled,
+        judge_errors=errors,
         n_unmatched=len(base_ids ^ cand_ids),
         n_shared=len(base_ids & cand_ids),
     )
-
-
-def _column(table: PairedTable, dimension: str) -> NDArray[np.str_]:
-    if dimension not in table.attrs:
-        fail(f"unknown slice dimension {dimension!r}")
-    return np.asarray(table.attrs[dimension], dtype=np.str_)
-
-
-def slice_members(table: PairedTable, dimension: str, value: str) -> NDArray[np.bool_]:
-    """Return the mask of paired cases in a slice (round 9 X3.6).
-
-    ``overall``, ``tenant``, ``lang``, ``category`` and ``tags`` hold unperturbed cases only;
-    ``perturbed_all`` and ``perturbation=<p>`` hold perturbed cases only.
-
-    Args:
-        table: The paired table.
-        dimension: ``overall``, ``perturbed_all`` or one of ``category``, ``perturbation``,
-            ``tenant``, ``lang``, ``tags``.
-        value: The slice value (ignored for ``overall`` and ``perturbed_all``).
-
-    Returns:
-        A boolean mask over the rows of ``table``.
-
-    Raises:
-        GateInputError: Unknown ``dimension``.
-    """
-    perturbed = np.asarray(_column(table, "perturbation") != "", dtype=np.bool_)
-    if dimension == OVERALL:
-        return np.asarray(~perturbed, dtype=np.bool_)
-    if dimension == PERTURBED_ALL:
-        return perturbed
-    if dimension == "perturbation":
-        return np.asarray(_column(table, "perturbation") == value, dtype=np.bool_)
-    if dimension == "tags":
-        tagged = np.fromiter(
-            (value in tags.split(TAG_SEP) for tags in table.attrs["tags"]),
-            dtype=np.bool_,
-            count=len(table.case_ids),
-        )
-        return np.asarray(tagged & ~perturbed, dtype=np.bool_)
-    return np.asarray((_column(table, dimension) == value) & ~perturbed, dtype=np.bool_)
-
-
-def slice_values(table: PairedTable, dimension: str) -> tuple[str, ...]:
-    """Return the sorted distinct values of ``dimension`` among the paired cases that can be in it.
-
-    Args:
-        table: The paired table.
-        dimension: One of ``category``, ``perturbation``, ``tenant``, ``lang``, ``tags``.
-
-    Returns:
-        The values (``perturbation``: of perturbed cases; the others: of unperturbed cases).
-
-    Raises:
-        GateInputError: Unknown ``dimension``.
-    """
-    perturbed = _column(table, "perturbation") != ""
-    column = _column(table, dimension)
-    if dimension == "perturbation":
-        return tuple(sorted({str(v) for v in column[perturbed]}))
-    if dimension == "tags":
-        tags = {t for cell in column[~perturbed] for t in str(cell).split(TAG_SEP) if t}
-        return tuple(sorted(tags))
-    return tuple(sorted({str(v) for v in column[~perturbed]}))

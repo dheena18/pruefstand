@@ -24,8 +24,9 @@ from pruefstand.core.enums import GateStatus
 from pruefstand.core.models.gate import BootstrapResult, SliceDecision
 from pruefstand.gate.correction import bh_adjust, holm_adjust
 from pruefstand.gate.decision import decide
+from pruefstand.gate.slices import slice_members, slice_values
 from pruefstand.gate.stats import minimum_detectable_effect, paired_cluster_bootstrap
-from pruefstand.gate.tables import OVERALL, PERTURBED_ALL, PairedTable, slice_members, slice_values
+from pruefstand.gate.tables import OVERALL, PERTURBED_ALL, PairedTable
 
 RERUN_RESAMPLES = 200_000
 MC_SIGMAS = 3.0
@@ -34,6 +35,7 @@ RETRIEVAL_METRICS = ("context_recall", "ndcg_at_k")
 BH_NOTABLE_Q = 0.10
 POWER = 0.8
 APPLICABLE_REASON = "applicable_clusters<30"
+MAX_EXCLUDED_FRACTION = 0.20  # judge errors beyond this share of a slice are worst-filled
 
 
 @dataclass
@@ -49,6 +51,7 @@ class Pair:
     table: PairedTable
     mask: NDArray[np.bool_]
     result: BootstrapResult | None = None
+    n_judge_excluded: int = 0
 
 
 def informational_reason(
@@ -63,6 +66,27 @@ def informational_reason(
     return None
 
 
+def _usable(
+    table: PairedTable, members: NDArray[np.bool_], min_clusters: int
+) -> tuple[NDArray[np.bool_], int]:
+    """Return the rows of a slice to use and the number of judge errors excluded from it.
+
+    Judge errors on successful requests are excluded (W3.9) only while they are at most 20 % of
+    the slice and leave at least ``min_clusters`` clusters when the slice had that many; otherwise
+    they keep their worst value, so a slice cannot vanish or turn untestable through judge errors.
+    """
+    errs = int((members & table.judge_error).sum())
+    if errs == 0:
+        return members, 0
+    kept = members & ~table.judge_error
+    before = np.unique(table.cluster_ids[members]).size
+    after = np.unique(table.cluster_ids[kept]).size
+    too_many = errs > MAX_EXCLUDED_FRACTION * int(members.sum()) + 1e-9
+    if too_many or (after < min_clusters <= before):
+        return members, 0
+    return kept, errs
+
+
 def metric_pairs(
     table: PairedTable, policy: GatePolicy, max_drop: float, reason: str | None
 ) -> list[Pair]:
@@ -74,19 +98,23 @@ def metric_pairs(
         specs.append((PERTURBED_ALL, PERTURBED_ALL))
     for dimension in policy.slices:
         specs.extend((dimension, value) for value in slice_values(table, dimension))
-    return [
-        Pair(
-            metric=metric,
-            dimension=dimension,
-            value=value,
-            gated=gated_metric and dimension in policy.gated_slices,
-            reason=reason,
-            max_drop=max_drop,
-            table=table,
-            mask=slice_members(table, dimension, value),
+    pairs: list[Pair] = []
+    for dimension, value in specs:
+        mask, excluded = _usable(table, slice_members(table, dimension, value), policy.min_clusters)
+        pairs.append(
+            Pair(
+                metric=metric,
+                dimension=dimension,
+                value=value,
+                gated=gated_metric and dimension in policy.gated_slices,
+                reason=reason,
+                max_drop=max_drop,
+                table=table,
+                mask=mask,
+                n_judge_excluded=excluded,
+            )
         )
-        for dimension, value in specs
-    ]
+    return pairs
 
 
 def _bootstrap(

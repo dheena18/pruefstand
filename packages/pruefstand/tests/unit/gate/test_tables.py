@@ -2,13 +2,13 @@
 
 import numpy as np
 import pytest
-from pruefstand.gate.slices import slice_members, slice_values
 from testsupport.builders import NA, make_case, make_run
 
 from pruefstand.core.errors import GateInputError
 from pruefstand.core.models.gate import ScoreTable
 from pruefstand.core.models.run import RunResults
 from pruefstand.core.models.testcase import TestCase
+from pruefstand.gate.slices import slice_members, slice_values
 from pruefstand.gate.tables import pair_runs, pair_tables, score_table
 
 M = "context_recall"
