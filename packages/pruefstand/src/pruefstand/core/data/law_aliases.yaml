@@ -1,0 +1,164 @@
+# The only law-name table in the repo (T1.5a, D334). Read through pruefstand.core.citations.aliases;
+# T2.4 appends EU acts, T4.4 reads it, nobody keeps a copy.
+# Shape: <scope>: {<canonical abbreviation>: [aliases]}. The abbreviation itself is always an alias.
+# `national` = German federal statutes (cited with § or Art.); `eu` = EU acts (cited with Art.).
+version: 1
+national:
+  BGB:
+    - Bürgerliches Gesetzbuch
+    - Bürgerlichen Gesetzbuch
+    - Bürgerlichen Gesetzbuchs
+    - Bürgerlichen Gesetzbuches
+    - German Civil Code
+    - Civil Code
+  HGB:
+    - Handelsgesetzbuch
+    - Handelsgesetzbuchs
+    - Handelsgesetzbuches
+    - Commercial Code
+    - German Commercial Code
+  KSchG:
+    - Kündigungsschutzgesetz
+    - Kündigungsschutzgesetzes
+    - Protection Against Unfair Dismissal Act
+    - Dismissal Protection Act
+  ArbZG:
+    - Arbeitszeitgesetz
+    - Arbeitszeitgesetzes
+    - Working Hours Act
+  BDSG:
+    - Bundesdatenschutzgesetz
+    - Bundesdatenschutzgesetzes
+    - Federal Data Protection Act
+  UrhG:
+    - Urheberrechtsgesetz
+    - Urheberrechtsgesetzes
+    - Copyright Act
+  VVG:
+    - Versicherungsvertragsgesetz
+    - Versicherungsvertragsgesetzes
+    - Insurance Contract Act
+  EnWG:
+    - Energiewirtschaftsgesetz
+    - Energiewirtschaftsgesetzes
+    - Energy Industry Act
+  UWG:
+    - Gesetz gegen den unlauteren Wettbewerb
+    - Gesetzes gegen den unlauteren Wettbewerb
+    - Unfair Competition Act
+  GG:
+    - Grundgesetz
+    - Grundgesetzes
+    - Basic Law
+  # --- T2.2: the other national laws of the GII corpus (data/sources.yaml). `BGBEG`, `SGB 4`, `KredWG`
+  # and `TTDSG` are the spellings of <jurabk> in the GII files.
+  EGBGB:
+    - BGBEG
+    - Einführungsgesetz zum Bürgerlichen Gesetzbuche
+    - Einführungsgesetz zum Bürgerlichen Gesetzbuch
+    - Einführungsgesetzes zum Bürgerlichen Gesetzbuche
+    - Einführungsgesetzes zum Bürgerlichen Gesetzbuch
+    - Introductory Act to the Civil Code
+  ArbSchG:
+    - Arbeitsschutzgesetz
+    - Arbeitsschutzgesetzes
+    - Occupational Safety and Health Act
+  TzBfG:
+    - Teilzeit- und Befristungsgesetz
+    - Teilzeit- und Befristungsgesetzes
+    - Part-Time and Fixed-Term Employment Act
+  BUrlG:
+    - Bundesurlaubsgesetz
+    - Bundesurlaubsgesetzes
+    - Federal Leave Act
+  EntgFG:
+    - Entgeltfortzahlungsgesetz
+    - Entgeltfortzahlungsgesetzes
+    - Continued Remuneration Act
+  MuSchG:
+    - Mutterschutzgesetz
+    - Mutterschutzgesetzes
+    - Maternity Protection Act
+  AGG:
+    - Allgemeines Gleichbehandlungsgesetz
+    - Allgemeinen Gleichbehandlungsgesetz
+    - Allgemeinen Gleichbehandlungsgesetzes
+    - General Equal Treatment Act
+  BetrVG:
+    - Betriebsverfassungsgesetz
+    - Betriebsverfassungsgesetzes
+    - Works Constitution Act
+  GewO:
+    - Gewerbeordnung
+    - Trade Regulation Act
+  NachwG:
+    - Nachweisgesetz
+    - Nachweisgesetzes
+  ArbGG:
+    - Arbeitsgerichtsgesetz
+    - Arbeitsgerichtsgesetzes
+    - Labour Courts Act
+  SGB IV:
+    - SGB 4
+    - Sozialgesetzbuch Viertes Buch
+    - Sozialgesetzbuch IV
+    - Sozialgesetzbuches Viertes Buch
+    - Social Code Book IV
+  ProdHaftG:
+    - Produkthaftungsgesetz
+    - Produkthaftungsgesetzes
+    - Product Liability Act
+  TDDDG:
+    - TTDSG
+    - Telekommunikation-Digitale-Dienste-Datenschutz-Gesetz
+    - Telekommunikation-Telemedien-Datenschutz-Gesetz
+  GmbHG:
+    - GmbH-Gesetz
+    - GmbH-Gesetzes
+    - Gesetz betreffend die Gesellschaften mit beschränkter Haftung
+    - Limited Liability Companies Act
+  AktG:
+    - Aktiengesetz
+    - Aktiengesetzes
+    - Stock Corporation Act
+  InsO:
+    - Insolvenzordnung
+    - Insolvency Code
+  KWG:
+    - KredWG
+    - Kreditwesengesetz
+    - Kreditwesengesetzes
+    - Banking Act
+  VAG:
+    - Versicherungsaufsichtsgesetz
+    - Versicherungsaufsichtsgesetzes
+    - Insurance Supervision Act
+  EnSiG:
+    - Energiesicherungsgesetz
+    - Energiesicherungsgesetzes
+    - Energy Security Act
+  BSIG:
+    - BSI-Gesetz
+    - BSI-Gesetzes
+    - Gesetz über das Bundesamt für Sicherheit in der Informationstechnik
+    - Federal Office for Information Security Act
+eu:
+  DSGVO:
+    - GDPR
+    - DS-GVO
+    - Datenschutz-Grundverordnung
+    - Datenschutzgrundverordnung
+    - General Data Protection Regulation
+  KI-VO:
+    - AI Act
+    - EU AI Act
+    - KI-Verordnung
+  NIS2-RL:
+    - NIS2
+    - NIS-2-Richtlinie
+    - NIS2-Richtlinie
+    - NIS 2 Directive
+    - NIS2 Directive
+  DSA:
+    - Digital Services Act
+    - Gesetz über digitale Dienste

@@ -1,0 +1,29 @@
+# recorded: 2026-11-01, model: openai_compatible_local/qwen2.5-0.5b-instruct, sha256: 74a4da8c9fdbcd15bd1f6d01d621410d31c6fc00986f5eb687824e7b93d7a9db
+interactions:
+- request:
+    body: "{\"messages\":[{\"role\":\"system\",\"content\":\"Du bewertest deutsche
+      S\xE4tze. Antworte ausschlie\xDFlich mit einem JSON-Objekt, ohne weiteren Text.\"},{\"role\":\"user\",\"content\":\"Enth\xE4lt
+      der folgende Satz eine eindeutige rechtliche Anforderung?\\nAntworte mit einem
+      JSON-Objekt mit genau zwei Feldern: \\\"reason\\\" (Text mit h\xF6chstens f\xFCnf
+      W\xF6rtern) und \\\"score\\\" (die Zahl 0, 1 oder 2).\\n\\nSatz: Die K\xFCndigung
+      muss schriftlich erfolgen.\"}],\"model\":\"qwen2.5-0.5b-instruct\",\"max_tokens\":128,\"seed\":0,\"temperature\":0.0}"
+    headers:
+      accept:
+      - application/json
+      content-type:
+      - application/json
+    method: POST
+    uri: http://localhost:18080/v1/chat/completions
+  response:
+    body:
+      string: "{\"choices\":[{\"finish_reason\":\"stop\",\"index\":0,\"message\":{\"role\":\"assistant\",\"content\":\"```json\\n{\\n
+        \ \\\"reason\\\": \\\"K\xFCndigung\\\",\\n  \\\"score\\\": 2\\n}\\n```\"}}],\"created\":1793507443,\"model\":\"/models/qwen2.5-0.5b-instruct-q4_k_m.gguf\",\"system_fingerprint\":\"b12019-1052f7e1d\",\"object\":\"chat.completion\",\"usage\":{\"completion_tokens\":23,\"prompt_tokens\":115,\"total_tokens\":138,\"prompt_tokens_details\":{\"cached_tokens\":4}},\"id\":\"chatcmpl-iXJWxCBn8x1xcB8G2oTj7olRnKlk4BjV\",\"timings\":{\"cache_n\":4,\"prompt_n\":111,\"prompt_ms\":737.697,\"prompt_per_token_ms\":6.645918918918919,\"prompt_per_second\":150.46828169289017,\"predicted_n\":23,\"predicted_ms\":630.191,\"predicted_per_token_ms\":28.645045454545457,\"predicted_per_second\":34.91005107975201}}"
+    headers:
+      content-length:
+      - '725'
+      content-type:
+      - application/json; charset=utf-8
+    status:
+      code: 200
+      message: OK
+version: 1

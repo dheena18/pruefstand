@@ -44,9 +44,48 @@ def _perm(scope: str, key: str, value: str, job: str = "j") -> dict[str, Any]:
     return _wf(jobs={job: _job(permissions={key: value}, steps=steps)})
 
 
+ID_TOKEN_JOBS = [
+    ("build-images.yml", "push-sign"),
+    ("docs.yml", "deploy"),
+    ("release.yml", "publish-pypi"),
+    ("release.yml", "publish-testpypi"),
+    ("release.yml", "sign"),
+    ("release.yml", "attest"),
+]
+
+
+@pytest.mark.parametrize(("name", "job"), ID_TOKEN_JOBS)
+def test_id_token_allowed_jobs_pass(name: str, job: str) -> None:
+    assert _check(_perm("job", "id-token", "write", job), name) == []
+
+
+@pytest.mark.parametrize(
+    ("name", "job"),
+    [
+        ("docs.yml", "site"),
+        ("docs.yml", "docs-build"),
+        ("build-images.yml", "trivy"),
+        ("release.yml", "build-dist"),
+    ],
+)
+def test_id_token_in_another_job_of_an_allowed_file_fails(name: str, job: str) -> None:
+    assert _fails(_check(_perm("job", "id-token", "write", job), name), "id-token")
+
+
 @pytest.mark.parametrize("name", ["build-images.yml", "docs.yml", "release.yml"])
-def test_id_token_allowed_files_pass(name: str) -> None:
-    assert _check(_perm("job", "id-token", "write"), name) == []
+def test_id_token_at_workflow_level_fails_even_in_allowed_files(name: str) -> None:
+    assert _fails(_check(_perm("workflow", "id-token", "write"), name), "id-token")
+
+
+def test_pages_write_only_in_the_docs_deploy_job() -> None:
+    assert _check(_perm("job", "pages", "write", "deploy"), "docs.yml") == []
+    for name, job in [("docs.yml", "site"), ("docs.yml", "docs-build"), ("ci.yml", "deploy")]:
+        assert _fails(_check(_perm("job", "pages", "write", job), name), "pages")
+    assert _fails(_check(_perm("workflow", "pages", "write"), "docs.yml"), "pages")
+
+
+def test_pages_read_is_not_restricted() -> None:
+    assert _check(_perm("job", "pages", "read"), "ci.yml") == []
 
 
 @pytest.mark.parametrize("name", ["ci.yml", "deploy.yml", "security.yml"])
@@ -85,7 +124,8 @@ def test_actions_read_allowlist() -> None:
 def test_contents_write_allowlist() -> None:
     assert _check(_perm("job", "contents", "write", "release-demo-ready"), "demo-ready.yml") == []
     assert _check(_perm("job", "contents", "write", "release-assets"), "release.yml") == []
-    assert _check(_perm("job", "contents", "write", "record"), "cassettes.yml") == []
+    assert _check(_perm("job", "contents", "write", "push"), "cassettes.yml") == []
+    assert _fails(_check(_perm("job", "contents", "write", "record"), "cassettes.yml"), "contents")
     assert _fails(
         _check(_perm("job", "contents", "write", "release-demo-ready"), "deploy.yml"), "contents"
     )

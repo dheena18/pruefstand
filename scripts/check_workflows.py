@@ -13,6 +13,7 @@ from pathlib import Path
 
 import yaml
 from workflow_model import Doc, all_uses, environment, jobs, steps, strings, triggers
+from workflow_no_repo_code import no_repo_code
 from workflow_policy import (
     ACTIONS_READ,
     APP_TOKEN_ACTION,
@@ -25,8 +26,9 @@ from workflow_policy import (
     GATE_ROUTER,
     GATE_ROUTER_ENV,
     GATE_ROUTER_SECRETS,
-    ID_TOKEN_FILES,
+    ID_TOKEN_WRITE,
     MODELS_READ_FILES,
+    PAGES_WRITE,
     STATUSES_WRITE,
     UNTRUSTED,
 )
@@ -98,15 +100,17 @@ def _perm_scopes(doc: Doc) -> Iterator[tuple[str | None, object]]:
 
 def _grant(name: str, job: str | None, key: str, level: str) -> str | None:
     where = f"job {job}" if job else "workflow level"
-    if key == "id-token" and level == "write" and name not in ID_TOKEN_FILES:
-        return f"{where}: 'id-token: write' is allowed only in {sorted(ID_TOKEN_FILES)}"
     if key == "models" and (
         level == "write" or (level == "read" and name not in MODELS_READ_FILES)
     ):
         return f"{where}: 'models: {level}' is not allowed in {name}"
-    table = {"actions": ACTIONS_READ, "contents": CONTENTS_WRITE, "statuses": STATUSES_WRITE}.get(
-        key
-    )
+    table = {
+        "actions": ACTIONS_READ,
+        "contents": CONTENTS_WRITE,
+        "statuses": STATUSES_WRITE,
+        "id-token": ID_TOKEN_WRITE,
+        "pages": PAGES_WRITE,
+    }.get(key)
     wanted = "read" if key == "actions" else "write"
     if table is not None and level in {wanted, "write"} and (name, str(job)) not in table:
         return f"{where}: '{key}: {level}' is not on the allow-list for {name}"
@@ -242,6 +246,7 @@ def check_text(name: str, text: str) -> list[str]:
         _injection(doc),
         _build_images(name, doc),
         _gate_router(name, doc),
+        no_repo_code(name, doc),
     ]
     return [f"{name}: {message}" for found in rules for message in found]
 

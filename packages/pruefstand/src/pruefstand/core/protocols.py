@@ -1,15 +1,18 @@
 """Structural protocols implemented by other modules (interfaces §4, §5, §7, §11).
 
-``LLMBackend`` / ``LLMClientLike`` (T1.4), ``JudgePoolLike`` / ``JudgedMetric`` (T1.8) and
+``JudgePoolLike`` / ``JudgedMetric`` (T1.8) and
 ``Perturbation`` / ``LLMPerturbation`` (T4.4, T4.5) are added by their owning tasks.
 """
 
 from collections.abc import Iterator
 from pathlib import Path
-from typing import Protocol, runtime_checkable
+from typing import Protocol, TypeVar, runtime_checkable
+
+from pydantic import BaseModel
 
 from pruefstand.core.enums import Category
 from pruefstand.core.models.corpus import Chunk, Document
+from pruefstand.core.models.llm import LLMRequest, LLMResponse
 from pruefstand.core.models.metric import MetricKind, MetricValue
 from pruefstand.core.models.run import RunArtifacts
 from pruefstand.core.models.target import (
@@ -31,6 +34,31 @@ class KVCache(Protocol):
 
     def set(self, key: str, value: bytes) -> None:
         """Store ``value`` under ``key``."""
+        ...
+
+
+T = TypeVar("T", bound=BaseModel)
+
+
+@runtime_checkable
+class LLMBackend(Protocol):
+    """One real model endpoint behind ``LLMClient`` (``LiteLLMBackend``, cassette replay)."""
+
+    async def acomplete(self, req: LLMRequest) -> LLMResponse:
+        """Call the model once. Raises ``LLMError`` (``transient``: a retry may work)."""
+        ...
+
+
+@runtime_checkable
+class LLMClientLike(Protocol):
+    """The part of ``LLMClient`` that metrics and perturbations need."""
+
+    async def complete(self, req: LLMRequest) -> LLMResponse:
+        """Return the (possibly cached) answer. Raises ``LLMError``, ``BudgetExceeded``."""
+        ...
+
+    async def complete_json(self, req: LLMRequest, schema: type[T]) -> T:
+        """Return the answer parsed into ``schema``. Raises ``LLMError``."""
         ...
 
 

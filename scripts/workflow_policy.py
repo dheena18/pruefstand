@@ -11,8 +11,21 @@ GATE_ROUTER_ENV = "gate-router"
 GATE_ROUTER_SECRETS = frozenset({"BOT_APP_ID", "BOT_APP_KEY"})
 APP_TOKEN_ACTION = "actions/create-github-app-token@"  # noqa: S105 (an action name, not a secret)
 
-# Files that may grant ``id-token: write`` (ci-cd.md §1; deploy.yml needs no OIDC token, A12-M7).
-ID_TOKEN_FILES = frozenset({"build-images.yml", "docs.yml", "release.yml"})
+# (file, job) -> reason, for ``id-token: write`` (ci-cd.md §1; never at workflow level;
+# deploy.yml needs no OIDC token, A12-M7).
+ID_TOKEN_WRITE: dict[tuple[str, str], str] = {
+    ("build-images.yml", "push-sign"): "keyless cosign signing of the pushed image",
+    ("docs.yml", "deploy"): "actions/deploy-pages (OIDC), the only Pages writer",
+    ("release.yml", "publish-pypi"): "PyPI trusted publishing",
+    ("release.yml", "publish-testpypi"): "TestPyPI trusted publishing",
+    ("release.yml", "sign"): "keyless cosign signing of the release images",
+    ("release.yml", "attest"): "build provenance attestation",
+}
+
+# (file, job) -> reason, for ``pages: write``.
+PAGES_WRITE: dict[tuple[str, str], str] = {
+    ("docs.yml", "deploy"): "publishes the one GitHub Pages artefact (D243)",
+}
 
 # Files that may grant ``models: read`` (security.md X2); ``models: write`` is never allowed.
 MODELS_READ_FILES = frozenset({"live-e2e.yml", "cassettes.yml"})
@@ -25,7 +38,7 @@ ACTIONS_READ: dict[tuple[str, str], str] = {
     ): "downloads the triggering release.yml run's artefact (D301)",
     (
         "docs.yml",
-        "deploy",
+        "site",
     ): "downloads the dashboard-site artefact of the triggering deploy.yml run",
     ("live-e2e.yml", "live"): "downloads the main baseline artefact by run id",
 }
@@ -33,7 +46,10 @@ ACTIONS_READ: dict[tuple[str, str], str] = {
 # (file, job) -> reason, for ``contents: write``.
 CONTENTS_WRITE: dict[tuple[str, str], str] = {
     ("release.yml", "release-assets"): "attaches image-digests.json to the GitHub release",
-    ("cassettes.yml", "record"): "pushes its own cassettes/<date> branch, never opens a PR",
+    (
+        "cassettes.yml",
+        "push",
+    ): "pushes its own cassettes/<date>-<run> branch, runs no repo code, never opens a PR",
     ("demo-ready.yml", "release-demo-ready"): "uploads the demo-ready.json release asset (D318)",
 }
 
@@ -63,4 +79,17 @@ UNTRUSTED = re.compile(
 )
 FETCH_PR_CODE = re.compile(
     r"git\s+(fetch|clone)\b|gh\s+pr\s+checkout\b|gh\s+pr\s+diff\b[^\n]*--patch[^\n]*\|\s*(ba|z)?sh\b"
+)
+
+
+# (file, job) -> reason: jobs that hold a write token and therefore must run NO repository code
+# (no uv/make/python/scripts steps, only these actions, exactly the listed permissions).
+NO_REPO_CODE_JOBS: dict[tuple[str, str], dict[str, str]] = {
+    ("cassettes.yml", "push"): {"contents": "write"},
+}
+NO_REPO_CODE_ACTIONS = ("actions/checkout@", "actions/download-artifact@")
+REPO_CODE_RUN = re.compile(
+    r"(?:^|[\s;&|(])(?:(?:uv|make|python3?|pytest|pip|npm|pnpm|node)(?=$|[\s;&|)])"
+    r"|(?:bash|sh)\s+\S*scripts/|\./\S+)",
+    re.MULTILINE,
 )

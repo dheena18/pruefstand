@@ -106,6 +106,7 @@ owner's `~/start-ollama.sh`, setup log §7), **public secret**
 | `PRUEFSTAND_JUDGE_MODE` | workflow (forks), local .env | `live-e2e.yml` | `skipped` or unset | T1.10 | n/a |
 | `PRUEFSTAND_GH_MODELS_MODEL` | local .env, workflow | owner / T5.4 | pinned GitHub Models id (tier-1 judge); the public-text datagen model id (ADR-0019) is pinned in the T4.2 dataset config, not here | T1.4 | n/a |
 | `PRUEFSTAND_TARGET_URL`, `PRUEFSTAND_TEST_LLM_URL`, `PRUEFSTAND_JUDGE_BASE_URL` | local .env | owner | `http://localhost:8000`, `http://localhost:8080/v1`, `http://localhost:8080/v1` | T1.4 / T1.10 | n/a |
+| `PRUEFSTAND_RECORD_START_CMD` | set by `scripts/models/record_cassettes.sh` only | script | `make --no-print-directory up SERVICES=llm`: how the 503 recording test starts the llama.cpp service while it watches the model load; never set by hand and **never set in CI** (a workflow that sets it would run its command) | T1.4 | n/a |
 | `PRUEFSTAND_DATAGEN_URL` | local .env (optional) | owner | Ollama URL of the local judge model for private-doc datagen cassette recording (T2.6; ADR-0019); empty = skip | T2.6 | n/a |
 | `RAG_CONFIG`, `LIVE_MODEL_DIR`, `LIVE_LLM_GGUF`, `LIVE_LLM_THREADS` | local .env | owner | compose `live` profile: rag-demo profile file, CPU model dir (`~/.cache/pruefstand/models`), GGUF name, threads | T0.3 / T1.13 | n/a |
 | `SERVING_ENGINE_VERSION`, `SERVING_GPU` | candidate container env | orchestrator | static `/v1/info.serving` fields (X3.13) | T3.2 | n/a |

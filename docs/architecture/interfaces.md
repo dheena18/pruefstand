@@ -39,7 +39,7 @@ uses it. Modules only implement behaviour. Concretely, these live in `core`:
 | `core.fingerprint` | `corpus_version`, `target_fingerprint`, `eval_fingerprint` (the only place fingerprints are computed) |
 | `core.hashing` | `stable_hash` |
 | `core.models.attacks` | `Canary`, `CanaryRegistry` (created in T1.1) |
-| `core.data` | `law_aliases.yaml` (T1.5a; incl. English statute names, D123), `model_families.yaml` (T1.2; the only model-family table; ADR-0018: the generator tag `qwen3.8:27b-q8_0`, which Ollama reports as family `qwen35`, maps to `qwen` (a pattern row for `qwen3.8` / `qwen35`); ADR-0019: Ollama family `gemma3` maps to `gemma`; it also records the **family plan** (D112, ADR-0019): generator = `qwen`; **one** A40 judge for PR and nightly = `gemma` (`gemma3:12b`); public-text datagen = a GitHub Models family ≠ `qwen`, ≠ `gemma` (pinned in T4.2); private-doc/canary datagen = the local `gemma` judge model; the judge reviews in reject-only mode and never writes or rewrites references; tier-1 informational judge = a GitHub Models model of a non-`qwen` family; exact versions pinned by benchmark in T1.13/T3.1b) |
+| `core.data` | `law_aliases.yaml` (T1.5a; incl. English statute names, D123; shape: `version: 1`, then `national:` and `eu:` maps of canonical abbreviation → list of aliases, unknown keys rejected; the abbreviation is always an alias, lookups fold case and whitespace; an alias naming two laws is a `ConfigError`; `§` is accepted only for `national` laws, `Art.` for both; other tasks append entries under the right map and never keep a second table), `model_families.yaml` (T1.2; the only model-family table; ADR-0018: the generator tag `qwen3.8:27b-q8_0`, which Ollama reports as family `qwen35`, maps to `qwen` (a pattern row for `qwen3.8` / `qwen35`); ADR-0019: Ollama family `gemma3` maps to `gemma`; it also records the **family plan** (D112, ADR-0019): generator = `qwen`; **one** A40 judge for PR and nightly = `gemma` (`gemma3:12b`); public-text datagen = a GitHub Models family ≠ `qwen`, ≠ `gemma` (pinned in T4.2); private-doc/canary datagen = the local `gemma` judge model; the judge reviews in reject-only mode and never writes or rewrites references; tier-1 informational judge = a GitHub Models model of a non-`qwen` family; exact versions pinned by benchmark in T1.13/T3.1b) |
 | `core.models.llm` | `LLMRole`, `Message`, `LLMRequest`, `LLMResponse`, `PromptTemplate` |
 | `core.models.judge` | `JudgeTask`, `JudgeVerdict` (created in T1.8) |
 | `core.models.dashboard` | `RunIndexEntry`, `DashboardRunIndex`, `DashboardSliceRow`, `DashboardSlices`, `DashboardCase`, `DashboardCases`, `LabelsDocument` (T8.1; `LabelsDocument` created in T1.9; fields in §10.1; R9 X5.3) |
@@ -113,6 +113,8 @@ GET  /v1/health -> {"status": "ok",
                                                               # num_predict; the runner shows > 0 as an informational
                                                               # report warning (absent key = 0)
 ```
+
+Tolerance (T1.3, D352): the core target models stay `extra="forbid"` and requests stay strict, but `HttpTargetAdapter` normalises the response before validating it: unknown keys are dropped at each known level, null optionals and a `usage` lacking either token count are treated as absent, and integer citation ids are stringified; type errors in known fields remain permanent `TargetError`s.
 
 Rules: `request_id` is random per call, never the test case id (the target must not be able to
 recognise test cases). Third-party targets may omit `chunks`, `tenant_id` per chunk, `used_in_prompt`,
@@ -602,7 +604,7 @@ def eval_fingerprint(*, dataset_name: str, dataset_version: str, splits: Sequenc
     # provider-reported version; otherwise they are shown as "not comparable". Never gate across judges.
 
 # core/errors.py
-class PruefstandError(Exception); class ConfigError; class TargetError; class LLMError; class PolicyViolation(LLMError); class BudgetExceeded
+class PruefstandError(Exception); class ConfigError; class TargetError; class LLMError(message, *, transient: bool = False, status: int | None = None); class PolicyViolation(LLMError); class BudgetExceeded
 class QuotaExhausted(LLMError)        # R9 (D9-07): provider quota exhausted (GitHub Models 429 + exhausted headers); raised by
                                       # LLMClient (T5.1), caught by the runner -> counts["judge_skipped"], reason "judge_quota"
 class DatasetError; class StoreError; class GateInputError; class PromptError; class CorpusMismatch   # all subclass PruefstandError
@@ -652,8 +654,10 @@ class Budget:  def __init__(self, max_usd: float | None, max_tokens: int | None,
                # value not_applicable, counts["judge_skipped"] += 1, details reason "judge_cap". So BudgetExceeded never
                # comes from the request cap, even at concurrency 8. Unit = CALLS (the only tier-1 judge cap is
                # budget.max_requests_per_run, D143; no RunnerConfig field)
-class LLMPolicy:                    # llm/policy.py, built from LLMPolicyConfig; T1.4 = allowlist + paid block, T5.1 adds the data guard
-    def __init__(self, cfg: LLMPolicyConfig, canaries: CanaryRegistry | None = None) -> None
+class LLMPolicy:                    # llm/policy.py, built from LLMPolicyConfig; T1.4 = allowlist, paid block AND the external-provider data guard (D355); T5.1 keeps the tests/hardening
+    def __init__(self, cfg: LLMPolicyConfig, canaries: CanaryRegistry | None = None, *, external_datagen: bool = False) -> None
+    # external_datagen (T1.4 review): LLMRole.DATAGEN requests to external providers are denied unless True (T4.2 sets it for public-text datagen)
+    # canary token / fact and the private-doc prompt prefix are matched after NFKC + format-character removal + whitespace collapse + casefold
     def check(self, req: LLMRequest, provider: str) -> None
     # at config load (LLMPolicyConfig / build_backend): unknown or disallowed provider, or a paid provider
     # listed while allow_paid is False -> ConfigError.
@@ -668,7 +672,9 @@ class CassetteRecorder:             # llm/cassettes.py, implemented in T1.4 (D13
     # record: wraps a real backend, writes request/response pairs (secrets stripped) to tests/cassettes/;
     # replay: serves them in unit tests. Cassettes are created only by `make cassettes` against real models
     # and re-recorded weekly (cassettes.yml). Every cassette-covered behaviour also has a `live` test.
-    # replay of a request with no recorded pair -> LLMError("no cassette for <prompt_id>"), never a network call
+    def wrap(self, backend: LLMBackend | None) -> LLMBackend   # record: backend required (else ValueError); replay: ignored
+    # file format: <dir>/<stable_hash(request)>.json = {recorded_at, model_id, model_version, request, response}; no headers, no keys
+    # replay of a request with no recorded pair -> LLMError("cassette miss: <hash> (no cassette for <prompt_id>)", transient=False), never a network call
 class CallRecorder: def record(self, req: LLMRequest, resp: LLMResponse | None, error: str | None) -> None; def to_parquet(self, path: Path) -> None
 
 def build_backend(ref: ModelRef, *, policy: LLMPolicyConfig) -> LLMBackend    # llm/factory.py (T1.4); refuses providers
@@ -677,11 +683,14 @@ def build_backend(ref: ModelRef, *, policy: LLMPolicyConfig) -> LLMBackend    # 
 def family_of(model_id: str) -> str               # llm/families.py (T5.1): reads core/data/model_families.yaml
                                                   # (id pattern -> family; the ONLY family table); unknown -> ConfigError
 
+# prompt file <prompt_id>_v<N>.txt: optional `### system`, required `### user`, `{{var}}` placeholders; sha256 over the file bytes
 class PromptRegistry:                                # loads *_v<N>.txt files shipped as package data
     def get(self, prompt_id: str, version: str) -> PromptTemplate
 class PromptTemplate(BaseModel): prompt_id: str; version: str; sha256: str; system: str; user: str
     def render(self, **vars: str) -> tuple[Message, ...]          # strict: missing/extra vars raise
 ```
+
+`llm_calls.parquet` dtypes (explicit schema, also for zero rows): `ts` Datetime(us, UTC); `role, model, provider, prompt_id, prompt_version, error` String (nullable `error`); `prompt_tokens, completion_tokens` Int64; `cost_usd, latency_ms` Float64; `cached, fallback` Boolean.
 
 `llm_calls.parquet` columns: `ts, role, model, provider, prompt_id, prompt_version, prompt_tokens,
 completion_tokens, cost_usd, latency_ms, cached, fallback, error` (a run with zero calls writes the same 13
@@ -729,6 +738,7 @@ class JudgedMetric(Metric, Protocol):
 context_recall, ndcg_at_k, citation_precision, citation_recall, citation_f1, canary_leak (1 = leak),
 citation_grounded (R9 X3.2, owner T1.5b: share of predicted citations whose norm appears in a retrieved chunk
                    (citation_key or text), SPEC §5; applies when >= 1 citation is predicted, else not_applicable;
+                   T1.5b evidence = the retrieved chunk TEXT only: API v1 RetrievedChunk carries no citation_key;
                    gated, max_drop 0.05),
 system_prompt_similarity (R9 X3.2, owner T1.5b: max normalised 5-gram overlap of answer sentences with system-prompt
                    sentences (DE + EN), SPEC §5; lower is better; REPORT-ONLY, never gated, GatePolicy rejects a
@@ -761,7 +771,8 @@ faithfulness, answer_correctness, perturbation_consistency, refusal_judged
 #   "judge_quota" / "judge_cap" (R9 D9-07; the runner is the single owner of these counts).
 #   BudgetExceeded (USD / tokens) propagates to the runner (stop_reason="budget_exceeded").
 
-# core/citations.py  (lives in core so ingest and metrics share one normaliser)
+# core/citations/  (package, T1.5a: model.py, aliases.py, parser.py; __init__ re-exports; lives in core so ingest
+#                   and metrics share one normaliser; import path stays pruefstand.core.citations)
 def extract_citations(text: str) -> list[Citation]           # §, §§, Art., Artikel, Article, Abs., S., Nr., lit., i.V.m., ff.,
                                                              # plus English forms for German statutes: "Section 622 BGB",
                                                              # "Sec. 622", "Section 622(2) BGB" -> kind="para" (D123)
@@ -776,9 +787,23 @@ def parse_one(text: str) -> Citation | None                     # exactly one ci
 class Citation(BaseModel): kind: Literal["para", "art"]; number: str; absatz: str | None = None; satz: str | None = None
                            nummer: str | None = None; lit: str | None = None; law: str   # law abbrev via core/data/law_aliases.yaml (GDPR -> DSGVO)
 
-class MetricRegistry: def get(self, name: str) -> Metric; def all(self) -> Sequence[Metric]
+class MetricRegistry: def __init__(self, metrics: Iterable[Metric])   # ConfigError: name not in KNOWN_METRICS, or duplicate
+                      @classmethod def default(cls) -> MetricRegistry  # T1.5b: the 16 deterministic metrics; ConfigError if
+                                                                       # their names != KNOWN_METRICS - judged (no drift)
+                      def get(self, name: str) -> Metric             # ConfigError if unknown
+                      def all(self) -> Sequence[Metric]
                       def directions(self) -> dict[str, bool]        # name -> higher_is_better (pipeline passes it to the gate)
-def evaluate_deterministic(case: TestCase, resp: TargetResponse, metrics: Sequence[DeterministicMetric]) -> list[MetricValue]
+class LatencyMetric / ErrorRateMetric:                               # T1.5b: no compute(); the runner calls
+    @staticmethod def from_record(record: CaseRecord) -> MetricValue # error_rate = 1.0 iff record.error is not None
+def evaluate_deterministic(case: TestCase, resp: TargetResponse, metrics: Sequence[Metric]) -> list[MetricValue]
+    # T1.5b: skips metrics without compute() (LatencyMetric, ErrorRateMetric, judged); the parameter is widened from
+    # Sequence[DeterministicMetric] so MetricRegistry.all() can be passed as is
+# metrics/deterministic/normalise.py (T1.5b): security_normalise(text) -> str; compile_forbidden(forbidden) -> ForbiddenMatcher
+#   (ValueError on an empty, invalid, > 500-char or empty-matching `re:` entry; dataset loaders call it); contains_forbidden(text, forbidden) -> bool
+# canary_leak is not_applicable on system_prompt_extraction cases (system_prompt_leak covers them) and when forbidden_strings is empty
+# tenant_leak (D349): a confirmed foreign tenant => 1 even if other chunks lack tenant_id (details unknown_tenant_chunks); NA only when
+#   none is confirmed and some tenant_id is missing. injection_marker needs >= 6 letters/digits, else status=error.
+# citation metrics read the first 20 000 chars (details truncated=True); `re:` entries use the `regex` package with a 2 s timeout (D350/D351).
 ```
 
 ## 6. judges
@@ -994,6 +1019,7 @@ Pure functions: numbers in, decision out. `gate` imports only `core`, numpy and 
 
 ```python
 class ScoreTable(BaseModel):   # one metric, one run; aligned by case_id when paired. Built by T1.7's pair_runs
+                               # T1.6 validation (additive): all tuples equal length, case_ids unique, values finite (no NaN/inf)
                                # (one per metric and run); T1.7's private PairedTable is made from two ScoreTables
     metric: str; higher_is_better: bool
     case_ids: tuple[CaseId, ...]; cluster_ids: tuple[str, ...]; values: tuple[float, ...]
@@ -1006,6 +1032,7 @@ class BootstrapResult(BaseModel): mean_diff: float; ci_low: float; ci_high: floa
 def paired_cluster_bootstrap(diffs: NDArray[np.float64], clusters: NDArray[np.str_], *,
                              n_resamples: int, confidence: float, rng: np.random.Generator,
                              alpha: float = 0.025) -> BootstrapResult
+    # T1.6 validation (additive): rng must be a numpy.random.Generator (GateInputError otherwise); n_resamples <= 10_000_000 and n_resamples * n_clusters <= 1e10
     # small-sample correction: boot_c = mean + (boot - mean) * c_k, c_k = sqrt(k/(k-1)) * t_{k-1,1-alpha} / z_{1-alpha}, k = n_clusters
     # diffs oriented so that negative = worse (pipeline/evaluate_gate flips lower-is-better metrics)
     # resample clusters with replacement; statistic = mean of per-case diffs in the resample;
