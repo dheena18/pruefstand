@@ -13,13 +13,12 @@ from pruefstand.core.models.corpus import Document
 from pruefstand.core.protocols import Loader
 from pruefstand.ingest.gii_xml import GiiXmlLoader
 
-
 RawFactory = Callable[[Mapping[str, Mapping[str, bytes]]], Path]
 
 
 def load_all(raw: Path) -> tuple[dict[str, Document], GiiXmlLoader]:
     loader = GiiXmlLoader()
-    docs = {d.doc_id: d for d in loader.load(raw)}
+    docs = {str(d.doc_id): d for d in loader.load(raw)}
     return docs, loader
 
 
@@ -129,8 +128,8 @@ def test_nfd_input_is_composed(make_raw: RawFactory, fixture_dir: Path) -> None:
 
 
 def test_document_order_is_deterministic(raw_dir: Path) -> None:
-    first = [d.doc_id for d in GiiXmlLoader().load(raw_dir)]
-    assert first == [d.doc_id for d in GiiXmlLoader().load(raw_dir)]
+    first = [str(d.doc_id) for d in GiiXmlLoader().load(raw_dir)]
+    assert first == [str(d.doc_id) for d in GiiXmlLoader().load(raw_dir)]
     assert first.index("gii-aktg-95") < first.index("gii-bgb-14") < first.index("gii-kschg-1")
 
 
@@ -156,7 +155,7 @@ def test_unknown_law_and_unknown_enbez_are_counted_errors(
 
 def test_duplicate_document_ids_are_counted_errors(make_raw: RawFactory, fixture_dir: Path) -> None:
     xml = (fixture_dir / "arbzg_3.xml").read_text(encoding="utf-8")
-    norm = xml[xml.index('<norm builddate="20241231222246" doknr="BJNR117100994BJNE001100307">'):]
+    norm = xml[xml.index('<norm builddate="20241231222246" doknr="BJNR117100994BJNE001100307">') :]
     doubled = xml.replace("</dokumente>", norm.replace("</dokumente>", "") + "</dokumente>")
     docs, loader = load_all(make_raw({"arbzg": {"a.xml": doubled.encode("utf-8")}}))
     assert list(docs) == ["gii-arbzg-3"]

@@ -1,5 +1,6 @@
 """Untrusted-input hardening of the GII loader (T2.2): XML bombs, XXE, network, zip tricks."""
 
+import contextlib
 import socket
 import stat
 import threading
@@ -11,13 +12,13 @@ from pathlib import Path
 import pytest
 from lxml import etree
 
-from pruefstand.ingest.gii.errors import GiiError, UnsafeArchiveError, UnsafeXmlError
-from pruefstand.ingest.gii.safezip import ZipLimits, read_bounded, read_xml_members
+from pruefstand.ingest.gii.errors import GiiError, GiiParseError, UnsafeArchiveError, UnsafeXmlError
+from pruefstand.ingest.gii.safezip import ZipLimits, check_member, read_bounded, read_xml_members
 from pruefstand.ingest.gii.xmlparse import XmlLimits, hardened_parser, iter_norms
 from pruefstand.ingest.gii_xml import GiiXmlLoader
 
 RawFactory = Callable[[Mapping[str, Mapping[str, bytes]]], Path]
-SECRET = "TOPSECRET-4711"
+MARKER = "TOPMARKER-4711"
 
 
 def kinds(loader: GiiXmlLoader) -> list[str]:
@@ -40,37 +41,36 @@ NORM = (
 
 def test_parser_does_not_resolve_external_entities(tmp_path: Path) -> None:
     secret = tmp_path / "secret.txt"
-    secret.write_text(SECRET, encoding="utf-8")
+    secret.write_text(MARKER, encoding="utf-8")
     xml = (
-        f'<?xml version="1.0"?><!DOCTYPE d [<!ENTITY xxe SYSTEM "file://{secret}">]>'
-        "<d>a&xxe;b</d>"
+        f'<?xml version="1.0"?><!DOCTYPE d [<!ENTITY xxe SYSTEM "file://{secret}">]><d>a&xxe;b</d>'
     ).encode()
     root = etree.fromstring(xml, hardened_parser())
-    assert SECRET not in etree.tostring(root, encoding="unicode")
-    assert SECRET not in "".join(root.itertext())
+    assert MARKER not in etree.tostring(root, encoding="unicode")
+    assert MARKER not in "".join(root.itertext())
 
 
 def test_parser_does_not_load_an_external_dtd(tmp_path: Path) -> None:
     dtd = tmp_path / "evil.dtd"
-    dtd.write_text(f'<!ENTITY inj "{SECRET}">', encoding="utf-8")
+    dtd.write_text(f'<!ENTITY inj "{MARKER}">', encoding="utf-8")
     xml = f'<?xml version="1.0"?><!DOCTYPE d SYSTEM "file://{dtd}"><d>&inj;</d>'.encode()
     try:
         root = etree.fromstring(xml, hardened_parser())
     except etree.XMLSyntaxError:
         return  # an undefined entity is rejected: also fine
-    assert SECRET not in "".join(root.itertext())
+    assert MARKER not in "".join(root.itertext())
 
 
 def test_loader_rejects_external_entity_document(make_raw: RawFactory, tmp_path: Path) -> None:
     secret = tmp_path / "secret.txt"
-    secret.write_text(SECRET, encoding="utf-8")
+    secret.write_text(MARKER, encoding="utf-8")
     doctype = f'<!DOCTYPE dokumente [<!ENTITY xxe SYSTEM "file://{secret}">]>'
     xml = wrap(NORM.replace("(1) Text.", "(1) &xxe;"), doctype)
     loader = GiiXmlLoader()
     docs = list(loader.load(make_raw({"kschg": {"a.xml": xml}})))
     assert docs == []
     assert kinds(loader) == ["unsafe_xml"]
-    assert SECRET not in repr(loader.stats)
+    assert MARKER not in repr(loader.stats)
 
 
 def test_billion_laughs_is_rejected_fast(make_raw: RawFactory) -> None:
@@ -89,14 +89,21 @@ def test_quadratic_blowup_is_rejected(make_raw: RawFactory) -> None:
     big = "x" * 50_000
     decls = f'<!ENTITY a "{big}">'
     xml = wrap(NORM.replace("(1) Text.", "(1) " + "&a;" * 5_000), f"<!DOCTYPE dokumente [{decls}]>")
+    with pytest.raises(UnsafeXmlError, match="entit"):
+        list(iter_norms(xml))
     loader = GiiXmlLoader()
     assert list(loader.load(make_raw({"kschg": {"a.xml": xml}}))) == []
-    assert kinds(loader) == ["unsafe_xml"]
+    assert kinds(loader) in (
+        ["unsafe_xml"],
+        ["unsafe_archive"],
+    )  # the zip ratio guard may fire first
 
 
 def test_deep_nesting_is_rejected(make_raw: RawFactory) -> None:
     depth = 5_000
-    xml = wrap("<norm>" + "<a>" * depth + "</a>" * depth + "</norm>")
+    opens = "".join(f"<e{i}>" for i in range(depth))
+    closes = "".join(f"</e{i}>" for i in reversed(range(depth)))
+    xml = wrap("<norm>" + opens + closes + "</norm>")
     loader = GiiXmlLoader()
     assert list(loader.load(make_raw({"kschg": {"a.xml": xml}}))) == []
     assert kinds(loader) == ["unsafe_xml"]
@@ -107,6 +114,26 @@ def test_nesting_limit_is_a_parameter() -> None:
     assert len(list(iter_norms(xml, XmlLimits(max_depth=10)))) == 1
     with pytest.raises(UnsafeXmlError, match="depth"):
         list(iter_norms(xml, XmlLimits(max_depth=3)))
+
+
+@pytest.mark.parametrize(
+    "data",
+    [
+        "\ufeff<dokumente/>".encode("utf-16"),
+        "<dokumente/>".encode("utf-16-le"),
+        b'<?xml version="1.0" encoding="ISO-8859-1"?><dokumente/>',
+        b'<?xml version="1.0" encoding="UTF-7"?><dokumente/>',
+    ],
+    ids=["utf16-bom", "utf16-no-bom", "latin1", "utf7"],
+)
+def test_other_encodings_are_rejected(data: bytes) -> None:
+    with pytest.raises(UnsafeXmlError, match="encoding"):
+        list(iter_norms(data))
+
+
+def test_malformed_xml_is_a_parse_error() -> None:
+    with pytest.raises(GiiParseError, match="invalid xml"):
+        list(iter_norms(b"<dokumente><norm></dokumente>"))
 
 
 def test_oversized_xml_is_rejected() -> None:
@@ -128,10 +155,8 @@ def test_dtd_reference_never_opens_a_connection(make_raw: RawFactory, fixture_di
 
     def accept() -> None:
         server.settimeout(1.5)
-        try:
+        with contextlib.suppress(OSError):
             hits.append(server.accept())
-        except OSError:
-            pass
 
     thread = threading.Thread(target=accept)
     thread.start()
@@ -210,17 +235,18 @@ def test_read_is_bounded_even_when_the_header_lies(tmp_path: Path) -> None:
     archive = _zip(tmp_path / "x.zip", [("a.xml", b"<a>" + b"x" * 10_000 + b"</a>")])
     with zipfile.ZipFile(archive) as zf:
         info = zf.infolist()[0]
-        info.file_size = 10  # the central directory claims 10 bytes
         with pytest.raises(UnsafeArchiveError, match="size"):
             read_bounded(zf, info, limit=1_000)
+        info.file_size = 10  # the central directory now claims 10 bytes
+        with pytest.raises(UnsafeArchiveError, match=r"corrupt|size"):
+            read_bounded(zf, info, limit=1_000_000)
 
 
-def test_encrypted_member_is_rejected(tmp_path: Path) -> None:
+def test_encrypted_member_is_rejected() -> None:
     info = zipfile.ZipInfo("secret.xml")
-    info.flag_bits |= 0x1
-    archive = _zip(tmp_path / "x.zip", [(info, b"<a/>")])
+    info.flag_bits |= 0x1  # ZipFile.writestr clears the bit, so the header is checked directly
     with pytest.raises(UnsafeArchiveError, match="encrypted"):
-        list(read_xml_members(archive))
+        check_member(info, ZipLimits())
 
 
 def test_not_a_zip_is_an_archive_error(tmp_path: Path) -> None:

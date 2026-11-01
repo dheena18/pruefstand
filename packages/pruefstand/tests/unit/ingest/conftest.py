@@ -39,4 +39,6 @@ def raw_dir(make_raw: RawFactory) -> Path:
         "bgb": "bgb_sample.xml", "kschg": "kschg_1.xml", "arbzg": "arbzg_3.xml",
         "aktg": "aktg_95.xml", "egbgb": "egbgb_sample.xml",
     }  # fmt: skip
-    return make_raw({slug: {name: (FIXTURE_DIR / name).read_bytes()} for slug, name in names.items()})
+    return make_raw(
+        {slug: {name: (FIXTURE_DIR / name).read_bytes()} for slug, name in names.items()}
+    )

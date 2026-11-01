@@ -1,4 +1,4 @@
-"""All 30 pinned GII laws, real data from `make data` (T2.2). Marker `network`: needs data/raw/gii."""
+"""All 30 pinned GII laws, real data from `make data` (T2.2). Marker `network`."""
 
 import resource
 import unicodedata
@@ -26,7 +26,9 @@ def corpus() -> tuple[GiiXmlLoader, list[Document], list[Chunk]]:
     return loader, docs, [c for d in docs for c in chunker.chunk(d)]
 
 
-def test_all_thirty_laws_load_without_errors(corpus: tuple[GiiXmlLoader, list[Document], list[Chunk]]) -> None:
+def test_all_thirty_laws_load_without_errors(
+    corpus: tuple[GiiXmlLoader, list[Document], list[Chunk]],
+) -> None:
     loader, docs, _ = corpus
     assert len(loader.stats.laws) == 30
     assert loader.stats.error_count == 0, loader.stats.problems[:5]
@@ -35,14 +37,16 @@ def test_all_thirty_laws_load_without_errors(corpus: tuple[GiiXmlLoader, list[Do
     assert len({d.doc_id for d in docs}) == len(docs)
 
 
-def test_bgb_has_at_least_2000_chunks(corpus: tuple[GiiXmlLoader, list[Document], list[Chunk]]) -> None:
+def test_bgb_has_at_least_2000_chunks(
+    corpus: tuple[GiiXmlLoader, list[Document], list[Chunk]],
+) -> None:
     _, _, chunks = corpus
     assert sum(1 for c in chunks if c.doc_id.startswith("gii-bgb-")) >= 2000
 
 
 def test_known_norms_are_present(corpus: tuple[GiiXmlLoader, list[Document], list[Chunk]]) -> None:
     _, docs, _ = corpus
-    by_id = {d.doc_id: d for d in docs}
+    by_id = {str(d.doc_id): d for d in docs}
     assert by_id["gii-bgb-622"].metadata["citation_key"] == "§ 622 BGB"
     assert by_id["gii-kschg-1"].title == "Sozial ungerechtfertigte Kündigungen"
     assert by_id["gii-arbzg-3"].text.startswith("Die werktägliche Arbeitszeit")
@@ -50,7 +54,9 @@ def test_known_norms_are_present(corpus: tuple[GiiXmlLoader, list[Document], lis
     assert "gii-egbgb-246a-1" in by_id
 
 
-def test_every_chunk_is_well_formed(corpus: tuple[GiiXmlLoader, list[Document], list[Chunk]]) -> None:
+def test_every_chunk_is_well_formed(
+    corpus: tuple[GiiXmlLoader, list[Document], list[Chunk]],
+) -> None:
     _, _, chunks = corpus
     assert len({c.chunk_id for c in chunks}) == len(chunks)
     for chunk in chunks:
@@ -61,5 +67,7 @@ def test_every_chunk_is_well_formed(corpus: tuple[GiiXmlLoader, list[Document], 
         assert normalise(cite) == chunk.citation_key
 
 
-def test_peak_memory_stays_below_500_mb(corpus: tuple[GiiXmlLoader, list[Document], list[Chunk]]) -> None:
+def test_peak_memory_stays_below_500_mb(
+    corpus: tuple[GiiXmlLoader, list[Document], list[Chunk]],
+) -> None:
     assert resource.getrusage(resource.RUSAGE_SELF).ru_maxrss < 500 * 1024  # KiB on Linux

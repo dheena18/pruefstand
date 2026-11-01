@@ -9,7 +9,7 @@ import yaml
 from pruefstand.core.citations import extract_citations, normalise, parse_one
 from pruefstand.core.citations.aliases import law_aliases, resolve_law
 from pruefstand.ingest.chunkers.paragraph import ParagraphChunker
-from pruefstand.ingest.gii.keys import citation_key, slug_of
+from pruefstand.ingest.gii.keys import citation_key, resolve_jurabk, slug_of
 from pruefstand.ingest.gii_xml import GiiXmlLoader
 
 REPO = Path(__file__).resolve().parents[5]
@@ -40,7 +40,9 @@ def test_every_fixture_chunk_key_roundtrips(raw_dir: Path) -> None:
         ("art", "246a", "EGBGB", "Art. 246a EGBGB"),
     ],
 )
-def test_citation_key_from_structured_fields(kind: Literal["para", "art"], number: str, law: str, expected: str) -> None:
+def test_citation_key_from_structured_fields(
+    kind: Literal["para", "art"], number: str, law: str, expected: str
+) -> None:
     assert citation_key(kind, number, law) == expected
 
 
@@ -79,3 +81,12 @@ def test_all_alias_names_still_name_exactly_one_law() -> None:
         for name in (law, *aliases):
             key = " ".join(name.split()).casefold()
             assert seen.setdefault(key, law) == law, name
+
+
+@pytest.mark.parametrize(
+    ("jurabk", "canonical"),
+    [("BDSG 2018", "BDSG"), ("VVG 2008", "VVG"), ("EnWG 2005", "EnWG"), ("BGBEG", "EGBGB"),
+     ("SGB 4", "SGB IV"), ("BGB", "BGB"), ("NOPE", None), ("NOPE 2018", None), ("", None)],
+)  # fmt: skip
+def test_resolve_jurabk(jurabk: str, canonical: str | None) -> None:
+    assert resolve_jurabk(jurabk) == canonical

@@ -117,6 +117,10 @@ def test_document_without_citation_key_gets_none() -> None:
     assert ParagraphChunker().chunk(bare)[0].citation_key is None
 
 
+def squeeze(text: str) -> str:
+    return "".join(text.split())
+
+
 @given(
     st.lists(st.text(alphabet=st.sampled_from(list("ab (1)2.\n\t-äß§")), max_size=40), max_size=12),
     st.integers(min_value=1, max_value=12),
@@ -124,8 +128,7 @@ def test_document_without_citation_key_gets_none() -> None:
 def test_chunk_texts_concatenate_to_the_document_text(parts: list[str], limit: int) -> None:
     text = "\n".join(parts)
     chunks = ParagraphChunker(max_tokens=limit).chunk(make_doc(text))
-    strip = lambda s: "".join(s.split())  # noqa: E731
-    assert strip("".join(c.text for c in chunks)) == strip(text)
+    assert squeeze("".join(c.text for c in chunks)) == squeeze(text)
     assert [c.chunk_id for c in chunks] == [f"gii-bgb-999#{i}" for i in range(len(chunks))]
 
 
