@@ -213,8 +213,10 @@ def evaluate_gate(
 
     Raises:
         GateInputError: Fingerprint mismatch, an incomplete run, a baseline ``error_rate`` above
-            ``max_error_rate``, a policy metric without a direction, or a non-binary value of an
-            absolute-check metric.
+            ``max_error_rate``, a policy metric without a direction, a non-binary value of an
+            absolute-check or hard-fail metric, runs that hold different, duplicate or no cases,
+            a gated metric without any usable baseline value, baseline ``error`` values above 20 %
+            of a testable gated slice, or a response-less record whose ``error_rate`` is 0.
     """
     _validate(baseline, candidate, policy, directions)
     hard_fails = find_hard_fails(candidate, policy.hard_fail, baseline=baseline)

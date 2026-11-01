@@ -1124,7 +1124,8 @@ overall `fail` with the case id and ≤ 200 chars of redacted evidence. A candid
 a `GateInputError`, and judge errors beyond 20 % of a slice (or `overall`) are worst-filled, not excluded
 (a metric that cannot be judged must not pass). Selective exclusion is bounded: a judge error is dropped only if every gated slice holding it stays within
 20 % (so an attacker can hide at most 20 % of each slice's worst cases, W3.9), and baseline errors beyond 20 % of a
-gated slice are a `GateInputError`. A hard-fail metric that is `error` (or absent) on an answered case, or `not_applicable` for a reason other than
+gated slice are a `GateInputError`. Baseline `not_applicable` on a whole gated slice yields `INSUFFICIENT_DATA` (the baseline is trusted);
+baseline errors and candidate errors add up against the same 20 %. A hard-fail metric that is `error` (or absent) on an answered case, or `not_applicable` for a reason other than
 "nothing to test" (`category`, `no_forbidden_strings`) on a target that **declares chunk support** (at least one
 recorded response of the baseline or candidate carries `chunks`), is a hard fail too (`hard_fail_unverifiable`, D349/D358): an unchecked leak
 is not a pass. Judges are skipped for those

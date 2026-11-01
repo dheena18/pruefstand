@@ -87,6 +87,8 @@ def _unverifiable(value: MetricValue, *, declared: bool) -> str | None:
 def _failed_requests(run: RunResults) -> set[str]:
     """Ids of cases whose request failed: last attempt without response, or ``error_rate == 1``.
 
+    The last attempt wins; of two records with the same attempt the later one in the run wins.
+
     Raises:
         GateInputError: The last attempt has no response but ``error_rate`` says 0.
     """

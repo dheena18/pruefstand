@@ -32,6 +32,7 @@ class Universe:
 
     attrs: dict[str, tuple[str, ...]]
     base_error: NDArray[np.bool_]
+    clusters: NDArray[np.str_]
 
 
 @dataclass(frozen=True, eq=False)
@@ -57,6 +58,7 @@ class PairedTable:
     judge_error: NDArray[np.bool_]
     all_attrs: dict[str, tuple[str, ...]]
     all_base_error: NDArray[np.bool_]
+    all_clusters: NDArray[np.str_]
 
 
 def _lookup(scored: ScoredCase, metric: str) -> MetricValue | None:
@@ -198,13 +200,14 @@ def pair_tables(
     cand_values = np.asarray(cand.values, dtype=np.float64)[cand_idx]
     sign = 1.0 if cand.higher_is_better else -1.0
     case_ids = tuple(str(cid) for cid, _ in rows)
+    cand_clusters = [cand.cluster_ids[j] for j in cand_idx]
     attrs = {k: tuple(v[j] for j in cand_idx) for k, v in cand.slices.items()}
     shared = n_shared if n_shared is not None else len(case_ids)
     return PairedTable(
         metric=cand.metric,
         higher_is_better=cand.higher_is_better,
         case_ids=case_ids,
-        cluster_ids=np.asarray([cand.cluster_ids[j] for j in cand_idx], dtype=np.str_),
+        cluster_ids=np.asarray(cand_clusters, dtype=np.str_),
         diffs=sign * (cand_values - base_values),
         base_values=base_values,
         cand_values=cand_values,
@@ -215,6 +218,7 @@ def pair_tables(
         judge_error=np.array([cid in judge_errors for cid in case_ids], dtype=np.bool_),
         all_attrs=universe.attrs if universe else attrs,
         all_base_error=universe.base_error if universe else np.zeros(len(case_ids), dtype=np.bool_),
+        all_clusters=universe.clusters if universe else np.asarray(cand_clusters, dtype=np.str_),
     )
 
 
@@ -258,6 +262,7 @@ def pair_runs(
     universe = Universe(
         attrs=_columns(by_id[i] for i in shared),
         base_error=np.array([i in base_bad for i in shared], dtype=np.bool_),
+        clusters=np.asarray([by_id[i].case.cluster_id for i in shared], dtype=np.str_),
     )
     return pair_tables(
         base_table,

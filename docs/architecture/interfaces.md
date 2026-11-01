@@ -1132,7 +1132,9 @@ def evaluate_gate(baseline: RunResults, candidate: RunResults, policy: GatePolic
     # raises GateInputError on eval_fingerprint mismatch, incomplete runs, or baseline error_rate > max_error_rate, or when baseline and candidate
     #   hold different case ids / cluster or slice attributes. `directions` is NOT cross-checked against the registry here
     #   (gate never imports metrics); T1.10's pipeline passes MetricRegistry.directions() unchanged and tests the equality.
-    #   Judge-error pairs are excluded only up to 20 % of each slice (and `overall`), beyond that they are worst-filled.
+    #   A judge-error pair is excluded only if every gated slice holding it (testable or not) stays within 20 %; otherwise it is
+    #   filled with the worst value everywhere, `overall` included (D359h). Further GateInputError cases: baseline `error` above
+    #   20 % of a testable gated slice, a response-less record whose error_rate is 0, a gated metric with no usable baseline value.
 CauseCode = Literal["retrieval", "generation", "citation_format", "language", "refusal_policy", "errors", "mixed"]
 def likely_cause(decisions: Sequence[SliceDecision]) -> CauseCode | None   # gate/cause.py (T1.7); rule table: SPEC §7.4
     # tests assert these string codes, never rule numbers

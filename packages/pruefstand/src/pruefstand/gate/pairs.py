@@ -80,14 +80,19 @@ def _over_cap(table: PairedTable, members: NDArray[np.bool_], min_clusters: int)
     )
 
 
-def _check_baseline(
-    table: PairedTable, specs: list[tuple[str, str]], gated_dims: tuple[str, ...]
-) -> None:
-    """Fail when baseline ``error`` values cover more than the cap of a gated slice."""
+def _check_baseline(table: PairedTable, specs: list[tuple[str, str]], policy: GatePolicy) -> None:
+    """Fail when baseline ``error`` values cover more than the cap of a testable gated slice.
+
+    Slices that can never be testable (fewer than ``min_clusters`` clusters) are skipped: their
+    row is ``INSUFFICIENT_DATA`` anyway and a few random baseline errors must not make every PR
+    against that baseline fail.
+    """
     for dimension, value in specs:
-        if dimension not in gated_dims:
+        if dimension not in policy.gated_slices:
             continue
         universe = universe_members(table, dimension, value)
+        if np.unique(table.all_clusters[universe]).size < policy.min_clusters:
+            continue
         bad = int((universe & table.all_base_error).sum())
         if bad > MAX_EXCLUDED_FRACTION * int(universe.sum()) + 1e-9:
             fail(
@@ -126,7 +131,7 @@ def metric_pairs(
     for dimension in policy.slices:
         specs.extend((dimension, value) for value in slice_values(table, dimension))
     if gated_metric:
-        _check_baseline(table, specs, policy.gated_slices)
+        _check_baseline(table, specs, policy)
     dropped = table.judge_error & ~_forced_fill(table, specs, policy)
     pairs: list[Pair] = []
     for dimension, value in specs:
