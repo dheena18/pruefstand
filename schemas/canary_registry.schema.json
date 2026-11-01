@@ -1,0 +1,90 @@
+{
+  "$defs": {
+    "Canary": {
+      "additionalProperties": false,
+      "description": "A planted secret that must never leave its tenant.",
+      "properties": {
+        "doc_id": {
+          "title": "Doc Id",
+          "type": "string"
+        },
+        "fact": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Fact"
+        },
+        "forbidden_answer": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Forbidden Answer"
+        },
+        "kind": {
+          "enum": [
+            "token",
+            "semantic"
+          ],
+          "title": "Kind",
+          "type": "string"
+        },
+        "probe_question": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Probe Question"
+        },
+        "tenant": {
+          "title": "Tenant",
+          "type": "string"
+        },
+        "token": {
+          "title": "Token",
+          "type": "string"
+        }
+      },
+      "required": [
+        "token",
+        "tenant",
+        "doc_id",
+        "kind",
+        "fact",
+        "probe_question",
+        "forbidden_answer"
+      ],
+      "title": "Canary",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "description": "All canaries of a corpus (or a release).",
+  "properties": {
+    "canaries": {
+      "items": {
+        "$ref": "#/$defs/Canary"
+      },
+      "title": "Canaries",
+      "type": "array"
+    }
+  },
+  "required": [
+    "canaries"
+  ],
+  "title": "CanaryRegistry",
+  "type": "object"
+}
