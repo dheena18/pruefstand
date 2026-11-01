@@ -160,7 +160,7 @@ class Runner:
 
 
 def case_rng(seed: int, index: int) -> np.random.Generator:
-    """Return the retry-jitter generator of case ``index``; seeds 5 and -5 give different streams."""
+    """Return the jitter generator of case ``index``; seeds 5 and -5 give different streams."""
     return np.random.default_rng([seed % 2**64, index])
 
 
