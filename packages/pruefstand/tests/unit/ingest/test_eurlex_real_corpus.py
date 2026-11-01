@@ -3,12 +3,12 @@
 from pathlib import Path
 
 import pytest
-from pruefstand.ingest.align import chunk_aligned
-from pruefstand.ingest.chunkers.article import ArticleChunker
-from pruefstand.ingest.eurlex import EurLexLoader
 
 from pruefstand.core.citations import extract_citations, normalise
 from pruefstand.core.models.corpus import Chunk, Document
+from pruefstand.ingest.align import chunk_aligned
+from pruefstand.ingest.chunkers.article import ArticleChunker
+from pruefstand.ingest.eurlex import EurLexLoader
 
 RAW = Path(__file__).resolve().parents[5] / "data" / "raw" / "eurlex"
 pytestmark = [

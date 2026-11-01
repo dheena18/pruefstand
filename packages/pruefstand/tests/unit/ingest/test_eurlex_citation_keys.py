@@ -4,10 +4,10 @@ from pathlib import Path
 
 import pytest
 import yaml
-from pruefstand.ingest.eurlex_acts import ACTS, EurLexAct, act_for
 
 from pruefstand.core.citations import extract_citations, normalise
 from pruefstand.core.citations.aliases import law_aliases, resolve_law
+from pruefstand.ingest.eurlex_acts import ACTS, EurLexAct, act_for
 
 SOURCES = Path(__file__).resolve().parents[5] / "data" / "sources.yaml"
 PINNED = sorted(

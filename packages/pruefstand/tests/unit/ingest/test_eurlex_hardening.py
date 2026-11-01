@@ -8,14 +8,14 @@ from collections.abc import Callable
 from pathlib import Path
 
 import pytest
-from pruefstand.ingest.chunkers.article import ArticleChunker
-from pruefstand.ingest.eurlex import EurLexLoader
-from pruefstand.ingest.eurlex_blocks import parse_blocks
-from pruefstand.ingest.eurlex_parse import EurLexLimits, EurLexParseError, parse_act
 
 from pruefstand.core.enums import Lang
 from pruefstand.core.ids import DocId, TenantId
 from pruefstand.core.models.corpus import Document
+from pruefstand.ingest.chunkers.article import ArticleChunker
+from pruefstand.ingest.eurlex import EurLexLoader
+from pruefstand.ingest.eurlex_blocks import parse_blocks
+from pruefstand.ingest.eurlex_parse import EurLexLimits, EurLexParseError, parse_act
 
 FIXTURES = Path(__file__).resolve().parents[2] / "fixtures" / "eurlex"
 CELEX = "32016R0679"
