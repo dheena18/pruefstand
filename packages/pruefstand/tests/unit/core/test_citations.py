@@ -42,6 +42,23 @@ TABLE: list[tuple[str, list[str]]] = [
     ("s. 622 German Civil Code", ["§ 622 BGB"]),
     ("Section 1 of the Protection Against Unfair Dismissal Act", ["§ 1 KSchG"]),
     ("§ 622 Abs. 2 S. 1 BGB", ["§ 622 Abs. 2 BGB"]),
+    # T2.4: the EU acts added to law_aliases.yaml (one row each)
+    ("Artikel 5 Gesetz über digitale Märkte", ["Art. 5 DMA"]),
+    ("Article 4(1) Data Act", ["Art. 4 Abs. 1 Data Act"]),
+    ("Art. 12 Daten-Governance-Rechtsakt", ["Art. 12 DGA"]),
+    ("Art. 5 Abs. 3 ePrivacy-RL", ["Art. 5 Abs. 3 ePrivacy-RL"]),
+    ("Artikel 13 Cyberresilienzgesetz", ["Art. 13 CRA"]),
+    ("Article 28 DORA", ["Art. 28 DORA"]),
+    ("Art. 24 eIDAS-Verordnung", ["Art. 24 eIDAS-VO"]),
+    ("Art. 9 Elektrizitätsbinnenmarktrichtlinie", ["Art. 9 Strombinnenmarkt-RL"]),
+    ("Article 8 Electricity Regulation", ["Art. 8 Strombinnenmarkt-VO"]),
+    ("Art. 7 Energieeffizienzrichtlinie", ["Art. 7 EED"]),
+    ("Art. 4 REMIT-VO", ["Art. 4 REMIT"]),
+    ("Art. 6 Hinweisgeberrichtlinie", ["Art. 6 Whistleblower-RL"]),
+    ("Article 5 Consumer Rights Directive", ["Art. 5 VRRL"]),
+    ("Art. 7 Produkthaftungsrichtlinie", ["Art. 7 ProdHaft-RL"]),
+    ("Art. 6 Arbeitszeitrichtlinie", ["Art. 6 Arbeitszeit-RL"]),
+    ("Article 4 Working Conditions Directive", ["Art. 4 Arbeitsbedingungen-RL"]),
 ]
 
 
