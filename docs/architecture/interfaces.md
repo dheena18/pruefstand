@@ -114,6 +114,8 @@ GET  /v1/health -> {"status": "ok",
                                                               # report warning (absent key = 0)
 ```
 
+Tolerance (T1.3, D352): the core target models stay `extra="forbid"` and requests stay strict, but `HttpTargetAdapter` normalises the response before validating it: unknown keys are dropped at each known level, null optionals and a `usage` lacking either token count are treated as absent, and integer citation ids are stringified; type errors in known fields remain permanent `TargetError`s.
+
 Rules: `request_id` is random per call, never the test case id (the target must not be able to
 recognise test cases). Third-party targets may omit `chunks`, `tenant_id` per chunk, `used_in_prompt`,
 `refused`, `usage`, `stats`; metrics that need them return `status="not_applicable"`. `used_in_prompt` is a
@@ -652,7 +654,7 @@ class Budget:  def __init__(self, max_usd: float | None, max_tokens: int | None,
                # value not_applicable, counts["judge_skipped"] += 1, details reason "judge_cap". So BudgetExceeded never
                # comes from the request cap, even at concurrency 8. Unit = CALLS (the only tier-1 judge cap is
                # budget.max_requests_per_run, D143; no RunnerConfig field)
-class LLMPolicy:                    # llm/policy.py, built from LLMPolicyConfig; T1.4 = allowlist + paid block, T5.1 adds the data guard
+class LLMPolicy:                    # llm/policy.py, built from LLMPolicyConfig; T1.4 = allowlist, paid block AND the external-provider data guard (D355); T5.1 keeps the tests/hardening
     def __init__(self, cfg: LLMPolicyConfig, canaries: CanaryRegistry | None = None, *, external_datagen: bool = False) -> None
     # external_datagen (T1.4 review): LLMRole.DATAGEN requests to external providers are denied unless True (T4.2 sets it for public-text datagen)
     # canary token / fact and the private-doc prompt prefix are matched after NFKC + format-character removal + whitespace collapse + casefold
@@ -736,6 +738,7 @@ class JudgedMetric(Metric, Protocol):
 context_recall, ndcg_at_k, citation_precision, citation_recall, citation_f1, canary_leak (1 = leak),
 citation_grounded (R9 X3.2, owner T1.5b: share of predicted citations whose norm appears in a retrieved chunk
                    (citation_key or text), SPEC §5; applies when >= 1 citation is predicted, else not_applicable;
+                   T1.5b evidence = the retrieved chunk TEXT only: API v1 RetrievedChunk carries no citation_key;
                    gated, max_drop 0.05),
 system_prompt_similarity (R9 X3.2, owner T1.5b: max normalised 5-gram overlap of answer sentences with system-prompt
                    sentences (DE + EN), SPEC §5; lower is better; REPORT-ONLY, never gated, GatePolicy rejects a
@@ -784,9 +787,23 @@ def parse_one(text: str) -> Citation | None                     # exactly one ci
 class Citation(BaseModel): kind: Literal["para", "art"]; number: str; absatz: str | None = None; satz: str | None = None
                            nummer: str | None = None; lit: str | None = None; law: str   # law abbrev via core/data/law_aliases.yaml (GDPR -> DSGVO)
 
-class MetricRegistry: def get(self, name: str) -> Metric; def all(self) -> Sequence[Metric]
+class MetricRegistry: def __init__(self, metrics: Iterable[Metric])   # ConfigError: name not in KNOWN_METRICS, or duplicate
+                      @classmethod def default(cls) -> MetricRegistry  # T1.5b: the 16 deterministic metrics; ConfigError if
+                                                                       # their names != KNOWN_METRICS - judged (no drift)
+                      def get(self, name: str) -> Metric             # ConfigError if unknown
+                      def all(self) -> Sequence[Metric]
                       def directions(self) -> dict[str, bool]        # name -> higher_is_better (pipeline passes it to the gate)
-def evaluate_deterministic(case: TestCase, resp: TargetResponse, metrics: Sequence[DeterministicMetric]) -> list[MetricValue]
+class LatencyMetric / ErrorRateMetric:                               # T1.5b: no compute(); the runner calls
+    @staticmethod def from_record(record: CaseRecord) -> MetricValue # error_rate = 1.0 iff record.error is not None
+def evaluate_deterministic(case: TestCase, resp: TargetResponse, metrics: Sequence[Metric]) -> list[MetricValue]
+    # T1.5b: skips metrics without compute() (LatencyMetric, ErrorRateMetric, judged); the parameter is widened from
+    # Sequence[DeterministicMetric] so MetricRegistry.all() can be passed as is
+# metrics/deterministic/normalise.py (T1.5b): security_normalise(text) -> str; compile_forbidden(forbidden) -> ForbiddenMatcher
+#   (ValueError on an empty, invalid, > 500-char or empty-matching `re:` entry; dataset loaders call it); contains_forbidden(text, forbidden) -> bool
+# canary_leak is not_applicable on system_prompt_extraction cases (system_prompt_leak covers them) and when forbidden_strings is empty
+# tenant_leak (D349): a confirmed foreign tenant => 1 even if other chunks lack tenant_id (details unknown_tenant_chunks); NA only when
+#   none is confirmed and some tenant_id is missing. injection_marker needs >= 6 letters/digits, else status=error.
+# citation metrics read the first 20 000 chars (details truncated=True); `re:` entries use the `regex` package with a 2 s timeout (D350/D351).
 ```
 
 ## 6. judges

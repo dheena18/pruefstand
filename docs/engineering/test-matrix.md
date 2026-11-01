@@ -148,7 +148,10 @@ owning module's unit test dir (`pt/unit/<module>/`, `rd/unit/…`).
 | Qwen3 thinking off + `<think>` strip (D95, R9 D191) | `llm.client` | T5.1 | `test_qwen_thinking.py` | `qwen3*` request has `enable_thinking: false` (llama.cpp) / `"think": false` on native `/api/chat` (Ollama, R11 D219; never `/no_think`); leading `<think>` block stripped, strip function returns `(text, True)`; counted in `RunManifest.counts["think_stripped"]` by the pipeline | covered |
 | `PromptRegistry.get` | `llm.prompts` | T1.4 | `test_prompts.py` | unknown version → `PromptError` | covered |
 | `assert_no_secrets`, vcr allow-list hooks (T1.4 review) | `llm.scrub`, `testsupport/vcr_scrub.py` | T1.4 | `pt/unit/llm/test_scrub.py` | secret shapes refused, ordinary text passes; loopback server with `Set-Cookie`, request ids and a `Bearer ghp_…` header → none in the cassette; secret in a body → recording refused; every committed cassette scanned | covered |
-| `response_limits`, `LimitedTransport`, hard `timeout_s` (T1.4 review) | `llm.backends.limits`, `llm.backends.litellm` | T1.4 | `pt/unit/llm/test_limits.py` | dripping loopback server → transient timeout; 60 MB body → permanent "too large" with bounded RSS; answer longer than `max_tokens` allows refused; no provider exception chained | covered |
+| `response_limits`, `LimitedTransport`, hard `timeout_s` (T1.4 review) | `llm.backends.limits`, `llm.backends.litellm` | T1.4 | `pt/unit/llm/test_limits.py` | dripping loopback server → transient timeout; 60 MB body (`openai_compatible_local/`) and 100 MB `github/` bodies (Content-Length and chunked) → permanent "too large" with bounded RSS; DNS failure → transient connection error without "HTTP 500"; answer longer than `max_tokens` allows refused; no provider exception chained | covered |
+| `cassettes.yml` shell steps (T1.4 review) | `.github/workflows/cassettes.yml` | T1.4 | `scripts/models/tests/test_cassettes_workflow.py` | scratch repos: pack ships A/M files + deletion list (also deletions only); push applies them and stages only regular files under the prefix; symlink / hardlink / foreign path / too many files / bad deletion list rejected | covered |
+| `no_repo_code` push-job guard (T1.4 review) | `scripts/workflow_no_repo_code.py` | T1.4 | `scripts/tests/test_check_workflows_push_job.py` | extra permission, `uv`/`make`/`python`/scripts step, unlisted action in `cassettes.yml` `push` → finding; real workflow passes | covered |
+| vcr conftests register the scrub hooks (T1.4 review) | `tests/{unit,live}/llm/conftest.py` | T1.4 | `pt/unit/llm/test_vcr_conftests.py` | both fixtures return `scrub_request` / `scrub_response`; a recording through each config drops `Set-Cookie` and `ghp_` headers | covered |
 | `import litellm` does not load `.env` (T1.4 review) | `llm.backends.litellm` | T1.4 | `pt/unit/llm/test_litellm_env.py` | subprocess with a canary `.env`: DEV mode loads it (control), our import does not; telemetry off | covered |
 | `Budget.check`, negative reservations, `repair_max_tokens` (T1.4 review) | `llm.budget`, `llm.client` | T1.4 | `pt/unit/llm/test_budget.py`, `test_client.py` | exhausted budget → next call refused without HTTP; `reserve(-1)` → `ValueError`; repair tokens doubled, capped | covered |
 | `cassettes_changed.sh` (T1.4 review) | `scripts/models/cassettes_changed.sh` | T1.4 | `scripts/models/tests/test_cassette_changes.py` | scratch repo: clean / modified / new file under the cassette dir / change elsewhere | covered |
@@ -165,7 +168,7 @@ owning module's unit test dir (`pt/unit/<module>/`, `rd/unit/…`).
 
 | Symbol | Module | Task | Test file | Test cases (short) | Status |
 | --- | --- | --- | --- | --- | --- |
-| `HttpTargetAdapter.info`, `.query`, `.aclose` | `adapters.http` | T1.3 | `test_http.py`, `pt/contract/test_target_api_v1.py` | 503/400/timeout/invalid JSON; auth header not logged; info 404 → `None`; random `request_id`; contract suite; chunk with `used_in_prompt` parsed (R9) | covered |
+| `HttpTargetAdapter.info`, `.query`, `.aclose` | `adapters.http` | T1.3 | `test_http.py`, `pt/contract/test_target_api_v1.py` | 503/400/timeout/invalid JSON; auth header not logged; info 404 → `None`; random `request_id`; contract suite; chunk with `used_in_prompt` parsed (R9); chunk without `tenant_id` parses to `None`; untrusted target (D352, `test_http_hardening.py`): size cap, no redirects, total deadline, hostile JSON, token redaction, call-time auth env, no retries; bounded parsing (citations bomb), tolerant third-party responses, loopback transport tests (`test_http_untrusted.py`, `test_http_hygiene.py`, `test_http_loopback.py`) | covered |
 | `HttpTargetAdapter.retrieve` (**R11** D218) | `adapters.http` | T1.3 | `test_http.py`, `pt/contract/test_target_api_v1.py` | `POST /v1/retrieve` with the same random `request_id` rule → `RetrieveResponse`; 404 / 405 → `None` (caller falls back to `query`); 503 retried like `query`; `/v1/retrieve` path; contract suite validates against the OpenAPI file. Missing case T1.3 adds (DEV12-07): response containing `answer` → `TargetError` | covered |
 | `build_adapter` (T1.3 part) | `adapters.factory` | T1.3 | `test_factory.py` | `http`; unknown → `ConfigError`; no store/judges import | covered |
 | `build_adapter` (T10.3 part: new types) | `adapters.factory` | T10.3 | `test_factory.py` | each new adapter type resolves; unknown still → `ConfigError` | covered |
@@ -175,17 +178,17 @@ owning module's unit test dir (`pt/unit/<module>/`, `rd/unit/…`).
 
 | Symbol | Module | Task | Test file | Test cases (short) | Status |
 | --- | --- | --- | --- | --- | --- |
-| `MetricRegistry.default`, `.get`, `.all`, `.directions`, `KNOWN_METRICS` (T1.5b part) | `metrics.registry` | T1.5b | `test_registry.py` | deterministic names == `KNOWN_METRICS` (incl. `citation_grounded`, `system_prompt_similarity`, R9); directions for 3 metrics | covered |
+| `MetricRegistry.default`, `.get`, `.all`, `.directions`, `KNOWN_METRICS` (T1.5b part) | `metrics.registry` | T1.5b | `test_registry.py` | deterministic names == `KNOWN_METRICS` minus judged (incl. `citation_grounded`, `system_prompt_similarity`, R9); constructor and `default()` fail on drift/duplicates; directions for 3 metrics | covered |
 | `MetricRegistry` (T5.2b part: judged metrics) | `metrics.registry` | T5.2b | `test_registry.py` | judged metrics registered; `.all()` covers deterministic + judged names | covered |
 | `evaluate_deterministic` | `metrics.registry` | T1.5b | `test_registry.py` | factual case + response without chunks → retrieval/tenant metrics NA, one value per metric | covered |
 | `context_recall` | `metrics.deterministic.retrieval` | T1.5b | `test_retrieval.py` | 0.5; `chunks=None` → NA | covered |
 | `ndcg_at_k` | `metrics.deterministic.retrieval` | T1.5b | `test_retrieval.py` | 0.9197 worked value | covered |
 | `citation_precision`, `citation_recall`, `citation_f1` | `metrics.deterministic.citation` | T1.5b | `test_citation_metrics.py` | 1/1/1, 0.5/1/0.667, Abs. mismatch (0.5 credit, R9), none predicted, gold empty → NA | covered |
-| `citation_grounded` (R9 X3.2) | `metrics.deterministic.citation` | T1.5b | `test_citation_grounded.py` | cited § present in a retrieved chunk's `citation_key` or text → 1.0; hallucinated § → 0.0; no predicted citation → NA | covered |
-| `system_prompt_similarity` (R9 X3.2, report-only) | `metrics.deterministic.security` | T1.5b | `test_system_prompt_similarity.py` | verbatim system-prompt sentence → high overlap; unrelated answer → ≈ 0; EN paraphrase rows | covered |
-| `security_normalise`, `contains_forbidden` | `metrics.deterministic.normalise` | T1.5b | `test_normalise.py` | canary spellings; `re:` semantic form with „tägige“; invalid regex at construction | covered |
-| `canary_leak` | `metrics.deterministic.security` | T1.5b | `test_security.py` | token in chunk → 1 | covered |
-| `tenant_leak` | `metrics.deterministic.security` | T1.5b | `test_security.py` | foreign → 1, `shared_public` → 0, `None` → NA | covered |
+| `citation_grounded` (R9 X3.2) | `metrics.deterministic.citation` | T1.5b | `test_citation_grounded.py` | cited § present in a retrieved chunk's text (no `citation_key` in API v1, D348) → 1.0; hallucinated § → 0.5/0.0; Abs. mismatch → ungrounded; no predicted citation / `chunks=None` → NA | covered |
+| `system_prompt_similarity` (R9 X3.2, report-only) | `metrics.deterministic.security` | T1.5b | `test_system_prompt_similarity.py` | verbatim sentence → 1.0; 6-word run → 2/11; unrelated → 0.0; DE and EN sentences (best pair); canary/`re:` entries ignored; factual → NA | covered |
+| `security_normalise`, `contains_forbidden` | `metrics.deterministic.normalise` | T1.5b | `test_normalise.py` | canary spellings (NBSP, `_`, `-`); `re:` semantic form with „tägige“ incl. NFD and `siebenundvierzigtägige`; number words 0-100; invalid / empty / over-long / empty-matching regex → `ValueError` at `compile_forbidden`; linear-time property; canary not swallowed by earlier `canary` words; ReDoS patterns rejected + timeout → `status=error`; Cf/homoglyph/width/markdown evasions; `ß` in `re:` | covered |
+| `canary_leak` | `metrics.deterministic.security` | T1.5b | `test_security.py` | token in chunk → 1; reformatted token in answer; `re:` fact; no forbidden strings / `system_prompt_extraction` → NA; invalid entry → `status=error` | covered |
+| `tenant_leak` | `metrics.deterministic.security` | T1.5b | `test_security.py` | foreign → 1 (also with other `tenant_id` missing, D349), `shared_public` → 0, only-`None` → NA | covered |
 | `injection_success` | `metrics.deterministic.security` | T1.5b | `test_security.py` | marker → 1; factual → NA | covered |
 | `system_prompt_leak` | `metrics.deterministic.security` | T1.5b | `test_security.py` | sentence in answer → 1 | covered |
 | `refusal_correct`, `false_refusal` | `metrics.deterministic.refusal` | T1.5b | `test_refusal.py` | phrase match; factual refused; `refused=False` flag with a refusal phrase → refused (D116) | covered |
@@ -505,10 +508,10 @@ UI tests (pages × states × theme × locale × viewport) are specified in `docs
 
 | Status | Rows |
 | --- | --- |
-| covered | 330 |
+| covered | 333 |
 | planned | 32 (R13 rows and rows whose case round 13 changed; owners T0.7, T1.8, T1.9, T1.10, T3.1a, T3.6, T4.1, T5.1, T5.4, T6.1, T6.2a, T6.2b, T7.1b, T7.2, T7.3, T8.1, T8.5) |
 | weak | 1 (backup bundle: drill only, acceptable for an ops script) |
-| **total** | **363** |
+| **total** | **366** |
 
 Round-13 changes (D296): the round-12 table (241 covered / 29 open / 1 weak = 271 rows) was re-derived: 40 multi-owner
 rows split into 90 single-owner rows (+50); 29 open rows flipped (`covered` unless round 13 changed the case); 21 new
@@ -543,4 +546,4 @@ mapping, `write_gate_json`, and the R9 additions on both); file names corrected 
 `test_gate_models.py` + `test_tables.py`, `test_perturb_case_async.py`, `test_fixed_chunker.py`,
 `test_baseline_cli.py`); new rows for every R9 symbol and for the out-of-package symbols that Done-when lines name.
 
-T1.4 (D345–D347): +12 `covered` rows (7 from the first pass, 5 from the review pass) (`extract_json_object`, `cache_key`, request builder, `litellm_model`, policy validation, `fetch.py`, `record_cassettes.sh`) and +1 `planned` row (cache key with `model_version`, owner T5.1); five T1.4 rows re-worded to the tests that exist.
+T1.4 (D353–D355): +12 `covered` rows (7 first pass, 5 review round 2) and +3 in review round 3 (`extract_json_object`, `cache_key`, request builder, `litellm_model`, policy validation, `fetch.py`, `record_cassettes.sh`) and +1 `planned` row (cache key with `model_version`, owner T5.1); five T1.4 rows re-worded to the tests that exist.
