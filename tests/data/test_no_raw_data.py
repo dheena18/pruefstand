@@ -102,3 +102,8 @@ def test_main_prints_ok_and_exit_codes(tmp_path: Path, capsys: pytest.CaptureFix
     bad = _tracked(tmp_path, "foo.parquet")
     assert main(["--root", str(tmp_path)], tracked=[bad]) == 1
     assert "foo.parquet" in capsys.readouterr().out
+
+
+def test_lock_file_exemption_is_anchored_at_repo_root(tmp_path: Path) -> None:
+    rel = _tracked(tmp_path, "packages/x/uv.lock", 2 * MB)
+    assert find_violations(tmp_path, [rel])

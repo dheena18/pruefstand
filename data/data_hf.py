@@ -5,8 +5,11 @@ The licence is read from the dataset card on the default branch and compared wit
 pinned commit into ``data/raw/hf/<id>/`` (never from the HF cache).
 """
 
+import time
+from collections.abc import Callable
 from pathlib import Path
 
+import httpx
 from data_sources import (
     ChecksumError,
     ConfigMissingError,
@@ -18,6 +21,31 @@ from data_sources import (
 )
 from huggingface_hub import dataset_info, snapshot_download
 from huggingface_hub.errors import HfHubHTTPError
+
+ATTEMPTS = 4
+NO_RETRY_STATUS = frozenset({401, 403, 404})
+Sleep = Callable[[float], None]
+
+
+def _status(err: Exception) -> int | None:
+    response = getattr(err, "response", None)
+    code = getattr(response, "status_code", None)
+    return code if isinstance(code, int) else None
+
+
+def _with_retry[T](src: Source, call: Callable[[], T], sleep: Sleep) -> T:
+    """Run a Hub call with backoff; any transport failure becomes a FetchError (class name only)."""
+    for attempt in range(ATTEMPTS):
+        try:
+            return call()
+        except (httpx.HTTPError, OSError, HfHubHTTPError) as err:
+            if _status(err) in NO_RETRY_STATUS or attempt == ATTEMPTS - 1:
+                msg = f"{src.id}: Hugging Face request failed ({type(err).__name__})"
+                if _status(err) in (401, 403):
+                    msg += "; gated datasets need HF_TOKEN of an account that accepted the terms"
+                raise FetchError(msg) from None
+            sleep(2.0**attempt)
+    raise AssertionError  # pragma: no cover  # loop always returns or raises
 
 
 def _card_attr(info: object, name: str) -> object:
@@ -31,17 +59,18 @@ def _card_license(info: object) -> str:
     return str(value).lower() if value else "none"
 
 
-def check_hf_license(src: Source, info: object | None = None) -> None:
+def check_hf_license(src: Source, info: object | None = None, sleep: Sleep = time.sleep) -> None:
     """Compare the dataset-card ``license`` field with ``sources.yaml``.
 
     Args:
         src: A ``hf`` source.
         info: Result of ``dataset_info`` (fetched when omitted).
+        sleep: Backoff sleeper (replaced in tests).
 
     Raises:
         LicenseMismatch: Card licence differs from the pinned one.
     """
-    info = info or dataset_info(str(src.repo_id))
+    info = info or _with_retry(src, lambda: dataset_info(str(src.repo_id)), sleep)
     actual = _card_license(info)
     # card_license documents one known deviation of the card from the real licence (see
     # DATA_LICENSES.md section 7); the card must then say exactly that value.
@@ -65,9 +94,10 @@ def check_hf_config(src: Source, info: object) -> None:
         raise ConfigMissingError(src.id, src.config, names)
 
 
-def latest_hf_revision(src: Source) -> str:
+def latest_hf_revision(src: Source, sleep: Sleep = time.sleep) -> str:
     """Return the current commit SHA of the dataset (of ``ref`` when set); used by update-pins."""
-    return str(dataset_info(str(src.repo_id), revision=src.ref).sha)
+    info = _with_retry(src, lambda: dataset_info(str(src.repo_id), revision=src.ref), sleep)
+    return str(info.sha)
 
 
 def _hf_valid(src: Source, base: Path) -> bool:
@@ -77,7 +107,7 @@ def _hf_valid(src: Source, base: Path) -> bool:
     )
 
 
-def sync_hf(src: Source, root: Path, *, pin_check: bool) -> SyncResult:
+def sync_hf(src: Source, root: Path, *, pin_check: bool, sleep: Sleep = time.sleep) -> SyncResult:
     """Check licence and config, then snapshot the pinned files unless they are already valid.
 
     Raises:
@@ -86,7 +116,7 @@ def sync_hf(src: Source, root: Path, *, pin_check: bool) -> SyncResult:
         ChecksumError: A file differs from its pin.
         FetchError: Gated/refused by the Hub, or a pinned file is absent upstream.
     """
-    info = dataset_info(str(src.repo_id))
+    info = _with_retry(src, lambda: dataset_info(str(src.repo_id)), sleep)
     check_hf_license(src, info)
     check_hf_config(src, info)
     base = root / src.rel_dir
@@ -94,20 +124,17 @@ def sync_hf(src: Source, root: Path, *, pin_check: bool) -> SyncResult:
     if pin_check and _hf_valid(src, base):
         result.files = {n: str(s) for n, s in src.files.items()}
         return result
-    try:
-        snapshot_download(
+    _with_retry(
+        src,
+        lambda: snapshot_download(
             repo_id=str(src.repo_id),
             repo_type="dataset",
             revision=src.revision,
             local_dir=str(base),
             allow_patterns=list(src.files),
-        )
-    except HfHubHTTPError as err:
-        msg = (
-            f"{src.id}: Hugging Face refused {src.repo_id}@{src.revision} ({type(err).__name__}); "
-            "gated datasets need HF_TOKEN of an account that accepted the terms"
-        )
-        raise FetchError(msg) from err
+        ),
+        sleep,
+    )
     result.downloads = len(src.files)
     for name, pin in src.files.items():
         path = base / name
@@ -116,6 +143,7 @@ def sync_hf(src: Source, root: Path, *, pin_check: bool) -> SyncResult:
             raise FetchError(msg)
         actual = sha256_file(path)
         if pin_check and pin and actual != pin:
+            path.unlink()
             raise ChecksumError(src.id, name, pin, actual)
         if pin_check and pin is None:
             result.unpinned.append(name)

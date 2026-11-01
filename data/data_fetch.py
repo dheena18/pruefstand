@@ -224,5 +224,5 @@ def sync_source(
         FetchError: Download failed or a pinned file is absent upstream.
     """
     if src.kind == "hf":
-        return sync_hf(src, root, pin_check=pin_check)
+        return sync_hf(src, root, pin_check=pin_check, sleep=sleep)
     return _sync_http(src, root, client=client, sleep=sleep, pin_check=pin_check)

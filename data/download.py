@@ -104,7 +104,7 @@ def _run_one(
     sleep = (lambda _s: None) if args.no_sleep else time.sleep
     try:
         if not pin_check and src.kind == "hf":
-            src = replace(src, revision=latest_hf_revision(src))
+            src = replace(src, revision=latest_hf_revision(src, sleep))
         return src, sync_source(src, raw, client=client, sleep=sleep, pin_check=pin_check)
     except DataError as err:
         return src, err
@@ -123,7 +123,9 @@ def _write_manifest(raw: Path, entries: dict[str, dict[str, object]]) -> None:
     old = json.loads(path.read_text(encoding="utf-8")) if path.is_file() else {}
     old.update(entries)
     raw.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps(old, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    tmp = path.with_name(path.name + ".tmp")
+    tmp.write_text(json.dumps(old, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    Path(tmp).replace(path)
 
 
 def _record_error(tally: Tally, err: DataError) -> None:

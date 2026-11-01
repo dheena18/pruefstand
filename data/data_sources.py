@@ -15,7 +15,25 @@ import yaml
 
 KINDS = ("gii", "hf", "eurlex", "github")
 HEX40 = re.compile(r"[0-9a-f]{40}\Z")
-SHARE_ALIKE = frozenset({"odbl", "cc-by-sa-4.0"})
+ID_RE = re.compile(r"(?:(?:gii|eurlex):[A-Za-z0-9]+|[a-z0-9_]+)\Z")
+# Every licence a source may declare; anything else (typos, other spellings) fails loudly.
+ALLOWED_LICENSES = frozenset(
+    {
+        "official-work-5-urhg",
+        "eurlex-legal-notice",
+        "odbl",
+        "cc-by-4.0",
+        "cc-by-sa-4.0",
+        "apache-2.0",
+        "cc-by-nc-4.0",
+    }
+)
+# A dataset config holds exactly one licence (ODbL, CC BY and CC BY-SA never share a config,
+# ADR-0015), except where this table lists the licences it may hold together.
+CONFIG_LICENSES: dict[str, frozenset[str]] = {
+    "laws_eurlex": frozenset({"official-work-5-urhg", "eurlex-legal-notice"}),
+}
+DOWNLOAD_ONLY = "download_only"
 HEX64 = re.compile(r"[0-9a-f]{64}\Z")
 CHUNK = 1 << 20
 SOURCES_HEADER = (
@@ -139,7 +157,25 @@ def _build(raw: dict[str, Any], defaults: dict[str, Any]) -> Source:
     return source
 
 
+def _validate_licence(source: Source) -> None:
+    if source.license not in ALLOWED_LICENSES:
+        msg = (
+            f"{source.id}: unknown licence {source.license!r}; allowed: {sorted(ALLOWED_LICENSES)}"
+        )
+        raise SourcesError(msg)
+    download_only = source.license_config == DOWNLOAD_ONLY
+    if source.license == "cc-by-nc-4.0" and not download_only:
+        msg = f"{source.id}: non-commercial data belongs in license_config {DOWNLOAD_ONLY}"
+        raise SourcesError(msg)
+    if download_only == source.redistribute:
+        msg = f"{source.id}: redistribute must be false exactly for license_config {DOWNLOAD_ONLY}"
+        raise SourcesError(msg)
+
+
 def _validate(source: Source) -> None:
+    if not ID_RE.match(source.id):
+        msg = f"bad source id {source.id!r}"
+        raise SourcesError(msg)
     if source.kind not in KINDS:
         msg = f"{source.id}: unknown kind {source.kind!r}"
         raise SourcesError(msg)
@@ -149,9 +185,11 @@ def _validate(source: Source) -> None:
     if source.kind == "github" and not (source.commit and HEX40.match(source.commit)):
         msg = f"{source.id}: github commit must be a 40-hex SHA"
         raise SourcesError(msg)
+    _validate_licence(source)
     for name, sha in source.files.items():
-        if name.startswith("/") or ".." in Path(name).parts:
-            msg = f"{source.id}: file name {name!r} must be relative without .."
+        parts = name.split("/")
+        if "\\" in name or any(p in ("", ".", "..") for p in parts):
+            msg = f"{source.id}: file name {name!r} must be a clean relative path"
             raise SourcesError(msg)
         if sha is not None and not HEX64.match(sha):
             msg = f"{source.id}/{name}: sha256 must be 64 lowercase hex characters"
@@ -191,17 +229,19 @@ def load_sources(path: Path) -> list[Source]:
 
 
 def _check_config_homogeneity(sources: list[Source]) -> None:
-    """Fail when a dataset config mixes a share-alike licence with any other (ADR-0015).
+    """Fail when a config holds more licences than allowed (ADR-0015).
 
-    ODbL, CC BY-SA and CC BY never share a config: a config holding a share-alike source holds
-    sources of that one licence only.
+    Every config holds exactly one licence, except those listed in ``CONFIG_LICENSES``.
     """
     by_config: dict[str, set[str]] = {}
     for src in sources:
         by_config.setdefault(src.license_config, set()).add(src.license)
     for config, licences in by_config.items():
-        if licences & SHARE_ALIKE and len(licences) > 1:
-            msg = f"config {config!r} mixes licences {sorted(licences)}; share-alike stays alone"
+        allowed = CONFIG_LICENSES.get(config)
+        if (allowed is not None and not licences <= allowed) or (
+            allowed is None and len(licences) > 1
+        ):
+            msg = f"config {config!r} may not hold licences {sorted(licences)}"
             raise SourcesError(msg)
 
 

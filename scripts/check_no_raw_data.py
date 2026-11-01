@@ -77,8 +77,7 @@ def find_violations(root: Path, tracked: Sequence[str]) -> list[str]:
         if FORBIDDEN_COMPONENT in (part.lower() for part in Path(rel).parts):
             problems.append(f"{rel}: MEMERAG is download-only and must never be tracked")
             continue
-        name = Path(rel).name
-        if path.stat().st_size > MAX_BYTES and name not in SIZE_EXEMPT:
+        if path.stat().st_size > MAX_BYTES and rel not in SIZE_EXEMPT:
             problems.append(f"{rel}: larger than 1 MB")
         if rel.endswith(DATA_SUFFIXES) and not _allowlisted(rel):
             problems.append(f"{rel}: data file outside the allowlist")

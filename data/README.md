@@ -54,3 +54,14 @@ is set. Set `HF_TOKEN` only in your shell (never in a file we commit); it is not
 * **`oldp_decisions` and `oldp_laws`** are gated on the Hub: downloading them needs `HF_TOKEN` of an
   account that accepted the terms, set in your shell (never in a committed file). Their sha256 are pinned.
 * Documented licence overrides (`card_license`) are listed in `DATA_LICENSES.md` section 7.
+
+## Known limits
+
+* The licence is read from the dataset card on the default branch, not from the pinned commit: the
+  `refs/convert/parquet` commits of germanquad/germandpr carry no card, so a card change after pinning
+  is only noticed on the next run.
+* There is no download size cap; the risk is low because every file is pinned by SHA-256 and rejected on a mismatch.
+* `--update-pins` rewrites `sources.yaml` with `yaml.safe_dump`, which drops hand-written comments and
+  rewraps long strings; review the diff it prints.
+* `licence` values must come from the allow-set in `data_sources.py`, a config holds exactly one
+  licence (except `laws_eurlex`), and `redistribute: false` is allowed exactly for `download_only`.

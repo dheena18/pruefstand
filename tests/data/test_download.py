@@ -89,7 +89,7 @@ def _write_sources(tmp_path: Path, entries: list[dict[str, Any]]) -> Path:
 def _gii(sha: str | None = ABC_SHA) -> dict[str, Any]:
     return {
         "id": "gii:kschg", "kind": "gii", "abbrev": "KSchG", "slug": "kschg",
-        "pinned": "2026-10-31", "license": "official-work", "license_config": "laws_eurlex",
+        "pinned": "2026-10-31", "license": "official-work-5-urhg", "license_config": "laws_eurlex",
         "redistribute": True, "attribution": "BMJ", "files": {"xml.zip": sha},
     }  # fmt: skip
 
@@ -193,7 +193,7 @@ def test_waf_challenge_is_reported_not_bypassed(
 ) -> None:
     entry = {
         "id": "eurlex:32016R0679", "kind": "eurlex", "celex": "32016R0679",
-        "pinned": "2026-10-31", "license": "eurlex-notice", "license_config": "laws_eurlex",
+        "pinned": "2026-10-31", "license": "eurlex-legal-notice", "license_config": "laws_eurlex",
         "redistribute": True, "attribution": "EU", "files": {"de.html": None},
     }  # fmt: skip
     src = _write_sources(tmp_path, [entry])
@@ -438,3 +438,120 @@ def test_germanrag_is_share_alike_in_its_own_config() -> None:
     others = [s for s in by_id.values() if s.license_config == "germanrag_derived"]
     assert others == [rag]
     assert by_id["germanquad"].license_config != rag.license_config
+
+
+def _entry_with(base: dict[str, Any], **changes: Any) -> dict[str, Any]:
+    return {**base, **changes}
+
+
+@pytest.mark.parametrize(
+    "variant", ["odbl-1.0", "ODbL", "CC-BY-SA-4.0", "cc-by-sa-3.0", "cc-by 4.0"]
+)
+def test_unknown_licence_spelling_fails_loudly(tmp_path: Path, variant: str) -> None:
+    with pytest.raises(SourcesError, match="licence"):
+        load_sources(_write_sources(tmp_path, [_hf(license_=variant)]))
+
+
+def test_each_config_holds_exactly_one_licence(tmp_path: Path) -> None:
+    a = {**_hf(license_="cc-by-4.0"), "id": "a"}
+    b = {**_hf(license_="apache-2.0"), "id": "b"}
+    with pytest.raises(SourcesError, match="germanquad_derived"):
+        load_sources(_write_sources(tmp_path, [a, b]))
+
+
+def test_laws_eurlex_is_the_one_config_with_two_licences(tmp_path: Path) -> None:
+    a = _gii()
+    b = {
+        **_gii(),
+        "id": "gii:bgb",
+        "abbrev": "BGB",
+        "slug": "bgb",
+        "license": "eurlex-legal-notice",
+    }
+    assert len(load_sources(_write_sources(tmp_path, [a, b]))) == 2
+    c = {**_gii(), "id": "gii:agg", "abbrev": "AGG", "slug": "agg", "license": "cc-by-4.0"}
+    with pytest.raises(SourcesError, match="laws_eurlex"):
+        load_sources(_write_sources(tmp_path, [a, c]))
+
+
+def test_non_commercial_licence_only_in_download_only(tmp_path: Path) -> None:
+    entry = _hf(license_="cc-by-nc-4.0")
+    with pytest.raises(SourcesError, match="download_only"):
+        load_sources(_write_sources(tmp_path, [entry]))
+
+
+def test_redistribute_false_iff_download_only(tmp_path: Path) -> None:
+    with pytest.raises(SourcesError, match="redistribute"):
+        load_sources(_write_sources(tmp_path, [{**_hf(), "redistribute": False}]))
+    entry = {**_hf(license_="cc-by-nc-4.0"), "license_config": "download_only"}
+    with pytest.raises(SourcesError, match="redistribute"):
+        load_sources(_write_sources(tmp_path, [entry]))
+
+
+@pytest.mark.parametrize("bad", ["../x", "a/../b", "/abs", "a\\b", "a//b", ""])
+def test_bad_file_names_rejected(tmp_path: Path, bad: str) -> None:
+    entry = _gii()
+    entry["files"] = {bad: ABC_SHA}
+    with pytest.raises(SourcesError):
+        load_sources(_write_sources(tmp_path, [entry]))
+
+
+@pytest.mark.parametrize("bad", ["../x", "gii:../x", "GII:kschg", "a b", "", "gii:"])
+def test_bad_source_ids_rejected(tmp_path: Path, bad: str) -> None:
+    with pytest.raises(SourcesError, match="id"):
+        load_sources(_write_sources(tmp_path, [{**_gii(), "id": bad}]))
+
+
+def test_hf_checksum_mismatch_deletes_the_file(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(data_hf, "snapshot_download", _fake_snapshot([]))
+    monkeypatch.setattr(data_hf, "dataset_info", lambda *_a, **_k: _info("cc-by-4.0"))
+    src = _write_sources(tmp_path, [_hf(sha="0" * 64)])
+    assert main(_args(tmp_path, src)) == 1
+    assert not (tmp_path / "raw/hf/germanquad/plain_text/test/0000.parquet").exists()
+
+
+def test_hf_transport_error_is_retried_then_reported(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    calls: list[int] = []
+
+    def boom(*_a: Any, **_k: Any) -> SimpleNamespace:
+        calls.append(1)
+        msg = "secret-host-detail"
+        raise httpx.ConnectError(msg)
+
+    monkeypatch.setattr(data_hf, "dataset_info", boom)
+    src = _write_sources(tmp_path, [_hf()])
+    assert main(_args(tmp_path, src)) == 1
+    err = capsys.readouterr().err
+    assert len(calls) == 4
+    assert "ConnectError" in err
+    assert "secret-host-detail" not in err
+
+
+def test_hf_transient_error_then_success(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    seen: list[int] = []
+
+    def flaky(*_a: Any, **_k: Any) -> SimpleNamespace:
+        seen.append(1)
+        if len(seen) == 1:
+            msg = "flaky"
+            raise OSError(msg)
+        return _info("cc-by-4.0")
+
+    monkeypatch.setattr(data_hf, "dataset_info", flaky)
+    monkeypatch.setattr(data_hf, "snapshot_download", _fake_snapshot([]))
+    assert main(_args(tmp_path, _write_sources(tmp_path, [_hf()]))) == 0
+    assert len(seen) == 2
+
+
+def test_manifest_write_is_atomic(tmp_path: Path) -> None:
+    src = _write_sources(tmp_path, [_gii()])
+    with respx.mock:
+        respx.get(GII_URL).respond(content=ABC)
+        assert main(_args(tmp_path, src)) == 0
+    assert [p.name for p in (tmp_path / "raw").iterdir() if p.name.startswith("MANIFEST")] == [
+        "MANIFEST.json"
+    ]
