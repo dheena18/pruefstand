@@ -152,7 +152,7 @@ owning module's unit test dir (`pt/unit/<module>/`, `rd/unit/…`).
 
 | Symbol | Module | Task | Test file | Test cases (short) | Status |
 | --- | --- | --- | --- | --- | --- |
-| `HttpTargetAdapter.info`, `.query`, `.aclose` | `adapters.http` | T1.3 | `test_http.py`, `pt/contract/test_target_api_v1.py` | 503/400/timeout/invalid JSON; auth header not logged; info 404 → `None`; random `request_id`; contract suite; chunk with `used_in_prompt` parsed (R9) | covered |
+| `HttpTargetAdapter.info`, `.query`, `.aclose` | `adapters.http` | T1.3 | `test_http.py`, `pt/contract/test_target_api_v1.py` | 503/400/timeout/invalid JSON; auth header not logged; info 404 → `None`; random `request_id`; contract suite; chunk with `used_in_prompt` parsed (R9); chunk without `tenant_id` parses to `None`; untrusted target (D344, `test_http_hardening.py`): size cap, no redirects, total deadline, hostile JSON, token redaction, call-time auth env, no retries | covered |
 | `HttpTargetAdapter.retrieve` (**R11** D218) | `adapters.http` | T1.3 | `test_http.py`, `pt/contract/test_target_api_v1.py` | `POST /v1/retrieve` with the same random `request_id` rule → `RetrieveResponse`; 404 / 405 → `None` (caller falls back to `query`); 503 retried like `query`; `/v1/retrieve` path; contract suite validates against the OpenAPI file. Missing case T1.3 adds (DEV12-07): response containing `answer` → `TargetError` | covered |
 | `build_adapter` (T1.3 part) | `adapters.factory` | T1.3 | `test_factory.py` | `http`; unknown → `ConfigError`; no store/judges import | covered |
 | `build_adapter` (T10.3 part: new types) | `adapters.factory` | T10.3 | `test_factory.py` | each new adapter type resolves; unknown still → `ConfigError` | covered |

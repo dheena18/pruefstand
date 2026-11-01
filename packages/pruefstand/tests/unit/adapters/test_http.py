@@ -5,8 +5,8 @@ from collections.abc import AsyncIterator, Iterator
 import httpx
 import pytest
 import respx
-
 from contract.adapter_contract import load_example
+
 from pruefstand.adapters.http import HttpTargetAdapter
 from pruefstand.core.config import HttpTargetConfig
 from pruefstand.core.errors import TargetError
@@ -73,9 +73,14 @@ async def test_refused_example_parses(router: respx.MockRouter, adapter: HttpTar
     assert response.chunks == ()
 
 
-@pytest.mark.parametrize(("status", "transient"), [(503, True), (500, True), (400, False), (404, False), (422, False)])
+@pytest.mark.parametrize(
+    ("status", "transient"), [(503, True), (500, True), (400, False), (404, False), (422, False)]
+)
 async def test_http_errors_map_to_transient_flag(
-    router: respx.MockRouter, adapter: HttpTargetAdapter, status: int, transient: bool
+    router: respx.MockRouter,
+    adapter: HttpTargetAdapter,
+    status: int,
+    transient: bool,  # noqa: FBT001
 ) -> None:
     router.post("/v1/query").respond(status, text="boom")
     with pytest.raises(TargetError) as excinfo:
@@ -121,8 +126,10 @@ async def test_schema_violation_is_permanent(
 
 
 async def test_auth_header_sent_and_secret_never_logged(
-    router: respx.MockRouter, monkeypatch: pytest.MonkeyPatch,
-    caplog: pytest.LogCaptureFixture, capfd: pytest.CaptureFixture[str],
+    router: respx.MockRouter,
+    monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
+    capfd: pytest.CaptureFixture[str],
 ) -> None:
     monkeypatch.setenv("T", "s3cr3t-value-123456")
     route = router.post("/v1/query").respond(200, json=load_example("query_ok.json"))
@@ -162,7 +169,9 @@ async def test_info_example_has_static_serving_fields_only(
     assert not {"think_stripped", "truncated_chunks", "requests"} & set(info.serving)
 
 
-async def test_info_server_error_raises(router: respx.MockRouter, adapter: HttpTargetAdapter) -> None:
+async def test_info_server_error_raises(
+    router: respx.MockRouter, adapter: HttpTargetAdapter
+) -> None:
     router.get("/v1/info").respond(503)
     with pytest.raises(TargetError) as excinfo:
         await adapter.info()
@@ -205,7 +214,9 @@ async def test_retrieve_missing_endpoint_is_none(
     assert await adapter.retrieve(request()) is None
 
 
-async def test_retrieve_503_is_transient(router: respx.MockRouter, adapter: HttpTargetAdapter) -> None:
+async def test_retrieve_503_is_transient(
+    router: respx.MockRouter, adapter: HttpTargetAdapter
+) -> None:
     router.post("/v1/retrieve").respond(503)
     with pytest.raises(TargetError) as excinfo:
         await adapter.retrieve(request())

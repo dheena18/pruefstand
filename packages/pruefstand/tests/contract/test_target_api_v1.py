@@ -1,15 +1,14 @@
 """Contract tests for Target API v1: examples, OpenAPI file and pydantic models stay in sync."""
 
 import copy
+import json
 import os
+import re
 from collections.abc import Iterator
 from typing import Any
 
 import pytest
 import respx
-from jsonschema import Draft202012Validator
-from pydantic import BaseModel
-
 from contract.adapter_contract import (
     EXAMPLES_DIR,
     assert_valid,
@@ -17,6 +16,9 @@ from contract.adapter_contract import (
     load_example,
     load_openapi,
 )
+from jsonschema import Draft202012Validator
+from pydantic import BaseModel
+
 from pruefstand.adapters.http import HttpTargetAdapter
 from pruefstand.core.config import HttpTargetConfig
 from pruefstand.core.ids import TenantId
@@ -99,9 +101,10 @@ def test_openapi_examples_equal_the_example_files() -> None:
 
 
 def test_openapi_has_no_secret_in_it() -> None:
-    text = str(load_openapi()).lower()
-    assert "bearer " not in text.replace("scheme: bearer", "")  # no token examples
-    assert "authorization:" not in text
+    text = json.dumps(load_openapi())
+    assert not re.search(
+        r"(?i)bearer\s+[A-Za-z0-9._~+/=-]{12,}|authorization\s*:|sk-|ghp_|hf_", text
+    )
 
 
 def test_openapi_declares_the_four_endpoints() -> None:
@@ -120,7 +123,7 @@ def _props(schema: dict[str, Any]) -> tuple[set[str], set[str]]:
 @pytest.mark.parametrize(
     ("component", "model", "optional"),
     [
-        ("QueryRequest", TargetRequest, set()),
+        ("QueryRequest", TargetRequest, {"top_k"}),
         ("RetrievedChunk", RetrievedChunk, {"tenant_id", "used_in_prompt"}),
         ("Usage", Usage, set()),
         ("QueryResponse", TargetResponse, {"citations", "chunks", "refused", "model", "usage"}),
@@ -196,7 +199,9 @@ async def test_contract_live() -> None:
     if not url:
         pytest.skip("PRUEFSTAND_TARGET_URL is not set (T1.13 runs this against the real rag-demo)")
     adapter = HttpTargetAdapter(HttpTargetConfig(type="http", url=url, timeout_s=120))
-    await check_adapter_contract(adapter, [("kanzlei_mueller", "Wie lang ist die Kündigungsfrist?")])
+    await check_adapter_contract(
+        adapter, [("kanzlei_mueller", "Wie lang ist die Kündigungsfrist?")]
+    )
 
 
 def test_openapi_file_is_openapi_31_with_valid_json_schemas() -> None:

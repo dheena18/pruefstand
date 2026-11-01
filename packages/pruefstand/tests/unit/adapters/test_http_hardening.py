@@ -7,8 +7,8 @@ from collections.abc import AsyncIterator, Iterator
 import httpx
 import pytest
 import respx
-
 from contract.adapter_contract import load_example
+
 from pruefstand.adapters.http import MAX_RESPONSE_BYTES, HttpTargetAdapter
 from pruefstand.core.config import HttpTargetConfig
 from pruefstand.core.errors import ConfigError, TargetError
@@ -105,6 +105,7 @@ async def test_total_timeout_bounds_a_slow_drip(router: respx.MockRouter) -> Non
     [
         ('{"answer": "a", "chunks": [' + CHUNK % "NaN" + "]}").encode(),
         ('{"answer": "a", "chunks": [' + CHUNK % "Infinity" + "]}").encode(),
+        ('{"answer": "a", "chunks": [' + CHUNK % "1e999" + "]}").encode(),
         b"[" * 100_000,
         b'{"answer": "a\\ud800"}',
         b"\xff\xfe\x00",
@@ -171,3 +172,16 @@ async def test_one_attempt_per_call_no_retries(
     with pytest.raises(TargetError):
         await adapter.query(REQ)
     assert route.call_count == 1
+
+
+async def test_invalid_json_excerpt_redacts_an_echoed_token(
+    router: respx.MockRouter, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("TOK4", "tok-echo-987654321")
+    router.post("/v1/query").respond(200, text="<html>your key tok-echo-987654321</html>")
+    adapter = HttpTargetAdapter(HttpTargetConfig(type="http", url=BASE, auth_env="TOK4"))
+    with pytest.raises(TargetError) as excinfo:
+        await adapter.query(REQ)
+    await adapter.aclose()
+    assert "tok-echo-987654321" not in str(excinfo.value)
+    assert "<html>" in str(excinfo.value)

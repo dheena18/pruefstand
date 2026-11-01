@@ -11,10 +11,16 @@ from pathlib import Path
 from typing import Any
 from uuid import uuid4
 
+import yaml
 from jsonschema import Draft202012Validator
 
 from pruefstand.core.ids import TenantId
-from pruefstand.core.models.target import RetrieveResponse, TargetInfo, TargetRequest, TargetResponse
+from pruefstand.core.models.target import (
+    RetrieveResponse,
+    TargetInfo,
+    TargetRequest,
+    TargetResponse,
+)
 from pruefstand.core.protocols import TargetAdapter
 
 CONTRACT_DIR = Path(__file__).resolve().parent
@@ -29,8 +35,6 @@ def load_example(name: str) -> Any:
 
 def load_openapi() -> dict[str, Any]:
     """Return the parsed target OpenAPI document."""
-    import yaml
-
     loaded = yaml.safe_load(OPENAPI_PATH.read_text(encoding="utf-8"))
     assert isinstance(loaded, dict)
     return loaded
