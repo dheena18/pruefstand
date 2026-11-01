@@ -1,0 +1,72 @@
+# The only law-name table in the repo (T1.5a, D334). Read through pruefstand.core.citations.aliases;
+# T2.4 appends EU acts, T4.4 reads it, nobody keeps a copy.
+# Shape: <scope>: {<canonical abbreviation>: [aliases]}. The abbreviation itself is always an alias.
+# `national` = German federal statutes (cited with § or Art.); `eu` = EU acts (cited with Art.).
+version: 1
+national:
+  BGB:
+    - Bürgerliches Gesetzbuch
+    - Bürgerlichen Gesetzbuch
+    - Bürgerlichen Gesetzbuchs
+    - Bürgerlichen Gesetzbuches
+    - German Civil Code
+    - Civil Code
+  HGB:
+    - Handelsgesetzbuch
+    - Handelsgesetzbuchs
+    - Handelsgesetzbuches
+    - Commercial Code
+    - German Commercial Code
+  KSchG:
+    - Kündigungsschutzgesetz
+    - Kündigungsschutzgesetzes
+    - Protection Against Unfair Dismissal Act
+    - Dismissal Protection Act
+  ArbZG:
+    - Arbeitszeitgesetz
+    - Arbeitszeitgesetzes
+    - Working Hours Act
+  BDSG:
+    - Bundesdatenschutzgesetz
+    - Bundesdatenschutzgesetzes
+    - Federal Data Protection Act
+  UrhG:
+    - Urheberrechtsgesetz
+    - Urheberrechtsgesetzes
+    - Copyright Act
+  VVG:
+    - Versicherungsvertragsgesetz
+    - Versicherungsvertragsgesetzes
+    - Insurance Contract Act
+  EnWG:
+    - Energiewirtschaftsgesetz
+    - Energiewirtschaftsgesetzes
+    - Energy Industry Act
+  UWG:
+    - Gesetz gegen den unlauteren Wettbewerb
+    - Gesetzes gegen den unlauteren Wettbewerb
+    - Unfair Competition Act
+  GG:
+    - Grundgesetz
+    - Grundgesetzes
+    - Basic Law
+eu:
+  DSGVO:
+    - GDPR
+    - DS-GVO
+    - Datenschutz-Grundverordnung
+    - Datenschutzgrundverordnung
+    - General Data Protection Regulation
+  KI-VO:
+    - AI Act
+    - EU AI Act
+    - KI-Verordnung
+  NIS2-RL:
+    - NIS2
+    - NIS-2-Richtlinie
+    - NIS2-Richtlinie
+    - NIS 2 Directive
+    - NIS2 Directive
+  DSA:
+    - Digital Services Act
+    - Gesetz über digitale Dienste
