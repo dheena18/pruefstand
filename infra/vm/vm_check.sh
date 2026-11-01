@@ -154,6 +154,14 @@ accept_before_drop() {
   drop="$(grep -nE -- "^-A [A-Z-]+ -d 172\.17\.0\.1(/32)? .*--dport 11434 .*-j DROP" <<<"$1" | head -1 | cut -d: -f1 || true)"
   [ -n "$accept" ] && [ -n "$drop" ] && [ "$accept" -lt "$drop" ]
 }
+# Docker >= 28 replaced the DOCKER-ISOLATION-STAGE-1/2 chains by DOCKER-FORWARD/-BRIDGE/-CT/-INTERNAL; either set is fine.
+chains_exist() {
+  local c
+  for c in "$@"; do as_root iptables -w -S "$c" >/dev/null 2>&1 || return 1; done
+}
+docker_chains_ok() {
+  chains_exist DOCKER DOCKER-FORWARD DOCKER-BRIDGE DOCKER-CT DOCKER-INTERNAL || chains_exist DOCKER-ISOLATION-STAGE-1 DOCKER-ISOLATION-STAGE-2 DOCKER
+}
 fw_rules() {
   local user input net
   user="$(as_root iptables -w -S DOCKER-USER 2>&1 || true)"
@@ -169,7 +177,8 @@ fw_rules() {
     grep -qE -- "-s ${net//./\\.} -j DROP" <<<"$input" || note FAIL "PRUEFSTAND-INPUT lacks the drop for $net"
   done
   as_root iptables -w -C INPUT -j PRUEFSTAND-INPUT >/dev/null 2>&1 || note FAIL "INPUT lacks the jump to PRUEFSTAND-INPUT"
-  as_root iptables -w -S DOCKER-ISOLATION-STAGE-1 >/dev/null 2>&1 || note FAIL "Docker chain DOCKER-ISOLATION-STAGE-1 is gone"
+  as_root iptables -w -S DOCKER-USER >/dev/null 2>&1 || note FAIL "Docker chain DOCKER-USER is gone"
+  docker_chains_ok || note FAIL "Docker's filter chains are gone: neither the Docker >= 28 set (DOCKER, DOCKER-FORWARD, DOCKER-BRIDGE, DOCKER-CT, DOCKER-INTERNAL) nor the legacy set (DOCKER-ISOLATION-STAGE-1/2, DOCKER) is present"
   as_root iptables -w -t nat -S DOCKER >/dev/null 2>&1 || note FAIL "Docker nat chain DOCKER is gone"
 }
 # dcurl_state RC: reached (HTTP success) | timeout (28: what a DROP produces) | noroute (7) | dns (6) | error | other
@@ -274,12 +283,20 @@ check_firewall() {
 # ---- GitHub token (N4.4) --------------------------------------------------------------------------
 check_gh_scope() {
   begin gh-scope
-  local tok admin out
+  local tok out rc=0
   tok="$(timeout 30 gh auth token 2>/dev/null || true)"
   case "$tok" in github_pat_*) ok "fine-grained token" ;; *) note FAIL "gh token is not a fine-grained github_pat_ token" ;; esac
   tok=""
-  admin="$(timeout 30 gh api "repos/$PUBLIC_REPO" --jq .permissions.admin 2>&1 || true)"
-  if [ "$admin" = false ]; then ok "no admin on $PUBLIC_REPO"; else note FAIL "admin permission on $PUBLIC_REPO is [$admin], expected false"; fi
+  # permissions.admin of GET /repos/{repo} is the owner's role, not the token's rights. Probe the token itself:
+  # an administration-only endpoint must answer 403 "Resource not accessible by personal access token".
+  out="$(timeout 30 gh api "repos/$PUBLIC_REPO/actions/permissions" 2>&1)" || rc=$?
+  if [ "$rc" -eq 0 ]; then
+    note FAIL "the token has administration rights on $PUBLIC_REPO (actions/permissions answered 200); use a token without them"
+  elif grep -q 'HTTP 403' <<<"$out" && grep -q 'Resource not accessible by personal access token' <<<"$out"; then
+    ok "no administration right on $PUBLIC_REPO (actions/permissions -> 403)"
+  else
+    note WARN "could not tell whether the token has administration rights on $PUBLIC_REPO (rc $rc; no network?)"
+  fi
   if out="$(timeout 30 gh api "repos/$GATE_REPO" 2>&1)"; then
     note FAIL "the token can read $GATE_REPO (must be 404, C18)"
   elif grep -q 'HTTP 404' <<<"$out"; then
