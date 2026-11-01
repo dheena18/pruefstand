@@ -85,11 +85,18 @@ project:
 # this `up` and the checks. CMD runs in a subshell and the EXIT trap always tears the stack down, whatever CMD
 # does (exit N, set -e, a signal); the exit code of CMD (or of a failed `up`) is preserved.
 # CMD must not contain single quotes; never call it from inside the lock.
+# Signal handling (D357): bash, not sh, because dash cannot `set -m` without a tty, which left CMD in the
+# caller's process group so `kill -TERM -$$pid` hit nothing and CMD survived a TERM sent to make alone. make
+# forwards its own TERM to the shell and a group signal delivers a second one, so every handler first ignores
+# further TERM/INT (a second delivery used to abort the EXIT trap before `down`). The handler is installed
+# before CMD is forked; a signal between `&` and `pid=$$!` is replayed through `stop`. A TERM that reaches
+# the new group while its leader is still between fork and exec is lost, so `k` re-sends TERM every 0.2 s
+# until the group is gone and falls back to KILL after 2 s.
 stack-run:
 	@test -n '$(CMD)' || { echo 'usage: make stack-run CMD="..."' >&2; exit 2; }
 	$(if $(findstring ',$(CMD)),$(error CMD must not contain single quotes))
 	mkdir -p $(dir $(STACK_LOCK))
-	flock -F $(if $(STACK_LOCK_WAIT),-w $(STACK_LOCK_WAIT)) $(STACK_LOCK) sh -c 'trap "$(MAKE) --no-print-directory down" EXIT; trap "exit 143" TERM INT; $(MAKE) --no-print-directory up WAIT=1 || exit $$?; set -m; ( $(CMD) ) & pid=$$!; trap "kill -TERM -$$pid 2>/dev/null; exit 143" TERM INT; wait $$pid'
+	flock -F $(if $(STACK_LOCK_WAIT),-w $(STACK_LOCK_WAIT)) $(STACK_LOCK) bash -c 'k() { kill -TERM -$$1 2>/dev/null; for i in 1 2 3 4 5 6 7 8 9 10; do sleep 0.2; kill -0 -$$1 2>/dev/null || return 0; kill -TERM -$$1 2>/dev/null; done; kill -KILL -$$1 2>/dev/null; }; trap "trap \"\" TERM INT; $(MAKE) --no-print-directory down" EXIT; trap "trap \"\" TERM INT; exit 143" TERM INT; $(MAKE) --no-print-directory up WAIT=1 || exit $$?; pid=; stop=; set -m; trap "trap \"\" TERM INT; stop=1; test -z \"\$$pid\" || { k \$$pid; exit 143; }" TERM INT; ( $(CMD) ) & pid=$$!; test -z "$$stop" || { k $$pid; exit 143; }; wait $$pid'
 
 compose-lint:
 	uv run python scripts/check_compose.py
