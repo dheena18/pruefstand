@@ -38,6 +38,7 @@ validation:
 exclude_docs: |
   planning/
   spec/SPEC-v1-original.md
+  ops/setup-log.md
   architecture/generated/module-deps.svg
 
 # Relative links that leave docs/ (REVIEW.md, tasks/, prompts/) become GitHub URLs (scripts/mkdocs_hooks.py).
@@ -118,7 +119,6 @@ nav:
   - Operations:
       - Runbook: ops/runbook.md
       - Secrets: ops/secrets.md
-      - Setup log: ops/setup-log.md
       - Bypass log: ops/bypass-log.md
   - Tasks: _external/tasks.md
   - Prompts: _external/prompts.md

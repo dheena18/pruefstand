@@ -25,7 +25,7 @@ ACTIONS_READ: dict[tuple[str, str], str] = {
     ): "downloads the triggering release.yml run's artefact (D301)",
     (
         "docs.yml",
-        "deploy",
+        "site",
     ): "downloads the dashboard-site artefact of the triggering deploy.yml run",
     ("live-e2e.yml", "live"): "downloads the main baseline artefact by run id",
 }

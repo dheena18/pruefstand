@@ -90,6 +90,17 @@ def test_dashboard_dir_must_not_contain_docs_or_build_id(tmp_path: Path, clash: 
     assert clash in result.stderr
 
 
+def test_symlink_in_the_dashboard_artefact_is_refused(tmp_path: Path) -> None:
+    dash = tmp_path / "dash"
+    dash.mkdir()
+    (dash / "index.html").write_text("x", encoding="utf-8")
+    (dash / "leak").symlink_to("/etc/passwd")
+    result = _run(tmp_path, dash)
+    assert result.returncode == 1
+    assert "symlink" in result.stderr
+    assert "leak" in result.stderr
+
+
 def test_missing_dashboard_dir_fails(tmp_path: Path) -> None:
     result = _run(tmp_path, tmp_path / "nope")
     assert result.returncode == 1

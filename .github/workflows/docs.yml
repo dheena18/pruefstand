@@ -51,6 +51,9 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: "22"
       - name: Render every mermaid block (pinned mermaid-cli)
         run: make docs-mermaid
 
@@ -129,23 +132,20 @@ jobs:
           echo "$NEEDS" | jq -r 'to_entries[] | "\(.key): \(.value.result)"'
           echo "$NEEDS" | jq -e 'to_entries | all(.[]; .value.result == "success")' > /dev/null
 
-  deploy:
-    name: deploy
-    # The only Pages writer. Runs only for a finished `deploy` workflow run (dashboard-site artefact, T8.5).
-    if: github.event_name == 'workflow_run' && github.event.workflow_run.conclusion == 'success'
+  site:
+    name: site
+    # Builds the Pages artefact with read-only permissions. Runs only for a finished `deploy` workflow run
+    # (dashboard-site artefact, T8.5) and only while the repo is public: Pages is unavailable on the
+    # private repo, so the job is skipped there and never fails (D341).
+    if: >-
+      github.event_name == 'workflow_run' &&
+      github.event.workflow_run.conclusion == 'success' &&
+      github.event.repository.private == false
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     permissions:
       contents: read
-      pages: write
-      id-token: write  # actions/deploy-pages (OIDC)
       actions: read  # download the dashboard-site artefact of the triggering run
-    concurrency:
-      group: pages
-      cancel-in-progress: false
-    environment:
-      name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
     steps:
       - name: Provenance check (a failure ends the job, nothing is deployed, UI13-09)
         env:
@@ -157,7 +157,7 @@ jobs:
             if .path != ".github/workflows/deploy.yml" then "path is \(.path), not .github/workflows/deploy.yml"
             elif .head_branch != "main" then "head_branch is \(.head_branch), not main"
             elif .head_repository.full_name != $repo then "head repository is \(.head_repository.full_name)"
-            elif ([.event] | inside(["push", "schedule", "workflow_dispatch", "workflow_run"]) | not) then "event is \(.event)"
+            elif ([.event] | inside(["push", "schedule", "workflow_dispatch"]) | not) then "event is \(.event)"
             elif .conclusion != "success" then "conclusion is \(.conclusion)"
             else "" end')
           if [ -n "$reason" ]; then
@@ -188,8 +188,10 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           RUN_ID: ${{ github.event.workflow_run.id }}
         run: |
-          count=$(gh api "repos/${GITHUB_REPOSITORY}/actions/runs/${RUN_ID}/artifacts" \
-            --jq '[.artifacts[] | select(.name == "dashboard-site" and .expired == false)] | length')
+          # paginated and filtered by name: more than 30 artefacts on the run must not hide the dashboard
+          count=$(gh api --paginate "repos/${GITHUB_REPOSITORY}/actions/runs/${RUN_ID}/artifacts?name=dashboard-site&per_page=100" \
+            --jq '[.artifacts[] | select(.name == "dashboard-site" and .expired == false)] | length' \
+            | awk '{ total += $1 } END { print total + 0 }')
           if [ "$count" -eq 0 ]; then
             echo "placeholder=true" >> "$GITHUB_OUTPUT"
             echo "No dashboard-site artefact on run ${RUN_ID}: deploying the placeholder page (pre-data bootstrap)." >> "$GITHUB_STEP_SUMMARY"
@@ -214,6 +216,27 @@ jobs:
       - uses: actions/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9 # v5.0.0
         with:
           path: _pages
+
+  deploy:
+    name: deploy
+    # The only Pages writer, and only that: no checkout, no token for anything else (least privilege).
+    needs: site
+    if: >-
+      github.event_name == 'workflow_run' &&
+      github.event.workflow_run.conclusion == 'success' &&
+      github.event.repository.private == false
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      pages: write
+      id-token: write  # actions/deploy-pages (OIDC)
+    concurrency:
+      group: pages
+      cancel-in-progress: false
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
       - name: Deploy to GitHub Pages
         id: deployment
         uses: actions/deploy-pages@368f82528645a54fb793d4d04e342629a3f51346 # v5.0.1

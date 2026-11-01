@@ -43,3 +43,21 @@ def test_links_inside_docs_and_external_links_are_untouched(repo: Path, link: st
 def test_code_fences_are_untouched(repo: Path) -> None:
     text = "```\n[a](../../tasks/TASKS.md)\n```"
     assert rewrite_outside_links(text, "engineering/README.md", repo) == text
+
+
+def test_inline_code_spans_are_untouched(repo: Path) -> None:
+    text = "`[a](../../tasks/TASKS.md)` and [t](../../tasks/TASKS.md)"
+    out = rewrite_outside_links(text, "engineering/README.md", repo)
+    assert out.startswith("`[a](../../tasks/TASKS.md)` and ")
+    assert f"({REPO_URL}/blob/main/tasks/TASKS.md)" in out
+
+
+def test_links_to_excluded_docs_files_point_at_github(repo: Path) -> None:
+    (repo / "docs" / "ops").mkdir()
+    (repo / "docs" / "ops" / "setup-log.md").write_text("x", encoding="utf-8")
+    (repo / "docs" / "kept.md").write_text("x", encoding="utf-8")
+    site = frozenset({"kept.md"})
+    text = "[a](ops/setup-log.md#s1) [b](kept.md)"
+    out = rewrite_outside_links(text, "index.md", repo, site)
+    assert out == f"[a]({REPO_URL}/blob/main/docs/ops/setup-log.md#s1) [b](kept.md)"
+    assert rewrite_outside_links(text, "index.md", repo) == text

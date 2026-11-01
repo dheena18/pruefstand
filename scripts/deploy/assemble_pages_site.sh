@@ -33,6 +33,8 @@ if [ "$dashboard" != "--placeholder" ]; then
   [ -d "$dashboard" ] || fail "dashboard dir '$dashboard' does not exist"
   [ ! -e "$dashboard/docs" ] || fail "dashboard dir contains docs/ (reserved for the mkdocs site)"
   [ ! -e "$dashboard/build-id.txt" ] || fail "dashboard dir contains build-id.txt"
+  link=$(find "$dashboard" -type l -print -quit)
+  [ -z "$link" ] || fail "dashboard dir contains a symlink: $link"
 fi
 
 mkdir -p "$out"
