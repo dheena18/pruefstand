@@ -24,15 +24,24 @@ class Probe(BaseModel):
 
 
 @pytest.mark.skipif(
-    not (os.environ.get("PRUEFSTAND_GH_MODELS_TOKEN") and os.environ.get("PRUEFSTAND_GH_MODELS_MODEL")),
+    not (
+        os.environ.get("PRUEFSTAND_GH_MODELS_TOKEN")
+        and os.environ.get("PRUEFSTAND_GH_MODELS_MODEL")
+    ),
     reason="PRUEFSTAND_GH_MODELS_TOKEN / PRUEFSTAND_GH_MODELS_MODEL not set",
 )
 async def test_github_models_json_probe() -> None:
     model = "github/" + os.environ["PRUEFSTAND_GH_MODELS_MODEL"].removeprefix("github/")
     policy = LLMPolicyConfig()
     backend = build_backend(ModelRef(id=model, family="unknown"), policy=policy)
-    client = LLMClient(backend, None, Budget(max_usd=None, max_tokens=None), CallRecorder(), LLMPolicy(policy))
-    messages = PromptRegistry().get("json_probe", "v1").render(sentence="Die Kündigung muss schriftlich erfolgen.")
+    client = LLMClient(
+        backend, None, Budget(max_usd=None, max_tokens=None), CallRecorder(), LLMPolicy(policy)
+    )
+    messages = (
+        PromptRegistry()
+        .get("json_probe", "v1")
+        .render(sentence="Die Kündigung muss schriftlich erfolgen.")
+    )
     req = LLMRequest(
         role=LLMRole.JUDGE,
         model=model,

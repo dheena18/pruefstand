@@ -40,7 +40,9 @@ def test_unknown_version_raises() -> None:
 
 
 def test_json_probe_prompt_mentions_the_schema_fields() -> None:
-    messages = PromptRegistry().get("json_probe", "v1").render(sentence="Die Kündigung ist wirksam.")
+    messages = (
+        PromptRegistry().get("json_probe", "v1").render(sentence="Die Kündigung ist wirksam.")
+    )
     text = " ".join(m.content for m in messages)
     assert "reason" in text
     assert "score" in text
@@ -51,7 +53,7 @@ def test_custom_root_and_malformed_file(tmp_path: Path) -> None:
     (tmp_path / "bad_v1.txt").write_text("kein Abschnitt\n", encoding="utf-8")
     (tmp_path / "ok_v1.txt").write_text("### user\nHallo {{ name }}!\n", encoding="utf-8")
     registry = PromptRegistry([tmp_path])
-    with pytest.raises(PromptError, match="user"):
+    with pytest.raises(PromptError, match="###"):
         registry.get("bad", "v1")
     messages = registry.get("ok", "v1").render(name="Welt")
     assert [m.role for m in messages] == ["user"]

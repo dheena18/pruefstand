@@ -23,7 +23,20 @@ class TargetError(PruefstandError):
 
 
 class LLMError(PruefstandError):
-    """An LLM call failed."""
+    """An LLM call failed.
+
+    Args:
+        message: Human-readable reason; never contains a secret.
+        transient: True when a retry may succeed (timeout, connection loss, 429, 5xx).
+        status: HTTP status of the provider answer, when there was one.
+    """
+
+    def __init__(
+        self, message: str = "", *, transient: bool = False, status: int | None = None
+    ) -> None:
+        super().__init__(message)
+        self.transient = transient
+        self.status = status
 
 
 class PolicyViolation(LLMError):  # noqa: N818  (name fixed by interfaces §2)

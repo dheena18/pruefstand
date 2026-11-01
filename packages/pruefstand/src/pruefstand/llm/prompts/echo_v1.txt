@@ -1,0 +1,4 @@
+### system
+Du bist ein präziser Assistent. Antworte knapp und ohne Zusatz.
+### user
+Antworte mit genau einem Wort: {{word}}

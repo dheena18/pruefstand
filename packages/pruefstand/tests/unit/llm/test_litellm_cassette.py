@@ -1,18 +1,19 @@
 """LiteLLMBackend against recorded real exchanges, plus the pure request builder."""
 
 import pytest
+from testsupport.llm_scenarios import TEST_API_BASE, TEST_MODEL, echo_request
 
 from pruefstand.core.errors import LLMError
 from pruefstand.llm.backends.litellm import LiteLLMBackend, completion_kwargs, strip_think
 from pruefstand.llm.recorder import COLUMNS
-from testsupport.llm_scenarios import TEST_API_BASE, TEST_MODEL, echo_request
 
 
 def _backend(model: str = TEST_MODEL) -> LiteLLMBackend:
     return LiteLLMBackend(model, api_base=TEST_API_BASE, api_key_env=None, timeout_s=30)
 
 
-@pytest.mark.vcr("echo_ok.yaml")
+@pytest.mark.default_cassette("echo_ok.yaml")
+@pytest.mark.vcr
 async def test_replayed_echo_maps_usage_cost_and_latency() -> None:
     resp = await _backend().acomplete(echo_request())
     assert resp.text.strip()
@@ -25,7 +26,8 @@ async def test_replayed_echo_maps_usage_cost_and_latency() -> None:
     assert resp.cached is False
 
 
-@pytest.mark.vcr("server_503.yaml")
+@pytest.mark.default_cassette("server_503.yaml")
+@pytest.mark.vcr
 async def test_replayed_503_is_transient_with_status() -> None:
     with pytest.raises(LLMError) as info:
         await _backend().acomplete(echo_request())
@@ -35,9 +37,7 @@ async def test_replayed_503_is_transient_with_status() -> None:
 
 def _kwargs(model: str) -> dict[str, object]:
     req = echo_request().model_copy(update={"model": model})
-    return completion_kwargs(
-        req, api_base="http://localhost:8080/v1", api_key="k", timeout_s=12.0
-    )
+    return completion_kwargs(req, api_base="http://localhost:8080/v1", api_key="k", timeout_s=12.0)
 
 
 def test_qwen3_gets_thinking_disabled_in_extra_body() -> None:
@@ -97,10 +97,15 @@ async def test_wrong_port_is_transient() -> None:
     assert info.value.transient is True
 
 
-async def test_missing_token_names_the_variable_but_no_value(monkeypatch: pytest.MonkeyPatch) -> None:
+async def test_missing_token_names_the_variable_but_no_value(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     monkeypatch.delenv("PRUEFSTAND_GH_MODELS_TOKEN", raising=False)
     backend = LiteLLMBackend(
-        "github/openai/gpt-4o-mini", api_base=None, api_key_env="PRUEFSTAND_GH_MODELS_TOKEN", timeout_s=5
+        "github/openai/gpt-4o-mini",
+        api_base=None,
+        api_key_env="PRUEFSTAND_GH_MODELS_TOKEN",
+        timeout_s=5,
     )
     req = echo_request().model_copy(update={"model": "github/openai/gpt-4o-mini"})
     with pytest.raises(LLMError, match="PRUEFSTAND_GH_MODELS_TOKEN") as info:

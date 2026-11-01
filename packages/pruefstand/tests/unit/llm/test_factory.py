@@ -1,7 +1,11 @@
 import pytest
+from testsupport.llm_scenarios import echo_request
 
 from pruefstand.core.config import LLMPolicyConfig, ModelRef
 from pruefstand.core.errors import ConfigError, LLMError, PolicyViolation
+from pruefstand.core.ids import DocId, TenantId
+from pruefstand.core.models.attacks import Canary, CanaryRegistry
+from pruefstand.core.models.llm import LLMRequest, Message
 from pruefstand.core.protocols import LLMBackend, LLMClientLike
 from pruefstand.llm.backends.litellm import LiteLLMBackend, litellm_model
 from pruefstand.llm.budget import Budget
@@ -9,7 +13,6 @@ from pruefstand.llm.client import LLMClient
 from pruefstand.llm.factory import build_backend
 from pruefstand.llm.policy import LLMPolicy, provider_of
 from pruefstand.llm.recorder import CallRecorder
-from testsupport.llm_scenarios import echo_request
 
 LOCAL = ModelRef(id="openai_compatible_local/qwen2.5-0.5b-instruct", family="qwen")
 
@@ -118,7 +121,78 @@ def test_client_satisfies_the_structural_protocols() -> None:
         LOCAL.id, api_base="http://localhost:8080/v1", api_key_env=None, timeout_s=5
     )
     client = LLMClient(
-        backend, None, Budget(max_usd=None, max_tokens=None), CallRecorder(), LLMPolicy(LLMPolicyConfig())
+        backend,
+        None,
+        Budget(max_usd=None, max_tokens=None),
+        CallRecorder(),
+        LLMPolicy(LLMPolicyConfig()),
     )
     assert isinstance(client, LLMClientLike)
     assert isinstance(backend, LLMBackend)
+
+
+def _canary_registry() -> CanaryRegistry:
+    canary = Canary(
+        token="CANARY-7f3a",  # noqa: S106  (test canary, not a credential)
+        tenant=TenantId("t-a"),
+        doc_id=DocId("d1"),
+        kind="token",
+        fact="Der Vorstand heißt Müller-Lüdenscheidt.",
+        probe_question=None,
+        forbidden_answer=None,
+    )
+    return CanaryRegistry(canaries=(canary,))
+
+
+def _github(text: str, prompt_id: str = "echo") -> LLMRequest:
+    return echo_request().model_copy(
+        update={
+            "model": "github/openai/gpt-4o-mini",
+            "messages": (Message(role="user", content=text),),
+            "prompt_id": prompt_id,
+        }
+    )
+
+
+def test_private_document_prompts_never_go_to_an_external_provider() -> None:
+    policy = LLMPolicy(LLMPolicyConfig())
+    req = _github("Schreibe ein Dokument.", "datagen.private_docs.private_doc_de")
+    with pytest.raises(PolicyViolation, match="private documents"):
+        policy.check(req, "github")
+    local = req.model_copy(update={"model": "openai_compatible_local/m"})
+    policy.check(local, "openai_compatible_local")
+
+
+def test_canary_token_and_fact_never_go_to_an_external_provider() -> None:
+    policy = LLMPolicy(LLMPolicyConfig(), canaries=_canary_registry())
+    with pytest.raises(PolicyViolation, match="canary"):
+        policy.check(_github("Was ist CANARY-7f3a?"), "github")
+    with pytest.raises(PolicyViolation, match="canary"):
+        policy.check(_github("Wer? Der Vorstand heißt Müller-Lüdenscheidt."), "github")
+    policy.check(_github("Eine harmlose Frage zur Kündigung."), "github")
+    local = _github("Was ist CANARY-7f3a?").model_copy(update={"model": "ollama/gemma3:12b"})
+    policy.check(local, "ollama")
+
+
+def test_provider_must_match_the_model_prefix() -> None:
+    with pytest.raises(PolicyViolation, match="does not match"):
+        LLMPolicy(LLMPolicyConfig()).check(_github("x"), "ollama")
+
+
+def test_fallback_judge_provider_must_be_listed() -> None:
+    cfg = LLMPolicyConfig(
+        allowed_providers=("github",),
+        fallback_judge=ModelRef(id="ollama/gemma3:12b", family="gemma"),
+    )
+    with pytest.raises(ConfigError, match="fallback"):
+        LLMPolicy(cfg)
+
+
+def test_openrouter_is_free_only_for_free_models() -> None:
+    cfg = LLMPolicyConfig(allowed_providers=("openrouter",))
+    policy = LLMPolicy(cfg)
+    ok = _github("x").model_copy(update={"model": "openrouter/meta/llama:free"})
+    policy.check(ok, "openrouter")
+    paid = ok.model_copy(update={"model": "openrouter/meta/llama"})
+    with pytest.raises(PolicyViolation, match="paid"):
+        policy.check(paid, "openrouter")

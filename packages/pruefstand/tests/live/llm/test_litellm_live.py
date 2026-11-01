@@ -4,6 +4,7 @@ import os
 
 import pytest
 from pydantic import BaseModel
+from testsupport.llm_scenarios import TEST_MODEL, echo_request, json_probe_request
 
 from pruefstand.core.config import LLMPolicyConfig
 from pruefstand.core.errors import LLMError
@@ -12,7 +13,6 @@ from pruefstand.llm.budget import Budget
 from pruefstand.llm.client import LLMClient
 from pruefstand.llm.policy import LLMPolicy
 from pruefstand.llm.recorder import CallRecorder
-from testsupport.llm_scenarios import TEST_MODEL, echo_request, json_probe_request
 
 pytestmark = pytest.mark.live
 
@@ -27,9 +27,15 @@ def _base() -> str:
 
 
 def _client(base: str | None = None, timeout_s: float = 120) -> LLMClient:
-    backend = LiteLLMBackend(TEST_MODEL, api_base=base or _base(), api_key_env=None, timeout_s=timeout_s)
+    backend = LiteLLMBackend(
+        TEST_MODEL, api_base=base or _base(), api_key_env=None, timeout_s=timeout_s
+    )
     return LLMClient(
-        backend, None, Budget(max_usd=None, max_tokens=None), CallRecorder(), LLMPolicy(LLMPolicyConfig())
+        backend,
+        None,
+        Budget(max_usd=None, max_tokens=None),
+        CallRecorder(),
+        LLMPolicy(LLMPolicyConfig()),
     )
 
 

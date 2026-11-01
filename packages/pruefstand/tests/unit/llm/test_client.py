@@ -2,16 +2,6 @@
 
 import pytest
 from pydantic import BaseModel
-
-from pruefstand.core.errors import BudgetExceeded, LLMError
-from pruefstand.core.config import LLMPolicyConfig
-from pruefstand.core.models.llm import LLMRequest
-from pruefstand.llm.backends.litellm import LiteLLMBackend
-from pruefstand.llm.budget import Budget
-from pruefstand.llm.client import LLMClient, cache_key
-from pruefstand.llm.json_extract import extract_json_object
-from pruefstand.llm.policy import LLMPolicy
-from pruefstand.llm.recorder import CallRecorder
 from testsupport.llm_scenarios import (
     TEST_API_BASE,
     TEST_MODEL,
@@ -19,6 +9,16 @@ from testsupport.llm_scenarios import (
     echo_request,
     json_probe_request,
 )
+
+from pruefstand.core.config import LLMPolicyConfig
+from pruefstand.core.errors import BudgetExceeded, LLMError
+from pruefstand.core.models.llm import LLMRequest
+from pruefstand.llm.backends.litellm import LiteLLMBackend
+from pruefstand.llm.budget import Budget
+from pruefstand.llm.client import LLMClient, cache_key
+from pruefstand.llm.json_extract import extract_json_object
+from pruefstand.llm.policy import LLMPolicy
+from pruefstand.llm.recorder import CallRecorder
 
 
 class Probe(BaseModel):
@@ -36,7 +36,8 @@ def _client(
     return client, recorder, used
 
 
-@pytest.mark.vcr("echo_ok.yaml")
+@pytest.mark.default_cassette("echo_ok.yaml")
+@pytest.mark.vcr
 async def test_echo_ok_is_recorded() -> None:
     client, recorder, _ = _client()
     resp = await client.complete(echo_request())
@@ -49,7 +50,8 @@ async def test_echo_ok_is_recorded() -> None:
     assert recorder.rows[0]["error"] is None
 
 
-@pytest.mark.vcr("echo_ok.yaml")
+@pytest.mark.default_cassette("echo_ok.yaml")
+@pytest.mark.vcr
 async def test_second_identical_request_hits_the_cache() -> None:
     cache = DictCache()
     client, recorder, budget = _client(cache)
@@ -76,7 +78,8 @@ def test_cache_key_covers_every_request_field() -> None:
     assert cache_key(base) != cache_key(base.model_copy(update={"model": "github/x"}))
 
 
-@pytest.mark.vcr("echo_ok.yaml")
+@pytest.mark.default_cassette("echo_ok.yaml")
+@pytest.mark.vcr
 async def test_budget_exceeded_propagates_and_is_not_swallowed() -> None:
     client, recorder, _ = _client(budget=Budget(max_usd=None, max_tokens=1))
     with pytest.raises(BudgetExceeded):
@@ -84,7 +87,8 @@ async def test_budget_exceeded_propagates_and_is_not_swallowed() -> None:
     assert len(recorder.rows) == 1  # the real call happened and is recorded
 
 
-@pytest.mark.vcr("json_fenced.yaml")
+@pytest.mark.default_cassette("json_fenced.yaml")
+@pytest.mark.vcr
 async def test_fenced_json_from_a_real_model_is_extracted() -> None:
     client, _, _ = _client()
     resp = await client.complete(json_probe_request(max_tokens=128, response_format="text"))
@@ -95,7 +99,8 @@ async def test_fenced_json_from_a_real_model_is_extracted() -> None:
     assert parsed.reason
 
 
-@pytest.mark.vcr("json_invalid_then_valid.yaml")
+@pytest.mark.default_cassette("json_invalid_then_valid.yaml")
+@pytest.mark.vcr
 async def test_truncated_json_is_repaired_with_doubled_max_tokens() -> None:
     client, recorder, _ = _client()
     parsed = await client.complete_json(json_probe_request(max_tokens=12), Probe)
@@ -103,7 +108,8 @@ async def test_truncated_json_is_repaired_with_doubled_max_tokens() -> None:
     assert len(recorder.rows) == 2
 
 
-@pytest.mark.vcr("server_503.yaml")
+@pytest.mark.default_cassette("server_503.yaml")
+@pytest.mark.vcr
 async def test_server_503_is_a_transient_llm_error() -> None:
     client, recorder, _ = _client()
     with pytest.raises(LLMError) as info:

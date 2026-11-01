@@ -1,0 +1,61 @@
+# recorded: 2026-11-01, model: openai_compatible_local/qwen2.5-0.5b-instruct, sha256: 74a4da8c9fdbcd15bd1f6d01d621410d31c6fc00986f5eb687824e7b93d7a9db
+interactions:
+- request:
+    body: "{\"messages\":[{\"role\":\"system\",\"content\":\"Du bist ein pr\xE4ziser
+      Assistent. Antworte knapp und ohne Zusatz.\"},{\"role\":\"user\",\"content\":\"Antworte
+      mit genau einem Wort: M\xFCller\"}],\"model\":\"qwen2.5-0.5b-instruct\",\"max_tokens\":16,\"seed\":0,\"temperature\":0.0}"
+    headers:
+      accept:
+      - application/json
+      accept-encoding:
+      - gzip, deflate
+      connection:
+      - keep-alive
+      content-length:
+      - '251'
+      content-type:
+      - application/json
+      host:
+      - localhost:18080
+      user-agent:
+      - AsyncOpenAI/Python 2.54.0
+      x-stainless-arch:
+      - x64
+      x-stainless-async:
+      - async:asyncio
+      x-stainless-lang:
+      - python
+      x-stainless-os:
+      - Linux
+      x-stainless-package-version:
+      - 2.54.0
+      x-stainless-raw-response:
+      - 'true'
+      x-stainless-read-timeout:
+      - '120.0'
+      x-stainless-retry-count:
+      - '0'
+      x-stainless-runtime:
+      - CPython
+      x-stainless-runtime-version:
+      - 3.12.16
+    method: POST
+    uri: http://localhost:18080/v1/chat/completions
+  response:
+    body:
+      string: '{"error":{"message":"Loading model","type":"unavailable_error","code":503}}'
+    headers:
+      Access-Control-Allow-Origin:
+      - ''
+      Connection:
+      - close
+      Content-Length:
+      - '75'
+      Content-Type:
+      - application/json; charset=utf-8
+      Server:
+      - llama.cpp
+    status:
+      code: 503
+      message: Service Unavailable
+version: 1

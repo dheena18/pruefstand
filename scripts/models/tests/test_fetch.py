@@ -56,8 +56,19 @@ def test_main_fetches_listed_models(tmp_path: Path) -> None:
     manifest = tmp_path / "models.yaml"
     manifest.write_text(
         yaml.safe_dump(
-            {"models": [{"id": "t", "repo": "o/r", "revision": "abc", "file": "t.gguf", "url": url,
-                         "sha256": sha, "license": "Apache-2.0"}]}
+            {
+                "models": [
+                    {
+                        "id": "t",
+                        "repo": "o/r",
+                        "revision": "abc",
+                        "file": "t.gguf",
+                        "url": url,
+                        "sha256": sha,
+                        "license": "Apache-2.0",
+                    }
+                ]
+            }
         ),
         encoding="utf-8",
     )

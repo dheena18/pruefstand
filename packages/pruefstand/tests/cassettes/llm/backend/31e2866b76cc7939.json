@@ -1,0 +1,39 @@
+{
+  "recorded_at": "2026-11-01T03:44:37+00:00",
+  "model_id": "openai_compatible_local/qwen2.5-0.5b-instruct",
+  "model_version": null,
+  "request": {
+    "role": "judge",
+    "model": "openai_compatible_local/qwen2.5-0.5b-instruct",
+    "messages": [
+      {
+        "role": "system",
+        "content": "Du bewertest deutsche Sätze. Antworte ausschließlich mit einem JSON-Objekt, ohne weiteren Text."
+      },
+      {
+        "role": "user",
+        "content": "Enthält der folgende Satz eine eindeutige rechtliche Anforderung?\nAntworte mit einem JSON-Objekt mit genau zwei Feldern: \"reason\" (Text mit höchstens fünf Wörtern) und \"score\" (die Zahl 0, 1 oder 2).\n\nSatz: Die Kündigung muss schriftlich erfolgen."
+      }
+    ],
+    "temperature": 0.0,
+    "max_tokens": 128,
+    "seed": 0,
+    "prompt_id": "json_probe",
+    "prompt_version": "v1",
+    "response_format": "json"
+  },
+  "response": {
+    "text": "{\n  \"reason\": \"Kündigung\",\n  \"score\": 2\n}",
+    "model": "openai_compatible_local/qwen2.5-0.5b-instruct",
+    "usage": {
+      "prompt_tokens": 115,
+      "completion_tokens": 23
+    },
+    "cost_usd": 0.0,
+    "latency_ms": 585.1698500046041,
+    "cached": false,
+    "provider": "openai_compatible_local",
+    "fallback": false,
+    "model_version": null
+  }
+}

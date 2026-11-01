@@ -1,0 +1,65 @@
+# recorded: 2026-11-01, model: openai_compatible_local/qwen2.5-0.5b-instruct, sha256: 74a4da8c9fdbcd15bd1f6d01d621410d31c6fc00986f5eb687824e7b93d7a9db
+interactions:
+- request:
+    body: "{\"messages\":[{\"role\":\"system\",\"content\":\"Du bewertest deutsche
+      S\xE4tze. Antworte ausschlie\xDFlich mit einem JSON-Objekt, ohne weiteren Text.\"},{\"role\":\"user\",\"content\":\"Enth\xE4lt
+      der folgende Satz eine eindeutige rechtliche Anforderung?\\nAntworte mit einem
+      JSON-Objekt mit genau zwei Feldern: \\\"reason\\\" (Text mit h\xF6chstens f\xFCnf
+      W\xF6rtern) und \\\"score\\\" (die Zahl 0, 1 oder 2).\\n\\nSatz: Die K\xFCndigung
+      muss schriftlich erfolgen.\"}],\"model\":\"qwen2.5-0.5b-instruct\",\"max_tokens\":128,\"seed\":0,\"temperature\":0.0}"
+    headers:
+      accept:
+      - application/json
+      accept-encoding:
+      - gzip, deflate
+      connection:
+      - keep-alive
+      content-length:
+      - '506'
+      content-type:
+      - application/json
+      host:
+      - localhost:18080
+      user-agent:
+      - AsyncOpenAI/Python 2.54.0
+      x-stainless-arch:
+      - x64
+      x-stainless-async:
+      - async:asyncio
+      x-stainless-lang:
+      - python
+      x-stainless-os:
+      - Linux
+      x-stainless-package-version:
+      - 2.54.0
+      x-stainless-raw-response:
+      - 'true'
+      x-stainless-read-timeout:
+      - '120.0'
+      x-stainless-retry-count:
+      - '0'
+      x-stainless-runtime:
+      - CPython
+      x-stainless-runtime-version:
+      - 3.12.16
+    method: POST
+    uri: http://localhost:18080/v1/chat/completions
+  response:
+    body:
+      string: "{\"choices\":[{\"finish_reason\":\"stop\",\"index\":0,\"message\":{\"role\":\"assistant\",\"content\":\"```json\\n{\\n
+        \ \\\"reason\\\": \\\"K\xFCndigung\\\",\\n  \\\"score\\\": 2\\n}\\n```\"}}],\"created\":1793504675,\"model\":\"/models/qwen2.5-0.5b-instruct-q4_k_m.gguf\",\"system_fingerprint\":\"b12019-1052f7e1d\",\"object\":\"chat.completion\",\"usage\":{\"completion_tokens\":23,\"prompt_tokens\":115,\"total_tokens\":138,\"prompt_tokens_details\":{\"cached_tokens\":4}},\"id\":\"chatcmpl-LY1UW6mgwQwsBrin47ezJhD21w69ohZk\",\"timings\":{\"cache_n\":4,\"prompt_n\":111,\"prompt_ms\":769.237,\"prompt_per_token_ms\":6.930063063063063,\"prompt_per_second\":144.29883117946744,\"predicted_n\":23,\"predicted_ms\":540.243,\"predicted_per_token_ms\":24.556500000000003,\"predicted_per_second\":40.72241565369657}}"
+    headers:
+      Access-Control-Allow-Origin:
+      - ''
+      Content-Length:
+      - '725'
+      Content-Type:
+      - application/json; charset=utf-8
+      Keep-Alive:
+      - timeout=5, max=100
+      Server:
+      - llama.cpp
+    status:
+      code: 200
+      message: OK
+version: 1

@@ -5,18 +5,18 @@ import os
 from pathlib import Path
 
 import pytest
-
-from pruefstand.core.errors import LLMError
-from pruefstand.core.hashing import stable_hash
-from pruefstand.core.models.llm import LLMRequest
-from pruefstand.llm.backends.litellm import LiteLLMBackend
-from pruefstand.llm.cassettes import CassetteRecorder
 from testsupport.llm_scenarios import (
     BACKEND_CASSETTE_DIR,
     TEST_MODEL,
     echo_request,
     json_probe_request,
 )
+
+from pruefstand.core.errors import LLMError
+from pruefstand.core.hashing import stable_hash
+from pruefstand.core.models.llm import LLMRequest
+from pruefstand.llm.backends.litellm import LiteLLMBackend
+from pruefstand.llm.cassettes import CassetteRecorder
 
 
 async def test_replay_returns_the_stored_response() -> None:
@@ -25,7 +25,9 @@ async def test_replay_returns_the_stored_response() -> None:
     assert resp.text.strip()
     assert resp.usage.prompt_tokens > 0
     assert resp.cached is False
-    stored = json.loads((BACKEND_CASSETTE_DIR / f"{stable_hash(echo_request())}.json").read_text("utf-8"))
+    stored = json.loads(
+        (BACKEND_CASSETTE_DIR / f"{stable_hash(echo_request())}.json").read_text("utf-8")
+    )
     assert resp.usage.completion_tokens == stored["response"]["usage"]["completion_tokens"]
     assert resp.latency_ms == stored["response"]["latency_ms"]
 
@@ -68,7 +70,7 @@ async def test_record_mode_writes_one_hashed_file_per_request(tmp_path: Path) ->
     backend = CassetteRecorder(tmp_path, "record").wrap(real)
     req = echo_request()
     resp = await backend.acomplete(req)
-    files = list(tmp_path.glob("*.json"))
+    files = list(tmp_path.glob("*.json"))  # noqa: ASYNC240
     assert [f.name for f in files] == [f"{stable_hash(req)}.json"]
     content = files[0].read_text("utf-8")
     assert "api_key" not in content.lower()
