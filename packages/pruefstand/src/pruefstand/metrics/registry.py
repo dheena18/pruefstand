@@ -26,6 +26,8 @@ from pruefstand.metrics.deterministic.security import (
     TenantLeak,
 )
 
+_RECORD_METRICS = frozenset({"latency_ms", "error_rate"})  # computed from the CaseRecord
+
 
 class MetricRegistry:
     """Metrics by stable name. Judged metrics register in T5.2b.
@@ -41,6 +43,13 @@ class MetricRegistry:
                 msg = (
                     f"metric {metric.name!r} is not in KNOWN_METRICS; update core.config.gate first"
                 )
+                raise ConfigError(msg)
+            if (
+                metric.kind is MetricKind.DETERMINISTIC
+                and metric.name not in _RECORD_METRICS
+                and not isinstance(metric, DeterministicMetric)
+            ):
+                msg = f"metric {metric.name!r} has no compute() and would vanish silently"
                 raise ConfigError(msg)
             if metric.name in self._metrics:
                 msg = f"duplicate metric {metric.name!r}"

@@ -1,5 +1,6 @@
 """Citation metrics: precision / recall / F1 vs ``gold_citations`` and ``citation_grounded``."""
 
+from functools import lru_cache
 from typing import Literal
 
 from pruefstand.core.citations import (
@@ -14,11 +15,50 @@ from pruefstand.core.models.target import TargetResponse
 from pruefstand.core.models.testcase import TestCase
 from pruefstand.metrics.deterministic.base import BaseMetric
 
+MAX_CITATION_CHARS = (
+    20_000  # per text; cost cap against huge answers (reported as details["truncated"])
+)
+MAX_CHUNK_CHARS_TOTAL = 100_000
+
+
+@lru_cache(maxsize=4)
+def _predict(answer: str, citations: tuple[str, ...]) -> tuple[tuple[Citation, ...], bool]:
+    """Citations of one response, extracted once (the four metrics share the result)."""
+    truncated = len(answer) > MAX_CITATION_CHARS
+    budget = MAX_CITATION_CHARS
+    texts = []
+    for text in citations:
+        part = text[:budget]
+        truncated |= len(part) < len(text)
+        budget -= len(part)
+        texts.append(part)
+    texts.append(answer[:MAX_CITATION_CHARS])
+    seen: dict[str, Citation] = {}
+    for text in texts:
+        for citation in extract_citations(text):
+            seen.setdefault(normalise(citation), citation)
+    return tuple(seen.values()), truncated
+
+
+@lru_cache(maxsize=4)
+def _chunk_citations(texts: tuple[str, ...]) -> tuple[frozenset[str], bool]:
+    """Normalised citations occurring in the chunk texts (capped per text and in total)."""
+    truncated = False
+    budget = MAX_CHUNK_CHARS_TOTAL
+    known: set[str] = set()
+    for text in texts:
+        part = text[: min(MAX_CITATION_CHARS, budget)]
+        truncated |= len(part) < len(text)
+        budget -= len(part)
+        known.update(normalise(c) for c in extract_citations(part))
+    return frozenset(known), truncated
+
 
 def predicted_citations(resp: TargetResponse) -> list[Citation]:
     """Citations the target stated: ``resp.citations`` plus those found in the answer.
 
-    Deduplicated by the default-granularity normalised form, in first-seen order.
+    Deduplicated by the default-granularity normalised form, in first-seen order. Only the first
+    20 000 characters are read (``MAX_CITATION_CHARS``), a defence against huge answers.
 
     Examples:
         >>> from pruefstand.core.models.target import TargetResponse
@@ -26,11 +66,11 @@ def predicted_citations(resp: TargetResponse) -> list[Citation]:
         >>> [normalise(c) for c in predicted_citations(resp)]
         ['§ 622 Abs. 2 BGB']
     """
-    seen: dict[str, Citation] = {}
-    for text in (*resp.citations, resp.answer):
-        for citation in extract_citations(text):
-            seen.setdefault(normalise(citation), citation)
-    return list(seen.values())
+    return list(_predict(resp.answer, resp.citations)[0])
+
+
+def _truncation(*, truncated: bool) -> dict[str, bool]:
+    return {"truncated": True} if truncated else {}
 
 
 def f1_score(precision: float, recall: float) -> float:
@@ -59,13 +99,14 @@ class _CitationScore(BaseMetric):
         parsed = [g for g in gold if g is not None]
         if len(parsed) != len(gold):
             return self.error("unparseable_gold_citation")
-        pred = predicted_citations(resp)
+        pred_tuple, truncated = _predict(resp.answer, resp.citations)
+        pred = list(pred_tuple)
         recall = sum(max((citation_credit(p, g) for p in pred), default=0.0) for g in parsed)
         recall /= len(parsed)
         precision = sum(max(citation_credit(p, g) for g in parsed) for p in pred)
         precision = precision / len(pred) if pred else 0.0
         scores = {"precision": precision, "recall": recall, "f1": f1_score(precision, recall)}
-        return self.ok(scores[self.component])
+        return self.ok(scores[self.component], **_truncation(truncated=truncated))
 
 
 class CitationPrecision(_CitationScore):
@@ -102,8 +143,9 @@ class CitationGrounded(BaseMetric):
     requires = frozenset({"chunks"})
 
     def _compute(self, _case: TestCase, resp: TargetResponse) -> MetricValue:
-        pred = predicted_citations(resp)
+        pred, answer_truncated = _predict(resp.answer, resp.citations)
         if not pred:
             return self.na("no_predicted_citation")
-        known = {normalise(c) for chunk in resp.chunks or () for c in extract_citations(chunk.text)}
-        return self.ok(sum(normalise(p) in known for p in pred) / len(pred))
+        known, chunks_truncated = _chunk_citations(tuple(chunk.text for chunk in resp.chunks or ()))
+        share = sum(normalise(p) in known for p in pred) / len(pred)
+        return self.ok(share, **_truncation(truncated=answer_truncated or chunks_truncated))

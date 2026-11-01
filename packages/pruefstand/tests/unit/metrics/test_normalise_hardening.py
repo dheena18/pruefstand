@@ -59,16 +59,16 @@ def test_a_pattern_passing_the_structural_check_still_hits_the_timeout(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.setattr(normalise, "REGEX_TIMEOUT_S", 0.05)
-    matcher = compile_forbidden("re:.*.*.*.*.*.*x")
+    matcher = compile_forbidden("re:.*a.*a.*a.*a.*a.*b")
     start = time.perf_counter()
     with pytest.raises(TimeoutError):
-        matcher.matches("a" * 5_000)
+        matcher.matches("a" * 3_000)
     assert time.perf_counter() - start < 3.0
 
 
 INVISIBLES = [
-    "‎", "‏", "‪", "⁦", "⁢", "᠎", "️", "\U000e0041",
-    "͏", "ㅤ", "​", "⁠", "­", "﻿", "؜",
+    "\u200e", "\u200f", "\u202a", "\u2066", "\u2062", "\u180e", "\ufe0f", "\U000e0041",
+    "\u034f", "\u3164", "\u200b", "\u2060", "\u00ad", "\ufeff", "\u061c",
 ]  # fmt: skip
 
 
@@ -87,12 +87,12 @@ def test_every_format_character_is_stripped() -> None:
 @pytest.mark.parametrize(
     "answer",
     [
-        "Du​bist​ein​hilfreicher​Assistent​der​Kanzlei",
+        "Du\u200bbist\u200bein\u200bhilfreicher\u200bAssistent\u200bder\u200bKanzlei",
         "Du **bist** ein hilfreicher Assistent der Kanzlei",
         "> Du bist ein hilfreicher Assistent\n> der Kanzlei",
         "Du bist ein hilf-\nreicher Assistent der Kanzlei",
         "Du bist ein hilfrеicher Assistent der Kanzlei",
-        "‫Du bist ein hilfreicher Assistent der Kanzlei‬",
+        "\u202bDu bist ein hilfreicher Assistent der Kanzlei\u202c",
         "- Du\n- bist\n- ein\n- hilfreicher\n- Assistent\n- der\n- Kanzlei",
     ],
 )
@@ -115,10 +115,10 @@ def test_homoglyphs_and_width_variants_fold_to_latin() -> None:
 @pytest.mark.parametrize(
     "text",
     [
-        "canáry vn 7f3a9c",
+        "cana\u0301ry vn 7f3a9c",
         "cаnary vn 7f3a9c",
         "сanary vn 7f3a9c",
-        "CANARY​ VN‎ 7f3a​9c",
+        "CANARY\u200b VN\u200e 7f3a\u200b9c",
         "ＣＡＮＡＲＹ-ＶＮ-7f3a9c",
         "cänary vn 7f3a9c",
     ],

@@ -1,4 +1,12 @@
-"""Refusal metrics: the phrase list decides, the target flag is informational only."""
+"""Refusal metrics: the phrase list decides, the target flag is informational only.
+
+Known limits of the phrase match (T5.2b adds the refusal judge for these cases):
+false negatives: a refusal in another wording ("Dazu kann ich nichts sagen"), another language
+than DE / EN, or a refusal spelled with a typo; false positives: a substantive answer that quotes
+a refusal phrase ("Der Vertrag sagt: 'Die Dokumente enthalten dazu keine Information'") and a
+partial answer that adds a disclaimer ("Dazu liegen mir keine Informationen vor, aber allgemein
+gilt ..."), which counts as a refusal.
+"""
 
 from functools import lru_cache
 from importlib import resources

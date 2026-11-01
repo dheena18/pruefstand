@@ -1,4 +1,4 @@
-"""``language_match``: does the answer's language (DE or EN) equal the question's?"""
+"""``language_match``: does the answer's detected language equal the question's (DE or EN)?"""
 
 import unicodedata
 from functools import lru_cache
@@ -15,12 +15,17 @@ from pruefstand.metrics.deterministic.refusal import is_refusal
 MIN_CHARS = 20
 MAX_CHARS = 5000  # the detector sees the first 5 000 characters; enough and bounded
 _LINGUA = {Lang.DE: Language.GERMAN, Lang.EN: Language.ENGLISH}
+# Wider than DE/EN: a confident French or Turkish answer must score 0, not be mislabelled.
+_DETECTED = (
+    Language.GERMAN, Language.ENGLISH, Language.FRENCH, Language.SPANISH, Language.ITALIAN,
+    Language.DUTCH, Language.POLISH, Language.RUSSIAN, Language.TURKISH,
+)  # fmt: skip
 
 
 @lru_cache(maxsize=1)
 def _detector() -> LanguageDetector:
-    """The DE/EN detector, built once on first use."""
-    return LanguageDetectorBuilder.from_languages(Language.GERMAN, Language.ENGLISH).build()
+    """The detector over the nine languages, built once on first use."""
+    return LanguageDetectorBuilder.from_languages(*_DETECTED).build()
 
 
 class LanguageMatch(BaseMetric):

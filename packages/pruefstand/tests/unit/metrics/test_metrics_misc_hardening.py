@@ -1,13 +1,15 @@
-"""Cost cap of the citation metrics, wider language set, refusal phrases, registry guard, nDCG gaps."""
+"""Citation cost cap, wider language set, refusal phrases, registry guard, nDCG gaps."""
 
 import math
 import time
 
 import pytest
+from testsupport.metric_types import CaseFactory, ChunkFactory, RespFactory
 
 from pruefstand.core.config.gate import KNOWN_METRICS
 from pruefstand.core.errors import ConfigError
 from pruefstand.core.models.metric import MetricKind, MetricStatus
+from pruefstand.metrics.deterministic import citation
 from pruefstand.metrics.deterministic.citation import (
     CitationF1,
     CitationGrounded,
@@ -18,7 +20,6 @@ from pruefstand.metrics.deterministic.language import LanguageMatch
 from pruefstand.metrics.deterministic.refusal import is_refusal
 from pruefstand.metrics.deterministic.retrieval import NdcgAtK
 from pruefstand.metrics.registry import MetricRegistry, evaluate_deterministic
-from testsupport.metric_types import CaseFactory, ChunkFactory, RespFactory
 
 CITATION_METRICS = (CitationPrecision(), CitationRecall(), CitationF1(), CitationGrounded())
 
@@ -26,7 +27,9 @@ CITATION_METRICS = (CitationPrecision(), CitationRecall(), CitationF1(), Citatio
 def test_huge_answer_is_capped_and_fast(
     make_case: CaseFactory, make_chunk: ChunkFactory, make_resp: RespFactory
 ) -> None:
-    filler = "Nach § 622 Abs. 2 BGB und § 623 BGB gilt: Art. 6 Abs. 1 DSGVO. " * 6_500  # ~400k chars
+    filler = (
+        "Nach § 622 Abs. 2 BGB und § 623 BGB gilt: Art. 6 Abs. 1 DSGVO. " * 6_500
+    )  # ~400k chars
     chunks = [make_chunk("bgb-622", text=filler, rank=i + 1) for i in range(5)]
     resp = make_resp(filler, chunks=chunks)
     start = time.perf_counter()
@@ -44,7 +47,9 @@ def test_short_answers_are_not_reported_truncated(
         assert "truncated" not in metric.compute(make_case(), resp).details
 
 
-def test_citation_beyond_the_cap_is_not_seen(make_case: CaseFactory, make_resp: RespFactory) -> None:
+def test_citation_beyond_the_cap_is_not_seen(
+    make_case: CaseFactory, make_resp: RespFactory
+) -> None:
     answer = "Text. " * 5_000 + "Nach § 622 Abs. 2 BGB."
     value = CitationRecall().compute(make_case(), make_resp(answer))
     assert value.value == 0.0
@@ -54,8 +59,6 @@ def test_citation_beyond_the_cap_is_not_seen(make_case: CaseFactory, make_resp: 
 def test_predicted_citations_are_computed_once_per_response(
     make_case: CaseFactory, make_resp: RespFactory, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    from pruefstand.metrics.deterministic import citation
-
     calls = []
     original = citation.extract_citations
     monkeypatch.setattr(citation, "extract_citations", lambda t: calls.append(t) or original(t))
@@ -82,7 +85,9 @@ def test_confident_foreign_language_is_zero_not_na(
         assert value.value == 0.0
 
 
-def test_code_with_english_comments_is_english(make_case: CaseFactory, make_resp: RespFactory) -> None:
+def test_code_with_english_comments_is_english(
+    make_case: CaseFactory, make_resp: RespFactory
+) -> None:
     code = (
         "def notice_period(years):\n    # The notice period grows with the length of employment\n"
         "    # and is longer for the employer than for the employee.\n    return years * 30\n"
@@ -94,7 +99,9 @@ def test_code_with_english_comments_is_english(make_case: CaseFactory, make_resp
     )
 
 
-def test_repeated_abbreviation_does_not_crash(make_case: CaseFactory, make_resp: RespFactory) -> None:
+def test_repeated_abbreviation_does_not_crash(
+    make_case: CaseFactory, make_resp: RespFactory
+) -> None:
     value = LanguageMatch().compute(make_case(), make_resp("BGB " * 30))
     assert value.status in (MetricStatus.OK, MetricStatus.NOT_APPLICABLE)
 

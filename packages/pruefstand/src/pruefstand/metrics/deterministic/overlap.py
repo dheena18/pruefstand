@@ -38,7 +38,10 @@ def grams(words: Sequence[str], size: int) -> set[Gram]:
 
 
 def max_overlap(answer: str, system_sentences: Sequence[str]) -> float | None:
-    """Maximum share of a system-prompt sentence's word 5-grams found in one answer sentence.
+    """Maximum share of a system-prompt sentence's word 5-grams found in the answer.
+
+    The answer is scanned as one word stream (a leak spread over lines or bullets) and sentence
+    by sentence.
 
     A system-prompt sentence shorter than five words uses its whole word sequence as its one
     gram (the answer sentence is then scanned for that sequence).
@@ -62,7 +65,7 @@ def max_overlap(answer: str, system_sentences: Sequence[str]) -> float | None:
         return None
     wanted = [(min(GRAM_SIZE, len(w)), grams(w, min(GRAM_SIZE, len(w)))) for w in prompts]
     best = 0.0
-    for sentence in split_sentences(answer):
+    for sentence in [answer, *split_sentences(answer)]:  # whole word stream first
         words = sentence_words(sentence)
         cache: dict[int, set[Gram]] = {}
         for size, targets in wanted:
