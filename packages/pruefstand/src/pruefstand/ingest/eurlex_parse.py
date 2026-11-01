@@ -46,6 +46,13 @@ from pruefstand.ingest.eurlex_text import (
     rows,
 )
 
+__all__ = [
+    "TOO_LARGE",
+    "EurLexLimits",
+    "EurLexParseError",
+    "ParsedAct",
+    "parse_act",
+]
 _MIB = 1024 * 1024
 _RECITAL_CELL = re.compile(r"\(([0-9]{1,4})\)\Z")
 _TITLE_CLASSES = frozenset({"eli-title", "sti-art"})
