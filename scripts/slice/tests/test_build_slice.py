@@ -90,7 +90,8 @@ def test_chunks_have_the_schema_fields_only() -> None:
 EURLEX_SNIPPET = """<html><body><div class="eli-subdivision" id="art_6">
 <p class="oj-ti-art">Artikel 6</p><div class="eli-title"><p class="oj-sti-art">Rechtmäßigkeit der
 Verarbeitung</p></div><div id="006.001"><p class="oj-normal">(1)   Die Verarbeitung ist nur
-rechtmäßig, wenn</p><table><tbody><tr><td><p class="oj-normal">a)</p></td><td><p class="oj-normal">die
+rechtmäßig, wenn</p><table><tbody><tr><td><p class="oj-normal">a)</p></td><td>
+<p class="oj-normal">die
 betroffene Person ihre Einwilligung gegeben hat;</p></td></tr></tbody></table></div></div>
 <div class="eli-subdivision" id="art_7"><p class="oj-ti-art">Artikel 7</p></div></body></html>"""
 
