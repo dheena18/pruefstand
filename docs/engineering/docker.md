@@ -34,32 +34,43 @@ are **updated by hand per release** (release checklist).
 
 ## 2. Multi-stage template (Python services)
 
+`infra/docker/python-uv.Dockerfile` (T0.3) is the one template; the Action and rag-demo images are built
+from it (T1.12, T1.13) with their own build args. Build context = repository root. It uses plain Dockerfile
+syntax only (no BuildKit-only features), so it also builds on the VM, whose Docker has no buildx.
+
+| Build arg | Default | Meaning |
+| --- | --- | --- |
+| `PKG` | `pruefstand` | uv workspace member installed with `uv sync --frozen --no-dev --no-editable --package $PKG` |
+| `ENTRYPOINT_BIN` | `pruefstand` | console script (or command line, e.g. `uvicorn rag_demo.api:app --host 0.0.0.0`) run by the entrypoint; arguments of `docker run` are appended |
+| `HEALTHCHECK_CMD` | `NONE` | shell command that exits 0 when healthy; `NONE` = placeholder for images with no service to probe (CLI/Action images): the image `HEALTHCHECK` then always passes and claims no check |
+| `GIT_SHA` | `unknown` | label `org.opencontainers.image.revision` and env `GIT_SHA` (PR head SHA in CI, X2.4) |
+
+Stages: `base` (`python:3.12-slim-bookworm@sha256:...`), `builder` (uv from `ghcr.io/astral-sh/uv:<ver>@sha256:...`,
+venv in `/app/.venv`), `runtime` (venv only, `USER 10001`, OCI labels). Base and uv digests are in
+`decisions.md` ("Pinned versions"); hadolint (`.hadolint.yaml`, threshold `warning`) and Trivy gate them in
+`build-images.yml`. Smoke test: `make image-smoke && docker run --rm pruefstand-smoke --help` (parallel worktrees: `SMOKE_TAG=<tag>`). The sketch below
+shows the shape with a service healthcheck (rag-demo, T1.13):
+
 ```dockerfile
-# syntax=docker/dockerfile:1.7
-ARG PYTHON_IMAGE=python:3.12-slim-bookworm@sha256:<digest>
-
-FROM ${PYTHON_IMAGE} AS build
+FROM python:3.12-slim-bookworm@sha256:<digest> AS base
+FROM base AS builder
 COPY --from=ghcr.io/astral-sh/uv:<version>@sha256:<digest> /uv /usr/local/bin/uv
-ENV UV_COMPILE_BYTECODE=1 UV_LINK_MODE=copy UV_PYTHON_DOWNLOADS=never
+ENV UV_COMPILE_BYTECODE=1 UV_LINK_MODE=copy UV_PYTHON_DOWNLOADS=never UV_PROJECT_ENVIRONMENT=/app/.venv
 WORKDIR /app
-COPY uv.lock pyproject.toml ./
-COPY apps/rag-demo/pyproject.toml apps/rag-demo/
-RUN --mount=type=cache,target=/root/.cache/uv \
-    uv sync --locked --no-install-workspace --no-dev --package rag-demo
-COPY apps/rag-demo/ apps/rag-demo/
-RUN --mount=type=cache,target=/root/.cache/uv \
-    uv sync --locked --no-dev --package rag-demo --no-editable
+COPY pyproject.toml uv.lock ./
+COPY packages packages
+COPY apps apps
+RUN uv sync --frozen --no-dev --no-editable --package rag-demo
 
-FROM ${PYTHON_IMAGE} AS runtime
+FROM base AS runtime
 ARG GIT_SHA=unknown
 LABEL org.opencontainers.image.source="https://github.com/dheena18/pruefstand" \
       org.opencontainers.image.revision="${GIT_SHA}" \
       org.opencontainers.image.licenses="MIT"
-RUN groupadd --system app && useradd --system --gid app --home /app app
-WORKDIR /app
-COPY --from=build --chown=app:app /app/.venv /app/.venv
+RUN groupadd --system --gid 10001 app && useradd --system --uid 10001 --gid app --no-create-home app
+COPY --from=builder /app/.venv /app/.venv
 ENV PATH="/app/.venv/bin:$PATH" PYTHONUNBUFFERED=1 GIT_SHA=${GIT_SHA}
-USER app
+USER 10001
 EXPOSE 8000
 HEALTHCHECK --interval=10s --timeout=3s --retries=5 \
   CMD ["python", "-c", "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8000/v1/health', timeout=2).status==200 else 1)"]
@@ -92,6 +103,11 @@ There is **no** CPU judge service (`llm-judge-cpu` was removed with the tier-1 C
 and no `ollama` service in compose: Ollama runs only on the cluster, outside Docker. The former
 `gpu-night` and `gpu-large` profiles and the `vllm-*`, `tei-embed` and `tei-rerank` services are removed
 (round 10).
+Named volumes such as `qdrant_data` survive `make down`; `make down VOLUMES=1` removes them. `make stack-run CMD="…"`
+runs `up`, the command (in a subshell) and `down` under one `stack.lock` hold; an EXIT trap tears the stack down
+whatever the command does and the command's exit code is kept (`STACK_LOCK_WAIT=<s>` bounds the wait for the lock,
+default: wait). The shell replaces `flock` (`flock -F`) and runs the command as its own process group, so a TERM/INT sent to `make` alone or to the whole group stops the command, tears the stack down and releases the lock. `make ports-env` also writes `COMPOSE_PROJECT_NAME=pruefstand-dev` into the managed block when `PORT_OFFSET` is non-zero and the file sets no project name elsewhere. The `llm` service's llama.cpp image is a placeholder pin (`server`): T1.13 re-pins it to `server-<version>`.
+Tier-2 VM services (`rerank-cpu`, `llm-proxy`) are added by T3.1a and T6.2a; GPU serving is Ollama on the cluster (`gpu-cluster.md`), never a compose service.
 
 **Port table (single source).** Every host port binds to `127.0.0.1` (no exception; the only non-loopback
 listener on the VM is the `autossh` tunnel's second bind on the Docker bridge gateway `172.17.0.1`, firewalled
@@ -109,14 +125,17 @@ variables (`QDRANT_HTTP_PORT=$((6333+PORT_OFFSET))`, `QDRANT_GRPC_PORT`, `RERANK
 exported name). Because raw `docker compose` never sees what `make` exports, **`make ports-env`** writes
 the effective values once, literally, into the owner's VM `.env` (`QDRANT_HTTP_PORT=16333`, …), so a plain
 `docker compose --profile core|live up` binds the dev ports as well (prefer `make up PROFILES="…"`; raw compose
-only after `make ports-env`, verified by `make check-ports`; A13-M6, D310); **`make check-ports`** (and a `vm_check` warning) flags any container of the
-`pruefstand-dev` project bound to a default port (R12 A12-M4). Both
+only after `make ports-env`, verified by `make check-ports`; A13-M6, D310); **`make check-ports`** (and a `vm_check` warning) flags any container of a compose project
+other than the executor's `pruefstand-exec` that is bound to a default port, and names the project (R12 A12-M4).
+With `PORT_OFFSET` != 0, `mk/docker.mk` also defaults `COMPOSE_PROJECT_NAME` to the shared dev project
+`pruefstand-dev` (an explicit value in the environment or `.env` wins), so all worktrees share one dev stack, one
+at a time under `stack.lock` (`PARALLEL-PLAN.md` §7, A13-M8). Both
 stacks can run at the same time; Done-when checks against internal-only services use
 `docker compose exec` or the dev ports, never the executor's `localhost` ports (Y6.5).
 
 | Service | Profile(s) | Image | Host port (container); executor / laptop / CI | Dev host port on the VM (`PORT_OFFSET=10000`) | Volumes | Healthcheck |
 | --- | --- | --- | --- | --- | --- | --- |
-| `qdrant` | `core`, `live`, `demo`, `gpu` | `qdrant/qdrant:<ver>@<digest>` | `6333` (6333), `6334` (6334, gRPC) | `16333`, `16334` | `qdrant-data:/qdrant/storage` (VM, profile `gpu`: bind mount `$PRUEFSTAND_HOME/qdrant` on the **local VM disk**, never in the data root) | `GET /readyz` |
+| `qdrant` | `core`, `live`, `demo`, `gpu` | `qdrant/qdrant:<ver>@<digest>` | `6333` (6333), `6334` (6334, gRPC) | `16333`, `16334` | `qdrant_data:/qdrant/storage` (VM, profile `gpu`: bind mount `$PRUEFSTAND_HOME/qdrant` on the **local VM disk**, never in the data root) | `GET /readyz` |
 | `llm` | `live`, `demo` | `ghcr.io/ggml-org/llama.cpp:server@<digest>` (CPU) | `8080` (8080) | `18080` | `${LIVE_MODEL_DIR:-${HOME}/.cache/pruefstand/models}:/models:ro` | `GET /health` |
 | `embed` | `live`, `demo` | `ghcr.io/huggingface/text-embeddings-inference:cpu-<ver>@<digest>` | `8090` (80) | `18090` | model cache `:ro` | `GET /health` |
 | `rag-demo` | `live`, `dev`, `demo` | `ghcr.io/dheena18/rag-demo@sha256:<d>` or build | `8000` (8000); the executor's **candidate** has no host port (`gate-net` only) | `18000` | `./corpus:/corpus:ro`; `RAG_CONFIG` env selects `apps/rag-demo/configs/rag*.yaml` (`rag.yaml` tier 1 / CPU, `rag.gpu.yaml` tier 2 / A40, X3.15; `rag.public.yaml` demo, T8.4); never a canary-registry mount (X2.5) | `GET /v1/health` |

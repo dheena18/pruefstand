@@ -18,7 +18,7 @@ This is not legal advice. Re-check each source's terms when the pinned version c
 | EUR-Lex (Publications Office of the EU) | CELEX ids + retrieval date + SHA-256 | Reuse under the EUR-Lex legal notice and Commission Decision 2011/833/EU (credit the source, indicate changes; consolidated texts are not authentic) | `laws_eurlex` | Allowed with credit and change notice |
 | GermanQuAD (deepset) | HF revision SHA | CC BY 4.0 (HF card `deepset/germanquad`, checked 2026-10-28) | `germanquad_derived` | Allowed with attribution and change notice |
 | GermanDPR (deepset) | HF revision SHA | CC BY 4.0 (HF card `deepset/germandpr`, checked 2026-10-28) | `germanquad_derived` | Allowed with attribution |
-| GermanRAG (DiscoResearch) | HF revision SHA | Card says CC BY 4.0; its source GermanDPR is CC BY 4.0 → CC BY 4.0 (**T2.1 re-verifies the card**; if it says share-alike, the config becomes CC BY-SA 4.0) | `germanquad_derived` | Allowed with attribution |
+| GermanRAG (DiscoResearch) | HF revision SHA | Card metadata says CC BY 4.0, but the README says the derived work inherits CC BY-SA 4.0 from GermanDPR → **CC BY-SA 4.0** (owner decision, T2.1, section 7) | `germanrag_derived` (own config) | Allowed with attribution |
 | MEMERAG (`amazon-science/MEMERAG`), German subset | repo commit SHA | **CC BY-NC 4.0** (LICENSE file, checked 2026-10-28); README: data should not be used to train models | **none** — calibration only (T5.3/T5.4) | **Never redistributed**: download script only; no item text in the HF dataset, dashboard, report or repo; publish only aggregate agreement numbers with attribution; never used for training or fine-tuning |
 | GerDaLIR (`lavis-nlp/GerDaLIR`, `mteb/GerDaLIR`) | repo commit / HF revision | See upstream repo; built from Open Legal Data | not redistributed (used for model selection only) | Do not redistribute until licence verified |
 | deepset/prompt-injections | HF revision SHA | Apache 2.0 | `own` (as seed strings inside planted attacks) | Allowed with licence notice |
@@ -33,7 +33,8 @@ This is not legal advice. Re-check each source's terms when the pinned version c
 | --- | --- | --- |
 | `laws_eurlex` | CC BY 4.0 | Test cases generated from Gesetze im Internet and EUR-Lex |
 | `oldp_derived` | ODbL v1.0 | Test cases generated from Open Legal Data decisions/laws/citation graph |
-| `germanquad_derived` | CC BY 4.0 (CC BY-SA 4.0 only if T2.1 finds a share-alike card) | Cases and labels derived from GermanQuAD, GermanDPR, GermanRAG |
+| `germanquad_derived` | CC BY 4.0 | Cases and labels derived from GermanQuAD, GermanDPR |
+| `germanrag_derived` | CC BY-SA 4.0 | Cases and labels derived from GermanRAG; never combined with another config's material |
 | `own` | CC BY 4.0 | Planted attacks, canary/leak probes, filter-bypass and system-prompt probes, synthetic private docs |
 
 Every `TestCase` has exactly one `license_config`. `pruefstand validate dataset` fails if a case's
@@ -55,7 +56,7 @@ differs from this file.
   authentic. The content has been modified (chunked, questions generated)."
 - **GermanQuAD / GermanDPR:** "GermanQuAD and GermanDPR by deepset (Möller, Risch, Pietsch, 2021),
   CC BY 4.0, https://deepset.ai/germanquad. Modified."
-- **GermanRAG:** "GermanRAG by DiscoResearch, based on GermanDPR, CC BY 4.0. Modified."
+- **GermanRAG:** "GermanRAG by DiscoResearch, based on GermanDPR, CC BY-SA 4.0 (inherited). Modified."
 - **MEMERAG (report only, aggregate numbers):** "Faithfulness labels from MEMERAG (Cruz Blandón et al.,
   ACL 2025), CC BY-NC 4.0, https://github.com/amazon-science/MEMERAG. Used for evaluation only."
 - **deepset/prompt-injections:** "deepset/prompt-injections, Apache License 2.0. Strings embedded in
@@ -124,3 +125,31 @@ which carries the same Gemma Terms. Tokenizer files are never redistributed outs
 **`rq1` split (round 13 P3.2).** The RQ1 robustness set (`Split.RQ1`) is built from the same sources and
 `license_config` rules as `full`; it is used offline in `experiments/` and, like every split, released only
 under the config of its sources.
+
+## 7. Pinned sources (T2.1, checked 2026-10-31)
+
+`data/sources.yaml` is the source of truth for pins; `data/download.py` reads each Hugging Face
+card's `license` field (and the `LICENSE` file of the GitHub source) and exits 3 (`LicenseMismatch`)
+when it differs from the `license` there. This check lives in `data/download.py`, not in a separate
+`scripts/data/check_licenses.py`.
+
+| Source id | `license` in `sources.yaml` | `license_config` | Redistribute | Local path |
+| --- | --- | --- | --- | --- |
+| `gii:<abbrev>` (30 laws) | `official-work-5-urhg` | `laws_eurlex` | yes | `data/raw/gii/<abbrev>/xml.zip` |
+| `eurlex:<celex>` (20 acts, DE + EN; fetched from the Publications Office CELLAR) | `eurlex-legal-notice` | `laws_eurlex` | yes | `data/raw/eurlex/<celex>/{de,en}.html` |
+| `oldp_decisions` | `odbl` (card has no `license` field: documented override, below) | `oldp_derived` | yes, under ODbL | `data/raw/hf/oldp_decisions/` |
+| `oldp_laws`, `oldp_citation_graph` | `odbl` (card agrees) | `oldp_derived` | yes, under ODbL | `data/raw/hf/<id>/` |
+| `germanquad`, `germandpr` | `cc-by-4.0` (card agrees) | `germanquad_derived` | yes | `data/raw/hf/<id>/` |
+| `germanrag` | `cc-by-sa-4.0` (card metadata says cc-by-4.0: documented override, below) | `germanrag_derived` | yes, under CC BY-SA | `data/raw/hf/germanrag/` |
+| `prompt_injections` | `apache-2.0` (card agrees) | `own` | yes, with notice | `data/raw/hf/prompt_injections/` |
+| `memerag` | `cc-by-nc-4.0` (LICENSE file agrees) | `download_only` | **no** | `data/raw/github/memerag/` |
+
+Documented overrides of the card check (`card_license` in `sources.yaml`; the card must say exactly
+that value, anything else exits 3). These are owner decisions of 2026-10-31, not generic bypasses:
+
+* `openlegaldata/court-decisions-germany`: the card has no `license` field (`card_license: none`). We
+  record **ODbL v1.0 for the collection and para 5 UrhG (official works) for the individual decisions**.
+* `DiscoResearch/germanrag`: the card metadata says `cc-by-4.0` (`card_license: cc-by-4.0`) but its README
+  says the derived work inherits **CC BY-SA 4.0** from GermanDPR; we use the stricter reading. GermanRAG
+  therefore has its own config `germanrag_derived`; `load_sources` fails if any config mixes CC BY, CC BY-SA
+  and ODbL sources.
