@@ -5,9 +5,11 @@ A tiny local HTTP server stands in for `/api/ps` only to observe which requests 
 """
 
 import http.server
+import json
 import os
 import subprocess
 import threading
+import time
 from collections.abc import Iterator
 from pathlib import Path
 from typing import ClassVar
@@ -21,6 +23,13 @@ class _Handler(http.server.BaseHTTPRequestHandler):
     seen: ClassVar[list[str]] = []
     ps_body: ClassVar[bytes] = b'{"models":[]}'
     ps_status: ClassVar[int] = 200
+    gen_status: ClassVar[int] = 200
+    gen_body: ClassVar[bytes] = b"{}"
+    gen_delay: ClassVar[float] = 0.0
+    gen_drop: ClassVar[bool] = False
+    loads_model: ClassVar[bool] = True
+    loaded: ClassVar[bool] = False
+    bodies: ClassVar[list[str]] = []
 
     def _reply(self, body: bytes, status: int = 200) -> None:
         self.send_response(status)
@@ -30,11 +39,27 @@ class _Handler(http.server.BaseHTTPRequestHandler):
 
     def do_GET(self) -> None:  # http.server API
         type(self).seen.append(f"GET {self.path}")
-        self._reply(type(self).ps_body, type(self).ps_status)
+        if type(self).loaded:
+            self._reply(b'{"models":[{"name":"qwen3.8:27b-q8_0"}]}')
+        else:
+            self._reply(type(self).ps_body, type(self).ps_status)
 
     def do_POST(self) -> None:  # http.server API
-        type(self).seen.append(f"POST {self.path}")
-        self._reply(b"{}")
+        cls = type(self)
+        cls.seen.append(f"POST {self.path}")
+        raw = self.rfile.read(int(self.headers.get("Content-Length", "0"))).decode()
+        cls.bodies.append(raw)
+        if json.loads(raw).get("keep_alive") == 0:
+            cls.loaded = False
+            self._reply(b"{}")
+            return
+        time.sleep(cls.gen_delay)
+        if cls.gen_drop:
+            self.close_connection = True
+            return
+        self._reply(cls.gen_body, cls.gen_status)
+        if cls.gen_status < 300 and cls.loads_model:
+            cls.loaded = True
 
     def log_message(self, format: str, *args: object) -> None:  # noqa: A002
         return
@@ -45,7 +70,14 @@ def server() -> Iterator[tuple[str, type[_Handler]]]:
     _Handler.seen = []
     _Handler.ps_body = b'{"models":[]}'
     _Handler.ps_status = 200
-    httpd = http.server.HTTPServer(("127.0.0.1", 0), _Handler)
+    _Handler.gen_status = 200
+    _Handler.gen_body = b"{}"
+    _Handler.gen_delay = 0.0
+    _Handler.gen_drop = False
+    _Handler.loads_model = True
+    _Handler.loaded = False
+    _Handler.bodies = []
+    httpd = http.server.ThreadingHTTPServer(("127.0.0.1", 0), _Handler)
     thread = threading.Thread(target=httpd.serve_forever, daemon=True)
     thread.start()
     yield f"http://127.0.0.1:{httpd.server_port}", _Handler
@@ -99,7 +131,15 @@ def test_measure_load_times_the_load_when_nothing_is_loaded(
     url, handler = server
     lines = _probe(url, MEASURE_LOAD="1")
     assert lines[0].startswith("CHECK model-load PASS cold load")
-    assert handler.seen == ["GET /api/ps", "POST /api/generate"]
+    assert handler.seen == [
+        "GET /api/ps",
+        "POST /api/generate",
+        "GET /api/ps",
+        "POST /api/generate",
+    ]
+    assert json.loads(handler.bodies[0])["keep_alive"] != 0
+    assert json.loads(handler.bodies[1])["keep_alive"] == 0
+    assert handler.loaded is False
 
 
 def test_probe_never_prints_the_ollama_host_value() -> None:
@@ -130,3 +170,61 @@ def test_measure_load_refuses_on_an_unusable_ps_answer(
     assert lines[0].startswith("CHECK model-load WARN")
     assert "not measuring" in lines[0]
     assert "POST /api/generate" not in handler.seen
+
+
+@pytest.mark.parametrize(
+    ("status", "body", "expected"),
+    [
+        (500, b'{"error":"server exploded"}', "server exploded"),
+        (404, b'{"error":"model not found"}', "model not found"),
+        (200, b'{"error":"unable to allocate memory"}', "unable to allocate memory"),
+    ],
+)
+def test_measure_load_fails_on_a_bad_load_answer(
+    server: tuple[str, type[_Handler]], status: int, body: bytes, expected: str
+) -> None:
+    url, handler = server
+    handler.gen_status = status
+    handler.gen_body = body
+    handler.loads_model = False
+    lines = _probe(url, MEASURE_LOAD="1")
+    assert lines[0].startswith("CHECK model-load FAIL")
+    assert expected in lines[0]
+    assert "cold load" not in lines[0]
+
+
+def test_measure_load_fails_when_the_connection_drops(server: tuple[str, type[_Handler]]) -> None:
+    url, handler = server
+    handler.gen_drop = True
+    lines = _probe(url, MEASURE_LOAD="1")
+    assert lines[0].startswith("CHECK model-load FAIL")
+    assert "cold load" not in lines[0]
+
+
+def test_measure_load_fails_on_timeout(server: tuple[str, type[_Handler]]) -> None:
+    url, handler = server
+    handler.gen_delay = 4.0
+    lines = _probe(url, MEASURE_LOAD="1", LOAD_TIMEOUT_S="1")
+    assert lines[0].startswith("CHECK model-load FAIL")
+    assert "cold load" not in lines[0]
+
+
+def test_measure_load_fails_when_ps_does_not_list_the_model(
+    server: tuple[str, type[_Handler]],
+) -> None:
+    url, handler = server
+    handler.loads_model = False
+    lines = _probe(url, MEASURE_LOAD="1")
+    assert lines[0].startswith("CHECK model-load FAIL")
+    assert "not listed" in lines[0]
+    assert "cold load" not in lines[0]
+
+
+def test_measure_load_truncates_a_long_error_text(server: tuple[str, type[_Handler]]) -> None:
+    url, handler = server
+    handler.gen_status = 500
+    handler.gen_body = json.dumps({"error": "x" * 5000}).encode()
+    handler.loads_model = False
+    lines = _probe(url, MEASURE_LOAD="1")
+    assert lines[0].startswith("CHECK model-load FAIL")
+    assert len(lines[0]) < 500
