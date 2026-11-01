@@ -86,9 +86,8 @@ def test_store_is_plain_sqlite_with_bytes_values_and_no_pickle(tmp_path: Path) -
 def test_a_corrupt_cache_file_is_a_store_error(tmp_path: Path) -> None:
     (tmp_path / "target").mkdir()
     (tmp_path / "target" / "cache.sqlite3").write_bytes(b"this is not a database" * 100)
-    with pytest.raises(StoreError):
-        with DiskKVCache(tmp_path, "target") as cache:
-            cache.get("k")
+    with pytest.raises(StoreError), DiskKVCache(tmp_path, "target") as cache:
+        cache.get("k")
 
 
 def test_overwriting_a_key_keeps_the_last_value(tmp_path: Path) -> None:

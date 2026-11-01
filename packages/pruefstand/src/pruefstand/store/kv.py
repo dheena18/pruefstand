@@ -1,29 +1,34 @@
-"""``DiskKVCache``: the persistent byte cache behind the ``target`` and ``llm`` namespaces."""
+"""``DiskKVCache``: the persistent byte cache behind the ``target`` and ``llm`` namespaces.
+
+Backed by one SQLite file per namespace (stdlib ``sqlite3``). Values are stored as opaque BLOBs
+and returned as bytes; nothing is ever unpickled (D361).
+"""
 
 import sqlite3
 from pathlib import Path
 from types import TracebackType
 from typing import Literal, Self
 
-import diskcache  # type: ignore[import-untyped]  # diskcache ships no stubs or py.typed marker
-
 from pruefstand.core.errors import StoreError
+
+_FILE = "cache.sqlite3"
+_BUSY_TIMEOUT_S = 30.0
 
 
 class DiskKVCache:
-    """A ``KVCache`` on ``diskcache.Cache(directory / namespace)`` (decision D75).
+    """A ``KVCache`` on ``<directory>/<namespace>/cache.sqlite3`` (decision D75).
 
     Keys are opaque strings (callers pass ``stable_hash`` output); values are bytes. In
-    ``read_only`` mode (PR jobs) ``get`` works and ``set`` raises; a missing directory is an
-    empty cache and is not created.
+    ``read_only`` mode (PR jobs) ``get`` works and ``set`` raises; a missing cache is empty and
+    is not created.
 
     Args:
         directory: Cache root; each namespace lives in its own subdirectory.
         namespace: ``"target"`` (runner, target responses) or ``"llm"`` (``LLMClient``, T5.1).
-        read_only: Refuse writes.
+        read_only: Refuse writes (the file is opened read-only).
 
     Raises:
-        StoreError: (constructor) the cache directory cannot be opened.
+        StoreError: (constructor) the cache file cannot be opened or is not a database.
     """
 
     def __init__(
@@ -31,13 +36,25 @@ class DiskKVCache:
     ) -> None:
         self._read_only = read_only
         self._closed = False
-        path = directory / namespace
-        self._cache: diskcache.Cache | None = None
+        self._db: sqlite3.Connection | None = None
+        path = directory / namespace / _FILE
         if read_only and not path.exists():
             return
         try:
-            self._cache = diskcache.Cache(str(path))
-        except (OSError, sqlite3.Error, diskcache.Timeout) as exc:
+            if read_only:
+                self._db = sqlite3.connect(
+                    f"{path.resolve().as_uri()}?mode=ro", uri=True, timeout=_BUSY_TIMEOUT_S
+                )
+            else:
+                path.parent.mkdir(parents=True, exist_ok=True)
+                self._db = sqlite3.connect(path, timeout=_BUSY_TIMEOUT_S)
+                self._db.execute(
+                    "CREATE TABLE IF NOT EXISTS kv (key TEXT PRIMARY KEY, value BLOB NOT NULL)"
+                )
+                self._db.commit()
+            self._db.execute("SELECT 1 FROM kv LIMIT 1")
+        except (OSError, sqlite3.Error) as exc:
+            self._discard()
             msg = f"cannot open cache {path}: {exc}"
             raise StoreError(msg) from exc
 
@@ -45,41 +62,38 @@ class DiskKVCache:
         """Return the stored value or None.
 
         Raises:
-            StoreError: The cache is closed, unreadable, or holds a non-bytes value.
+            StoreError: The cache is closed or unreadable.
         """
-        self._check_open()
-        if self._cache is None:
+        db = self._open_db()
+        if db is None:
             return None
         try:
-            value = self._cache.get(key)
-        except (OSError, sqlite3.Error, diskcache.Timeout) as exc:
+            row = db.execute("SELECT value FROM kv WHERE key = ?", (key,)).fetchone()
+        except sqlite3.Error as exc:
             msg = f"cache read failed: {exc}"
             raise StoreError(msg) from exc
-        if value is not None and not isinstance(value, bytes):
-            msg = f"cache entry {key!r} is not bytes"
-            raise StoreError(msg)
-        return value
+        return None if row is None else bytes(row[0])
 
     def set(self, key: str, value: bytes) -> None:
-        """Store ``value`` under ``key``.
+        """Store ``value`` under ``key`` (last write wins).
 
         Raises:
             StoreError: The cache is read-only or closed, or the write failed.
         """
-        self._check_open()
-        if self._read_only or self._cache is None:
+        db = self._open_db()
+        if self._read_only or db is None:
             msg = "cache is read-only"
             raise StoreError(msg)
         try:
-            self._cache.set(key, value)
-        except (OSError, sqlite3.Error, diskcache.Timeout) as exc:
+            with db:
+                db.execute("INSERT OR REPLACE INTO kv (key, value) VALUES (?, ?)", (key, value))
+        except sqlite3.Error as exc:
             msg = f"cache write failed: {exc}"
             raise StoreError(msg) from exc
 
     def close(self) -> None:
         """Close the cache; calling it twice is fine."""
-        if self._cache is not None:
-            self._cache.close()
+        self._discard()
         self._closed = True
 
     def __enter__(self) -> Self:
@@ -93,7 +107,13 @@ class DiskKVCache:
     ) -> None:
         self.close()
 
-    def _check_open(self) -> None:
+    def _discard(self) -> None:
+        if self._db is not None:
+            self._db.close()
+            self._db = None
+
+    def _open_db(self) -> sqlite3.Connection | None:
         if self._closed:
             msg = "cache is closed"
             raise StoreError(msg)
+        return self._db

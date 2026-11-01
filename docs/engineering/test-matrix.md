@@ -227,7 +227,7 @@ owning module's unit test dir (`pt/unit/<module>/`, `rd/unit/…`).
 
 | Symbol | Module | Task | Test file | Test cases (short) | Status |
 | --- | --- | --- | --- | --- | --- |
-| `DiskKVCache` (T1.8 part) | `store.kv` | T1.8 | `test_kv.py` | set/get; missing → `None`; namespaces; persistence | covered |
+| `DiskKVCache` (T1.8 part) | `store.kv` | T1.8 | `test_kv.py` | set/get; missing → `None`; namespaces; persistence; plain sqlite BLOB rows (no pickle); corrupt file → `StoreError` | covered |
 | `DiskKVCache` (T6.1 part: read-only mode) | `store.kv` | T6.1 | `test_kv.py` | read-only (PR jobs) → write raises `StoreError` | covered |
 | `LayeredKVCache` | `store.kv` | T6.1 | `test_layered_cache.py` | overlay write only; shadowing; base read-only | covered |
 | `ArtifactStore.write_run`, `.read_run` | `store.artifacts` | T1.8 | `test_artifacts.py` | round trip; 13 columns; atomic; „Kündigungsschutzgesetz“; root outside → `StoreError`; existing run dir never overwritten; `scored.jsonl` carries `TestCase` and metric details (D359) | covered |

@@ -25,7 +25,8 @@ and exposes no per-call usage.
    requests, USD and tokens charged by `Budget.charge` inside it (nested scopes all count; concurrent
    tasks stay separate). The runner uses one scope per judge call to release exactly the unused
    reservation and one scope per run for `RunManifest.cost`. `Budget`'s own behaviour is unchanged.
-4. Run id format: `<UTC yyyymmddTHHMMSS>-<6 hex>` (`store.artifacts.new_run_id`).
+4. `DiskKVCache` uses stdlib `sqlite3` (BLOB values, no pickle) instead of `diskcache`, whose pickle-deserialisation advisory (PYSEC-2026-2447) fails the pip-audit gate; no ignore entry.
+5. Run id format: `<UTC yyyymmddTHHMMSS>-<6 hex>` (`store.artifacts.new_run_id`).
 
 ## Alternatives considered
 - Put the case body into `results.parquet`: breaks the 13-column contract the gate, `RunIndex` and the
