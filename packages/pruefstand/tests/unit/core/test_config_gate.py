@@ -74,7 +74,7 @@ def test_gate_defaults() -> None:
     gate = GatePolicy(metrics={}, slices=())
     assert gate.hard_fail == ("canary_leak", "tenant_leak", "system_prompt_leak")
     assert gate.slices == ()
-    assert gate.gated_slices == ("overall", "tenant", "lang", "perturbed_all")
+    assert gate.gated_slices == ("overall", "perturbed_all")  # derived from slices=()
     assert "perturbed_all" in GatePolicy(metrics={}).gated_slices
     assert (gate.alpha, gate.warn_p, gate.min_clusters) == (0.025, 0.10, 30)
     assert (gate.n_resamples, gate.correction, gate.max_error_rate) == (10_000, "holm", 0.02)

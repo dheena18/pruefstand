@@ -22,13 +22,13 @@ def committed_files(root: Path) -> list[Path]:
 
 
 def is_gate_config(path: Path) -> bool:
-    """True when the file is meant as a ``PruefstandConfig`` (has a top-level ``gate`` key).
+    """True when the file is meant as a ``PruefstandConfig`` (top-level ``version`` and ``target``).
 
-    Other profiles, such as rag-demo's ``rag.yaml``, are skipped; a gate config that is broken
-    is not skipped but reported by ``violations``.
+    Other profiles, such as rag-demo's ``rag.yaml``, are skipped. A gate config that is broken or
+    lacks ``gate`` is not skipped: ``violations`` reports that it does not load.
     """
     data = yaml.safe_load(path.read_text(encoding="utf-8"))
-    return isinstance(data, dict) and "gate" in data
+    return isinstance(data, dict) and "version" in data and "target" in data
 
 
 def violations(root: Path) -> list[str]:
@@ -102,10 +102,26 @@ def test_tier1_config_with_fallback_judge_fails(tmp_path: Path) -> None:
     assert any("fallback_judge" in p for p in violations(tmp_path))
 
 
+def test_gate_config_without_gate_block_fails_not_skips(tmp_path: Path) -> None:
+    text = (ROOT / "examples" / "live" / "pruefstand.yaml").read_text(encoding="utf-8")
+    start, end = text.index("\ngate:"), text.index("\nbudget:")
+    path = tmp_path / "examples" / "nogate.yaml"
+    path.parent.mkdir(parents=True)
+    path.write_text(text[:start] + text[end:], encoding="utf-8")
+    assert any("does not load" in p for p in violations(tmp_path))
+
+
+def test_root_pruefstand_yaml_loads_with_enough_clusters() -> None:
+    assert load_config(ROOT / "pruefstand.yaml").gate.min_clusters >= MIN_CLUSTERS
+
+
 def test_broken_gate_config_is_reported_not_skipped(tmp_path: Path) -> None:
     path = tmp_path / "examples" / "broken.yaml"
     path.parent.mkdir(parents=True)
-    path.write_text("gate: {metrics: {nonsense: {max_drop: 0.1}}}\n", encoding="utf-8")
+    path.write_text(
+        "version: 1\ntarget: {url: http://x}\ngate: {metrics: {nonsense: {max_drop: 0.1}}}\n",
+        encoding="utf-8",
+    )
     assert any("does not load" in p for p in violations(tmp_path))
 
 

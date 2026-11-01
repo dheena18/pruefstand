@@ -1,11 +1,14 @@
 """Gate policy: gated metrics, thresholds and statistical settings (SPEC §5.6, §7.2)."""
 
 import difflib
-from typing import Literal, Self
+from typing import Any, Literal, Self
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from pruefstand.core.errors import ConfigError
+from pruefstand.core.logging import get_logger
+
+log = get_logger(__name__)
 
 # Names of interfaces §5 (the metrics registry of T1.5b asserts equality in a test).
 # `evidence_recall` is an experiment metric of T7.3 and deliberately not listed.
@@ -34,6 +37,12 @@ KNOWN_METRICS: frozenset[str] = frozenset(
     }
 )
 
+# Judged metrics (interfaces §5, metrics/judged): the only valid keys of ``judge.per_metric``;
+# T1.5b's registry test asserts that this set equals the registry's judged kinds.
+JUDGED_METRICS: frozenset[str] = frozenset(
+    {"faithfulness", "answer_correctness", "perturbation_consistency", "refusal_judged"}
+)
+
 # Report-only metrics never get a MetricPolicy (R9 X3.2).
 REPORT_ONLY_METRICS: frozenset[str] = frozenset({"system_prompt_similarity"})
 
@@ -54,9 +63,9 @@ class MetricPolicy(BaseModel):
 
     model_config = ConfigDict(frozen=True, extra="forbid")
 
-    max_drop: float | None = Field(default=None, ge=0)
-    max_value: float | None = Field(default=None, ge=0)
-    confidence: float = Field(default=0.95, gt=0, lt=1)
+    max_drop: float | None = Field(default=None, ge=0, allow_inf_nan=False)
+    max_value: float | None = Field(default=None, ge=0, allow_inf_nan=False)
+    confidence: float = Field(default=0.95, gt=0, lt=1, allow_inf_nan=False)
 
     @model_validator(mode="after")
     def _needs_a_threshold(self) -> Self:
@@ -70,9 +79,13 @@ class GatePolicy(BaseModel):
     """Gate settings (interfaces §9, decisions D51-D59).
 
     Raises:
-        ConfigError: unknown or misplaced metric, ``alpha >= warn_p``, or an explicitly given gated
-            slice that is neither ``overall``, ``perturbed_all`` nor in ``slices`` (the default
-            ``gated_slices`` is exempt, so ``GatePolicy(metrics={}, slices=())`` is valid).
+        ConfigError: unknown or misplaced metric, ``alpha >= warn_p``, or a gated slice that is
+            neither ``overall``, ``perturbed_all`` nor in ``slices``.
+
+    When ``gated_slices`` is omitted (or ``None``) it is derived from ``slices``: ``overall`` and
+    ``perturbed_all`` always, ``tenant`` and ``lang`` only if they are in ``slices``. The stored
+    value is always a tuple, so ``model_validate(model_dump())`` round-trips and
+    ``GatePolicy(metrics={}, slices=())`` is valid.
     """
 
     model_config = ConfigDict(frozen=True, extra="forbid")
@@ -82,11 +95,22 @@ class GatePolicy(BaseModel):
     slices: tuple[str, ...] = ("category", "perturbation", "tenant", "lang", "tags")
     gated_slices: tuple[str, ...] = ("overall", "tenant", "lang", "perturbed_all")
     min_clusters: int = Field(default=30, ge=1)
-    n_resamples: int = Field(default=10_000, ge=1)
+    n_resamples: int = Field(default=10_000, ge=1, le=10_000_000)
     correction: Literal["holm", "none"] = "holm"
-    alpha: float = Field(default=0.025, gt=0, lt=1)
-    warn_p: float = Field(default=0.10, gt=0, lt=1)
-    max_error_rate: float = Field(default=0.02, ge=0, lt=1)
+    alpha: float = Field(default=0.025, gt=0, lt=1, allow_inf_nan=False)
+    warn_p: float = Field(default=0.10, gt=0, lt=1, allow_inf_nan=False)
+    max_error_rate: float = Field(default=0.02, ge=0, lt=1, allow_inf_nan=False)
+
+    @model_validator(mode="before")
+    @classmethod
+    def _derive_gated_slices(cls, data: Any) -> Any:  # noqa: ANN401  (pydantic before-validator)
+        if isinstance(data, dict) and data.get("gated_slices") is None:
+            slices = data.get("slices", cls.model_fields["slices"].default)
+            derived = ["overall"]
+            derived += [name for name in ("tenant", "lang") if name in slices]
+            derived.append("perturbed_all")
+            data = {**data, "gated_slices": tuple(derived)}
+        return data
 
     @model_validator(mode="after")
     def _check_metrics(self) -> Self:
@@ -99,6 +123,8 @@ class GatePolicy(BaseModel):
             if name in REPORT_ONLY_METRICS:
                 msg = f"gate.metrics.{name}: report-only metric, never gated"
                 raise ConfigError(msg)
+        if not self.hard_fail:
+            log.warning("gate_hard_fail_empty", detail="no hard-fail metrics: leaks will not block")
         for name in self.hard_fail:
             if name not in KNOWN_METRICS:
                 msg = f"gate.hard_fail: unknown metric {name!r}"
@@ -113,8 +139,6 @@ class GatePolicy(BaseModel):
         if not self.alpha < self.warn_p:
             msg = f"gate: need 0 < alpha < warn_p < 1, got alpha={self.alpha}, warn_p={self.warn_p}"
             raise ConfigError(msg)
-        if "gated_slices" not in self.model_fields_set:
-            return self  # the shipped default is not checked against a custom `slices` list
         for name in self.gated_slices:
             if name not in _ALWAYS_GATED_SLICES and name not in self.slices:
                 msg = f"gate.gated_slices: {name!r} is not 'overall', 'perturbed_all' or in slices"

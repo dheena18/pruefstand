@@ -7,7 +7,7 @@ from typing import Literal, Self
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-from pruefstand.core.config.gate import KNOWN_METRICS, GatePolicy
+from pruefstand.core.config.gate import JUDGED_METRICS, GatePolicy
 from pruefstand.core.config.target import TargetConfig
 from pruefstand.core.enums import Split
 from pruefstand.core.errors import ConfigError
@@ -44,7 +44,7 @@ class BudgetConfig(BaseModel):
 
     model_config = ConfigDict(frozen=True, extra="forbid")
 
-    max_usd_per_run: float | None = Field(default=0.0, ge=0)
+    max_usd_per_run: float | None = Field(default=0.0, ge=0, allow_inf_nan=False)
     max_tokens_per_run: int | None = Field(default=None, ge=0)
     max_requests_per_run: int | None = Field(default=None, ge=0)
 
@@ -55,9 +55,9 @@ class RunnerConfig(BaseModel):
     model_config = ConfigDict(frozen=True, extra="forbid")
 
     concurrency: int = Field(default=8, ge=1)
-    timeout_s: float = Field(default=60, gt=0)
+    timeout_s: float = Field(default=60, gt=0, allow_inf_nan=False)
     max_retries: int = Field(default=3, ge=0)
-    backoff_s: float = Field(default=1.0, ge=0)
+    backoff_s: float = Field(default=1.0, ge=0, allow_inf_nan=False)
 
 
 class LLMPolicyConfig(BaseModel):
@@ -139,8 +139,8 @@ class PruefstandConfig(BaseModel):
             msg = f"generator_family: unknown family {self.generator_family!r}; {_FAMILY_HINT}"
             raise ConfigError(msg)
         for metric in self.judge.per_metric:
-            if metric not in KNOWN_METRICS:
-                msg = f"judge.per_metric.{metric}: unknown metric"
+            if metric not in JUDGED_METRICS:
+                msg = f"judge.per_metric.{metric}: not a judged metric ({sorted(JUDGED_METRICS)})"
                 raise ConfigError(msg)
         for path, ref in self._judge_refs():
             if ref.family not in known:

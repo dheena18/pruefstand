@@ -1,6 +1,7 @@
 """Model id -> family, from the one table ``core/data/model_families.yaml`` (D74)."""
 
 import re
+import unicodedata
 from functools import cache
 from importlib.resources import files
 from typing import Annotated
@@ -50,8 +51,8 @@ def _strip_provider(model_id: str) -> str:
 def model_family(model_id: str) -> str:
     """Infer the model family of ``model_id`` from the pattern table.
 
-    One provider prefix (``ollama/``, ``github/``, ...) is stripped, then the first matching row
-    wins (case-insensitive). The table is read once and cached.
+    The id is NFKC-normalised, one provider prefix (``ollama/``, ``github/``, ...) is stripped,
+    then the first matching row wins (case-insensitive). The table is read once and cached.
 
     Args:
         model_id: A provider-qualified model id such as ``ollama/gemma3:12b``.
@@ -67,7 +68,7 @@ def model_family(model_id: str) -> str:
         >>> model_family("ollama/bge-m3")
         'unknown'
     """
-    rest = _strip_provider(model_id)
+    rest = _strip_provider(unicodedata.normalize("NFKC", model_id))
     for pattern, family in _compiled():
         if pattern.search(rest):
             return family

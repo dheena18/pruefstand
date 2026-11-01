@@ -15,10 +15,11 @@ provider_prefixes:
   - openrouter/
 
 patterns:
-  - {pattern: "qwen", family: qwen}
+  - {pattern: "qwen|qwq|tongyi", family: qwen}
   - {pattern: "mistral|mixtral|magistral|ministral", family: mistral}
   - {pattern: "llama", family: llama}
   - {pattern: "gemma", family: gemma}
+  - {pattern: "gemini", family: gemini}   # gemini/ is an opt-in free tier; a judge only if it differs from the generator
   - {pattern: "claude", family: claude}
   - {pattern: "gpt-oss", family: gpt}
   - {pattern: "gpt|(^|/)o\\d", family: gpt}
