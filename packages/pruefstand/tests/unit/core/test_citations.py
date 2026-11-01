@@ -223,3 +223,41 @@ def test_alias_file_errors_are_config_errors(monkeypatch: pytest.MonkeyPatch) ->
     clash = LawAliases(version=1, national={"BGB": ("Gesetz",)}, eu={"DSA": ("gesetz",)})
     with pytest.raises(ConfigError, match="two laws"):
         aliases._lookup_of(clash)
+
+
+# --- T2.2: the 21 further national laws of the GII corpus (one row each) -----------------------
+GII_LAW_ROWS: list[tuple[str, list[str]]] = [
+    ("§ 1 EGBGB", ["§ 1 EGBGB"]),
+    ("Art. 246a EGBGB", ["Art. 246a EGBGB"]),
+    ("§ 5 ArbSchG", ["§ 5 ArbSchG"]),
+    ("§ 14 TzBfG", ["§ 14 TzBfG"]),
+    ("§ 3 BUrlG", ["§ 3 BUrlG"]),
+    ("§ 3 EntgFG", ["§ 3 EntgFG"]),
+    ("§ 17 MuSchG", ["§ 17 MuSchG"]),
+    ("§ 15 AGG", ["§ 15 AGG"]),
+    ("§ 87 Abs. 1 BetrVG", ["§ 87 Abs. 1 BetrVG"]),
+    ("§ 105 GewO", ["§ 105 GewO"]),
+    ("§ 2 NachwG", ["§ 2 NachwG"]),
+    ("§ 2 ArbGG", ["§ 2 ArbGG"]),
+    ("§ 7 SGB IV", ["§ 7 SGB IV"]),
+    ("§ 7 SGB 4", ["§ 7 SGB IV"]),
+    ("§§ 7, 7a SGB IV", ["§ 7 SGB IV", "§ 7a SGB IV"]),
+    ("§ 1 ProdHaftG", ["§ 1 ProdHaftG"]),
+    ("§ 25 TDDDG", ["§ 25 TDDDG"]),
+    ("§ 13 GmbHG", ["§ 13 GmbHG"]),
+    ("§ 93 Abs. 1 AktG", ["§ 93 Abs. 1 AktG"]),
+    ("§ 17 InsO", ["§ 17 InsO"]),
+    ("§ 25a KWG", ["§ 25a KWG"]),
+    ("§ 23 VAG", ["§ 23 VAG"]),
+    ("§ 1 EnSiG", ["§ 1 EnSiG"]),
+    ("§ 8 BSIG", ["§ 8 BSIG"]),
+    ("§ 1 des Einführungsgesetzes zum Bürgerlichen Gesetzbuche", ["§ 1 EGBGB"]),
+    ("§ 14 Teilzeit- und Befristungsgesetz", ["§ 14 TzBfG"]),
+    ("§ 15 des Allgemeinen Gleichbehandlungsgesetzes", ["§ 15 AGG"]),
+    ("Section 7 SGB IV", ["§ 7 SGB IV"]),
+]
+
+
+@pytest.mark.parametrize(("text", "expected"), GII_LAW_ROWS)
+def test_gii_laws_parse(text: str, expected: list[str]) -> None:
+    assert [normalise(c) for c in extract_citations(text)] == expected
