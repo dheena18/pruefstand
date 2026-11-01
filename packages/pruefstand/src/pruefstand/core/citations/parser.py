@@ -1,12 +1,19 @@
 """Find German and EU legal citations in free text (T1.5a).
 
-A scan over *heads* (``§``, ``Art.``, ``Section`` ...): each head is followed by a number (list),
-optional qualifiers (Abs., S., Nr., lit., ``(2)``, ``ff.``) and a law name from the alias table.
-A citation without a resolvable law is dropped and logged at debug level; ``i.V.m.`` lends the
-law of the next citation to the one before it. Qualifiers after a list (``§§ 622, 623 Abs. 2``)
-belong to its last number. Several values (``Abs. 2, 3``) keep the first.
+A scan over *heads* (``§``, ``Art.``, ``Section`` ...): each head is followed by a number list,
+optional qualifiers (Abs., S., Nr., lit., ``(2)``, ``ff.``, skipped UAbs./Hs./Alt./Var.) and a law
+name from the alias table. A head takes at most one of each qualifier, so a head never rescans
+text another head already consumed (linear time). A citation without a resolvable law is dropped
+and logged at debug level.
+
+Conventions: number lists (``622, 623``, ``17 und 18``, ranges) expand to one citation each for
+every head; qualifiers after a list belong to its last number; several qualifier values
+(``Abs. 2, 3``, ``lit. a und b``) keep the first. A law-less citation borrows the law of the next
+one when joined by ``i.V.m.`` or, for heads of the same kind, by ``und``/``sowie``/``,``.
+``§`` (kind ``para``) exists only for national laws: ``§ 6 DSGVO`` is dropped.
 """
 
+import logging
 import re
 import unicodedata
 from dataclasses import dataclass
@@ -20,17 +27,19 @@ _log = get_logger(__name__)
 Kind = Literal["para", "art"]
 
 _NUM = r"[0-9]{1,5}(?![0-9])(?:(?!ff?\.)[a-z](?![A-Za-zÄÖÜäöüß]))?"
+_LET = r"[a-z](?![A-Za-zÄÖÜäöüß])"
 _NUM_AT = re.compile(rf"\s*({_NUM})")
 _HEAD = re.compile(
-    r"(?:§§?|(?<![\w.])s\.|(?<!\w)(?:Paragraph|Paragraf|Sections?|Secs?\.|Artikel|Articles?"
+    r"(?:§§?|(?<![\w.])s\.|(?<!\w)(?i:Paragraph|Paragraf|Sections?|Secs?\.|Artikel|Articles?"
     r"|Artt\.|Arts\.|Art\.))(?=\s*[0-9])"
 )
-_PLURAL_HEADS = {"§§", "Sections", "Secs.", "Articles", "Artt.", "Arts."}
-_ENGLISH_HEADS = {"s.", "Section", "Sections", "Sec.", "Secs."}
+_ENGLISH_HEADS = {"s.", "section", "sections", "sec.", "secs."}
 _RANGE = re.compile(rf"\s*(?:bis|[–—-])\s*(?P<end>{_NUM})")
 _LIST_SEP = re.compile(r"\s*(?:,|&|und|and|sowie)(?=\s*[0-9])")
 _LINK = re.compile(r"\s*(?:i\.\s?V\.\s?m\.|iVm|in\s+Verbindung\s+mit)\s*")
+_AND = re.compile(r"\s*(?:,|&|und|and|sowie)\s*")
 _MAX_RANGE = 200
+_FIELDS = ("absatz", "satz", "nummer", "lit")
 
 
 def _values(name: str) -> str:
@@ -42,10 +51,13 @@ _QUALIFIER = re.compile(
     r"[\s,]*(?:"
     + "|".join(
         [
-            r"(?:Absatz|Abs\.?)\s*" + _values("absatz"),
-            r"(?:Satz|S\.|s\.)\s*" + _values("satz"),
-            r"(?:Nummer|Nr\.)\s*" + _values("nummer"),
-            r"(?:lit\.|Buchstabe|Buchst\.|Bst\.)\s*(?P<lit>[a-z])(?![A-Za-zÄÖÜäöüß])",
+            r"(?i:Absatz|Abs\.?)\s*\(?\s*" + _values("absatz") + r"\s*\)?",
+            r"(?:(?i:Satz)|S\.|s\.)\s*" + _values("satz"),
+            r"(?i:Nummer|Nr\.)\s*" + _values("nummer"),
+            r"(?i:lit\.|Buchstabe|Buchst\.|Bst\.)\s*\(?\s*(?P<lit>" + _LET + r")"
+            rf"(?:\s*(?:,|und|sowie|bis|[–—-])\s*{_LET})*\s*\)?",
+            r"(?i:UAbs\.|Unterabs\.|Unterabsatz|Halbsatz|Hs\.|Alt\.|Alternative|Var\.|Variante)"
+            r"\s*" + _values("skip"),
             rf"\(\s*(?:(?P<p_num>{_NUM})|(?P<p_lit>[a-z]))\s*\)",
             r"(?P<ff>ff?\.)(?!\w)",
         ]
@@ -79,6 +91,8 @@ class _Draft:
 
 @dataclass(frozen=True)
 class _Parsed:
+    """Result of one head: drafts (empty = nothing to keep), the law if present, end offset."""
+
     drafts: list[_Draft]
     law: str | None
     end: int
@@ -86,13 +100,13 @@ class _Parsed:
 
 def _expand(first: str, last: str) -> list[str]:
     """Expand ``first..last`` when both are plain numbers and the span is small."""
-    if first.isdigit() and last.isdigit() and 0 <= int(last) - int(first) <= _MAX_RANGE:
+    if first.isdigit() and last.isdigit() and 0 <= int(last) - int(first) < _MAX_RANGE:
         return [str(n) for n in range(int(first), int(last) + 1)]
     return [first, last]
 
 
-def _numbers(text: str, pos: int, *, plural: bool) -> tuple[list[str], int] | None:
-    """Read one number (or, for plural heads, a list with ranges) after a head."""
+def _numbers(text: str, pos: int) -> tuple[list[str], int] | None:
+    """Read a number list (with ranges) after a head."""
     numbers: list[str] = []
     while (m := _NUM_AT.match(text, pos)) is not None:
         pos = m.end()
@@ -102,7 +116,7 @@ def _numbers(text: str, pos: int, *, plural: bool) -> tuple[list[str], int] | No
             pos = rng.end()
         else:
             numbers.append(m.group(1))
-        sep = _LIST_SEP.match(text, pos) if plural else None
+        sep = _LIST_SEP.match(text, pos)
         if sep is None:
             break
         pos = sep.end()
@@ -110,18 +124,17 @@ def _numbers(text: str, pos: int, *, plural: bool) -> tuple[list[str], int] | No
 
 
 def _apply(m: re.Match[str], fields: dict[str, str]) -> bool:
-    """Record one qualifier; False when it repeats a field already set."""
-    for name in ("absatz", "satz", "nummer", "lit"):
-        if m.group(name) is not None:
-            return fields.setdefault(name, m.group(name)) == m.group(name)
-    if m.group("p_num") is not None:
-        if "absatz" in fields:
-            return False
-        fields["absatz"] = m.group("p_num")
-        return True
-    if m.group("p_lit") is not None:
-        return fields.setdefault("lit", m.group("p_lit")) == m.group("p_lit")
-    return True  # ff. / f.: dropped
+    """Record one qualifier; False when its field is already set (a head takes each once)."""
+    name, value = next(
+        ((n, m.group(n)) for n in _FIELDS if m.group(n) is not None),
+        ("absatz", m.group("p_num")) if m.group("p_num") is not None else ("lit", m.group("p_lit")),
+    )
+    if value is None:
+        return True  # ff. / f. and the skipped UAbs./Hs./Alt./Var.: dropped
+    if name in fields:
+        return False
+    fields[name] = value
+    return True
 
 
 def _qualifiers(text: str, pos: int) -> tuple[dict[str, str], int]:
@@ -131,19 +144,21 @@ def _qualifiers(text: str, pos: int) -> tuple[dict[str, str], int]:
     return fields, pos
 
 
-def _classify(head: str) -> tuple[Kind, bool, bool]:
-    kind: Kind = "art" if head.startswith("Art") else "para"
-    return kind, head in _PLURAL_HEADS, head in _ENGLISH_HEADS
+def _classify(head: str) -> tuple[Kind, bool]:
+    folded = head.casefold()
+    kind: Kind = "art" if folded.startswith("art") else "para"
+    return kind, folded in _ENGLISH_HEADS
 
 
 def _drop(reason: str, start: int) -> None:
     """Log a dropped citation at debug level (reason and offset only, never the text)."""
-    _log.debug("citation_dropped", reason=reason, offset=start)
+    if _log.isEnabledFor(logging.DEBUG):
+        _log.debug("citation_dropped", reason=reason, offset=start)
 
 
 def _parse_at(text: str, head: re.Match[str]) -> _Parsed | None:
-    kind, plural, english = _classify(head.group())
-    read = _numbers(text, head.end(), plural=plural)
+    kind, english = _classify(head.group())
+    read = _numbers(text, head.end())
     if read is None:
         _drop("no_number", head.start())
         return None
@@ -151,19 +166,29 @@ def _parse_at(text: str, head: re.Match[str]) -> _Parsed | None:
     fields, pos = _qualifiers(text, pos)
     found = match_law(text, pos)
     law, end = found if found is not None else (None, pos)
-    if english and (law is None or not is_national(law)):
-        _drop("english_head_without_national_law", head.start())
-        return None
+    if (english and law is None) or (kind == "para" and law is not None and not is_national(law)):
+        _drop("para_without_national_law", head.start())
+        return _Parsed([], None, end)  # resume after the consumed span
     drafts = [_Draft(kind, n) for n in numbers]
-    drafts[-1] = _Draft(
-        kind,
-        numbers[-1],
-        fields.get("absatz"),
-        fields.get("satz"),
-        fields.get("nummer"),
-        fields.get("lit"),
-    )
+    drafts[-1] = _Draft(kind, numbers[-1], *(fields.get(f) for f in _FIELDS))
     return _Parsed(drafts, law, end)
+
+
+def _lend_target(text: str, pos: int, kind: Kind) -> int | None:
+    """Offset of the next head if a law-less citation may borrow its law, else ``None``."""
+    link = _LINK.match(text, pos)
+    if link is not None:
+        return link.end() if _HEAD.match(text, link.end()) else None
+    sep = _AND.match(text, pos)
+    if sep is None:
+        return None
+    nxt = _HEAD.match(text, sep.end())
+    return sep.end() if nxt is not None and _classify(nxt.group())[0] == kind else None
+
+
+def _emit(drafts: list[_Draft], law: str) -> list[Citation]:
+    """Attach the law; a ``para`` draft cannot take an EU law and is skipped."""
+    return [d.with_law(law) for d in drafts if d.kind == "art" or is_national(law)]
 
 
 def extract_citations(text: str) -> list[Citation]:
@@ -178,7 +203,7 @@ def extract_citations(text: str) -> list[Citation]:
 
     Returns:
         Citations in order; a citation without a resolvable law is dropped (debug log).
-        Never raises.
+        Never raises; runs in time linear in ``len(text)``.
 
     Examples:
         >>> [c.law for c in extract_citations("§§ 622, 623 BGB und Art. 6 DSGVO")]
@@ -197,17 +222,17 @@ def extract_citations(text: str) -> list[Citation]:
             pos = head.end()
             continue
         pos = parsed.end
-        if parsed.law is not None:
-            found += [d.with_law(parsed.law) for d in (*pending, *parsed.drafts)]
+        if not parsed.drafts:
             pending.clear()
-            continue
-        link = _LINK.match(text, pos)
-        if link is not None and _HEAD.match(text, link.end()) is not None:
+        elif parsed.law is not None:
+            found += _emit([*pending, *parsed.drafts], parsed.law)
+            pending.clear()
+        elif (nxt := _lend_target(text, pos, parsed.drafts[-1].kind)) is not None:
             pending += parsed.drafts
-            pos = link.end()
-            continue
-        _drop("no_law", head.start())
-        pending.clear()
+            pos = nxt
+        else:
+            _drop("no_law", head.start())
+            pending.clear()
     return found
 
 

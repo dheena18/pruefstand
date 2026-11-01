@@ -102,6 +102,11 @@ def test_extract_extra_forms(text: str, expected: list[str]) -> None:
     assert [normalise(c) for c in extract_citations(text)] == expected
 
 
+def test_kind_is_part_of_the_match() -> None:
+    art = Citation(kind="art", number="6", law="DSGVO")
+    assert not citations_match(art, art.model_copy(update={"kind": "para"}))
+
+
 def test_decomposed_umlauts_are_normalised() -> None:
     text = unicodedata.normalize("NFD", "Paragraph 622 des Bürgerlichen Gesetzbuchs")
     assert [normalise(c) for c in extract_citations(text)] == ["§ 622 BGB"]
@@ -115,6 +120,7 @@ def test_dropped_citation_is_logged_at_debug(caplog: pytest.LogCaptureFixture) -
     with caplog.at_level(logging.DEBUG):
         assert extract_citations("§ 622") == []
     assert "citation_dropped" in caplog.text
+    assert "622" not in caplog.text
 
 
 def test_parse_one() -> None:
@@ -146,7 +152,6 @@ def test_citation_model_is_frozen_and_strict() -> None:
         ("§ 622 Abs. 3 BGB", "§ 622 Abs. 2 BGB", False),
         ("Article 6 GDPR", "Art. 6 DSGVO", True),
         ("§ 622 BGB", "§ 622 KSchG", False),
-        ("Art. 6 DSGVO", "§ 6 DSGVO", False),
         ("§ 623 BGB", "§ 622 BGB", False),
         ("§ 622 BGB", "§ 622 Abs. 2 BGB", False),
     ],

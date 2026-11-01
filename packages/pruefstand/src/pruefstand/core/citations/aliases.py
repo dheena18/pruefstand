@@ -74,7 +74,7 @@ def _lookup() -> dict[str, str]:
 def _law_regex() -> re.Pattern[str]:
     names = sorted(_lookup_of(law_aliases()), key=len, reverse=True)
     alternatives = "|".join(re.escape(n).replace(r"\ ", r"\s+") for n in names)
-    return re.compile(rf"\s*{_CONNECTOR}(?P<law>{alternatives})(?!\w|-\w)", re.IGNORECASE)
+    return re.compile(rf"\s*{_CONNECTOR}(?P<law>{alternatives})(?!\w)", re.IGNORECASE)
 
 
 def resolve_law(name: str) -> str | None:
