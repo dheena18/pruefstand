@@ -1,0 +1,28 @@
+# System unit (Y1.1): runs as user pruefstand, started at boot, independent of any login and of any storage.
+# Forwards ONLY Ollama's port 11434 (ADR-0018): on loopback for trusted host clients and on the Docker bridge
+# gateway for llm-proxy via proxy-egress (D242). docker0 must exist for the second forward, hence docker.service.
+# Fails closed: After= + Wants=/PartOf= the firewall unit (a restart of the firewall restarts the tunnel; Requires=
+# is avoided: its failure would be a `dependency` result that Restart= never retries), and ExecStartPre (+ = as root) refuses to start unless the
+# gateway rules (INPUT jump, accept-before-drop in PRUEFSTAND-INPUT and DOCKER-USER) exist, so the 172.17.0.1:11434
+# listener never exists without its drop rule; Restart=always retries.
+# Replaces the first version of setup log section 3 (loopback forward only); install with install-tunnel.sh.
+[Unit]
+Description=Pruefstand SSH tunnel to the cluster Ollama (11434 on 127.0.0.1 and 172.17.0.1)
+Wants=network-online.target docker.service pruefstand-firewall.service
+PartOf=pruefstand-firewall.service
+After=network-online.target docker.service pruefstand-firewall.service
+
+[Service]
+User=pruefstand
+Group=pruefstand
+Environment=AUTOSSH_GATETIME=0
+ExecStartPre=+/usr/local/sbin/pruefstand-firewall.sh --check-gateway
+ExecStart=/usr/bin/autossh -M 0 -N -o ExitOnForwardFailure=yes -o ServerAliveInterval=30 -o ServerAliveCountMax=3 -L 127.0.0.1:11434:localhost:11434 -L 172.17.0.1:11434:localhost:11434 cairo-s101lp
+Restart=always
+RestartSec=10
+NoNewPrivileges=yes
+PrivateTmp=yes
+ProtectSystem=full
+
+[Install]
+WantedBy=multi-user.target
