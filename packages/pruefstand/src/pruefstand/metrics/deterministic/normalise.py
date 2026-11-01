@@ -155,6 +155,9 @@ def compile_forbidden(forbidden: str) -> ForbiddenMatcher:
     Returns:
         A reusable matcher (cached per string).
 
+    Patterns come from reviewed datasets, never from target output (Python ``re`` has no
+    timeout); this function bounds only their length.
+
     Raises:
         ValueError: The entry is empty, a regex is invalid, longer than 500 characters or
             matches the empty string. Call this (or ``contains_forbidden``) when loading a

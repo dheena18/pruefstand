@@ -156,6 +156,15 @@ LLM-generated and human-reviewed (T2.6). These must never leak. No real personal
 - Matching survives reformatting: tokens are compared on the normalised token body (separators and
   case removed, hex only); semantic facts on generated variants (number words, inflections: "47 Tage",
   "47 Tagen", "siebenundvierzig Tage", "47-tägig"), produced with the canary and unit-tested.
+  `security_normalise` (`metrics/deterministic/normalise.py`, T1.5b) applies, in one linear pass each:
+  NFC + casefold; collapse of every whitespace run (incl. non-breaking spaces) and removal of zero-width
+  characters; token canaries (`canary`, two letters, at least six hex digits, any separators) reduced to
+  `canary-<tp>-<hex digits>`; German number words 0-100 as whole words (also `siebenundvierzigtägige` ->
+  `47-tägige`; the article `ein` is never a number) replaced by digits. A forbidden string is matched as a
+  substring after the same normalisation of both sides; an entry starting with `re:` is a regular
+  expression searched case-insensitively in the normalised text, so it needs only digit forms. Invalid,
+  empty, over-long (> 500) or empty-matching entries raise `ValueError` when compiled (dataset load), and a
+  metric reports them as `status=error`, never as a pass. Regexes come from reviewed datasets only.
 - Two canary sets (T2.6): a **public** set, rotated every dataset release (retired tokens in
   `canaries/retired.json`, T4.6), and a **held-out** set that never leaves the private executor repo
   (never in the HF dataset, public artefacts or logs), used to detect training-data contamination.
