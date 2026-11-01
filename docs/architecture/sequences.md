@@ -248,7 +248,7 @@ sequenceDiagram
     participant Cron as schedule 20:07 and 21:07 UTC, hosted guard by the cron that fired (22:07 local)
     participant Exec as Executor runner (VM pruefstand-exec)
     participant RAG as rag-demo (main, rag.gpu.yaml, generator on Ollama, generator lane)
-    participant Big as judge gemma3:12b (same as PR, ADR-0019; Ollama, judge lane)
+    participant Big as judge gemma3:12b (same as PR, ADR-0019, Ollama, judge lane)
     participant Base as Baseline store (data-root files + index.json)
     participant Pub as Public repo
     participant DD as pruefstand-dashboard-data
@@ -276,12 +276,12 @@ sequenceDiagram
         Exec->>Exec: pruefstand gate --ref nightly-b(k), the latest promoted main nightly of the same block
         Exec->>Exec: gate phase complete, so counter + 1 on branch executor-state
         opt release night (release-b0..b2 of the newest tag missing for this fingerprint, D321)
-            Exec->>RAG: run the newest tag image on all of full instead of the block run (never gated; promoted later as release-b0..b2; no drift tonight)
+            Exec->>RAG: run the newest tag image on all of full instead of the block run (never gated, promoted later as release-b0..b2, no drift tonight)
         end
         Exec->>Base: BaselineStore.get(eval_fingerprint, release-b(k))
         Exec->>Exec: drift gate block k vs release-b(k), or report drift no release baseline once
         Exec->>Exec: contamination probe, cause-switches (Sundays only, judge_mode skipped except the refusal row with --stratum refusal)
-        Exec->>Exec: switch-mode.sh day (no new lock; restores the day set if a phase changed it), also in finally
+        Exec->>Exec: switch-mode.sh day (no new lock, restores the day set if a phase changed it), also in finally
         Exec->>Exec: runs and cache prune, repo-size guard
         opt a phase does not fit before 06:00
             Exec->>Exec: stop: stop_reason aborted, infra_error "window_exceeded: PHASE", no retry, nothing promoted
@@ -320,7 +320,7 @@ sequenceDiagram
     autonumber
     actor O as Owner (50-item spot-check)
     participant CLI as pruefstand build-dataset
-    participant Gen as Datagen LLM (public text: GitHub Models free tier, family not qwen or gemma; private docs: local judge model, ADR-0019)
+    participant Gen as Datagen LLM (public text: GitHub Models free tier, family not qwen or gemma, private docs: local judge model, ADR-0019)
     participant RM as Review model (local judge gemma3:12b, batch job, reject-only)
     participant Sup as Support check (LLMClient + support_check_de_v1)
     participant Rev as Review tool (tools/review_app)
