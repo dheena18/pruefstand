@@ -6,85 +6,26 @@ entry; ``files`` maps a file name (relative to the source directory) to its SHA-
 """
 
 import hashlib
-import re
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
 import yaml
-
-KINDS = ("gii", "hf", "eurlex", "github")
-HEX40 = re.compile(r"[0-9a-f]{40}\Z")
-ID_RE = re.compile(r"(?:(?:gii|eurlex):[A-Za-z0-9]+|[a-z0-9_]+)\Z")
-# Every licence a source may declare; anything else (typos, other spellings) fails loudly.
-ALLOWED_LICENSES = frozenset(
-    {
-        "official-work-5-urhg",
-        "eurlex-legal-notice",
-        "odbl",
-        "cc-by-4.0",
-        "cc-by-sa-4.0",
-        "apache-2.0",
-        "cc-by-nc-4.0",
-    }
+from data_errors import (
+    ChecksumError,
+    ConfigMissingError,
+    DataError,
+    FetchError,
+    LicenseMismatch,
+    SourcesError,
 )
-# A dataset config holds exactly one licence (ODbL, CC BY and CC BY-SA never share a config,
-# ADR-0015), except where this table lists the licences it may hold together.
-CONFIG_LICENSES: dict[str, frozenset[str]] = {
-    "laws_eurlex": frozenset({"official-work-5-urhg", "eurlex-legal-notice"}),
-}
-DOWNLOAD_ONLY = "download_only"
-HEX64 = re.compile(r"[0-9a-f]{64}\Z")
+from data_validate import check_config_homogeneity, check_types, validate_source
+
 CHUNK = 1 << 20
 SOURCES_HEADER = (
     "# Pinned source list of the data downloader (T2.1). Machine-managed by\n"
     "# `python data/download.py --update-pins`; edit by hand only to add a source.\n"
 )
-
-
-class DataError(Exception):
-    """Base class of downloader failures; ``exit_code`` is the process exit code."""
-
-    exit_code = 1
-
-
-class ChecksumError(DataError):
-    """A file's SHA-256 differs from the pin."""
-
-    def __init__(self, source_id: str, name: str, expected: str, actual: str) -> None:
-        super().__init__(
-            f"checksum mismatch: {source_id}/{name} expected {expected} actual {actual}"
-        )
-
-
-class LicenseMismatch(DataError):  # noqa: N818  # name fixed by the T2.1 prompt (exit 3)
-    """The licence found upstream differs from sources.yaml."""
-
-    exit_code = 3
-
-    def __init__(self, source_id: str, expected: str, actual: str) -> None:
-        super().__init__(
-            f"license mismatch: {source_id}: sources.yaml says {expected!r}, upstream: {actual!r}"
-        )
-
-
-class ConfigMissingError(DataError):
-    """The pinned Hugging Face config does not exist in the dataset."""
-
-    exit_code = 2
-
-    def __init__(self, source_id: str, config: str, available: list[str]) -> None:
-        super().__init__(
-            f"config missing: {source_id} has no config {config!r}; available: {sorted(available)}"
-        )
-
-
-class FetchError(DataError):
-    """A download failed (HTTP error, bot challenge, missing file after download)."""
-
-
-class SourcesError(DataError):
-    """``sources.yaml`` is malformed."""
 
 
 @dataclass
@@ -147,53 +88,15 @@ def _build(raw: dict[str, Any], defaults: dict[str, Any]) -> Source:
     known = set(Source.__dataclass_fields__) - {"extra"}
     extra = {k: v for k, v in merged.items() if k not in known}
     fields = {k: v for k, v in merged.items() if k in known}
+    check_types(raw.get("id"), fields)
     try:
         files = {str(k): (None if v is None else str(v)) for k, v in fields.pop("files").items()}
         source = Source(files=files, extra=extra, **fields)
     except (KeyError, TypeError, AttributeError) as err:
         msg = f"bad entry {raw.get('id')!r}: {err}"
         raise SourcesError(msg) from err
-    _validate(source)
+    validate_source(source)
     return source
-
-
-def _validate_licence(source: Source) -> None:
-    if source.license not in ALLOWED_LICENSES:
-        msg = (
-            f"{source.id}: unknown licence {source.license!r}; allowed: {sorted(ALLOWED_LICENSES)}"
-        )
-        raise SourcesError(msg)
-    download_only = source.license_config == DOWNLOAD_ONLY
-    if source.license == "cc-by-nc-4.0" and not download_only:
-        msg = f"{source.id}: non-commercial data belongs in license_config {DOWNLOAD_ONLY}"
-        raise SourcesError(msg)
-    if download_only == source.redistribute:
-        msg = f"{source.id}: redistribute must be false exactly for license_config {DOWNLOAD_ONLY}"
-        raise SourcesError(msg)
-
-
-def _validate(source: Source) -> None:
-    if not ID_RE.match(source.id):
-        msg = f"bad source id {source.id!r}"
-        raise SourcesError(msg)
-    if source.kind not in KINDS:
-        msg = f"{source.id}: unknown kind {source.kind!r}"
-        raise SourcesError(msg)
-    if source.kind == "hf" and not (source.revision and HEX40.match(source.revision)):
-        msg = f"{source.id}: hf revision must be a 40-hex commit SHA"
-        raise SourcesError(msg)
-    if source.kind == "github" and not (source.commit and HEX40.match(source.commit)):
-        msg = f"{source.id}: github commit must be a 40-hex SHA"
-        raise SourcesError(msg)
-    _validate_licence(source)
-    for name, sha in source.files.items():
-        parts = name.split("/")
-        if "\\" in name or any(p in ("", ".", "..") for p in parts):
-            msg = f"{source.id}: file name {name!r} must be a clean relative path"
-            raise SourcesError(msg)
-        if sha is not None and not HEX64.match(sha):
-            msg = f"{source.id}/{name}: sha256 must be 64 lowercase hex characters"
-            raise SourcesError(msg)
 
 
 def load_raw(path: Path) -> dict[str, Any]:
@@ -224,25 +127,8 @@ def load_sources(path: Path) -> list[Source]:
     if len(ids) != len(set(ids)):
         msg = "duplicate source ids in sources.yaml"
         raise SourcesError(msg)
-    _check_config_homogeneity(sources)
+    check_config_homogeneity(sources)
     return sources
-
-
-def _check_config_homogeneity(sources: list[Source]) -> None:
-    """Fail when a config holds more licences than allowed (ADR-0015).
-
-    Every config holds exactly one licence, except those listed in ``CONFIG_LICENSES``.
-    """
-    by_config: dict[str, set[str]] = {}
-    for src in sources:
-        by_config.setdefault(src.license_config, set()).add(src.license)
-    for config, licences in by_config.items():
-        allowed = CONFIG_LICENSES.get(config)
-        if (allowed is not None and not licences <= allowed) or (
-            allowed is None and len(licences) > 1
-        ):
-            msg = f"config {config!r} may not hold licences {sorted(licences)}"
-            raise SourcesError(msg)
 
 
 def save_pins(path: Path, updates: dict[str, dict[str, Any]]) -> None:
@@ -258,3 +144,18 @@ def save_pins(path: Path, updates: dict[str, dict[str, Any]]) -> None:
         entry.update(updates.get(entry["id"], {}))
     body = yaml.safe_dump(data, sort_keys=False, allow_unicode=True, width=100)
     path.write_text(SOURCES_HEADER + body, encoding="utf-8")
+
+
+__all__ = [
+    'ChecksumError',
+    'ConfigMissingError',
+    'DataError',
+    'FetchError',
+    'LicenseMismatch',
+    'Source',
+    'SourcesError',
+    'SyncResult',
+    'load_sources',
+    'save_pins',
+    'sha256_file',
+]  # fmt: skip

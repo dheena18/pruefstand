@@ -29,6 +29,7 @@ from data_hf import latest_hf_revision
 from data_sources import (
     ChecksumError,
     DataError,
+    FetchError,
     LicenseMismatch,
     Source,
     SourcesError,
@@ -108,6 +109,8 @@ def _run_one(
         return src, sync_source(src, raw, client=client, sleep=sleep, pin_check=pin_check)
     except DataError as err:
         return src, err
+    except Exception as err:  # one bad source must not abort the run
+        return src, FetchError(f"{src.id}: unexpected {type(err).__name__}")
 
 
 def _outcomes(
@@ -118,9 +121,22 @@ def _outcomes(
         return [job.result() for job in jobs]
 
 
+def _read_manifest(path: Path) -> dict[str, object]:
+    if not path.is_file():
+        return {}
+    try:
+        old = json.loads(path.read_text(encoding="utf-8"))
+    except (ValueError, OSError):
+        old = None
+    if not isinstance(old, dict):
+        print(f"warning: {path} unreadable, rewriting it from this run", file=sys.stderr)
+        return {}
+    return old
+
+
 def _write_manifest(raw: Path, entries: dict[str, dict[str, object]]) -> None:
     path = raw / "MANIFEST.json"
-    old = json.loads(path.read_text(encoding="utf-8")) if path.is_file() else {}
+    old = _read_manifest(path)
     old.update(entries)
     raw.mkdir(parents=True, exist_ok=True)
     tmp = path.with_name(path.name + ".tmp")

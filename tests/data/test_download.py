@@ -555,3 +555,204 @@ def test_manifest_write_is_atomic(tmp_path: Path) -> None:
     assert [p.name for p in (tmp_path / "raw").iterdir() if p.name.startswith("MANIFEST")] == [
         "MANIFEST.json"
     ]
+
+
+def _memerag(**changes: Any) -> dict[str, Any]:
+    entry: dict[str, Any] = {
+        "id": "memerag", "kind": "github", "repo": "amazon-science/MEMERAG", "commit": "b" * 40,
+        "license": "cc-by-nc-4.0", "license_config": "download_only", "redistribute": False,
+        "attribution": "Amazon", "files": {"LICENSE": ABC_SHA},
+    }  # fmt: skip
+    return {**entry, **changes}
+
+
+def test_memerag_fixture_itself_is_valid(tmp_path: Path) -> None:
+    assert load_sources(_write_sources(tmp_path, [_memerag()]))[0].redistribute is False
+
+
+@pytest.mark.parametrize("value", ["false", "no", None, [], {}, "", 0, "False"])
+def test_redistribute_must_be_a_bool(tmp_path: Path, value: Any) -> None:
+    with pytest.raises(SourcesError, match="redistribute"):
+        load_sources(_write_sources(tmp_path, [_memerag(redistribute=value)]))
+
+
+@pytest.mark.parametrize(
+    "config",
+    [
+        "Oldp_Derived",
+        "oldp_derived ",
+        "oldp_derived\u200b",
+        "Download_Only",
+        5,
+        None,
+        "",
+        ["own"],
+        "nope",
+    ],
+)
+def test_license_config_must_be_a_known_clean_token(tmp_path: Path, config: Any) -> None:
+    with pytest.raises(SourcesError, match="license_config"):
+        load_sources(_write_sources(tmp_path, [_hf(license_="odbl") | {"license_config": config}]))
+
+
+@pytest.mark.parametrize("field", ["id", "license", "license_config", "revision", "slug", "celex"])
+@pytest.mark.parametrize("value", [["x"], {"a": 1}, 5])
+def test_non_string_fields_raise_sources_error(tmp_path: Path, field: str, value: Any) -> None:
+    entry = _gii() | {"celex": "32016R0679"} | {field: value}
+    with pytest.raises(SourcesError):
+        load_sources(_write_sources(tmp_path, [entry]))
+
+
+@pytest.mark.parametrize("field", ["id", "license", "license_config", "slug"])
+def test_required_string_fields_cannot_be_null(tmp_path: Path, field: str) -> None:
+    with pytest.raises(SourcesError):
+        load_sources(_write_sources(tmp_path, [_gii() | {field: None}]))
+
+
+def test_main_prints_clean_error_for_bad_sources(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    src = _write_sources(tmp_path, [_gii() | {"license": ["x"]}])
+    assert main(_args(tmp_path, src)) == 1
+    err = capsys.readouterr().err
+    assert err.startswith("error:")
+    assert "Traceback" not in err
+
+
+@pytest.mark.parametrize("bad", ["a\x00b", "a\nb", "a\x7fb", "x.zip.part"])
+def test_control_chars_and_part_suffix_rejected_in_file_names(tmp_path: Path, bad: str) -> None:
+    entry = _gii()
+    entry["files"] = {bad: ABC_SHA}
+    with pytest.raises(SourcesError):
+        load_sources(_write_sources(tmp_path, [entry]))
+
+
+@pytest.mark.parametrize("bad", ["../x", "a b", "a/b", "", "k\u200b"])
+def test_slug_and_celex_are_clean_tokens(tmp_path: Path, bad: str) -> None:
+    with pytest.raises(SourcesError):
+        load_sources(_write_sources(tmp_path, [_gii() | {"slug": bad}]))
+    eurlex = {
+        "id": "eurlex:32016R0679", "kind": "eurlex", "celex": bad, "pinned": "2026-10-31",
+        "license": "eurlex-legal-notice", "license_config": "laws_eurlex", "redistribute": True,
+        "attribution": "EU", "files": {"de.html": ABC_SHA},
+    }  # fmt: skip
+    with pytest.raises(SourcesError):
+        load_sources(_write_sources(tmp_path, [eurlex]))
+
+
+@pytest.mark.parametrize("status", [401, 403, 404])
+def test_no_retry_for_auth_and_not_found(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, status: int
+) -> None:
+    calls: list[int] = []
+
+    def refuse(*_a: Any, **_k: Any) -> SimpleNamespace:
+        calls.append(1)
+        msg = "refused"
+        response = httpx.Response(status, request=httpx.Request("GET", "https://hf.co"))
+        raise HfHubHTTPError(msg, response=response)
+
+    monkeypatch.setattr(data_hf, "dataset_info", refuse)
+    assert main(_args(tmp_path, _write_sources(tmp_path, [_hf()]))) == 1
+    assert len(calls) == 1
+
+
+def test_hub_error_message_drops_the_cause(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    def boom(*_a: Any, **_k: Any) -> SimpleNamespace:
+        msg = "secret-host-detail"
+        raise httpx.ConnectError(msg)
+
+    monkeypatch.setattr(data_hf, "dataset_info", boom)
+    source = load_sources(_write_sources(tmp_path, [_hf()]))[0]
+    with pytest.raises(data_fetch.FetchError) as caught:
+        data_hf.sync_hf(source, tmp_path / "raw", pin_check=True, sleep=lambda _s: None)
+    assert caught.value.__cause__ is None
+    assert caught.value.__suppress_context__ is True
+
+
+def test_local_disk_error_is_not_reported_as_hub_failure(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    calls: list[int] = []
+
+    def full_disk(**_k: Any) -> str:
+        calls.append(1)
+        raise OSError(28, "No space left on device")
+
+    monkeypatch.setattr(data_hf, "snapshot_download", full_disk)
+    monkeypatch.setattr(data_hf, "dataset_info", lambda *_a, **_k: _info("cc-by-4.0"))
+    assert main(_args(tmp_path, _write_sources(tmp_path, [_hf()]))) == 1
+    err = capsys.readouterr().err
+    assert len(calls) == 1
+    assert "local" in err
+    assert "Hugging Face request failed" not in err
+
+
+def test_manifest_survives_a_failed_replace(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    src = _write_sources(tmp_path, [_gii()])
+    manifest = tmp_path / "raw/MANIFEST.json"
+    manifest.parent.mkdir(parents=True)
+    manifest.write_text('{"old": {"pin": "x", "files": {}}}\n', encoding="utf-8")
+
+    real_replace = Path.replace
+
+    def broken(self: Path, target: Path) -> Path:
+        if Path(target).name == "MANIFEST.json":
+            msg = "replace failed"
+            raise OSError(msg)
+        return real_replace(self, target)
+
+    monkeypatch.setattr(Path, "replace", broken)
+    with respx.mock:
+        respx.get(GII_URL).respond(content=ABC)
+        with pytest.raises(OSError, match="replace failed"):
+            main(_args(tmp_path, src))
+    assert json.loads(manifest.read_text(encoding="utf-8")) == {"old": {"pin": "x", "files": {}}}
+
+
+def test_corrupt_old_manifest_is_replaced_with_a_warning(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    src = _write_sources(tmp_path, [_gii()])
+    manifest = tmp_path / "raw/MANIFEST.json"
+    manifest.parent.mkdir(parents=True)
+    manifest.write_text("{not json", encoding="utf-8")
+    with respx.mock:
+        respx.get(GII_URL).respond(content=ABC)
+        assert main(_args(tmp_path, src)) == 0
+    assert list(json.loads(manifest.read_text(encoding="utf-8"))) == ["gii:kschg"]
+    assert "warning" in capsys.readouterr().err
+
+
+def test_one_failing_source_does_not_stop_the_other(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    def boom(*_a: Any, **_k: Any) -> SimpleNamespace:
+        msg = "down"
+        raise httpx.ConnectError(msg)
+
+    monkeypatch.setattr(data_hf, "dataset_info", boom)
+    src = _write_sources(tmp_path, [_hf(), _gii()])
+    with respx.mock:
+        respx.get(GII_URL).respond(content=ABC)
+        assert main(_args(tmp_path, src)) == 1
+    manifest = json.loads((tmp_path / "raw/MANIFEST.json").read_text(encoding="utf-8"))
+    assert list(manifest) == ["gii:kschg"]
+
+
+def test_unexpected_exception_in_one_source_is_wrapped(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    def odd(*_a: Any, **_k: Any) -> SimpleNamespace:
+        msg = "boom"
+        raise ValueError(msg)
+
+    monkeypatch.setattr(data_hf, "dataset_info", odd)
+    src = _write_sources(tmp_path, [_hf(), _gii()])
+    with respx.mock:
+        respx.get(GII_URL).respond(content=ABC)
+        assert main(_args(tmp_path, src)) == 1
+    assert "ValueError" in capsys.readouterr().err
+    assert (tmp_path / "raw/gii/kschg/xml.zip").exists()

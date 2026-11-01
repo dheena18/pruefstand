@@ -34,11 +34,20 @@ def _status(err: Exception) -> int | None:
 
 
 def _with_retry[T](src: Source, call: Callable[[], T], sleep: Sleep) -> T:
-    """Run a Hub call with backoff; any transport failure becomes a FetchError (class name only)."""
+    """Run a Hub call with backoff; failures become a FetchError naming only the exception class.
+
+    Local filesystem errors (an ``OSError`` with an errno that is not an HTTP error) are not
+    retried and are reported as local, not as Hub failures.
+    """
     for attempt in range(ATTEMPTS):
         try:
             return call()
         except (httpx.HTTPError, OSError, HfHubHTTPError) as err:
+            errno = getattr(err, "errno", None)
+            if errno is not None and not isinstance(err, (httpx.HTTPError, HfHubHTTPError)):
+                name = type(err).__name__
+                msg = f"{src.id}: local file error while fetching ({name}, errno {errno})"
+                raise FetchError(msg) from None
             if _status(err) in NO_RETRY_STATUS or attempt == ATTEMPTS - 1:
                 msg = f"{src.id}: Hugging Face request failed ({type(err).__name__})"
                 if _status(err) in (401, 403):
