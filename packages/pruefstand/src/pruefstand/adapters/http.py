@@ -8,23 +8,27 @@ exceptions or the body excerpts of error messages. There are no retries here (ru
 """
 
 import asyncio
-import json
-import math
 import os
-import re
+import ssl
 import time
 from typing import Any
 from urllib.parse import urlsplit
 from uuid import uuid4
 
 import httpx
-from pydantic import BaseModel, ValidationError
 
+from pruefstand.adapters.wire import (
+    Parser,
+    excerpt,
+    parse_info,
+    parse_query,
+    parse_retrieve,
+    secret_forms,
+)
 from pruefstand.core.config import HttpTargetConfig
 from pruefstand.core.errors import ConfigError, TargetError
 from pruefstand.core.logging import get_logger
 from pruefstand.core.models.target import (
-    RetrievedChunk,
     RetrieveResponse,
     TargetInfo,
     TargetRequest,
@@ -36,21 +40,18 @@ MAX_RESPONSE_BYTES = 8 * 1024 * 1024
 """Hard cap on one response body (raw bytes, no content-encoding accepted)."""
 
 _CONNECT_TIMEOUT_S = 10.0
-_EXCERPT_CHARS = 200
-_CONTROL = re.compile(r"[\x00-\x1f\x7f-\x9f\u2028\u2029]+")
-_REDACTED = "[REDACTED]"
 _NO_RETRIEVE = frozenset({404, 405})
 
 _log = get_logger(__name__)
 
 
-def _reject_constant(name: str) -> object:
-    msg = f"non-finite number {name} is not valid JSON"
-    raise ValueError(msg)
-
-
 def _validated_base(url: str) -> str:
     parts = urlsplit(url)
+    try:
+        parts.port  # noqa: B018  # evaluating it validates the port (raises ValueError)
+    except ValueError:
+        msg = "target url has an invalid port"
+        raise ConfigError(msg) from None
     if parts.scheme not in {"http", "https"} or not parts.hostname:
         msg = "target url must be an http:// or https:// URL with a host"
         raise ConfigError(msg)
@@ -99,7 +100,7 @@ class HttpTargetAdapter(TargetAdapter):
         status, data = await self._call("GET", "/v1/info", None)
         if status == 404:  # HTTP "not found" means an opaque target
             return None
-        return _parse(TargetInfo, self._checked(what, status, data), what, self._secret())
+        return await self._decode(parse_info, self._checked(what, status, data), what)
 
     async def query(self, req: TargetRequest) -> TargetResponse:
         """Return ``POST /v1/query`` for ``req``.
@@ -113,16 +114,14 @@ class HttpTargetAdapter(TargetAdapter):
         """
         what = "POST /v1/query"
         status, data = await self._call("POST", "/v1/query", req)
-        response = _parse(TargetResponse, self._checked(what, status, data), what, self._secret())
-        _check_finite(response.chunks, what)
-        return response
+        return await self._decode(parse_query, self._checked(what, status, data), what)
 
     async def retrieve(self, req: TargetRequest) -> RetrieveResponse | None:
         """Return ``POST /v1/retrieve`` (retrieval only, R11 D218).
 
         Returns:
             The chunks in rank order, or ``None`` when the target has no such endpoint
-            (HTTP 404 or 405).
+            (HTTP 404 or 405). ``info`` is ``None`` for 404 only; 405 or 501 raise.
 
         Raises:
             TargetError: As for ``query``; a response that contains an ``answer`` key is a
@@ -132,13 +131,7 @@ class HttpTargetAdapter(TargetAdapter):
         status, data = await self._call("POST", "/v1/retrieve", req)
         if status in _NO_RETRIEVE:
             return None
-        body = _load_json(self._checked(what, status, data), what, self._secret())
-        if isinstance(body, dict) and "answer" in body:
-            msg = f"{what}: response contains an 'answer'; a retrieve endpoint must not generate"
-            raise TargetError(msg, transient=False)
-        response = _validate(RetrieveResponse, body, what)
-        _check_finite(response.chunks, what)
-        return response
+        return await self._decode(parse_retrieve, self._checked(what, status, data), what)
 
     async def aclose(self) -> None:
         """Close the connection pool; safe to call more than once."""
@@ -160,13 +153,24 @@ class HttpTargetAdapter(TargetAdapter):
     def _secret(self) -> str:
         return os.environ.get(self._auth_env, "") if self._auth_env else ""
 
+    async def _decode[R](self, parser: Parser, data: bytes, what: str) -> R:
+        """Run a bounded parser in a worker thread inside the total deadline."""
+        secrets = secret_forms(self._secret())
+        try:
+            async with asyncio.timeout(self._timeout_s):
+                result: R = await asyncio.to_thread(parser, data, what, secrets)
+        except TimeoutError:
+            msg = f"{what}: parsing the response timed out"
+            raise TargetError(msg, transient=False) from None
+        return result
+
     def _checked(self, what: str, status: int, data: bytes) -> bytes:
         """Return ``data`` for a 2xx status, else raise the matching ``TargetError``."""
         if 300 <= status < 400:
             msg = f"{what}: target answered HTTP {status}; redirects are not followed"
             raise TargetError(msg, transient=False)
         if not 200 <= status < 300:
-            msg = f"{what}: HTTP {status}: {_excerpt(data, self._secret())}"
+            msg = f"{what}: HTTP {status}: {excerpt(data, secret_forms(self._secret()))}"
             raise TargetError(msg, transient=status >= 500)
         return data
 
@@ -185,8 +189,14 @@ class HttpTargetAdapter(TargetAdapter):
             msg = f"{what}: timed out after {self._timeout_s:g}s"
             raise TargetError(msg, transient=True) from exc
         except httpx.HTTPError as exc:
+            if _is_cert_error(exc):
+                msg = f"{what}: TLS certificate verification failed"
+                raise TargetError(msg, transient=False) from exc
             msg = f"{what}: connection failed ({type(exc).__name__})"
             raise TargetError(msg, transient=True) from exc
+        except (httpx.InvalidURL, UnicodeError, OverflowError, ExceptionGroup) as exc:
+            msg = f"{what}: request could not be sent ({type(exc).__name__})"
+            raise TargetError(msg, transient=False) from None
         elapsed_ms = round(1000 * (time.monotonic() - started))
         _log.debug("target_call", what=what, status=status, elapsed_ms=elapsed_ms)
         return status, data
@@ -198,62 +208,46 @@ class HttpTargetAdapter(TargetAdapter):
         async with self._client.stream(
             method, self._base + path, json=body, headers=headers
         ) as response:
-            what = f"{method} {path}"
-            if 300 <= response.status_code < 400:
-                return response.status_code, b""
-            declared = response.headers.get("content-length", "")
-            if declared.isdigit() and int(declared) > MAX_RESPONSE_BYTES:
-                msg = f"{what}: response too large (declared {declared} bytes)"
-                raise TargetError(msg, transient=False)
-            if response.headers.get("content-encoding", "identity").lower() != "identity":
-                msg = f"{what}: content-encoding is not accepted"
-                raise TargetError(msg, transient=False)
-            chunks: list[bytes] = []
-            total = 0
-            async for part in response.aiter_raw():
-                total += len(part)
-                if total > MAX_RESPONSE_BYTES:
-                    msg = f"{what}: response too large (> {MAX_RESPONSE_BYTES} bytes)"
-                    raise TargetError(msg, transient=False)
-                chunks.append(part)
-            return response.status_code, b"".join(chunks)
+            status = response.status_code
+            if 300 <= status < 400:
+                return status, b""
+            try:
+                return status, await _read_capped(response, f"{method} {path}")
+            except _BodyRejected as exc:
+                if 200 <= status < 300:
+                    raise TargetError(str(exc), transient=False) from None
+                return status, b""  # error status: judge the status, discard the body
 
 
-def _excerpt(data: bytes, secret: str) -> str:
-    """First ``_EXCERPT_CHARS`` characters of an untrusted body, safe for messages."""
-    text = data[: _EXCERPT_CHARS * 8].decode("utf-8", errors="replace")
-    if secret:
-        text = text.replace(secret, _REDACTED)
-    return _CONTROL.sub(" ", text).strip()[:_EXCERPT_CHARS]
+class _BodyRejected(Exception):  # noqa: N818  # internal control flow
+    """The body is over the cap or encoded; the caller decides whether that matters."""
 
 
-def _load_json(data: bytes, what: str, secret: str) -> object:
-    try:
-        body = json.loads(data, parse_constant=_reject_constant)
-        json.dumps(body, ensure_ascii=False).encode("utf-8")  # rejects lone surrogates
-    except (ValueError, RecursionError) as exc:
-        msg = f"{what}: invalid JSON ({type(exc).__name__}): {_excerpt(data, secret)}"
-        raise TargetError(msg, transient=False) from None
-    return body
+def _is_cert_error(exc: BaseException) -> bool:
+    seen: set[int] = set()
+    link: BaseException | None = exc
+    while link is not None and id(link) not in seen:
+        if isinstance(link, ssl.SSLCertVerificationError):
+            return True
+        seen.add(id(link))
+        link = link.__cause__ or link.__context__
+    return False
 
 
-def _validate[M: BaseModel](model: type[M], body: object, what: str) -> M:
-    try:
-        return model.model_validate(body)
-    except ValidationError as exc:
-        problems = "; ".join(
-            f"{'.'.join(str(p) for p in e['loc'])}: {e['msg']}"
-            for e in exc.errors(include_input=False, include_url=False, include_context=False)[:3]
-        )
-        msg = f"{what}: response does not match Target API v1 ({problems})"
-        raise TargetError(msg[:400], transient=False) from None
-
-
-def _parse[M: BaseModel](model: type[M], data: bytes, what: str, secret: str) -> M:
-    return _validate(model, _load_json(data, what, secret), what)
-
-
-def _check_finite(chunks: tuple[RetrievedChunk, ...] | None, what: str) -> None:
-    if chunks is not None and not all(math.isfinite(chunk.score) for chunk in chunks):
-        msg = f"{what}: chunk score is not a finite number"
-        raise TargetError(msg, transient=False)
+async def _read_capped(response: httpx.Response, what: str) -> bytes:
+    declared = response.headers.get("content-length", "")
+    if declared.isdigit() and int(declared) > MAX_RESPONSE_BYTES:
+        msg = f"{what}: response too large (declared {declared} bytes)"
+        raise _BodyRejected(msg)
+    if response.headers.get("content-encoding", "identity").lower() != "identity":
+        msg = f"{what}: content-encoding is not accepted"
+        raise _BodyRejected(msg)
+    chunks: list[bytes] = []
+    total = 0
+    async for part in response.aiter_raw():
+        total += len(part)
+        if total > MAX_RESPONSE_BYTES:
+            msg = f"{what}: response too large (> {MAX_RESPONSE_BYTES} bytes)"
+            raise _BodyRejected(msg)
+        chunks.append(part)
+    return b"".join(chunks)

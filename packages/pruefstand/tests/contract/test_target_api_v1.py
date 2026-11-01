@@ -116,28 +116,49 @@ def test_openapi_declares_the_four_endpoints() -> None:
     assert "get" in paths["/v1/health"]
 
 
-def _props(schema: dict[str, Any]) -> tuple[set[str], set[str]]:
-    return set(schema.get("properties", {})), set(schema.get("required", []))
+def _kinds(schema: dict[str, Any]) -> set[str]:
+    """JSON types a (sub)schema admits; a $ref counts as ``ref``."""
+    if "$ref" in schema:
+        return {"ref"}
+    if "type" in schema:
+        found = schema["type"]
+        return set(found) if isinstance(found, list) else {found}
+    members = schema.get("anyOf", []) + schema.get("oneOf", [])
+    return set().union(*(_kinds(m) for m in members)) if members else set()
 
 
 @pytest.mark.parametrize(
-    ("component", "model", "optional"),
+    ("component", "model"),
     [
-        ("QueryRequest", TargetRequest, {"top_k"}),
-        ("RetrievedChunk", RetrievedChunk, {"tenant_id", "used_in_prompt"}),
-        ("Usage", Usage, set()),
-        ("QueryResponse", TargetResponse, {"citations", "chunks", "refused", "model", "usage"}),
-        ("RetrieveResponse", RetrieveResponse, set()),
-        ("InfoResponse", TargetInfo, {"serving"}),
+        ("QueryRequest", TargetRequest),
+        ("RetrievedChunk", RetrievedChunk),
+        ("Usage", Usage),
+        ("QueryResponse", TargetResponse),
+        ("RetrieveResponse", RetrieveResponse),
+        ("InfoResponse", TargetInfo),
     ],
 )
 def test_openapi_components_match_the_pydantic_models(
-    component: str, model: type[BaseModel], optional: set[str]
+    component: str, model: type[BaseModel]
 ) -> None:
-    api_props, api_required = _props(load_openapi()["components"]["schemas"][component])
-    model_props, _ = _props(model.model_json_schema())
-    assert api_props == model_props, f"{component} properties drifted from {model.__name__}"
-    assert api_required == model_props - optional, f"{component} required set drifted"
+    api = load_openapi()["components"]["schemas"][component]
+    expected = model.model_json_schema()
+    assert set(api["properties"]) == set(expected["properties"]), f"{component} properties drifted"
+    assert set(api.get("required", [])) == set(expected.get("required", [])), (
+        f"{component} required set drifted"
+    )
+    for name, prop in expected["properties"].items():
+        assert _kinds(api["properties"][name]) == _kinds(prop), f"{component}.{name} type drifted"
+
+
+def test_requests_are_strict_and_responses_tolerate_unknown_keys() -> None:
+    schemas = load_openapi()["components"]["schemas"]
+    assert schemas["QueryRequest"]["additionalProperties"] is False
+    for name in ("RetrievedChunk", "Usage", "QueryResponse", "InfoResponse", "HealthResponse"):
+        assert schemas[name]["additionalProperties"] is True, name
+    body = {**load_example("query_ok.json"), "latency_ms": 3, "request_id": "echo"}
+    assert_valid("QueryResponse", body)
+    assert_valid("RetrieveResponse", {"chunks": [], "took_ms": 1})
 
 
 @pytest.fixture
@@ -207,6 +228,5 @@ async def test_contract_live() -> None:
 def test_openapi_file_is_openapi_31_with_valid_json_schemas() -> None:
     spec = load_openapi()
     assert str(spec["openapi"]).startswith("3.1")
-    for name, schema in spec["components"]["schemas"].items():
+    for schema in spec["components"]["schemas"].values():
         Draft202012Validator.check_schema(schema)
-        assert schema.get("additionalProperties") is False or name == "Stats", name

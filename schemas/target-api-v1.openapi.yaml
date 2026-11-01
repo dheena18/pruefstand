@@ -8,7 +8,9 @@ info:
     test there diffs it against this file. Third-party targets may omit `chunks`, `tenant_id` per
     chunk, `used_in_prompt`, `refused`, `model`, `usage` and `stats`; metrics that need them are
     `not_applicable`. `request_id` is random per call and never a test-case id. Authentication
-    is a bearer token supplied out of band; no credentials appear in this file.
+    is a bearer token supplied out of band; no credentials appear in this file. Requests are strict;
+    responses tolerate unknown keys and null optionals (third-party targets), while known fields keep
+    their types.
 servers:
   - url: http://localhost:8000
 paths:
@@ -105,7 +107,7 @@ components:
           description: Random per call (uuid4 hex); never a test-case id.
     RetrievedChunk:
       type: object
-      additionalProperties: false
+      additionalProperties: true
       required: [chunk_id, doc_id, text, score, rank]
       properties:
         chunk_id:
@@ -128,7 +130,7 @@ components:
           description: True when the chunk was in the generator prompt (API v1 addition, X3.14).
     Usage:
       type: object
-      additionalProperties: false
+      additionalProperties: true
       required: [prompt_tokens, completion_tokens]
       properties:
         prompt_tokens:
@@ -137,7 +139,7 @@ components:
           type: integer
     QueryResponse:
       type: object
-      additionalProperties: false
+      additionalProperties: true
       required: [answer]
       properties:
         answer:
@@ -164,8 +166,10 @@ components:
         - {"answer": "Einen Monat zum Ende eines Kalendermonats (§ 622 Abs. 2 Nr. 1 BGB).", "citations": ["§ 622 Abs. 2 Nr. 1 BGB"], "chunks": [{"chunk_id": "gii-bgb-622-c1", "doc_id": "gii-bgb-622", "tenant_id": "public", "text": "Das Arbeitsverhältnis eines Arbeiters oder eines Angestellten kann mit einer Frist von vier Wochen zum Fünfzehnten oder zum Ende eines Kalendermonats gekündigt werden.", "score": 0.83, "rank": 1, "used_in_prompt": true}, {"chunk_id": "gii-bgb-622-c2", "doc_id": "gii-bgb-622", "tenant_id": "public", "text": "Für eine Kündigung durch den Arbeitgeber beträgt die Kündigungsfrist, wenn das Arbeitsverhältnis in dem Betrieb oder Unternehmen zwei Jahre bestanden hat, einen Monat zum Ende eines Kalendermonats.", "score": 0.71, "rank": 2}], "refused": false, "model": "qwen3-1.7b-q4_k_m", "usage": {"prompt_tokens": 412, "completion_tokens": 21}}
     RetrieveResponse:
       type: object
-      additionalProperties: false
+      additionalProperties: true
       required: [chunks]
+      not:
+        required: [answer]
       properties:
         chunks:
           type: array
@@ -175,7 +179,7 @@ components:
         - {"chunks": [{"chunk_id": "gii-bgb-622-c1", "doc_id": "gii-bgb-622", "tenant_id": "public", "text": "Das Arbeitsverhältnis eines Arbeiters oder eines Angestellten kann mit einer Frist von vier Wochen zum Fünfzehnten oder zum Ende eines Kalendermonats gekündigt werden.", "score": 0.83, "rank": 1}, {"chunk_id": "gii-bgb-622-c2", "doc_id": "gii-bgb-622", "tenant_id": "public", "text": "Für eine Kündigung durch den Arbeitgeber beträgt die Kündigungsfrist, wenn das Arbeitsverhältnis in dem Betrieb oder Unternehmen zwei Jahre bestanden hat, einen Monat zum Ende eines Kalendermonats.", "score": 0.71, "rank": 2}]}
     InfoResponse:
       type: object
-      additionalProperties: false
+      additionalProperties: true
       required: [app_version, git_sha, image_digest, config_hash, corpus_version, models]
       properties:
         app_version:
@@ -217,7 +221,7 @@ components:
           type: integer
     HealthResponse:
       type: object
-      additionalProperties: false
+      additionalProperties: true
       required: [status]
       properties:
         status:
