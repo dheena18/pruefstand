@@ -8,6 +8,9 @@ from pruefstand.llm.backends.litellm import LiteLLMBackend, litellm_model
 from pruefstand.llm.policy import is_paid, provider_of, validate_policy_config
 
 DEFAULT_LOCAL_URL = "http://localhost:8080/v1"
+GITHUB_MODELS_URL = (
+    "https://models.github.ai/inference"  # LiteLLM's own default host does not resolve (D346 g)
+)
 GH_MODELS_TOKEN_ENV = "PRUEFSTAND_GH_MODELS_TOKEN"  # noqa: S105  (a variable NAME, not a secret)
 DEFAULT_TIMEOUT_S = 120.0
 _LITELLM_PREFIXES = ("ollama_chat/", "openai/")
@@ -16,9 +19,10 @@ _LITELLM_PREFIXES = ("ollama_chat/", "openai/")
 def build_backend(ref: ModelRef, *, policy: LLMPolicyConfig) -> LLMBackend:
     """Build the backend for ``ref`` under ``policy``.
 
-    ``api_base`` comes from ``PruefstandSettings`` by provider prefix: ``openai_compatible_local/``
-    uses ``PRUEFSTAND_JUDGE_BASE_URL`` (default ``http://localhost:8080/v1``), ``github/`` LiteLLM's
-    GitHub Models endpoint with the key read from ``PRUEFSTAND_GH_MODELS_TOKEN`` at call time.
+    ``api_base`` comes from ``PruefstandSettings`` by provider prefix:
+    ``openai_compatible_local/`` uses ``PRUEFSTAND_JUDGE_BASE_URL`` (default
+    ``http://localhost:8080/v1``); ``github/`` uses ``https://models.github.ai/inference`` with
+    the key read from ``PRUEFSTAND_GH_MODELS_TOKEN`` at call time.
 
     Args:
         ref: Model id (``<provider>/<model>``) and family.
@@ -48,8 +52,14 @@ def build_backend(ref: ModelRef, *, policy: LLMPolicyConfig) -> LLMBackend:
     if provider == "ollama":
         msg = "A40 endpoints are resolved from infra/gpu/endpoints.yaml (T5.1)"
         raise ConfigError(msg)
-    key_env = GH_MODELS_TOKEN_ENV if provider == "github" else None
-    return LiteLLMBackend(ref.id, api_base=None, api_key_env=key_env, timeout_s=DEFAULT_TIMEOUT_S)
+    if provider == "github":
+        return LiteLLMBackend(
+            ref.id,
+            api_base=GITHUB_MODELS_URL,
+            api_key_env=GH_MODELS_TOKEN_ENV,
+            timeout_s=DEFAULT_TIMEOUT_S,
+        )
+    return LiteLLMBackend(ref.id, api_base=None, api_key_env=None, timeout_s=DEFAULT_TIMEOUT_S)
 
 
 def _refuse_litellm_prefix(ref: ModelRef, provider: str, policy: LLMPolicyConfig) -> None:

@@ -91,17 +91,26 @@ class LLMClient:
             self._recorder.record(req, None, _describe(err))
             raise
         key = cache_key(req)
-        hit = self._cache.get(key) if self._cache is not None else None
-        if hit is not None:
-            resp = LLMResponse.model_validate_json(hit).model_copy(update={"cached": True})
-            self._recorder.record(req, resp, None)
-            return resp
+        cached = self._lookup(key)
+        if cached is not None:
+            self._recorder.record(req, cached, None)
+            return cached
         resp = await self._call(req)
         self._recorder.record(req, resp, None)
         if self._cache is not None:
             self._cache.set(key, resp.model_dump_json().encode("utf-8"))
         self._budget.charge(resp)
         return resp
+
+    def _lookup(self, key: str) -> LLMResponse | None:
+        """Return the cached response, or None on a miss or an unreadable entry."""
+        hit = self._cache.get(key) if self._cache is not None else None
+        if hit is None:
+            return None
+        try:
+            return LLMResponse.model_validate_json(hit).model_copy(update={"cached": True})
+        except ValidationError:
+            return None  # a corrupt entry is a miss; the fresh answer overwrites it
 
     async def _call(self, req: LLMRequest) -> LLMResponse:
         try:

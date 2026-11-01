@@ -174,6 +174,9 @@ class LiteLLMBackend:
         except Exception as err:
             raise _map_error(err, provider, key) from err
         latency_ms = (time.perf_counter() - start) * 1000
+        if not raw.choices:
+            msg = f"{provider}: the answer holds no choices"
+            raise LLMError(msg, transient=True)
         text = raw.choices[0].message.content or ""
         if "qwen3" in req.model.lower():
             text, stripped = strip_think(text)

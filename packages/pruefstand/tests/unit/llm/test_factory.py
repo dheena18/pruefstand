@@ -35,7 +35,7 @@ def test_github_models_are_allowed_and_use_the_token_variable() -> None:
     ref = ModelRef(id="github/meta/llama-3.3-70b-instruct", family="llama")
     backend = build_backend(ref, policy=LLMPolicyConfig())
     assert isinstance(backend, LiteLLMBackend)
-    assert backend.api_base is None
+    assert backend.api_base == "https://models.github.ai/inference"
     assert backend.api_key_env == "PRUEFSTAND_GH_MODELS_TOKEN"
 
 

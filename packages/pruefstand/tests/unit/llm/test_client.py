@@ -12,7 +12,7 @@ from testsupport.llm_scenarios import (
 
 from pruefstand.core.config import LLMPolicyConfig
 from pruefstand.core.errors import BudgetExceeded, LLMError
-from pruefstand.core.models.llm import LLMRequest
+from pruefstand.core.models.llm import LLMRequest, LLMResponse
 from pruefstand.llm.backends.litellm import LiteLLMBackend
 from pruefstand.llm.budget import Budget
 from pruefstand.llm.client import LLMClient, cache_key
@@ -64,6 +64,17 @@ async def test_second_identical_request_hits_the_cache() -> None:
     assert len(cache.data) == 1
     assert len(recorder.rows) == 2
     assert recorder.rows[1]["cached"] is True
+
+
+@pytest.mark.default_cassette("echo_ok.yaml")
+@pytest.mark.vcr
+async def test_corrupt_cache_entry_is_a_miss_and_is_overwritten() -> None:
+    cache = DictCache()
+    cache.set(cache_key(echo_request()), b"not json")
+    client, _, _ = _client(cache)
+    resp = await client.complete(echo_request())
+    assert resp.cached is False
+    assert LLMResponse.model_validate_json(cache.data[cache_key(echo_request())]).text == resp.text
 
 
 def test_cache_key_covers_every_request_field() -> None:
