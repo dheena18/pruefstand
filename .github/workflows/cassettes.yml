@@ -1,0 +1,27 @@
+name: cassettes
+
+# SKELETON (T0.2): the weekly re-recording of tests/cassettes/ from real model calls arrives in T1.4.
+# The workflow never opens a PR: it pushes branch cassettes/<date> and prints the `gh pr create`
+# command; the maintainer opens the PR (Actions may not create PRs, T0.5 S3).
+on:
+  schedule:
+    - cron: "29 3 * * 1"
+  workflow_dispatch:
+
+permissions: {}
+
+concurrency:
+  group: ${{ github.workflow }}
+  cancel-in-progress: false
+
+jobs:
+  record:
+    name: record
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    permissions:
+      contents: write  # own cassettes/<date> branch only
+      models: read  # GitHub Models for the judged cassettes
+    steps:
+      - name: Placeholder
+        run: echo "cassettes arrive in T1.4"
