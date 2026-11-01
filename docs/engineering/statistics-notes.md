@@ -29,6 +29,15 @@ corrected bootstrap's. A cluster mean within 1e-12 (relative) of 0 counts as zer
 the chunk size), and every invalid input (NaN/inf, empty or mismatched arrays, non-numeric parameters, float64
 overflow) raises `GateInputError`; nothing returns NaN silently.
 
+**Limits (review notes).** The correction `c_k` is calibrated for symmetric differences. Skewed differences at
+k ≤ 50 can still reach a type-I rate near 0.05 (measured 0.055 at k = 30 and 0.046 at k = 50 for a centred exponential
+distribution); heavier skew is much worse (a lognormal with σ = 1.5 measured 0.191 at k = 30 and 0.168 at k = 50). The
+committed `min_clusters` of 30 does not remove this. With fewer than 10 non-zero clusters the sign test cannot give a p
+below 2⁻⁹ = 1/512, so such a pair cannot FAIL at the first Holm step for m ≥ 13 (0.025/13 = 0.00192 < 1/512 =
+0.00195); at later step-down steps the threshold rises to α/(m−j+1), so it is practically almost never rejected in a
+large family, not impossible. A constant-difference input has `se` ≈ 2.8e-17, not exactly 0 (float rounding in the
+replicate means); compare with a tolerance. Ties: a replicate exactly at 0 counts as "no drop" (`≥ 0`).
+
 ## "Significant AND relevant"
 
 A drop fails the gate only if it is **significant** (the Holm-adjusted p is below α: unlikely to be noise) **and**
@@ -82,4 +91,8 @@ tolerance ±0.05):
 
 The reduced grid (every PR, 500 simulations, type-I bound 0.0529, power ≥ 0.728, formula ±0.139) passes with a maximum
 type-I rate of 0.034. The per-cell file `build/simulation/power_curves.csv` (columns `kind, sigma_d, discordance,
-n_clusters, cluster_size, true_drop, fail_rate, warn_rate, power_estimate`) is written by both grids.
+n_clusters, cluster_size, true_drop, fail_rate, warn_rate, power_estimate, raw_p_rate`) is written by both grids.
+
+The CSV has a further column `raw_p_rate` (share of simulations with `p < α` alone, without the relevance condition);
+the Gaussian and heterogeneous type-I cells assert it against the same bound. Largest observed: 0.0285 (full grid), 0.034
+(reduced grid).

@@ -34,7 +34,7 @@ FORMULA_TOL = 0.05 if FULL else 0.05 + 4 * math.sqrt(0.25 / N_SIMS)  # 0.139 (re
 OUT_DIR = Path("build/simulation")
 COLUMNS = [
     "kind", "sigma_d", "discordance", "n_clusters", "cluster_size", "true_drop", "fail_rate",
-    "warn_rate", "power_estimate",
+    "warn_rate", "power_estimate", "raw_p_rate",
 ]  # fmt: skip
 Kind = Literal["gaussian", "binary"]
 
@@ -51,13 +51,14 @@ def _rates(  # noqa: PLR0913  (cell description)
     n_resamples: int,
     seed_parts: tuple[int, ...],
     cluster_sizes: list[int] | None = None,
-) -> tuple[float, float]:
+) -> tuple[float, float, float]:
     rng = np.random.default_rng([SEED, *seed_parts])
     diffs, clusters = simulate_paired(
         n_clusters, cluster_size, true_delta, sigma_d=sigma_d, icc=0.3, kind=kind,
         discordance=discordance, rng=rng, cluster_sizes=cluster_sizes, n_sims=n_sims,
     )  # fmt: skip
     counts = {GateStatus.FAIL: 0, GateStatus.WARN: 0}
+    raw = 0  # p < alpha alone, without the relevance (max_drop) condition
     for row in diffs:
         r: BootstrapResult = paired_cluster_bootstrap(
             row, clusters, n_resamples=n_resamples, confidence=0.95, rng=rng, alpha=ALPHA
@@ -66,9 +67,10 @@ def _rates(  # noqa: PLR0913  (cell description)
             r, max_drop=DELTA, p_adjusted=r.p_value, alpha=ALPHA, warn_p=0.10, min_clusters=30,
             gated=True,
         )  # fmt: skip
+        raw += r.p_value < ALPHA
         if s in counts:
             counts[s] += 1
-    return counts[GateStatus.FAIL] / n_sims, counts[GateStatus.WARN] / n_sims
+    return counts[GateStatus.FAIL] / n_sims, counts[GateStatus.WARN] / n_sims, raw / n_sims
 
 
 def _record(name: str, row: dict[str, object], out_dir: Path | None = None) -> None:
@@ -94,8 +96,8 @@ def _cell(  # noqa: PLR0913  (cell description)
     true_drop: float,
     seed_parts: tuple[int, ...],
     cluster_sizes: list[int] | None = None,
-) -> tuple[float, float]:
-    fail, warn = _rates(
+) -> tuple[float, float, float]:
+    fail, warn, raw = _rates(
         kind=kind, sigma_d=sigma_d, discordance=discordance, n_clusters=n_clusters,
         cluster_size=cluster_size, true_delta=-true_drop, n_sims=N_SIMS, n_resamples=B,
         seed_parts=seed_parts, cluster_sizes=cluster_sizes,
@@ -111,14 +113,14 @@ def _cell(  # noqa: PLR0913  (cell description)
             "kind": kind, "sigma_d": sigma_d, "discordance": discordance, "n_clusters": n_clusters,
             "cluster_size": cluster_size if cluster_sizes is None else "40x10+180x1",
             "true_drop": true_drop, "fail_rate": fail,
-            "warn_rate": warn, "power_estimate": pe,
+            "warn_rate": warn, "power_estimate": pe, "raw_p_rate": raw,
         },
     )  # fmt: skip
-    return fail, warn
+    return fail, warn, raw
 
 
 def test_tiny_type1_runs_in_make_test() -> None:
-    fail, _ = _rates(
+    fail, _, _ = _rates(
         kind="gaussian", sigma_d=0.25, discordance=0.0, n_clusters=50, cluster_size=2,
         true_delta=0.0, n_sims=400, n_resamples=200, seed_parts=(0,),
     )  # fmt: skip
@@ -129,18 +131,19 @@ def test_tiny_type1_runs_in_make_test() -> None:
 @pytest.mark.parametrize("n_clusters", [30, 50, 300])
 @pytest.mark.parametrize("sigma_d", [0.15, 0.25, 0.40])
 def test_type1_gaussian(sigma_d: float, n_clusters: int) -> None:
-    fail, _ = _cell(
+    fail, _, raw = _cell(
         f"type1_gaussian_{sigma_d}_{n_clusters}", kind="gaussian", sigma_d=sigma_d,
         n_clusters=n_clusters, true_drop=0.0, seed_parts=(1, round(sigma_d * 100), n_clusters),
     )  # fmt: skip
     assert fail <= TYPE1_BOUND, f"type-I FAIL rate {fail:.4f} > {TYPE1_BOUND:.4f}"
+    assert raw <= TYPE1_BOUND, f"raw p < alpha rate {raw:.4f} > {TYPE1_BOUND:.4f}"
 
 
 @pytest.mark.slow
 @pytest.mark.parametrize("n_clusters", [30, 50, 300])
 @pytest.mark.parametrize("discordance", [0.02, 0.05, 0.10])
 def test_type1_binary(discordance: float, n_clusters: int) -> None:
-    fail, _ = _cell(
+    fail, _, _ = _cell(
         f"type1_binary_{discordance}_{n_clusters}", kind="binary", discordance=discordance,
         n_clusters=n_clusters, true_drop=0.0, seed_parts=(2, round(discordance * 100), n_clusters),
     )  # fmt: skip
@@ -149,16 +152,17 @@ def test_type1_binary(discordance: float, n_clusters: int) -> None:
 
 @pytest.mark.slow
 def test_type1_heterogeneous_cluster_sizes() -> None:
-    fail, _ = _cell(
+    fail, _, raw = _cell(
         "type1_hetero", kind="gaussian", sigma_d=0.25, n_clusters=220, cluster_size=0,
         true_drop=0.0, seed_parts=(3,), cluster_sizes=[10] * 40 + [1] * 180,
     )  # fmt: skip
     assert fail <= TYPE1_BOUND, f"type-I FAIL rate {fail:.4f} > {TYPE1_BOUND:.4f}"
+    assert raw <= TYPE1_BOUND, f"raw p < alpha rate {raw:.4f} > {TYPE1_BOUND:.4f}"
 
 
 @pytest.mark.slow
 def test_power_sigma025_n300() -> None:
-    fail, _ = _cell(
+    fail, _, _ = _cell(
         "power_gaussian_0.25_300", kind="gaussian", sigma_d=0.25, n_clusters=300,
         true_drop=2 * DELTA, seed_parts=(4,),
     )  # fmt: skip
@@ -169,7 +173,7 @@ def test_power_sigma025_n300() -> None:
 @pytest.mark.parametrize("n_clusters", [50, 300])
 @pytest.mark.parametrize("sigma_d", [0.15, 0.25, 0.40])
 def test_formula_matches_simulation(sigma_d: float, n_clusters: int) -> None:
-    fail, _ = _cell(
+    fail, _, _ = _cell(
         f"formula_gaussian_{sigma_d}_{n_clusters}", kind="gaussian", sigma_d=sigma_d,
         n_clusters=n_clusters, cluster_size=1, true_drop=2 * DELTA,
         seed_parts=(5, round(sigma_d * 100), n_clusters),

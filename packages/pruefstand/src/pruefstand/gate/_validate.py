@@ -36,6 +36,12 @@ def _number(name: str, value: object) -> float:
     return float(value)
 
 
+def check_instance(name: str, value: object, cls: type) -> None:
+    """Fail unless ``value`` is an instance of ``cls``."""
+    if not isinstance(value, cls):
+        fail(f"{name} must be a {cls.__module__}.{cls.__qualname__}, got {type(value).__name__}")
+
+
 def check_int(name: str, value: object, low: int) -> int:
     """Return ``value`` as ``int`` if it is an integer (not bool) >= ``low``, else fail."""
     if isinstance(value, bool) or not isinstance(value, int | np.integer) or value < low:

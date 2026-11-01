@@ -4,9 +4,15 @@ import math
 
 import numpy as np
 from numpy.typing import NDArray
-from scipy import stats as sps
 
-from pruefstand.gate._validate import as_float_vector, check_int, check_open_unit, fail, z_upper
+from pruefstand.gate._validate import (
+    as_float_vector,
+    check_instance,
+    check_int,
+    check_open_unit,
+    fail,
+    z_upper,
+)
 
 MAX_RESAMPLES = 10_000_000  # same cap as GatePolicy.n_resamples; bounds the work of one call
 MAX_INDEX_ELEMENTS = 50_000_000  # largest resample index array held in memory at once
@@ -24,7 +30,9 @@ def small_sample_factor(k: int, alpha: float) -> float:
     """
     if k < 2:
         return 1.0
-    t = float(sps.t.isf(alpha, k - 1))
+    from scipy.special import stdtrit  # noqa: PLC0415  (lazy: scipy is slow to import)
+
+    t = -float(stdtrit(k - 1, alpha))  # upper-tail quantile t_{k-1, 1-alpha}
     return math.sqrt(k / (k - 1)) * t / z_upper(alpha)
 
 
@@ -61,6 +69,7 @@ def replicate_means(
     """Bootstrap means of k cluster draws; indices are drawn chunk by chunk from the same stream."""
     k = sums.size
     check_int("max_elements", max_elements, 1)
+    check_instance("rng", rng, np.random.Generator)
     if n_resamples * k > MAX_DRAWS:
         fail(f"n_resamples * n_clusters = {n_resamples * k} exceeds {MAX_DRAWS}")
     rows_per_chunk = max(1, max_elements // k)
