@@ -176,7 +176,7 @@ def _article(heading: html.HtmlElement, number: str, *, eli: bool, budget: Budge
         if _is_stop(sibling, eli=eli):
             break
         if not title and _classes(sibling) & _TITLE_CLASSES:
-            title = element_text(sibling)
+            title = element_text(sibling, budget)
         else:
             lines.extend(block_lines(sibling, budget))
     return Block("art", number, title, "\n".join(lines))
@@ -191,12 +191,16 @@ def _eli_recitals(root: html.HtmlElement, budget: Budget) -> list[Block]:
     return blocks
 
 
-def _flat_recitals(root: html.HtmlElement, first: html.HtmlElement) -> list[Block]:
+def _in_table(el: html.HtmlElement) -> bool:
+    return next(el.iterancestors("table"), None) is not None
+
+
+def _flat_recitals(root: html.HtmlElement, first: html.HtmlElement, budget: Budget) -> list[Block]:
     blocks: list[Block] = []
     for el in root.iter("table", "p"):
         if el is first:
             break
-        lines = rows(el) if el.tag == "table" else []
+        lines = rows(el, budget) if el.tag == "table" and not _in_table(el) else []
         cell = lines[0].split(" ", 1)[0] if lines else ""
         found = _RECITAL_CELL.fullmatch(cell)
         if found and int(found.group(1)) == len(blocks) + 1:
@@ -237,7 +241,7 @@ def parse_act(data: bytes, limits: EurLexLimits | None = None) -> ParsedAct:
             wide, has too much text, or holds no Article.
     """
     limits = limits or EurLexLimits()
-    budget = Budget(limits.max_chars)
+    budget = Budget(min(limits.max_chars, max(1000, 2 * len(data))))
     root = _tree(data, limits)
     _strip_noise(root)
     headings, eli = _headings(root)
@@ -246,7 +250,7 @@ def parse_act(data: bytes, limits: EurLexLimits | None = None) -> ParsedAct:
         articles = [
             _article(h, n, eli=eli, budget=budget) for h, n in zip(headings, numbers, strict=True)
         ]
-        recitals = _eli_recitals(root, budget) if eli else _flat_recitals(root, headings[0])
+        recitals = _eli_recitals(root, budget) if eli else _flat_recitals(root, headings[0], budget)
         layout, blocks = ("eli" if eli else "flat"), recitals + articles
     else:
         layout, blocks = "legacy", parse_legacy_lines(_legacy_lines(root))
