@@ -10,6 +10,8 @@ Conventions: number lists (``622, 623``, ``17 und 18``, ranges) expand to one ci
 every head; qualifiers after a list belong to its last number; several qualifier values
 (``Abs. 2, 3``, ``lit. a und b``) keep the first. A law-less citation borrows the law of the next
 one when both heads are of the same kind and joined by ``i.V.m.``, ``und``, ``sowie`` or ``,``.
+A number may carry a suffix of one or two lowercase letters (``5a``, ``53ca``); ``ff``/``f.``
+("folgende") and function words such as ``in`` or ``im`` never are one.
 ``§`` (kind ``para``) exists only for national laws: ``§ 6 DSGVO`` is dropped.
 """
 
@@ -26,8 +28,15 @@ from pruefstand.core.logging import get_logger
 _log = get_logger(__name__)
 Kind = Literal["para", "art"]
 
-_NUM = r"[0-9]{1,5}(?![0-9])(?:(?!ff?\.)[a-z](?![A-Za-zÄÖÜäöüß]))?"
-_LET = r"[a-z](?![A-Za-zÄÖÜäöüß])"
+_WORD_END = r"(?![A-Za-zÄÖÜäöüß])"
+# Two-letter German function words never read as a suffix (`Art. 6in`, `§ 6im`), nor does `ff`
+# ("folgende"). Three or more letters are never a suffix (the word-end lookahead).
+_NOT_SUFFIX = r"(?!ff|(?:am|an|da|du|er|es|im|in|ja|je|ob|so|um|wo|zu)" + _WORD_END + r")"
+_NUM = (
+    r"[0-9]{1,5}(?![0-9])"
+    rf"(?:(?!ff?\.)(?:{_NOT_SUFFIX}[a-z]{{2}}|[a-z]){_WORD_END})?"
+)
+_LET = rf"[a-z]{_WORD_END}"
 _NUM_AT = re.compile(rf"\s*({_NUM})")
 _HEAD = re.compile(
     r"(?:§§?|(?<![\w.])s\.|(?<!\w)(?i:Paragraph|Paragraf|Sections?|Secs?\.|Artikel|Articles?"
