@@ -154,7 +154,9 @@ class SliceDecision(BaseModel):
 class GateReport(BaseModel):
     """The gate's answer for one candidate run (``gate.json``).
 
-    ``baseline_run_id`` is ``None`` exactly when ``no_baseline`` is true.
+    ``baseline_run_id`` is ``None`` exactly when ``no_baseline`` is true. ``n_unmatched`` and
+    ``n_excluded`` map a paired metric to the cases dropped from its pairing (only metrics with
+    a non-zero count): in one run only, and excluded (baseline not ``ok``, judge error).
 
     Raises:
         ValidationError: ``baseline_run_id is None`` differs from ``no_baseline``.
@@ -175,6 +177,8 @@ class GateReport(BaseModel):
     top_failing_cases: tuple[CaseId, ...]
     not_applicable_counts: dict[str, int] = {}
     no_baseline: bool = False
+    n_unmatched: dict[str, int] = {}
+    n_excluded: dict[str, int] = {}
 
     @model_validator(mode="after")
     def _baseline_iff_not_missing(self) -> Self:

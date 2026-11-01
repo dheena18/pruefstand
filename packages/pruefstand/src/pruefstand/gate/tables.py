@@ -24,6 +24,7 @@ OVERALL = "overall"
 PERTURBED_ALL = "perturbed_all"
 DIMENSIONS = ("category", "perturbation", "tenant", "lang", "tags")
 TAG_SEP = "|"
+MAX_EXCLUDED_FRACTION = 0.20  # more judge errors than this share are worst-filled, not excluded
 
 
 @dataclass(frozen=True, eq=False)
@@ -60,11 +61,11 @@ def _request_failed(scored: ScoredCase) -> bool:
     return value is not None and value.value is not None and value.value >= 1.0
 
 
-def _fillable(scored: ScoredCase, value: MetricValue | None) -> bool:
+def _fillable(scored: ScoredCase, value: MetricValue | None, *, fill_errors: bool) -> bool:
     """A candidate value without a number is worst-filled unless it is a judge error."""
     if value is None or value.status is MetricStatus.NOT_APPLICABLE:
         return True
-    return value.status is MetricStatus.ERROR and _request_failed(scored)
+    return value.status is MetricStatus.ERROR and (fill_errors or _request_failed(scored))
 
 
 def _columns(scored: Iterable[ScoredCase]) -> dict[str, tuple[str, ...]]:
@@ -79,7 +80,12 @@ def _columns(scored: Iterable[ScoredCase]) -> dict[str, tuple[str, ...]]:
 
 
 def _build(
-    run: RunResults, metric: str, *, higher_is_better: bool, fill_worst: bool
+    run: RunResults,
+    metric: str,
+    *,
+    higher_is_better: bool,
+    fill_worst: bool,
+    fill_errors: bool = False,
 ) -> tuple[ScoreTable, frozenset[str]]:
     worst = 0.0 if higher_is_better else 1.0
     kept: list[ScoredCase] = []
@@ -89,7 +95,7 @@ def _build(
         value = _lookup(scored, metric)
         if value is not None and value.status is MetricStatus.OK and value.value is not None:
             values.append(value.value)
-        elif fill_worst and _fillable(scored, value):
+        elif fill_worst and _fillable(scored, value, fill_errors=fill_errors):
             values.append(worst)
             filled.add(str(scored.case.id))
         else:
@@ -192,8 +198,10 @@ def pair_runs(
 
     Cases in only one run are excluded and counted (``n_unmatched``). A baseline value that is not
     ``ok`` excludes the pair; a candidate ``error`` on a successful request (a judge error) excludes
-    it as well (``n_excluded``, never worst-filled); a candidate ``not_applicable`` or request error
-    against an ``ok`` baseline gets the worst value (``n_worst_filled``).
+    it as well (``n_excluded``, never worst-filled) unless more than ``MAX_EXCLUDED_FRACTION`` of
+    the baseline-``ok`` cases would go that way, then they are worst-filled; a candidate
+    ``not_applicable`` or request error against an ``ok`` baseline gets the worst value
+    (``n_worst_filled``).
 
     Args:
         base: Baseline run.
@@ -211,6 +219,12 @@ def pair_runs(
     cand_ids = {str(s.case.id) for s in cand.values}
     base_table = score_table(base, metric, higher_is_better=higher_is_better)
     cand_table, filled = _build(cand, metric, higher_is_better=higher_is_better, fill_worst=True)
+    comparable = set(base_table.case_ids) & cand_ids
+    dropped = comparable - set(cand_table.case_ids)  # candidate judge errors, excluded
+    if len(dropped) > MAX_EXCLUDED_FRACTION * len(comparable) + 1e-9:
+        cand_table, filled = _build(
+            cand, metric, higher_is_better=higher_is_better, fill_worst=True, fill_errors=True
+        )
     return pair_tables(
         base_table,
         cand_table,

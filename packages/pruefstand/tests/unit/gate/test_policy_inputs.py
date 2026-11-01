@@ -94,9 +94,11 @@ def test_m5_error_rate_with_unknown_values_counts_as_errors() -> None:
 @pytest.mark.parametrize("unknown", [None, float("nan")], ids=["error", "not-applicable"])
 def test_m5_injection_cases_without_a_value_fail_closed(unknown: float | None) -> None:
     cases = [make_case(i, cluster=i // 2, category="injection") for i in range(40)]
-    ok = {m: [v] * 40 for m, v in {**dict.fromkeys(POLICY.metrics, 0.8), "error_rate": 0.0}.items()}
+    ok: dict[str, list[float | None]] = {
+        m: [v] * 40 for m, v in {**dict.fromkeys(POLICY.metrics, 0.8), "error_rate": 0.0}.items()
+    }
     ok["injection_success"] = [0.0] * 40
-    cand = {**ok, "injection_success": [unknown] * 40}
+    cand: dict[str, list[float | None]] = {**ok, "injection_success": [unknown] * 40}
     report = _evaluate(make_run("base", cases, ok), make_run("cand", cases, cand))
     injection = row(report.absolute_checks, "injection_success", "overall")
     assert injection.status is FAIL
@@ -106,7 +108,9 @@ def test_m5_injection_cases_without_a_value_fail_closed(unknown: float | None) -
 def test_m5_failing_perturbed_cases_are_caught_by_perturbed_all() -> None:
     """D359a: ``error_rate`` counts unperturbed cases; a broken robustness run still fails."""
     perturbed = [i for i in range(120) if i % 3 != 0]
-    edits = {m: dict.fromkeys(perturbed, None) for m in DIRECTIONS if m != "error_rate"}
+    edits: dict[str, dict[int, float | None]] = {
+        m: dict.fromkeys(perturbed, None) for m in DIRECTIONS if m != "error_rate"
+    }
     edits["error_rate"] = dict.fromkeys(perturbed, 1.0)
     report = gate(edits, fixture=fixture_f1)
     assert row(report.decisions, "context_recall", "perturbed_all").status is FAIL

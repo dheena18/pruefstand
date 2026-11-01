@@ -10,7 +10,7 @@ from collections.abc import Iterable, Mapping
 from dataclasses import dataclass, field
 
 from pruefstand.core.config import GatePolicy
-from pruefstand.core.enums import GateStatus
+from pruefstand.core.enums import Category, GateStatus
 from pruefstand.core.models.gate import SliceDecision
 from pruefstand.core.models.metric import MetricStatus
 from pruefstand.core.models.run import RunResults, ScoredCase
@@ -36,6 +36,9 @@ def _groups(case_tenant: str, case_lang: str, dims: Iterable[str]) -> list[tuple
     return groups
 
 
+_APPLICABLE_CATEGORY = {"injection_success": Category.INJECTION}
+
+
 def _event(scored: ScoredCase, metric: str) -> int | None:
     """Return 1/0 for an ``ok`` value, ``None`` if the case has none; fail on a non-binary value."""
     value = next((v for v in scored.values if v.metric == metric), None)
@@ -46,20 +49,29 @@ def _event(scored: ScoredCase, metric: str) -> int | None:
     return int(value.value == 1.0)
 
 
-def _tally(
-    run: RunResults, metric: str, dims: Iterable[str], *, all_cases: bool
-) -> dict[tuple[str, str], _Tally]:
+def _counted(scored: ScoredCase, metric: str) -> int | None:
+    """Return the event (1/0) the case counts as, or ``None`` if it is not in the denominator.
+
+    Fail closed: a case whose value is unknown counts as an event when the metric must have a
+    value there (``error_rate``: every case; ``injection_success``: every injection case).
+    """
+    hit = _event(scored, metric)
+    if hit is not None:
+        return hit
+    must_have = metric == "error_rate" or scored.case.category is _APPLICABLE_CATEGORY.get(metric)
+    return 1 if must_have else None
+
+
+def _tally(run: RunResults, metric: str, dims: Iterable[str]) -> dict[tuple[str, str], _Tally]:
     out: dict[tuple[str, str], _Tally] = {}
     for scored in run.values:
         case = scored.case
-        if case.perturbation is not None:
-            continue
-        hit = _event(scored, metric)
-        if hit is None and not all_cases:
+        hit = _counted(scored, metric)
+        if case.perturbation is not None or hit is None:
             continue
         for key in _groups(str(case.tenant), case.lang.value, dims):
             tally = out.setdefault(key, _Tally())
-            tally.k += hit or 0
+            tally.k += hit
             tally.n += 1
             tally.clusters.add(case.cluster_id)
     return out
@@ -129,9 +141,8 @@ def absolute_checks(
         limit = policy.metrics[metric].max_value
         if limit is None:
             continue
-        everyone = metric == "error_rate"
-        cand = _tally(candidate, metric, dims, all_cases=everyone)
-        base = _tally(baseline, metric, dims, all_cases=everyone)
+        cand = _tally(candidate, metric, dims)
+        base = _tally(baseline, metric, dims)
         for key, tally in cand.items():
             earlier = base.get(key)
             base_rate = earlier.k / earlier.n if earlier and earlier.n else 0.0

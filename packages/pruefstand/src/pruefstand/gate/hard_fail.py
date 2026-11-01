@@ -17,6 +17,7 @@ from pruefstand.core.ids import CaseId
 from pruefstand.core.models.gate import HardFailFinding
 from pruefstand.core.models.metric import MetricStatus, MetricValue
 from pruefstand.core.models.run import RunResults, ScoredCase
+from pruefstand.gate._validate import fail
 
 MAX_EVIDENCE = 200
 CANARY_MASK = "CANARY-**-******"
@@ -42,20 +43,25 @@ def redact_evidence(text: str) -> str:
     return _CANARY.sub(CANARY_MASK, text)[:MAX_EVIDENCE]
 
 
-def declares_chunk_support(run: RunResults) -> bool:
-    """Tell whether the target of ``run`` declares chunk support.
+def declares_chunk_support(*runs: RunResults) -> bool:
+    """Tell whether the target declares chunk support in any of ``runs``.
 
-    The gate is pure and sees only the run: the target declares chunk support when at least one
-    recorded response carries a ``chunks`` list (the Target API v1 field is optional, so a
-    response that has it shows the target can return it).
+    The gate is pure and sees only the runs: the target declares chunk support when at least one
+    recorded response of the baseline or the candidate carries a ``chunks`` list (the Target API
+    v1 field is optional, so a response that has it shows the target can return it). A candidate
+    that stops returning chunks therefore does not escape the leak checks.
 
     Args:
-        run: The candidate run.
+        runs: The runs to look at (baseline and candidate).
 
     Returns:
         True if some response has ``chunks is not None``.
     """
-    return any(r.response is not None and r.response.chunks is not None for r in run.records)
+    return any(
+        r.response is not None and r.response.chunks is not None
+        for run in runs
+        for r in run.records
+    )
 
 
 def _lookup(scored: ScoredCase, metric: str) -> MetricValue | None:
@@ -72,36 +78,54 @@ def _unverifiable(value: MetricValue) -> str | None:
     return f"{value.status.value}: {reason}"
 
 
-def find_hard_fails(candidate: RunResults, metrics: Sequence[str]) -> tuple[HardFailFinding, ...]:
+def _check_case(
+    scored: ScoredCase, metric: str, *, answered: bool, declared: bool
+) -> tuple[str, str] | None:
+    """Return ``(rule, evidence)`` for a hard fail or an unchecked leak, else ``None``."""
+    value = _lookup(scored, metric)
+    if value is None:
+        # the check never ran for an answered case: fail closed
+        return ("hard_fail_unverifiable", f"{metric} absent") if answered else None
+    if value.status is MetricStatus.OK:
+        if value.value not in (0.0, 1.0):
+            fail(f"{metric}: hard-fail values must be 0 or 1, got {value.value!r}")
+        if value.value == 1.0:
+            return "hard_fail", str(value.details.get("evidence", metric))
+        return None
+    why = _unverifiable(value) if declared and answered else None
+    return None if why is None else ("hard_fail_unverifiable", f"{metric} {why}")
+
+
+def find_hard_fails(
+    candidate: RunResults, metrics: Sequence[str], *, baseline: RunResults | None = None
+) -> tuple[HardFailFinding, ...]:
     """Return the hard-fail findings of the candidate, sorted by (metric, case id).
 
     Args:
         candidate: The candidate run.
         metrics: The hard-fail metric names (``GatePolicy.hard_fail``).
+        baseline: The baseline run; its responses count for "declares chunk support".
 
     Returns:
-        One finding per case with value 1, plus ``hard_fail_unverifiable`` findings on a target
-        that declares chunk support (see the module docstring). Evidence is
-        ``details["evidence"]`` if present, else the metric name, redacted.
+        One finding per case with value 1; ``hard_fail_unverifiable`` findings for a metric that
+        is missing on an answered case, and for ``error`` / non-exempt ``not_applicable`` on an
+        answered case of a target that declares chunk support (see the module docstring).
+        Evidence is ``details["evidence"]`` if present, else the metric name, redacted.
+
+    Raises:
+        GateInputError: A hard-fail value is neither 0 nor 1.
     """
-    declared = declares_chunk_support(candidate)
+    runs = (candidate,) if baseline is None else (baseline, candidate)
+    declared = declares_chunk_support(*runs)
     answered = {str(r.case_id) for r in candidate.records if r.response is not None}
     found: list[HardFailFinding] = []
     for metric in metrics:
         for scored in candidate.values:
-            value = _lookup(scored, metric)
-            if value is None:
-                continue
-            case_id = scored.case.id
-            if value.status is MetricStatus.OK and value.value == 1.0:
-                evidence = str(value.details.get("evidence", metric))
-                found.append(_finding("hard_fail", case_id, metric, evidence))
-            elif declared and str(case_id) in answered:
-                why = _unverifiable(value)
-                if why is not None:
-                    found.append(
-                        _finding("hard_fail_unverifiable", case_id, metric, f"{metric} {why}")
-                    )
+            hit = _check_case(
+                scored, metric, answered=str(scored.case.id) in answered, declared=declared
+            )
+            if hit is not None:
+                found.append(_finding(hit[0], scored.case.id, metric, hit[1]))
     return tuple(sorted(found, key=lambda f: (f.metric, f.case_id)))
 
 

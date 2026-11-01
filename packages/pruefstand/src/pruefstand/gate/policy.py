@@ -58,6 +58,37 @@ _TOP_CASES = 5
 _FAILING = frozenset({GateStatus.WARN, GateStatus.FAIL})
 
 
+def _case_keys(run: RunResults) -> dict[str, tuple[object, ...]]:
+    return {
+        str(s.case.id): (
+            s.case.cluster_id, s.case.tenant, s.case.lang, s.case.category, s.case.perturbation,
+            s.case.tags,
+        )
+        for s in run.values
+    }  # fmt: skip
+
+
+def _check_same_cases(baseline: RunResults, candidate: RunResults) -> None:
+    """Both runs must hold the same cases with the same cluster and slice attributes.
+
+    A candidate that lost cases (or a whole slice) cannot be judged: without this check the
+    pairing would silently compare what is left (review of PR #22, B1).
+    """
+    base, cand = _case_keys(baseline), _case_keys(candidate)
+    if base.keys() != cand.keys():
+        missing = len(base.keys() - cand.keys())
+        extra = len(cand.keys() - base.keys())
+        fail(
+            f"baseline and candidate hold different cases ({missing} only in the baseline, "
+            f"{extra} only in the candidate); the runs are not comparable"
+        )
+    changed = sum(base[k] != cand[k] for k in base)
+    if changed:
+        fail(
+            f"{changed} cases differ in cluster or slice attributes between baseline and candidate"
+        )
+
+
 def _validate(
     baseline: RunResults, candidate: RunResults, policy: GatePolicy, directions: Mapping[str, bool]
 ) -> None:
@@ -66,6 +97,7 @@ def _validate(
     for name, run in (("baseline", baseline), ("candidate", candidate)):
         if not run.manifest.complete:
             fail(f"the {name} run is not complete (stop_reason={run.manifest.stop_reason!r})")
+    _check_same_cases(baseline, candidate)
     errors = [
         v.value
         for s in baseline.values
@@ -170,7 +202,7 @@ def evaluate_gate(
             absolute-check metric.
     """
     _validate(baseline, candidate, policy, directions)
-    hard_fails = find_hard_fails(candidate, policy.hard_fail)
+    hard_fails = find_hard_fails(candidate, policy.hard_fail, baseline=baseline)
     pairs, tables = _collect_pairs(baseline, candidate, policy, directions, informational)
     bootstrap_pairs(pairs, policy, rng)
     rows = build_decisions(pairs, policy)
@@ -192,4 +224,6 @@ def evaluate_gate(
         top_failing_cases=_top_failing(tables, decisions),
         not_applicable_counts=_not_applicable_counts(candidate),
         no_baseline=False,
+        n_unmatched={m: t.n_unmatched for m, t in tables.items() if t.n_unmatched},
+        n_excluded={m: t.n_excluded for m, t in tables.items() if t.n_excluded},
     )

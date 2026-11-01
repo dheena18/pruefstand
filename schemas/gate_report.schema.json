@@ -249,7 +249,7 @@
     }
   },
   "additionalProperties": false,
-  "description": "The gate's answer for one candidate run (``gate.json``).\n\n``baseline_run_id`` is ``None`` exactly when ``no_baseline`` is true.\n\nRaises:\n    ValidationError: ``baseline_run_id is None`` differs from ``no_baseline``.",
+  "description": "The gate's answer for one candidate run (``gate.json``).\n\n``baseline_run_id`` is ``None`` exactly when ``no_baseline`` is true. ``n_unmatched`` and\n``n_excluded`` map a paired metric to the cases dropped from its pairing (only metrics with\na non-zero count): in one run only, and excluded (baseline not ``ok``, judge error).\n\nRaises:\n    ValidationError: ``baseline_run_id is None`` differs from ``no_baseline``.",
   "properties": {
     "absolute_checks": {
       "items": {
@@ -310,6 +310,22 @@
         }
       ],
       "title": "Likely Cause"
+    },
+    "n_excluded": {
+      "additionalProperties": {
+        "type": "integer"
+      },
+      "default": {},
+      "title": "N Excluded",
+      "type": "object"
+    },
+    "n_unmatched": {
+      "additionalProperties": {
+        "type": "integer"
+      },
+      "default": {},
+      "title": "N Unmatched",
+      "type": "object"
     },
     "no_baseline": {
       "default": false,
