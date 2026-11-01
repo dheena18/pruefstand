@@ -80,3 +80,8 @@ def test_dotted_ids_are_fine() -> None:
 def test_prompt_id_with_a_trailing_newline_is_refused() -> None:
     with pytest.raises(PromptError, match="prompt_id"):
         PromptRegistry().get("echo\n", "v1")
+
+
+def test_version_with_a_trailing_newline_is_refused() -> None:
+    with pytest.raises(PromptError, match="v<N>"):
+        PromptRegistry().get("echo", "v1\n")

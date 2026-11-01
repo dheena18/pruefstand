@@ -185,3 +185,11 @@ def test_unicode_hyphens_do_not_hide_a_canary(dash: str) -> None:
     policy = LLMPolicy(LLMPolicyConfig(), canaries=_canary_registry())
     with pytest.raises(PolicyViolation, match="canary"):
         policy.check(_github(f"Was ist CANARY{dash}7f3a?"), "github")
+
+
+@pytest.mark.parametrize("provider", ["mistral", "gemini", "groq", "openrouter"])
+def test_free_tiers_without_a_capped_client_are_refused_by_the_factory(provider: str) -> None:
+    policy = LLMPolicyConfig(allowed_providers=("github", provider))
+    ref = ModelRef(id=f"{provider}/some-model:free", family="unknown")
+    with pytest.raises(ConfigError, match="capped"):
+        build_backend(ref, policy=policy)

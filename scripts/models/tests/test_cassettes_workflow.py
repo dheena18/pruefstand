@@ -121,6 +121,12 @@ def test_push_applies_changes_deletions_and_stages_only_cassettes(tmp_path: Path
         [("deleted.txt", "file", ""), (f"{PREFIX}/../keep.txt", "file", "x")],
         [("deleted.txt", "file", "keep.txt\n")],
         [("deleted.txt", "file", f"{PREFIX}/../keep.txt\n")],
+        [("deleted.txt", "file", f"{PREFIX}/*\n")],
+        [("deleted.txt", "file", f"{PREFIX}/llm/?.yaml\n")],
+        [("deleted.txt", "file", f"{PREFIX}/llm/[ab].yaml\n")],
+        [("deleted.txt", "file", ""), (f"{PREFIX}/llm/x y.yaml", "file", "x")],
+        [("deleted.txt", "file", ""), (f"{PREFIX}/llm/run.sh", "file", "x")],
+        [("deleted.txt", "file", ""), (f"{PREFIX}/llm/$(id).yaml", "file", "x")],
     ],
 )
 def test_unsafe_artefacts_are_rejected(

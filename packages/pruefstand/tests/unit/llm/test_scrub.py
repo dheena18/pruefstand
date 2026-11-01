@@ -171,3 +171,12 @@ def test_request_uri_and_body_are_scanned_by_the_hook() -> None:
         scrub_request(Request("POST", "http://h/v1", b'{"k": "Bearer abcdefgh12345"}', {}))
     ok = scrub_request(Request("POST", "http://h/v1", b"{}", {"X-A": "b", "Content-Type": "c"}))
     assert dict(ok.headers) == {"Content-Type": "c"}
+
+
+def test_repeated_url_encoding_does_not_hide_a_secret() -> None:
+    once = "Bearer abcdefgh12345".replace(" ", "%20")
+    twice = once.replace("%", "%25")
+    thrice = twice.replace("%", "%25")
+    for text in (once, twice, thrice):
+        with pytest.raises(LLMError, match="secret"):
+            assert_no_secrets(text)

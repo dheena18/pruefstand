@@ -8,6 +8,7 @@ bodies).
 import json
 import threading
 import time
+import zlib
 from collections.abc import Iterator
 from contextlib import contextmanager
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -38,6 +39,7 @@ class _Handler(BaseHTTPRequestHandler):
     drip_s = 0.0
     huge_bytes = 0
     chunked = False
+    gzip_expand = 0
 
     def log_message(self, format: str, *args: object) -> None:  # noqa: A002
         return
@@ -47,6 +49,8 @@ class _Handler(BaseHTTPRequestHandler):
         try:
             if self.drip_s:
                 self._drip()
+            elif self.gzip_expand:
+                self._gzip()
             elif self.huge_bytes:
                 self._huge()
             else:
@@ -74,6 +78,23 @@ class _Handler(BaseHTTPRequestHandler):
             self.wfile.write(body[i : i + 1])
             self.wfile.flush()
             time.sleep(self.drip_s)
+
+    def _gzip(self) -> None:
+        """A small gzip body that expands to ``gzip_expand`` bytes (a decompression bomb)."""
+        head, tail = completion_json("@@").split(b"@@")
+        comp = zlib.compressobj(wbits=31)
+        parts = [comp.compress(head)]
+        block = b"a" * (1 << 20)
+        for _ in range(self.gzip_expand >> 20):
+            parts.append(comp.compress(block))
+        parts += [comp.compress(tail), comp.flush()]
+        body = b"".join(parts)
+        self.send_response(200)
+        self.send_header("Content-Type", "application/json")
+        self.send_header("Content-Encoding", "gzip")
+        self.send_header("Content-Length", str(len(body)))
+        self.end_headers()
+        self.wfile.write(body)
 
     def _huge(self) -> None:
         head, tail = completion_json("@@").split(b"@@")
@@ -111,6 +132,7 @@ def serve(
     drip_s: float = 0.0,
     huge_bytes: int = 0,
     chunked: bool = False,
+    gzip_expand: int = 0,
 ) -> Iterator[str]:
     """Run a loopback server; yields its ``http://127.0.0.1:<port>/v1`` base URL."""
     handler = type(
@@ -122,6 +144,7 @@ def serve(
             "drip_s": drip_s,
             "huge_bytes": huge_bytes,
             "chunked": chunked,
+            "gzip_expand": gzip_expand,
         },
     )
     server = ThreadingHTTPServer(("127.0.0.1", 0), handler)

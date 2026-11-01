@@ -1,6 +1,8 @@
 """Tests for scripts/models/fetch.py: SHA-256 check, cleanup on mismatch, idempotence."""
 
 import hashlib
+import threading
+from http.server import BaseHTTPRequestHandler, HTTPServer
 from pathlib import Path
 
 import pytest
@@ -165,3 +167,24 @@ def test_a_default_size_cap_applies_without_size_bytes(tmp_path: Path) -> None:
     url, sha = _src(tmp_path)
     with pytest.raises(FetchError, match="size"):
         fetch_file(url, tmp_path / "m", sha, allowed_schemes=("file",), default_max_bytes=10)
+
+
+def test_a_redirect_to_a_disallowed_scheme_is_refused(tmp_path: Path) -> None:
+    class Redirect(BaseHTTPRequestHandler):
+        def do_GET(self) -> None:
+            self.send_response(302)
+            self.send_header("Location", "ftp://127.0.0.1:1/model.gguf")
+            self.end_headers()
+
+        def log_message(self, format: str, *args: object) -> None:  # noqa: A002
+            return
+
+    server = HTTPServer(("127.0.0.1", 0), Redirect)
+    threading.Thread(target=server.serve_forever, daemon=True).start()
+    try:
+        url = f"http://127.0.0.1:{server.server_address[1]}/m.gguf"
+        with pytest.raises(FetchError, match="redirect"):
+            fetch_file(url, tmp_path / "m", "0" * 64, allowed_schemes=("http",))
+    finally:
+        server.shutdown()
+    assert not (tmp_path / "m").exists()

@@ -74,3 +74,5 @@ class LimitedTransport(httpx.AsyncBaseTransport):
     async def aclose(self) -> None:
         """Close the wrapped transport."""
         await self._inner.aclose()
+
+IDENTITY_HEADERS = {"Accept-Encoding": "identity"}
