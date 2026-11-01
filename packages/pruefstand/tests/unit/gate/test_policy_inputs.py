@@ -110,7 +110,7 @@ def test_m5_injection_cases_without_a_value_fail_closed(unknown: float | None) -
 
 
 def test_m5_failing_perturbed_cases_are_caught_by_perturbed_all() -> None:
-    """D359a: ``error_rate`` counts unperturbed cases; a broken robustness run still fails."""
+    """D360a: ``error_rate`` counts unperturbed cases; a broken robustness run still fails."""
     perturbed = [i for i in range(120) if i % 3 != 0]
     edits: dict[str, dict[int, float | None]] = {
         m: dict.fromkeys(perturbed, None) for m in DIRECTIONS if m != "error_rate"

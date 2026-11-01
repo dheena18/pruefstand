@@ -1086,7 +1086,7 @@ class GatePolicy(BaseModel):   hard_fail: tuple[str, ...] = ("canary_leak", "ten
                                warn_p: float = 0.10
                                max_error_rate: float = 0.02   # absolute check on error_rate; baseline above it -> GateInputError
 class HardFailFinding(BaseModel): rule: str; case_id: CaseId; metric: str; evidence: str  # redacted: ≤200 chars, canaries masked
-                               # rule = "hard_fail" (metric == 1) | "hard_fail_unverifiable" (error, absent, or non-exempt not_applicable on a chunk-declaring target, D358)
+                               # rule = "hard_fail" (metric == 1) | "hard_fail_unverifiable" (error, absent, or non-exempt not_applicable on a chunk-declaring target, D359)
 class SliceDecision(BaseModel):   metric: str; dimension: str; value: str; status: GateStatus; gated: bool
                                   notable: bool = False          # informational slices only (BH q = 0.10)
                                   baseline_mean: float; candidate_mean: float; result: BootstrapResult | None
@@ -1133,7 +1133,7 @@ def evaluate_gate(baseline: RunResults, candidate: RunResults, policy: GatePolic
     #   hold different case ids / cluster or slice attributes. `directions` is NOT cross-checked against the registry here
     #   (gate never imports metrics); T1.10's pipeline passes MetricRegistry.directions() unchanged and tests the equality.
     #   A judge-error pair is excluded only if every gated slice holding it (testable or not) stays within 20 %; otherwise it is
-    #   filled with the worst value everywhere, `overall` included (D359h). Further GateInputError cases: baseline `error` above
+    #   filled with the worst value everywhere, `overall` included (D360h). Further GateInputError cases: baseline `error` above
     #   20 % of a testable gated slice, a response-less record whose error_rate is 0, a gated metric with no usable baseline value.
 CauseCode = Literal["retrieval", "generation", "citation_format", "language", "refusal_policy", "errors", "mixed"]
 def likely_cause(decisions: Sequence[SliceDecision]) -> CauseCode | None   # gate/cause.py (T1.7); rule table: SPEC §7.4

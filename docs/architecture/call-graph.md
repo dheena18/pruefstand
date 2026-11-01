@@ -69,7 +69,7 @@ flowchart TB
     chk ==>|"no"| err["raise GateInputError, exit 3"]
     chk -->|"yes"| tbl["pipeline builds ScoreTable per metric<br/>(cluster_ids, slices, higher_is_better)<br/>directions = MetricRegistry.directions()"]
     tbl --> eg["gate.evaluate_gate(baseline, candidate, policy, rng, directions=directions)"]
-    eg --> hard["hard fails -> HardFailFinding<br/>(value 1; or unverifiable on a chunk-declaring target, D358)"]
+    eg --> hard["hard fails -> HardFailFinding<br/>(value 1; or unverifiable on a chunk-declaring target, D359)"]
     eg --> abs["absolute checks (max_value), overall slice only:<br/>decide_absolute -> FAIL if Wilson lower bound > max_value,<br/>WARN if lower bound > max_value/2 or paired max_drop WARNs"]
     eg --> sl["for each metric x slice: diffs oriented by higher_is_better"]
     sl --> few{{"n_clusters >= min_clusters (30)?"}}
@@ -78,7 +78,7 @@ flowchart TB
     nz -->|"yes"| pcb["paired_cluster_bootstrap(diffs, cluster_ids, B=10000, rng)<br/>p = P*(mean_diff >= 0)"]
     nz -->|"no"| sign["sign_test_p(cluster mean diffs)"]
     pcb & sign --> rr{{"gated pair: p within 3 SE of a Holm threshold<br/>and drop > max_drop?"}}
-    rr -->|"yes"| re["re-run with B = 200 000, same rng (D357)"]
+    rr -->|"yes"| re["re-run with B = 200 000, same rng (D358)"]
     rr -->|"no"| gs
     re --> gs{{"gated pair?<br/>gated metric x (overall, tenant, lang, perturbed_all for retrieval metrics)"}}
     gs -->|"gated"| holm["holm_adjust ONCE over all testable gated pairs of the run (m pairs)"]
