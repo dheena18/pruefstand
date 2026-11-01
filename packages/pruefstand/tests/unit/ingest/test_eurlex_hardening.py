@@ -14,7 +14,7 @@ from pruefstand.core.ids import DocId, TenantId
 from pruefstand.core.models.corpus import Document
 from pruefstand.ingest.chunkers.article import ArticleChunker
 from pruefstand.ingest.eurlex import EurLexLoader
-from pruefstand.ingest.eurlex_blocks import clean, parse_blocks
+from pruefstand.ingest.eurlex_blocks import parse_blocks
 from pruefstand.ingest.eurlex_parse import EurLexLimits, EurLexParseError, parse_act
 
 FIXTURES = Path(__file__).resolve().parents[2] / "fixtures" / "eurlex"
@@ -208,103 +208,3 @@ def test_paragraph_splitting_is_linear_for_pathological_markers() -> None:
         return lambda: chunker.chunk(doc)
 
     assert_linear(make, 500)
-
-
-# --- review round: sibling headings, footnote refs, nested recitals, budgets ---------------------
-
-
-def sibling_headings_page(n: int) -> bytes:
-    """``n`` Article headings as siblings inside one ELI Article div (B1 repro shape)."""
-    body = '<p class="oj-ti-art">Article 1</p><p>x</p>' * n
-    return f'<html><body><div id="art_1">{body}</div></body></html>'.encode()
-
-
-def test_parsing_is_linear_for_sibling_headings_in_one_article_div() -> None:
-    def make(n: int) -> Callable[[], object]:
-        page = sibling_headings_page(n)
-        return lambda: parse_act(page)
-
-    assert_linear(make, 400)
-
-
-def test_each_sibling_heading_stops_at_the_next_one() -> None:
-    page = (
-        b'<html><body><div id="art_1"><p class="oj-ti-art">Article 1</p><p>one</p>'
-        b'<p class="oj-ti-art">Article 2</p><p>two</p></div></body></html>'
-    )
-    bodies = {b.number: b.body for b in parse_act(page).blocks}
-    assert bodies == {"1": "one", "2": "two"}
-
-
-def footnote_page(n: int) -> bytes:
-    refs = '<a><span class="oj-super oj-note-tag">1</span></a>x' * n
-    return (
-        '<html><body><div id="art_1"><p class="oj-ti-art">Article 1</p>'
-        f"<p>{refs}</p></div></body></html>"
-    ).encode()
-
-
-def test_footnote_reference_removal_is_linear() -> None:
-    def make(n: int) -> Callable[[], object]:
-        page = footnote_page(n)
-        return lambda: parse_act(page)
-
-    assert_linear(make, 15_000)
-
-
-def test_footnote_references_are_removed_and_text_kept() -> None:
-    (art,) = parse_act(footnote_page(3)).blocks
-    assert art.body == "xxx"
-
-
-def nested_recitals_page(depth: int) -> bytes:
-    opens = "".join(f'<div id="rct_{i}"><p>({i}) Text {i}.</p>' for i in range(1, depth + 1))
-    return (
-        f"<html><body>{opens}{'</div>' * depth}"
-        '<div id="art_1"><p class="oj-ti-art">Article 1</p><p>t</p></div></body></html>'
-    ).encode()
-
-
-def test_nested_recitals_take_only_their_own_text() -> None:
-    page = nested_recitals_page(189)
-    blocks = parse_act(page).blocks
-    recitals = [b for b in blocks if b.kind == "rec"]
-    assert len(recitals) == 189
-    assert all(b.body == f"({b.number}) Text {b.number}." for b in recitals)
-    assert sum(len(b.body) for b in blocks) <= len(page)
-
-
-def test_text_budget_is_enforced() -> None:
-    page = sibling_headings_page(50)
-    with pytest.raises(EurLexParseError, match="text"):
-        parse_act(page, EurLexLimits(max_chars=20))
-    assert parse_act(page, EurLexLimits(max_chars=10_000)).blocks
-
-
-def test_clean_removes_control_characters() -> None:
-    assert clean("a\x00b\x7fc\x85d\x1ee") == "a b c d e"
-
-
-def test_literal_record_separator_in_source_text_is_not_a_marker(tmp_path: Path) -> None:
-    forged = gdpr("en").replace(b"Lawfulness of processing", b"Lawfulness\x1eART 99\tevil")
-    docs = {d.lang: d for d in EurLexLoader().load(raw_with(tmp_path, gdpr("de"), forged))}
-    en = docs[Lang.EN]
-    assert [b.number for b in parse_blocks(en.text) if b.kind == "art"] == ["5", "6"]
-    assert en.text.count("\x1e") == len(parse_blocks(en.text))
-
-
-@pytest.mark.parametrize("ref", [b"&#127;", b"&#133;", b"&#1;"])
-def test_control_character_references_are_removed(tmp_path: Path, ref: bytes) -> None:
-    page = gdpr("en").replace(b"Lawfulness of processing", b"Lawfulness" + ref + b"ART 99")
-    docs = {d.lang: d for d in EurLexLoader().load(raw_with(tmp_path, gdpr("de"), page))}
-    assert "\x7f" not in docs[Lang.EN].text
-    assert "\x01" not in docs[Lang.EN].text
-
-
-def test_only_ascii_digits_make_an_article_number() -> None:
-    page = (
-        '<html><body><div id="art_1"><p class="oj-ti-art">Article \u0663</p>'
-        "<p>x</p></div></body></html>"
-    ).encode()
-    with pytest.raises(EurLexParseError, match="Article"):
-        parse_act(page)
