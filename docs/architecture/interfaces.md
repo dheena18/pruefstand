@@ -1019,6 +1019,7 @@ Pure functions: numbers in, decision out. `gate` imports only `core`, numpy and 
 
 ```python
 class ScoreTable(BaseModel):   # one metric, one run; aligned by case_id when paired. Built by T1.7's pair_runs
+                               # T1.6 validation (additive): all tuples equal length, case_ids unique, values finite (no NaN/inf)
                                # (one per metric and run); T1.7's private PairedTable is made from two ScoreTables
     metric: str; higher_is_better: bool
     case_ids: tuple[CaseId, ...]; cluster_ids: tuple[str, ...]; values: tuple[float, ...]
@@ -1031,6 +1032,7 @@ class BootstrapResult(BaseModel): mean_diff: float; ci_low: float; ci_high: floa
 def paired_cluster_bootstrap(diffs: NDArray[np.float64], clusters: NDArray[np.str_], *,
                              n_resamples: int, confidence: float, rng: np.random.Generator,
                              alpha: float = 0.025) -> BootstrapResult
+    # T1.6 validation (additive): rng must be a numpy.random.Generator (GateInputError otherwise); n_resamples <= 10_000_000 and n_resamples * n_clusters <= 1e10
     # small-sample correction: boot_c = mean + (boot - mean) * c_k, c_k = sqrt(k/(k-1)) * t_{k-1,1-alpha} / z_{1-alpha}, k = n_clusters
     # diffs oriented so that negative = worse (pipeline/evaluate_gate flips lower-is-better metrics)
     # resample clusters with replacement; statistic = mean of per-case diffs in the resample;

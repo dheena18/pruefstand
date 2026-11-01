@@ -105,7 +105,7 @@ owning module's unit test dir (`pt/unit/<module>/`, `rd/unit/…`).
 | `Perturbation` (T4.4 part) | `core.protocols` | T4.4 | `pt/unit/perturb/test_*.py` | every deterministic perturbation implements it | covered |
 | `LLMPerturbation` (T4.5 part) | `core.protocols` | T4.5 | `pt/unit/perturb/test_*.py` | every LLM perturbation implements it | covered |
 | `EvidenceRecord` | `core.models.evidence` | T6.4 | `pt/unit/report/test_evidence.py` | validates against exported schema; hashes; no "konform" | covered |
-| `ScoreTable` (T1.6 part: model) | `core.models.gate` | T1.6 | `pt/unit/gate/test_gate_models.py` | 3 aligned tuples + `slices` valid; mismatched lengths → `ValidationError` | covered |
+| `ScoreTable` (T1.6 part: model) | `core.models.gate` | T1.6 | `pt/unit/gate/test_gate_models.py` | 3 aligned tuples + `slices` valid; mismatched lengths, duplicate `case_ids`, NaN/inf values → `ValidationError` | covered |
 | `ScoreTable` (T1.7 part: `pair_runs`) | `core.models.gate` | T1.7 | `pt/unit/gate/test_tables.py` | `pair_runs` equals hand-paired tables, cases in one run only dropped | covered |
 | `BootstrapResult` | `core.models.gate` | T1.6 | `test_bootstrap.py` | every field asserted in cases (a)–(j) | covered |
 | `HardFailFinding`, `SliceDecision`, `GateReport` (R9: `baseline_run_id: RunId \| None`), `CauseCode`, `CAUSE_MESSAGES` | `core.models.gate` | T1.7 | `test_policy.py`, `test_cause.py`, `test_hard_fail.py` | R1–R18; every code has a message; evidence ≤ 200 chars, canary masked; `max_drop`/`max_value`/`n_clusters`; `not_applicable_counts`; **R9:** `informational_reason` set ⇒ `gated is False` (validator); `no_baseline=True` with `baseline_run_id=None` valid | covered |
