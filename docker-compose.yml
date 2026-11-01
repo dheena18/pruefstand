@@ -88,6 +88,8 @@ services:
     volumes:
       - ${LIVE_MODEL_DIR:-${HOME}/.cache/pruefstand/models}/tei:/data
     mem_limit: 2g
+    # The ONNX runtime spins on every core it sees (12 busy cores on the 160-core VM); 4 = the hosted runner.
+    cpus: ${LIVE_EMBED_CPUS:-4}
     healthcheck:
       test: ["CMD", "curl", "-fsS", "http://localhost:80/health"]
       interval: 5s
@@ -100,6 +102,8 @@ services:
   rag-demo:
     <<: *service-defaults
     profiles: [live]
+    # `up` must never reuse an image built from older sources (the build cache keeps this cheap).
+    pull_policy: build
     build:
       context: .
       dockerfile: apps/rag-demo/Dockerfile

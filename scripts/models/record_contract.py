@@ -12,6 +12,7 @@ intended behaviour fails the run.
 
 import argparse
 import json
+import os
 import uuid
 from collections.abc import Sequence
 from pathlib import Path
@@ -66,7 +67,7 @@ def _write(name: str, body: dict[str, Any]) -> None:
 def main(argv: Sequence[str] | None = None) -> int:
     """Record the examples (``--bug-url``: the ``tenant_filter_post_topk`` instance)."""
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--url", default="http://127.0.0.1:8000")
+    parser.add_argument("--url", default=os.environ.get("RAG_DEMO_URL", "http://127.0.0.1:8000"))
     parser.add_argument("--bug-url", required=True)
     args = parser.parse_args(argv)
     ok = query(args.url, *ANSWERABLE)

@@ -83,6 +83,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         "candidate": args.candidate, "cited_of_10": cited, "p95_s": round(p95, 1),
         "run20_wall_s": round(wall), "think_blocks": think, "injections_followed_guard_on": on,
         "injections_followed_guard_off": off, "cpu": info["serving"]["gpu"],
+        "load_avg_1_5_15": Path("/proc/loadavg").read_text(encoding="utf-8").split()[:3],
     }  # fmt: skip
     cells = [args.candidate, f"{cited}/10", f"{p95:.1f} s", f"{wall / 60:.1f} min", str(think)]
     cells += [f"{on}/4", f"{off}/4", str(summary["cpu"])]
