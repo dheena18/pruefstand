@@ -57,6 +57,11 @@ differs from this file.
 - **EUR-Lex:** "Source: EUR-Lex, © European Union, https://eur-lex.europa.eu. Reuse authorised under
   the EUR-Lex legal notice and Commission Decision 2011/833/EU. Consolidated versions are not
   authentic. The content has been modified (chunked, questions generated)."
+  Every EUR-Lex `Document` carries `license="EU-2011/833"` and `metadata["attribution"] = "© European
+  Union, https://eur-lex.europa.eu"` (T2.4); the files are the as-published OJ text (not a consolidated
+  version) fetched from the Publications Office CELLAR, split into recitals and Articles, with footnote
+  references removed and whitespace normalised. The German and English texts are the official language
+  versions; nothing is translated.
 - **GermanQuAD / GermanDPR:** "GermanQuAD and GermanDPR by deepset (Möller, Risch, Pietsch, 2021),
   CC BY 4.0, https://deepset.ai/germanquad. Modified."
 - **GermanRAG:** "GermanRAG by DiscoResearch, based on GermanDPR, CC BY-SA 4.0 (inherited). Modified."

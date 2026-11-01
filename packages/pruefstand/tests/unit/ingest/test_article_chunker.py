@@ -3,10 +3,6 @@
 from pathlib import Path
 
 import pytest
-from pruefstand.ingest.align import chunk_aligned
-from pruefstand.ingest.chunkers.article import ArticleChunker
-from pruefstand.ingest.eurlex import EurLexLoader
-from pruefstand.ingest.eurlex_blocks import parse_blocks
 from pydantic import ValidationError
 
 from pruefstand.core.citations import extract_citations, normalise
@@ -14,6 +10,10 @@ from pruefstand.core.enums import Lang
 from pruefstand.core.errors import DatasetError
 from pruefstand.core.ids import DocId, TenantId
 from pruefstand.core.models.corpus import Chunk, Document
+from pruefstand.ingest.align import chunk_aligned
+from pruefstand.ingest.chunkers.article import ArticleChunker
+from pruefstand.ingest.eurlex import EurLexLoader
+from pruefstand.ingest.eurlex_blocks import parse_blocks
 from pruefstand.ingest.text import count_tokens
 
 FIXTURES = Path(__file__).resolve().parents[2] / "fixtures" / "eurlex"
@@ -120,10 +120,11 @@ def test_split_chunks_keep_the_article_heading(docs: dict[Lang, Document]) -> No
 
 
 def test_split_is_decided_for_both_languages_together(docs: dict[Lang, Document]) -> None:
-    tokens = {
-        lang: count_tokens(next(b for b in parse_blocks(docs[lang].text) if b.number == "6").body)
+    art6 = {
+        lang: next(b for b in parse_blocks(docs[lang].text) if b.block_id == "art-6")
         for lang in (Lang.DE, Lang.EN)
     }
+    tokens = {lang: count_tokens(block.body) for lang, block in art6.items()}
     low, high = sorted(tokens.values())
     assert low < high
     chunker = ArticleChunker(max_tokens=low)
@@ -148,10 +149,23 @@ def test_article_without_numbered_paragraphs_is_never_cut() -> None:
 
 def test_paragraph_numbers_must_run_one_two_three(docs: dict[Lang, Document]) -> None:
     doc = docs[Lang.EN].model_copy(
-        update={"text": "\x1eART 7\tT\nIntro\n2. not a start\n1. first\n3. skip\n2. second"}
+        update={"text": "\x1eART 7\tT\n1. first\n3. skip\n2. second\n2. restarted list"}
     )
     chunks = ArticleChunker(max_tokens=2).chunk(doc)
     assert [c.section for c in chunks] == ["Art. 7 Abs. 1", "Art. 7 Abs. 2"]
+    assert "3. skip" in chunks[0].text
+
+
+def test_article_with_an_intro_sentence_is_a_list_and_never_split(
+    docs: dict[Lang, Document],
+) -> None:
+    text = (
+        "\x1eART 4\tBegriffsbestimmungen\nIm Sinne dieser Verordnung:\n(1) erstens;\n(2) zweitens."
+    )
+    doc = docs[Lang.DE].model_copy(update={"text": text})
+    (chunk,) = ArticleChunker(max_tokens=2).chunk(doc)
+    assert chunk.section is None
+    assert chunk.parallel_id == "32016R0679:art-4"
 
 
 def test_empty_document_has_no_chunks(docs: dict[Lang, Document]) -> None:

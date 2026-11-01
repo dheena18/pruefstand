@@ -6,13 +6,13 @@ from pathlib import Path
 
 import pytest
 from lxml import html
-from pruefstand.ingest.align import check_aligned
-from pruefstand.ingest.eurlex import EurLexLoader
-from pruefstand.ingest.eurlex_blocks import Block, parse_blocks
 
 from pruefstand.core.enums import Lang
 from pruefstand.core.errors import DatasetError
 from pruefstand.core.models.corpus import Document
+from pruefstand.ingest.align import check_aligned
+from pruefstand.ingest.eurlex import EurLexLoader
+from pruefstand.ingest.eurlex_blocks import Block, parse_blocks
 
 FIXTURES = Path(__file__).resolve().parents[2] / "fixtures" / "eurlex"
 CELEX = "32016R0679"
@@ -20,7 +20,7 @@ CELEX = "32016R0679"
 
 def build_raw(tmp_path: Path, de: bytes, en: bytes, celex: str = CELEX) -> Path:
     target = tmp_path / "raw" / celex
-    target.mkdir(parents=True)
+    target.mkdir(parents=True, exist_ok=True)
     (target / "de.html").write_bytes(de)
     (target / "en.html").write_bytes(en)
     return tmp_path / "raw"
@@ -99,7 +99,7 @@ def test_article_titles_and_text(docs: dict[Lang, Document]) -> None:
     en = {b.number: b for b in blocks_of(docs[Lang.EN]) if b.kind == "art"}
     assert de["6"].title == "Rechtmäßigkeit der Verarbeitung"
     assert en["6"].title == "Lawfulness of processing"
-    assert "1. Die Verarbeitung ist nur rechtmäßig" in de["6"].body
+    assert "(1) Die Verarbeitung ist nur rechtmäßig" in de["6"].body
     assert "(a) the data subject has given consent" in en["6"].body
 
 
@@ -165,7 +165,7 @@ def test_legacy_layout_articles_and_recitals(legacy: dict[Lang, Document]) -> No
 
 
 def test_legacy_layout_stops_at_the_signature_and_annexes(legacy: dict[Lang, Document]) -> None:
-    art3 = next(b for b in blocks_of(legacy[Lang.EN]) if b.number == "3")
+    art3 = next(b for b in blocks_of(legacy[Lang.EN]) if b.block_id == "art-3")
     assert art3.body == (
         "Member States shall take the measures necessary to ensure that every worker is "
         "entitled to a minimum daily rest period of 11 consecutive hours per 24-hour period."
