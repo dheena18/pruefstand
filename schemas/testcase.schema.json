@@ -1,0 +1,231 @@
+{
+  "$defs": {
+    "Category": {
+      "description": "Kind of test case.",
+      "enum": [
+        "factual",
+        "multi_hop",
+        "comparison",
+        "unanswerable",
+        "cross_lingual",
+        "injection",
+        "leak_probe",
+        "system_prompt_extraction",
+        "filter_bypass"
+      ],
+      "title": "Category",
+      "type": "string"
+    },
+    "Difficulty": {
+      "description": "Annotated difficulty of a test case.",
+      "enum": [
+        "easy",
+        "medium",
+        "hard"
+      ],
+      "title": "Difficulty",
+      "type": "string"
+    },
+    "Lang": {
+      "description": "Language of a question or chunk.",
+      "enum": [
+        "de",
+        "en"
+      ],
+      "title": "Lang",
+      "type": "string"
+    },
+    "Split": {
+      "description": "Dataset split (sizes and selection rules: interfaces §2 and §14).",
+      "enum": [
+        "smoke",
+        "smoke_live",
+        "core",
+        "robust_pr",
+        "full",
+        "human_labels",
+        "rq1"
+      ],
+      "title": "Split",
+      "type": "string"
+    }
+  },
+  "additionalProperties": false,
+  "description": "One evaluation case (one line of ``datasets/<name>/<version>/<split>.jsonl``).\n\n``cluster_id`` is the bootstrap cluster (source document of the base question). When the\ninput has no ``cluster_id`` it defaults to the first ``gold_doc_ids`` entry, else ``base_id``.\n\nRaises:\n    ValidationError: ``perturbation is None`` but ``base_id != id``; ``unanswerable`` without\n        ``expect_refusal``; ``injection`` without ``injection_marker``; a leak, filter-bypass or\n        system-prompt probe without ``forbidden_strings``; a blank question; ``block`` set\n        outside ``split == full`` or not in {0, 1, 2}; ``judged_subset`` outside ``core``.",
+  "properties": {
+    "base_id": {
+      "title": "Base Id",
+      "type": "string"
+    },
+    "block": {
+      "anyOf": [
+        {
+          "type": "integer"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Block"
+    },
+    "category": {
+      "$ref": "#/$defs/Category"
+    },
+    "cluster_id": {
+      "title": "Cluster Id",
+      "type": "string"
+    },
+    "corpus_version": {
+      "title": "Corpus Version",
+      "type": "string"
+    },
+    "difficulty": {
+      "$ref": "#/$defs/Difficulty"
+    },
+    "evidence_span": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Evidence Span"
+    },
+    "expect_refusal": {
+      "default": false,
+      "title": "Expect Refusal",
+      "type": "boolean"
+    },
+    "forbidden_strings": {
+      "default": [],
+      "items": {
+        "type": "string"
+      },
+      "title": "Forbidden Strings",
+      "type": "array"
+    },
+    "generation_prompt_version": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Generation Prompt Version"
+    },
+    "gold_citations": {
+      "default": [],
+      "items": {
+        "type": "string"
+      },
+      "title": "Gold Citations",
+      "type": "array"
+    },
+    "gold_doc_ids": {
+      "default": [],
+      "items": {
+        "type": "string"
+      },
+      "title": "Gold Doc Ids",
+      "type": "array"
+    },
+    "id": {
+      "title": "Id",
+      "type": "string"
+    },
+    "injection_marker": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Injection Marker"
+    },
+    "judged_subset": {
+      "default": false,
+      "title": "Judged Subset",
+      "type": "boolean"
+    },
+    "lang": {
+      "$ref": "#/$defs/Lang"
+    },
+    "license_config": {
+      "title": "License Config",
+      "type": "string"
+    },
+    "perturbation": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Perturbation"
+    },
+    "question": {
+      "title": "Question",
+      "type": "string"
+    },
+    "reference_answer": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "title": "Reference Answer"
+    },
+    "source": {
+      "title": "Source",
+      "type": "string"
+    },
+    "split": {
+      "$ref": "#/$defs/Split"
+    },
+    "tags": {
+      "default": [],
+      "items": {
+        "type": "string"
+      },
+      "title": "Tags",
+      "type": "array"
+    },
+    "tenant": {
+      "title": "Tenant",
+      "type": "string"
+    }
+  },
+  "required": [
+    "id",
+    "base_id",
+    "cluster_id",
+    "tenant",
+    "lang",
+    "question",
+    "reference_answer",
+    "category",
+    "difficulty",
+    "split",
+    "source",
+    "license_config",
+    "corpus_version"
+  ],
+  "title": "TestCase",
+  "type": "object"
+}
