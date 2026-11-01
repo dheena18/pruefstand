@@ -101,8 +101,10 @@ class JudgeStage:
             BudgetExceeded: A judge call passed the USD or token cap (not caught here).
         """
         outcome = JudgeOutcome({})
+        # fail closed: a hard-fail metric that fired (1) or could not be verified (error)
         hard = any(
-            v.metric in self._hard_fail and v.status is MetricStatus.OK and v.value == 1.0
+            v.metric in self._hard_fail
+            and (v.status is MetricStatus.ERROR or (v.status is MetricStatus.OK and v.value == 1.0))
             for v in deterministic.values()
         )
         resp, judges = record.response, self._judges

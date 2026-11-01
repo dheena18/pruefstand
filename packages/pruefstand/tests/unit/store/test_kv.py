@@ -1,6 +1,5 @@
 import hashlib
 import importlib.metadata as md
-import os
 import pickle
 import sqlite3
 import stat
@@ -138,11 +137,17 @@ def test_read_only_get_leaves_every_byte_of_the_cache_directory_alone(tmp_path: 
     with DiskKVCache(tmp_path, "target") as writer:
         writer.set("k", b"v")
     folder = tmp_path / "target"
-    before = ({p.name: _digest(p) for p in folder.iterdir()}, {p.name: p.stat().st_mtime_ns for p in folder.iterdir()})
+    before = (
+        {p.name: _digest(p) for p in folder.iterdir()},
+        {p.name: p.stat().st_mtime_ns for p in folder.iterdir()},
+    )
     with DiskKVCache(tmp_path, "target", read_only=True) as reader:
         assert reader.get("k") == b"v"
         assert reader.get("missing") is None
-    after = ({p.name: _digest(p) for p in folder.iterdir()}, {p.name: p.stat().st_mtime_ns for p in folder.iterdir()})
+    after = (
+        {p.name: _digest(p) for p in folder.iterdir()},
+        {p.name: p.stat().st_mtime_ns for p in folder.iterdir()},
+    )
     assert after == before
 
 
@@ -150,10 +155,10 @@ def test_read_only_works_on_a_read_only_directory(tmp_path: Path) -> None:
     with DiskKVCache(tmp_path, "target") as writer:
         writer.set("k", b"v")
     folder = tmp_path / "target"
-    os.chmod(folder / "cache.sqlite3", stat.S_IRUSR)
-    os.chmod(folder, stat.S_IRUSR | stat.S_IXUSR)
+    Path(folder / "cache.sqlite3").chmod(stat.S_IRUSR)
+    Path(folder).chmod(stat.S_IRUSR | stat.S_IXUSR)
     try:
         with DiskKVCache(tmp_path, "target", read_only=True) as reader:
             assert reader.get("k") == b"v"
     finally:
-        os.chmod(folder, stat.S_IRWXU)
+        Path(folder).chmod(stat.S_IRWXU)

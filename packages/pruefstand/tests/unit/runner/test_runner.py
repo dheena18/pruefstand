@@ -1,5 +1,4 @@
 import asyncio
-
 import pickle
 import re
 from pathlib import Path
@@ -19,8 +18,8 @@ from testsupport.runner_support import (
 )
 
 from pruefstand.adapters.http import HttpTargetAdapter
-from pruefstand.core.hashing import stable_hash
 from pruefstand.core.errors import StoreError
+from pruefstand.core.hashing import stable_hash
 from pruefstand.core.models.metric import MetricStatus
 from pruefstand.runner.runner import case_rng
 
@@ -214,7 +213,9 @@ async def test_a_planted_pickle_in_the_cache_is_a_miss_and_never_executed(
     marker = tmp_path / "pwned"
     case = make_case(0)
     cache = DictCache()
-    cache.set(stable_hash("fp-test", case.id, case.question, case.tenant), pickle.dumps(_Evil(marker)))
+    cache.set(
+        stable_hash("fp-test", case.id, case.question, case.tenant), pickle.dumps(_Evil(marker))
+    )
     results = await run_cases(make_runner(adapter, cache=cache), [case])
     assert route.call_count == 1
     assert results.records[0].cached is False

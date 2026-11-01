@@ -1,5 +1,6 @@
 """One case's exchange with the target: cache lookup, endpoint choice, retries, ``CaseRecord``."""
 
+import asyncio
 import json
 import time
 from collections.abc import Awaitable, Callable
@@ -47,6 +48,7 @@ class TargetCaller:
         self._adapter = adapter
         self._cache = cache
         self._cfg = cfg
+        self._warned: set[str] = set()
 
     async def fetch(
         self, case: TestCase, route: Route, *, target_fingerprint: str, rng: np.random.Generator
@@ -66,7 +68,7 @@ class TargetCaller:
         request = TargetRequest(
             tenant_id=TenantId(case.tenant), question=case.question, request_id=uuid4().hex
         )
-        hit = self._lookup(key, route.mode)
+        hit = await self._lookup(key, route.mode)
         if hit is not None:
             response, latency_ms = hit
             hit_result = Attempts(response, None, 0)
@@ -80,7 +82,7 @@ class TargetCaller:
             result = await self._attempt(self._timed(self._call(mode, request), timing), rng)
         record = _record(case, request, result, timing[0], mode, cached=False)
         if record.response is not None:
-            self._store(key, record)
+            await self._store(key, record)
         return Fetched(record, fallback=fallback)
 
     def _call(
@@ -119,11 +121,18 @@ class TargetCaller:
             rng=rng,
         )
 
-    def _lookup(self, key: str, mode: Mode) -> tuple[TargetResponse, float] | None:
-        raw = None if self._cache is None else self._cache.get(key)
-        if raw is None:
+    async def _lookup(self, key: str, mode: Mode) -> tuple[TargetResponse, float] | None:
+        """Return a cached ``(response, latency_ms)`` or None; a cache failure is a miss."""
+        if self._cache is None:
             return None
         try:
+            raw = await asyncio.to_thread(self._cache.get, key)
+        except StoreError as exc:
+            self._warn_once("target_cache_read_failed", str(exc))
+            return None
+        if raw is None:
+            return None
+        try:  # JSON only: planted or foreign bytes (e.g. a pickle) fail to parse and are a miss
             entry = json.loads(raw)
             if entry["mode"] != mode:
                 return None
@@ -132,7 +141,7 @@ class TargetCaller:
             _log.warning("target_cache_entry_unreadable", key=key)
             return None
 
-    def _store(self, key: str, record: CaseRecord) -> None:
+    async def _store(self, key: str, record: CaseRecord) -> None:
         if self._cache is None or record.response is None:
             return
         entry = {
@@ -140,10 +149,16 @@ class TargetCaller:
             "latency_ms": record.latency_ms,
             "response": record.response.model_dump(mode="json"),
         }
+        payload = json.dumps(entry, ensure_ascii=False).encode("utf-8")
         try:
-            self._cache.set(key, json.dumps(entry, ensure_ascii=False).encode("utf-8"))
+            await asyncio.to_thread(self._cache.set, key, payload)
         except StoreError as exc:
-            _log.warning("target_cache_write_failed", error=str(exc))
+            self._warn_once("target_cache_write_failed", str(exc))
+
+    def _warn_once(self, event: str, error: str) -> None:
+        if event not in self._warned:
+            self._warned.add(event)
+            _log.warning(event, error=error, note="logged once per run; later cases skip the cache")
 
 
 def _record(

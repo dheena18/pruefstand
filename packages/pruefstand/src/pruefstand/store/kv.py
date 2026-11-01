@@ -5,6 +5,7 @@ and returned as bytes; nothing is ever unpickled (D361).
 """
 
 import sqlite3
+import threading
 from pathlib import Path
 from types import TracebackType
 from typing import Literal, Self
@@ -12,7 +13,7 @@ from typing import Literal, Self
 from pruefstand.core.errors import StoreError
 
 _FILE = "cache.sqlite3"
-_BUSY_TIMEOUT_S = 30.0
+_BUSY_TIMEOUT_S = 2.0
 
 
 class DiskKVCache:
@@ -36,6 +37,7 @@ class DiskKVCache:
     ) -> None:
         self._read_only = read_only
         self._closed = False
+        self._lock = threading.Lock()  # one connection shared with worker threads (to_thread)
         self._db: sqlite3.Connection | None = None
         path = directory / namespace / _FILE
         if read_only and not path.exists():
@@ -43,11 +45,15 @@ class DiskKVCache:
         try:
             if read_only:
                 self._db = sqlite3.connect(
-                    f"{path.resolve().as_uri()}?mode=ro", uri=True, timeout=_BUSY_TIMEOUT_S
+                    f"{path.resolve().as_uri()}?mode=ro",
+                    uri=True,
+                    timeout=_BUSY_TIMEOUT_S,
+                    check_same_thread=False,
                 )
+                self._db.execute("PRAGMA query_only = ON")
             else:
                 path.parent.mkdir(parents=True, exist_ok=True)
-                self._db = sqlite3.connect(path, timeout=_BUSY_TIMEOUT_S)
+                self._db = sqlite3.connect(path, timeout=_BUSY_TIMEOUT_S, check_same_thread=False)
                 self._db.execute(
                     "CREATE TABLE IF NOT EXISTS kv (key TEXT PRIMARY KEY, value BLOB NOT NULL)"
                 )
@@ -68,7 +74,8 @@ class DiskKVCache:
         if db is None:
             return None
         try:
-            row = db.execute("SELECT value FROM kv WHERE key = ?", (key,)).fetchone()
+            with self._lock:
+                row = db.execute("SELECT value FROM kv WHERE key = ?", (key,)).fetchone()
         except sqlite3.Error as exc:
             msg = f"cache read failed: {exc}"
             raise StoreError(msg) from exc
@@ -85,7 +92,7 @@ class DiskKVCache:
             msg = "cache is read-only"
             raise StoreError(msg)
         try:
-            with db:
+            with self._lock, db:
                 db.execute("INSERT OR REPLACE INTO kv (key, value) VALUES (?, ?)", (key, value))
         except sqlite3.Error as exc:
             msg = f"cache write failed: {exc}"
@@ -93,8 +100,9 @@ class DiskKVCache:
 
     def close(self) -> None:
         """Close the cache; calling it twice is fine."""
-        self._discard()
-        self._closed = True
+        with self._lock:
+            self._discard()
+            self._closed = True
 
     def __enter__(self) -> Self:
         return self

@@ -7,10 +7,12 @@ or metric details) and optionally ``llm_calls.parquet``. Writes go to a temporar
 directory that is renamed into place, so a failed write leaves nothing behind (D358).
 """
 
+import fcntl
 import json
 import os
 import secrets
 import shutil
+import time
 from collections.abc import Callable, Mapping
 from datetime import UTC, datetime
 from pathlib import Path
@@ -85,7 +87,9 @@ class ArtifactStore:
             raise StoreError(msg)
         tmp = target.parent / f".{target.name}.{secrets.token_hex(4)}.tmp"
         try:
-            tmp.mkdir(parents=True)
+            tmp.parent.mkdir(parents=True, exist_ok=True)
+            _remove_stale_tmp_dirs(tmp.parent)
+            tmp.mkdir()
             write_files(tmp, run.results, llm_calls)
             Path(tmp).replace(target)
         except (OSError, pl.exceptions.PolarsError) as exc:
@@ -153,6 +157,15 @@ class ArtifactStore:
         self, run_id_or_path: str | Path, change: Callable[[dict[str, Any]], dict[str, Any]]
     ) -> None:
         path = self._locate(run_id_or_path)
+        fd = os.open(path, os.O_RDONLY)  # an exclusive lock on the directory serialises updaters
+        try:
+            fcntl.flock(fd, fcntl.LOCK_EX)
+            self._update_locked(path, change)
+        finally:
+            os.close(fd)
+
+    @staticmethod
+    def _update_locked(path: Path, change: Callable[[dict[str, Any]], dict[str, Any]]) -> None:
         read_manifest(path)  # a clear StoreError for a missing or broken run.json
         data = json.loads((path / "run.json").read_text(encoding="utf-8"))
         try:
@@ -160,7 +173,7 @@ class ArtifactStore:
         except ValueError as exc:
             msg = f"invalid manifest for {path.name}: {exc}"
             raise StoreError(msg) from exc
-        tmp = path / "run.json.tmp"
+        tmp = path / f"run.json.{secrets.token_hex(4)}.tmp"
         try:
             tmp.write_text(manifest_text(manifest), encoding="utf-8")
             Path(tmp).replace(path / "run.json")
@@ -177,3 +190,14 @@ class ArtifactStore:
             msg = f"no run directory at {path}"
             raise StoreError(msg)
         return path
+
+
+def _remove_stale_tmp_dirs(parent: Path, max_age_s: float = 86400.0) -> None:
+    """Delete hidden ``.<run>.<hex>.tmp`` directories that a crashed write left behind."""
+    cutoff = time.time() - max_age_s
+    for entry in parent.glob(".*.tmp"):
+        try:
+            if entry.is_dir() and entry.stat().st_mtime < cutoff:
+                shutil.rmtree(entry, ignore_errors=True)
+        except OSError:
+            continue

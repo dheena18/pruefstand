@@ -235,7 +235,9 @@ def test_garbage_parquet_is_a_store_error(tmp_path: Path) -> None:
 
 def test_parquet_that_disagrees_with_scored_jsonl_is_a_store_error(tmp_path: Path) -> None:
     store, run, path = written(tmp_path)
-    frame = pl.read_parquet(path / "results.parquet").with_columns(pl.col("metric").str.to_uppercase())
+    frame = pl.read_parquet(path / "results.parquet").with_columns(
+        pl.col("metric").str.to_uppercase()
+    )
     frame.write_parquet(path / "results.parquet")
     with pytest.raises(StoreError, match="disagree"):
         store.read_run(path)
@@ -298,10 +300,12 @@ def test_concurrent_add_counts_keep_both_keys(tmp_path: Path) -> None:
         try:
             for i in range(20):
                 store.add_counts(path, {key: i})
-        except BaseException as exc:  # noqa: BLE001  (collected and asserted below)
+        except BaseException as exc:
             errors.append(exc)
 
-    threads = [threading.Thread(target=add, args=(k,)) for k in ("model_reloads", "upstream_errors")]
+    threads = [
+        threading.Thread(target=add, args=(k,)) for k in ("model_reloads", "upstream_errors")
+    ]
     for t in threads:
         t.start()
     for t in threads:

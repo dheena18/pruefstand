@@ -10,6 +10,10 @@ from pruefstand.core.errors import StoreError
 from pruefstand.core.models.run import RunManifest, RunResults, ScoredCase
 from pruefstand.core.models.target import CaseRecord
 
+MAX_FILE_BYTES = 512 * 1024 * 1024
+"""Largest run file ``read_results`` opens; bigger files are refused before reading."""
+MAX_MANIFEST_BYTES = 4 * 1024 * 1024
+
 RESULT_COLUMNS = (
     "case_id", "base_id", "cluster_id", "tenant", "lang", "category", "perturbation", "split",
     "tags", "metric", "metric_version", "value", "status",
@@ -78,41 +82,84 @@ def write_files(root: Path, results: RunResults, llm_calls: pl.DataFrame | None)
         llm_calls.write_parquet(root / "llm_calls.parquet", compression="zstd")
 
 
+def _checked_size(path: Path, limit: int) -> None:
+    try:
+        size = path.stat().st_size
+    except OSError as exc:
+        msg = f"cannot read {path.name} in {path.parent}: {exc}"
+        raise StoreError(msg) from exc
+    if size > limit:
+        msg = f"{path.name} in {path.parent} is {size} bytes, larger than the {limit} byte limit"
+        raise StoreError(msg)
+
+
 def read_manifest(root: Path) -> RunManifest:
     """Parse ``run.json``.
 
     Raises:
-        StoreError: The file is missing, not JSON, or not a valid manifest.
+        StoreError: The file is missing, too large, not JSON, or not a valid manifest.
     """
+    path = root / "run.json"
+    _checked_size(path, min(MAX_MANIFEST_BYTES, MAX_FILE_BYTES))
     try:
-        return RunManifest.model_validate_json((root / "run.json").read_text(encoding="utf-8"))
+        return RunManifest.model_validate_json(path.read_text(encoding="utf-8"))
     except (OSError, ValidationError, ValueError) as exc:
         msg = f"cannot read run.json in {root}: {exc}"
         raise StoreError(msg) from exc
 
 
 def read_results(root: Path) -> RunResults:
-    """Parse a run directory into ``RunResults``.
+    """Parse a run directory into ``RunResults``, failing closed.
+
+    Checks: the directory is named after ``manifest.run_id``; every file is within the size
+    limit; ``results.parquet`` parses and equals the view derived from ``scored.jsonl``;
+    ``responses.jsonl`` and ``scored.jsonl`` list the same cases; a complete run has exactly
+    ``n_cases`` of them.
 
     Raises:
-        StoreError: A file is missing or invalid, or records and scored cases do not match.
+        StoreError: Any check fails or a file is missing or invalid.
     """
     manifest = read_manifest(root)
-    if not (root / "results.parquet").is_file():
-        msg = f"results.parquet is missing in {root}"
+    if root.name != manifest.run_id:
+        msg = f"directory {root.name!r} does not match run_id {manifest.run_id!r} in run.json"
         raise StoreError(msg)
     records = tuple(_read_lines(root / "responses.jsonl", CaseRecord))
     values = tuple(_read_lines(root / "scored.jsonl", ScoredCase))
     if [r.case_id for r in records] != [s.case.id for s in values]:
         msg = f"responses.jsonl and scored.jsonl disagree in {root}"
         raise StoreError(msg)
+    if manifest.complete and len(values) != manifest.n_cases:
+        msg = (
+            f"complete run {manifest.run_id} has {len(values)} cases but n_cases={manifest.n_cases}"
+        )
+        raise StoreError(msg)
+    if len(values) > manifest.n_cases:
+        msg = (
+            f"run {manifest.run_id} has more cases ({len(values)}) than n_cases={manifest.n_cases}"
+        )
+        raise StoreError(msg)
+    _check_parquet(root / "results.parquet", values)
     return RunResults(manifest=manifest, records=records, values=values)
 
 
+def _check_parquet(path: Path, values: tuple[ScoredCase, ...]) -> None:
+    _checked_size(path, MAX_FILE_BYTES)
+    try:
+        frame = pl.read_parquet(path)
+    except (OSError, pl.exceptions.PolarsError) as exc:
+        msg = f"cannot read results.parquet in {path.parent}: {exc}"
+        raise StoreError(msg) from exc
+    if not frame.equals(results_frame(values)):
+        msg = f"results.parquet and scored.jsonl disagree in {path.parent}"
+        raise StoreError(msg)
+
+
 def _read_lines[M: (CaseRecord, ScoredCase)](path: Path, model: type[M]) -> list[M]:
+    _checked_size(path, MAX_FILE_BYTES)
     try:
         text = path.read_text(encoding="utf-8")
-        return [model.model_validate_json(line) for line in text.splitlines() if line.strip()]
+        # split on "\n" only: str.splitlines() also cuts at U+2028, U+2029, U+0085, \x0b, \x0c ...
+        return [model.model_validate_json(line) for line in text.split("\n") if line.strip()]
     except (OSError, ValidationError, ValueError) as exc:
         msg = f"cannot read {path.name} in {path.parent}: {exc}"
         raise StoreError(msg) from exc

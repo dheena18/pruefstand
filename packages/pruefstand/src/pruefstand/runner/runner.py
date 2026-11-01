@@ -84,7 +84,8 @@ class Runner:
         A target error or timeout (after retries) is recorded, never dropped: the case gets
         ``error_rate = 1`` and ``error`` values. ``BudgetExceeded`` stops the run
         (``stop_reason="budget_exceeded"``); cancellation or ``KeyboardInterrupt`` ends it as
-        ``"aborted"`` with ``infra_error`` unset. Finished cases are always kept.
+        ``"aborted"`` with ``infra_error`` unset. Finished cases are always kept. Note that the
+        cancellation is absorbed here: ``run`` returns the aborted results instead of raising.
 
         Args:
             cases: The cases to run.
@@ -139,7 +140,7 @@ class Runner:
 
     async def _case(self, index: int, case: TestCase, stage: JudgeStage, facts: RunFacts) -> _Done:
         route = route_case(case, judged_subset=facts.judged_subset)
-        rng = np.random.default_rng([abs(facts.seed), index])
+        rng = case_rng(facts.seed, index)
         fetched = await self._caller.fetch(
             case, route, target_fingerprint=facts.target_fingerprint, rng=rng
         )
@@ -156,6 +157,11 @@ class Runner:
         if fetched.fallback:
             counts["retrieve_fallback"] += 1
         return _Done(record, ScoredCase(case=case, values=ordered), counts, judged.attempted)
+
+
+def case_rng(seed: int, index: int) -> np.random.Generator:
+    """Return the retry-jitter generator of case ``index``; seeds 5 and -5 give different streams."""
+    return np.random.default_rng([seed % 2**64, index])
 
 
 def _case_counts(
@@ -179,7 +185,12 @@ def _case_counts(
 
 
 async def _drive(tasks: list["asyncio.Task[None]"]) -> StopReason:
-    """Wait for the case tasks; on the first failure or on cancellation stop the rest."""
+    """Wait for the case tasks; on the first failure or on cancellation stop the rest.
+
+    Cancellation of the awaiting task is deliberately *absorbed* (and ``uncancel``led): the spec
+    wants an ``aborted`` run that keeps the finished cases, not a ``CancelledError`` that loses
+    them. Callers that need to propagate the cancellation must check ``stop_reason``.
+    """
     stop: StopReason = "completed"
     if not tasks:
         return stop
