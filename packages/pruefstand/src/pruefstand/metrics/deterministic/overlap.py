@@ -6,6 +6,7 @@ from collections.abc import Sequence
 from pruefstand.metrics.deterministic.normalise import security_normalise
 
 GRAM_SIZE = 5
+MAX_OVERLAP_CHARS = 50_000  # report-only metric: only this prefix of the answer is read
 _SENTENCE_END = re.compile(r"[.!?\n]+")
 _WORDS = re.compile(r"\w+")
 
@@ -60,6 +61,7 @@ def max_overlap(answer: str, system_sentences: Sequence[str]) -> float | None:
         >>> max_overlap("Ganz etwas anderes.", ["Du bist ein hilfreicher Assistent der Kanzlei."])
         0.0
     """
+    answer = answer[:MAX_OVERLAP_CHARS]
     prompts = [w for w in (sentence_words(s) for s in system_sentences) if w]
     if not prompts:
         return None

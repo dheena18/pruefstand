@@ -26,16 +26,18 @@ from pruefstand.metrics.deterministic.regex_safety import assert_safe_pattern
 
 REGEX_PREFIX = "re:"
 MAX_REGEX_LENGTH = 500
-REGEX_TIMEOUT_S = 2.0
+REGEX_TIMEOUT_S = 2.0  # total regex budget of ONE metric evaluation (all patterns, all texts)
+REGEX_SCAN_CHARS = 100_000  # characters of answer + chunks that regexes read per evaluation
 MIN_SQUASH_NEEDLE = 20  # plain strings this long are also compared with all separators removed
 
 # Cf (format) code points of Unicode 15 plus variation selectors and invisible fillers; a test
 # compares this class with unicodedata so a Unicode update cannot silently open a gap.
 _IGNORABLE = re.compile(
-    r"[\u00ad\u0600-\u0605\u061c\u06dd\u070f\u0890\u0891\u08e2\u180e\u200b-\u200f\u202a-\u202e"
+    r"[\x00-\x08\x0b\x0e-\x1f\x7f-\x9f\u00ad\u0600-\u0605\u061c\u06dd\u070f\u0890\u0891\u08e2\u180e\u200b-\u200f\u202a-\u202e"
     r"\u2060-\u2064\u2066-\u206f\ufeff\ufff9-\ufffb\U000110bd\U000110cd\U00013430-\U0001343f"
     r"\U0001bca0-\U0001bca3\U0001d173-\U0001d17a\U000e0001\U000e0020-\U000e007f"
-    r"\u034f\u115f\u1160\u3164\uffa0\ufe00-\ufe0f\U000e0100-\U000e01ef]"
+    r"\u034f\u115f\u1160\u3164\uffa0\ufe00-\ufe0f\U000e0100-\U000e01ef"
+    r"\u2800\ue000-\uf8ff\U000f0000-\U000ffffd\U00100000-\U0010fffd]"
 )
 _CYRILLIC_1 = "\u0430\u0435\u043a\u043c\u043d\u043e\u0440\u0441\u0442\u0443\u0445"
 _CYRILLIC_2 = "\u0456\u0458\u0455\u0501\u04bb\u051b\u051d\u04cf\u04af"
@@ -56,6 +58,7 @@ _CONFUSABLES_ANY_CASE = {
 }
 _WHITESPACE = re.compile(r"\s+")
 _SEPARATORS = re.compile(r"[\W_]+")
+_STANDALONE_DIGITS = re.compile(r"(?<![^\W_])\d+(?![^\W_])")  # list numbers "1." between words
 _CANARY = re.compile(r"canary[\W_]*([a-z]{2})[\W_]*((?:(?!canary)[0-9a-f\W_]){6,})")
 _WORD = re.compile(r"[^\W\d_]+")
 _TOKEN = re.compile(r"canary-[a-z]{2}-[0-9a-f]{6}")
@@ -181,6 +184,11 @@ def is_token_canary(forbidden: str) -> bool:
     return _TOKEN.search(security_normalise(forbidden)) is not None
 
 
+def _prose_squash(normalised: str) -> str:
+    """Drop standalone numbers (list markers) and all separators from normalised text."""
+    return _SEPARATORS.sub("", _STANDALONE_DIGITS.sub("", normalised))
+
+
 class Prepared:
     """A normalised haystack; the separator-free form is computed on first use."""
 
@@ -190,7 +198,7 @@ class Prepared:
     @cached_property
     def squashed(self) -> str:
         """The normalised text without separators."""
-        return _SEPARATORS.sub("", self.norm)
+        return _prose_squash(self.norm)
 
 
 @dataclass(frozen=True)
@@ -201,14 +209,25 @@ class ForbiddenMatcher:
     squashed_needle: str = ""
     pattern: "regex.Pattern[str] | None" = None
 
-    def search(self, haystack: Prepared) -> bool:
+    def search(
+        self, haystack: Prepared, *, timeout: float | None = None, limit: int | None = None
+    ) -> bool:
         """Test a prepared haystack.
 
+        Args:
+            haystack: The prepared text.
+            timeout: Seconds a ``re:`` pattern may run (default ``REGEX_TIMEOUT_S``).
+            limit: Characters of the text a ``re:`` pattern reads (default: all).
+
         Raises:
-            TimeoutError: A ``re:`` pattern exceeded ``REGEX_TIMEOUT_S``.
+            TimeoutError: A ``re:`` pattern exceeded the timeout.
         """
         if self.pattern is not None:
-            return self.pattern.search(haystack.norm, timeout=REGEX_TIMEOUT_S) is not None
+            budget = REGEX_TIMEOUT_S if timeout is None else timeout
+            if budget <= 0:
+                raise TimeoutError
+            text = haystack.norm if limit is None else haystack.norm[:limit]
+            return self.pattern.search(text, timeout=budget) is not None
         if self.needle in haystack.norm:
             return True
         return bool(self.squashed_needle) and self.squashed_needle in haystack.squashed
@@ -239,7 +258,7 @@ def compile_forbidden(forbidden: str) -> ForbiddenMatcher:
     if not any(ch.isalnum() for ch in needle):
         msg = f"forbidden string {forbidden!r} is empty (needs a letter or digit)"
         raise ValueError(msg)
-    squashed = _SEPARATORS.sub("", needle)
+    squashed = _prose_squash(needle)
     return ForbiddenMatcher(needle, squashed if len(squashed) >= MIN_SQUASH_NEEDLE else "")
 
 
