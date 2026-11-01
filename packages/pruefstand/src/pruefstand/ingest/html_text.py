@@ -74,8 +74,7 @@ def html_to_text(markup: str) -> str:
     root = _parse(markup)
     if root is None:
         return ""
-    for element in list(root.iter(*_DROP)):
-        element.drop_tree()
+    etree.strip_elements(root, *_DROP, with_tail=False)  # C loop, keeps the tail text
     parts: list[str] = []
     for event, element in etree.iterwalk(root, events=("start", "end")):
         tag = element.tag if isinstance(element.tag, str) else ""

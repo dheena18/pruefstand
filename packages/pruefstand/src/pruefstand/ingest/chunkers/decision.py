@@ -64,6 +64,7 @@ _TRAILER = frozenset(
     }
 )  # fmt: skip
 _MAX_RN_GAP = 10
+_TRAILER_AFTER = 0.75  # an apparatus heading cuts only in the last quarter of the lines
 _MAX_RN_DIGITS = 4
 
 
@@ -76,7 +77,7 @@ class Segment:
 
 
 def _heading_key(line: str) -> str:
-    """Return the casefolded heading candidate of ``line`` (``""`` if it cannot be a heading)."""
+    """Return the lower-cased heading candidate of ``line`` (``""`` if it cannot be a heading)."""
     text = line.strip()
     if not text or len(text) > _MAX_HEADING_CHARS:
         return ""
@@ -84,11 +85,36 @@ def _heading_key(line: str) -> str:
     found = _ENUMERATOR.match(text)
     if found:
         text = text[found.end() :]
-    text = text.rstrip(" :").casefold()
+    text = text.rstrip(" :").lower()  # not casefold(): it turns "Fußnoten" into "fussnoten"
     words = text.split()
     if len(words) >= 3 and all(len(word) == 1 for word in words):
         return "".join(words)  # "t a t b e s t a n d"
     return text
+
+
+def _scan(text: str) -> tuple[list[Segment], int, int]:
+    """Return ``(segments, dropped_lines, dropped_chars)``; the trailer cut applies to the tail."""
+    raw_lines = text.split("\n")
+    earliest = int(len(raw_lines) * _TRAILER_AFTER)
+    segments: list[Segment] = []
+    section: str | None = None
+    lines: list[str] = []
+    for index, raw in enumerate(raw_lines):
+        key = _heading_key(raw)
+        if key in _TRAILER and index >= earliest:
+            dropped = raw_lines[index:]
+            return _close(segments, section, lines), len(dropped), len("\n".join(dropped))
+        if key in _NAMED or key in _UNNAMED:
+            if lines:
+                segments.append(Segment(section, lines))
+            section, lines = _NAMED.get(key), []
+        elif raw.strip():
+            lines.append(raw.strip())
+    return _close(segments, section, lines), 0, 0
+
+
+def _close(segments: list[Segment], section: str | None, lines: list[str]) -> list[Segment]:
+    return [*segments, Segment(section, lines)] if lines else segments
 
 
 def split_sections(text: str) -> list[Segment]:
@@ -99,28 +125,31 @@ def split_sections(text: str) -> list[Segment]:
 
     Returns:
         The segments in document order; heading lines are not included, empty segments and
-        everything after an apparatus heading (``Fußnoten``, ...) are dropped.
+        everything after an apparatus heading (``Fußnoten``, ...) in the last quarter of the
+        text are dropped (see :func:`dropped_trailer`).
 
     Examples:
         >>> [(s.section, s.lines) for s in split_sections("Tenor\nAbgewiesen.\nGründe\nKeine.")]
         [('Tenor', ['Abgewiesen.']), ('Entscheidungsgründe', ['Keine.'])]
     """
-    segments: list[Segment] = []
-    section: str | None = None
-    lines: list[str] = []
-    for raw in text.split("\n"):
-        key = _heading_key(raw)
-        if key in _TRAILER:
-            break
-        if key in _NAMED or key in _UNNAMED:
-            if lines:
-                segments.append(Segment(section, lines))
-            section, lines = _NAMED.get(key), []
-        elif raw.strip():
-            lines.append(raw.strip())
-    if lines:
-        segments.append(Segment(section, lines))
-    return segments
+    return _scan(text)[0]
+
+
+def dropped_trailer(text: str) -> tuple[int, int]:
+    r"""Return how many lines and characters the trailer cut removes from ``text``.
+
+    Args:
+        text: Decision text.
+
+    Returns:
+        ``(lines, chars)``; ``(0, 0)`` when no apparatus heading sits in the last quarter.
+
+    Examples:
+        >>> dropped_trailer("a\nb\nc\nFußnoten\nx")
+        (2, 10)
+    """
+    _, lines, chars = _scan(text)
+    return lines, chars
 
 
 def has_named_sections(text: str) -> bool:

@@ -6,7 +6,8 @@ files are pinned by SHA-256, but the loaders still treat them as untrusted: ever
 :class:`OldpLimits` turns into a counted :class:`Problem`, never into an exception past the
 loader, and nothing here touches the network or the Hugging Face cache.
 
-Parquet files are read whole (only the requested columns) after a file-size check; JSON lines are
+Parquet files are streamed one row at a time (only the requested columns) after a check of the
+file size and of every row group's uncompressed size in the footer; JSON lines are
 read one line at a time with a hard cap on the line length, so a file without newlines cannot
 exhaust memory.
 """
@@ -17,12 +18,14 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import IO
 
-import polars as pl
+import pyarrow as pa
+import pyarrow.parquet as pq
 
 from pruefstand.core.errors import PruefstandError
 
 _MIB = 1024 * 1024
 _DRAIN_CHUNK = 64 * 1024
+_BATCH_ROWS = 1
 
 
 class OldpDataError(PruefstandError):
@@ -49,6 +52,9 @@ class OldpLimits:
         max_file_bytes: Largest data file accepted (the 1k sample's parquet is 27 MB).
         max_documents: Most decisions one load yields; the full dump is a later scale-up.
         max_rows: Most rows one pass over a directory reads (citation graph edges).
+        max_group_bytes: Largest *uncompressed* parquet row group read (from the footer, before
+            decoding). Parquet is streamed one row at a time; dictionary pages can decode far
+            larger than the footer says, so ``max_record_bytes`` also caps the decoded row.
     """
 
     max_content_chars: int = 2_000_000
@@ -56,6 +62,7 @@ class OldpLimits:
     max_file_bytes: int = 512 * _MIB
     max_documents: int = 10_000
     max_rows: int = 2_000_000
+    max_group_bytes: int = 512 * _MIB
 
 
 def data_files(directory: Path) -> list[Path]:
@@ -110,22 +117,37 @@ def iter_rows(
         problems.append(Problem(path.name, "file_too_large", detail))
         return
     if path.suffix == ".parquet":
-        yield from _parquet_rows(path, columns, problems)
+        yield from _parquet_rows(path, columns, limits, problems)
     else:
         yield from _jsonl_rows(path, limits.max_record_bytes, problems)
 
 
 def _parquet_rows(
-    path: Path, columns: Sequence[str], problems: list[Problem]
+    path: Path, columns: Sequence[str], limits: OldpLimits, problems: list[Problem]
 ) -> Iterator[dict[str, object]]:
+    """Stream a parquet file in batches; row groups above the uncompressed cap are skipped."""
     try:
-        available = pl.read_parquet_schema(path)
-        wanted = [name for name in columns if name in available]
-        frame = pl.read_parquet(path, columns=wanted)
-    except (pl.exceptions.PolarsError, OSError, ValueError) as error:
+        parquet = pq.ParquetFile(path)
+        wanted = [name for name in columns if name in parquet.schema_arrow.names]
+        groups: list[int] = []
+        for index in range(parquet.metadata.num_row_groups):
+            group = parquet.metadata.row_group(index)
+            size = sum(group.column(c).total_uncompressed_size for c in range(group.num_columns))
+            if size > limits.max_group_bytes:
+                detail = f"{size} uncompressed bytes > {limits.max_group_bytes}"
+                problems.append(Problem(f"{path.name}[{index}]", "row_group_too_large", detail))
+            else:
+                groups.append(index)
+        for batch in parquet.iter_batches(
+            batch_size=_BATCH_ROWS, row_groups=groups, columns=wanted
+        ):
+            if batch.nbytes > limits.max_record_bytes:
+                detail = f"decoded row of {batch.nbytes} bytes > {limits.max_record_bytes}"
+                problems.append(Problem(path.name, "record_too_large", detail))
+                continue
+            yield from batch.to_pylist()
+    except (pa.ArrowException, OSError, ValueError) as error:
         problems.append(Problem(path.name, "bad_file", f"unreadable parquet: {error}"[:200]))
-        return
-    yield from frame.iter_rows(named=True)
 
 
 def _jsonl_rows(

@@ -1319,7 +1319,8 @@ class Loader(Protocol):  def load(self, raw_dir: Path) -> Iterator[Document]: ..
 class Chunker(Protocol): def chunk(self, doc: Document) -> list[Chunk]: ...
 GiiXmlLoader, OldpLoader, EurLexLoader; ParagraphChunker, DecisionSectionChunker, ArticleChunker, FixedTokenChunker
 def load_citation_graph(raw_dir: Path, *, decisions_dir: Path | None = None,
-                        limits: OldpLimits | None = None) -> dict[DocId, tuple[str, ...]]
+                        limits: OldpLimits | None = None,
+                        problems: list[Problem] | None = None) -> dict[DocId, tuple[str, ...]]
     # ingest/citation_graph.py (T2.3): OLDP Case->Law edges, slug -> `oldp-<id>` via the sibling oldp_decisions dir
     # (or decisions_dir), values = sorted distinct normalised law keys; unknown law codes kept as "§ 5 FMStFG" and logged
 def assign_tenants(docs: Iterable[Document], plan: TenantPlan) -> Iterator[Document]

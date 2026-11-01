@@ -27,13 +27,17 @@ import argparse
 import sys
 from collections.abc import Iterator, Sequence
 from dataclasses import dataclass, field
-from datetime import date
+from datetime import date, datetime
 from pathlib import Path
 
 from pruefstand.core.enums import Lang
 from pruefstand.core.ids import DocId, TenantId
 from pruefstand.core.models.corpus import Document
-from pruefstand.ingest.chunkers.decision import DecisionSectionChunker, has_named_sections
+from pruefstand.ingest.chunkers.decision import (
+    DecisionSectionChunker,
+    dropped_trailer,
+    has_named_sections,
+)
 from pruefstand.ingest.html_text import HtmlTextError, html_to_text
 from pruefstand.ingest.oldp_courts import classify_court, tenant_domain
 from pruefstand.ingest.records import (
@@ -62,6 +66,8 @@ class OldpStats:
 
 
 def _text(value: object) -> str:
+    if isinstance(value, date):
+        return (value.date() if isinstance(value, datetime) else value).isoformat()
     return " ".join(value.split()) if isinstance(value, str) else ""
 
 
@@ -186,18 +192,19 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser.add_argument("--stats", action="store_true", help="print decisions/chunks/no_sections")
     args = parser.parse_args(argv)
     loader, chunker = OldpLoader(), DecisionSectionChunker()
-    chunks = no_sections = 0
+    chunks = no_sections = trailer_chars = 0
     try:
         for doc in loader.load(args.raw_dir):
             chunks += len(chunker.chunk(doc))
             no_sections += 1 if doc.text and not has_named_sections(doc.text) else 0
+            trailer_chars += dropped_trailer(doc.text)[1]
     except OldpDataError as error:
         sys.stderr.write(f"error: {error}\n")
         return 2
     stats = loader.stats
     if args.stats:
         line = f"decisions={stats.decisions} chunks={chunks} no_sections={no_sections}"
-        sys.stdout.write(f"{line} errors={len(stats.problems)}\n")
+        sys.stdout.write(f"{line} errors={len(stats.problems)} trailer_chars={trailer_chars}\n")
     for problem in stats.problems[:20]:
         sys.stderr.write(f"error: {problem.source}: {problem.kind}: {problem.detail}\n")
     return 1 if stats.problems else 0

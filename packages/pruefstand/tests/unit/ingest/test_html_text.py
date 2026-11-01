@@ -2,10 +2,11 @@
 
 import contextlib
 import time
+from typing import Any
 
 import pytest
+from lxml import html as lxml_html
 
-from pruefstand.ingest import html_text
 from pruefstand.ingest.html_text import HtmlTextError, html_to_text
 
 
@@ -117,14 +118,14 @@ def test_dropped_elements_keep_their_tail_text() -> None:
 
 
 def test_parser_is_built_hardened(monkeypatch: pytest.MonkeyPatch) -> None:
-    seen: dict[str, object] = {}
-    real = html_text.lxml_html.HTMLParser
+    seen: dict[str, Any] = {}
+    real = lxml_html.HTMLParser
 
-    def spy(**kwargs: object) -> object:
+    def spy(**kwargs: Any) -> object:
         seen.update(kwargs)
-        return real(**kwargs)  # type: ignore[arg-type]  # forwarding the spied keyword arguments
+        return real(**kwargs)
 
-    monkeypatch.setattr(html_text.lxml_html, "HTMLParser", spy)
+    monkeypatch.setattr(lxml_html, "HTMLParser", spy)
     html_to_text("<p>x</p>")
     assert seen["huge_tree"] is False
     assert seen["no_network"] is True

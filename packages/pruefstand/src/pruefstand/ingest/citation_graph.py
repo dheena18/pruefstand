@@ -73,8 +73,24 @@ def _law_key(section: str, code: str, unknown: set[str]) -> str:
     return f"{section} {code}"
 
 
+def _check_outcome(
+    raw_dir: Path, rows: int, edges: int, unresolved: int, problems: list[Problem]
+) -> None:
+    """Fail closed: damaged input and unresolvable edges are errors, an empty graph is not."""
+    if rows == 0 and problems:
+        msg = f"no readable edge row in {raw_dir}: {problems[0].kind} ({problems[0].source})"
+        raise OldpDataError(msg)
+    if edges == 0 and unresolved > 0:
+        msg = f"none of {unresolved} Case->Law edges resolve to a decision (wrong decisions dump?)"
+        raise OldpDataError(msg)
+
+
 def load_citation_graph(
-    raw_dir: Path, *, decisions_dir: Path | None = None, limits: OldpLimits | None = None
+    raw_dir: Path,
+    *,
+    decisions_dir: Path | None = None,
+    limits: OldpLimits | None = None,
+    problems: list[Problem] | None = None,
 ) -> dict[DocId, tuple[str, ...]]:
     """Map every decision of the citation graph to the laws it cites.
 
@@ -83,24 +99,32 @@ def load_citation_graph(
         decisions_dir: The decisions dump used to turn slugs into ids; default: the sibling
             ``oldp_decisions`` of ``raw_dir``.
         limits: Size limits (default :class:`~pruefstand.ingest.records.OldpLimits`).
+        problems: Optional list the counted file/row problems are appended to (``bad_file``,
+            ``bad_json``, ``row_group_too_large``, ...), so a caller can tell damage from emptiness.
 
     Returns:
         ``{"oldp-123": ("§ 1 KSchG", "§ 622 BGB")}``: the distinct normalised law keys per
         decision, sorted; decisions without a resolvable ``Case -> Law`` edge are absent.
 
     Raises:
-        OldpDataError: ``raw_dir`` or the decisions directory is not a directory.
+        OldpDataError: ``raw_dir`` or the decisions directory is not a directory, ``raw_dir`` has
+            no readable file or no readable row (fail closed), or no ``Case -> Law`` edge can be
+            resolved to a decision.
     """
     limits = limits or OldpLimits()
     if not raw_dir.is_dir():
         msg = f"not a directory: {raw_dir}"
         raise OldpDataError(msg)
-    problems: list[Problem] = []
+    problems = [] if problems is None else problems
     slug_ids = _slug_ids(decisions_dir or raw_dir.parent / "oldp_decisions", limits, problems)
     keys: dict[int, set[str]] = {}
     unknown: set[str] = set()
-    edges = unresolved = 0
+    edges = unresolved = rows = 0
+    if not data_files(raw_dir):
+        msg = f"no readable parquet or jsonl file in {raw_dir}"
+        raise OldpDataError(msg)
     for row in _edges(raw_dir, limits, problems):
+        rows += 1
         section, code = _text(row.get("to_law_section")), _text(row.get("to_law_book_code"))
         if row.get("from_type") != "Case" or row.get("to_type") != "Law" or not (section and code):
             continue
@@ -110,6 +134,7 @@ def load_citation_graph(
             continue
         edges += 1
         keys.setdefault(number, set()).add(_law_key(section, code, unknown))
+    _check_outcome(raw_dir, rows, edges, unresolved, problems)
     _log.info(
         "citation_graph_loaded",
         decisions=len(keys), edges=edges, unresolved=unresolved, problems=len(problems),

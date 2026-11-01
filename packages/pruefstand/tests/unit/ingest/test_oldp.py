@@ -174,7 +174,7 @@ def test_cli_exit_code_is_1_when_a_problem_was_counted(
         handle.write("{broken\n")
     assert main([str(oldp_raw), "--stats"]) == 1
     captured = capsys.readouterr()
-    assert captured.out.strip().endswith("errors=1")
+    assert captured.out.strip().endswith("errors=1 trailer_chars=0")
     assert "bad_json" in captured.err
 
 

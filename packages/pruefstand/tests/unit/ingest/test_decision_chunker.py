@@ -114,8 +114,9 @@ def test_verfahrensgang_ends_a_section_but_is_not_one() -> None:
 
 
 def test_trailing_apparatus_is_dropped() -> None:
+    body = "\n".join(f"Satz {i}." for i in range(20))
     text = (
-        "Tenor\nAbgewiesen.\nDiese Entscheidung zitiert\n"
+        f"Tenor\nAbgewiesen.\n{body}\nDiese Entscheidung zitiert\n"
         "BGH, 1. Januar 2000, I ZR 1/00\nFußnoten\nx"
     )
     chunks = DecisionSectionChunker().chunk(make_doc(text))
