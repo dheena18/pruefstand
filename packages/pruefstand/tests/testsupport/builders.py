@@ -81,6 +81,7 @@ def make_case(
         license_config="test",
         corpus_version="cv-test",
         tags=tags,
+        injection_marker="IGNORE-PREVIOUS-INSTRUCTIONS" if category == "injection" else None,
     )
 
 

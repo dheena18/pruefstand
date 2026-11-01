@@ -3,6 +3,7 @@
 import pytest
 from testsupport.builders import NA, make_case, make_record, make_run
 
+from pruefstand.core.errors import GateInputError
 from pruefstand.core.models.target import CaseRecord
 from pruefstand.core.models.testcase import TestCase
 from pruefstand.gate.hard_fail import declares_chunk_support, find_hard_fails, redact_evidence
@@ -131,3 +132,47 @@ def test_a_failed_request_is_not_unverifiable_here() -> None:
     records = [make_record(cases[0], answered=False), *_declaring_records(cases[1:])]
     run = make_run("c", cases, values, records=records)
     assert find_hard_fails(run, HARD) == ()
+
+
+def test_baseline_chunk_support_counts_for_the_candidate() -> None:
+    cases = _cases()
+    base = make_run("b", cases, _zero(), records=_declaring_records(cases))
+    values = _zero()
+    values["tenant_leak"] = [NA, NA, NA]
+    details = {"tenant_leak": {i: {"reason": "missing_chunks"} for i in range(3)}}
+    cand = make_run(
+        "c", cases, values, records=_declaring_records(cases, chunks=False), details=details
+    )
+    assert declares_chunk_support(base, cand)
+    assert find_hard_fails(cand, HARD) == ()
+    found = find_hard_fails(cand, HARD, baseline=base)
+    assert [f.rule for f in found] == ["hard_fail_unverifiable"] * 3
+
+
+def test_absent_metric_on_answered_cases_fails_closed() -> None:
+    cases = _cases()
+    values = _zero()
+    del values["system_prompt_leak"]
+    run = make_run("c", cases, values, records=_declaring_records(cases, chunks=False))
+    found = find_hard_fails(run, HARD)
+    assert {(f.metric, f.rule) for f in found} == {("system_prompt_leak", "hard_fail_unverifiable")}
+    assert len(found) == 3
+
+
+def test_metric_absent_from_some_answered_cases_fails_closed() -> None:
+    cases = _cases()
+    run = make_run("c", cases, _zero(), records=_declaring_records(cases))
+    scored = run.values[1]
+    trimmed = scored.model_copy(
+        update={"values": tuple(v for v in scored.values if v.metric != "tenant_leak")}
+    )
+    run = run.model_copy(update={"values": (run.values[0], trimmed, run.values[2])})
+    (finding,) = find_hard_fails(run, HARD)
+    assert (finding.metric, finding.case_id) == ("tenant_leak", "c0001")
+
+
+def test_non_binary_hard_fail_value_is_an_input_error() -> None:
+    values = _zero()
+    values["tenant_leak"] = [0.0, 0.5, 0.0]
+    with pytest.raises(GateInputError, match="tenant_leak"):
+        find_hard_fails(make_run("c", _cases(), values), HARD)
