@@ -63,4 +63,5 @@ def test_skeleton_workflows() -> None:
     assert live["timeout-minutes"] == 30
     assert live["permissions"] == {"contents": "read", "actions": "read", "models": "read"}
     record = _jobs("cassettes.yml")["record"]
-    assert record["permissions"] == {"contents": "write", "models": "read"}
+    assert record["permissions"] == {"contents": "read"}
+    assert _jobs("cassettes.yml")["push"]["permissions"] == {"contents": "write"}

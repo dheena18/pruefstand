@@ -1,0 +1,25 @@
+# recorded: 2026-11-01, model: openai_compatible_local/qwen2.5-0.5b-instruct, sha256: 74a4da8c9fdbcd15bd1f6d01d621410d31c6fc00986f5eb687824e7b93d7a9db
+interactions:
+- request:
+    body: "{\"messages\":[{\"role\":\"system\",\"content\":\"Du bist ein pr\xE4ziser
+      Assistent. Antworte knapp und ohne Zusatz.\"},{\"role\":\"user\",\"content\":\"Antworte
+      mit genau einem Wort: M\xFCller\"}],\"model\":\"qwen2.5-0.5b-instruct\",\"max_tokens\":16,\"seed\":0,\"temperature\":0.0}"
+    headers:
+      accept:
+      - application/json
+      content-type:
+      - application/json
+    method: POST
+    uri: http://localhost:18080/v1/chat/completions
+  response:
+    body:
+      string: "{\"choices\":[{\"finish_reason\":\"stop\",\"index\":0,\"message\":{\"role\":\"assistant\",\"content\":\"Sch\xFCler\"}}],\"created\":1793507442,\"model\":\"/models/qwen2.5-0.5b-instruct-q4_k_m.gguf\",\"system_fingerprint\":\"b12019-1052f7e1d\",\"object\":\"chat.completion\",\"usage\":{\"completion_tokens\":3,\"prompt_tokens\":42,\"total_tokens\":45,\"prompt_tokens_details\":{\"cached_tokens\":0}},\"id\":\"chatcmpl-cRFIaFryRu1sdo1IXVLyE85Vzh7KiAo2\",\"timings\":{\"cache_n\":0,\"prompt_n\":42,\"prompt_ms\":428.519,\"prompt_per_token_ms\":10.202833333333334,\"prompt_per_second\":98.01199013345965,\"predicted_n\":3,\"predicted_ms\":47.697,\"predicted_per_token_ms\":23.8485,\"predicted_per_second\":41.931358366354274}}"
+    headers:
+      content-length:
+      - '652'
+      content-type:
+      - application/json; charset=utf-8
+    status:
+      code: 200
+      message: OK
+version: 1
