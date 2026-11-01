@@ -1,0 +1,365 @@
+{
+  "$defs": {
+    "BootstrapResult": {
+      "additionalProperties": false,
+      "description": "Result of a paired cluster bootstrap (negative ``mean_diff`` = candidate worse).\n\n``p_value`` is one-sided for H0 \"no drop\" (mean difference >= 0). ``ci_low``/``ci_high`` are the\ndisplay interval at ``confidence``; ``method`` says where ``p_value`` came from.\n\nRaises:\n    ValidationError: A float is not finite, ``p_value`` is outside [0, 1],\n        ``n_clusters`` exceeds ``n_cases`` or a count is below 1.",
+      "properties": {
+        "ci_high": {
+          "title": "Ci High",
+          "type": "number"
+        },
+        "ci_low": {
+          "title": "Ci Low",
+          "type": "number"
+        },
+        "confidence": {
+          "exclusiveMaximum": 1.0,
+          "exclusiveMinimum": 0.0,
+          "title": "Confidence",
+          "type": "number"
+        },
+        "mean_diff": {
+          "title": "Mean Diff",
+          "type": "number"
+        },
+        "method": {
+          "enum": [
+            "bootstrap",
+            "sign_test"
+          ],
+          "title": "Method",
+          "type": "string"
+        },
+        "n_cases": {
+          "minimum": 1,
+          "title": "N Cases",
+          "type": "integer"
+        },
+        "n_clusters": {
+          "minimum": 1,
+          "title": "N Clusters",
+          "type": "integer"
+        },
+        "n_resamples": {
+          "minimum": 1,
+          "title": "N Resamples",
+          "type": "integer"
+        },
+        "p_value": {
+          "maximum": 1.0,
+          "minimum": 0.0,
+          "title": "P Value",
+          "type": "number"
+        },
+        "se": {
+          "minimum": 0.0,
+          "title": "Se",
+          "type": "number"
+        }
+      },
+      "required": [
+        "mean_diff",
+        "ci_low",
+        "ci_high",
+        "p_value",
+        "method",
+        "se",
+        "n_cases",
+        "n_clusters",
+        "n_resamples",
+        "confidence"
+      ],
+      "title": "BootstrapResult",
+      "type": "object"
+    },
+    "GateStatus": {
+      "description": "Decision of the gate; ``UNSUPPORTED_CONFIG`` counts as ``WARN``.",
+      "enum": [
+        "pass",
+        "warn",
+        "fail",
+        "insufficient_data",
+        "unsupported_config"
+      ],
+      "title": "GateStatus",
+      "type": "string"
+    },
+    "HardFailFinding": {
+      "additionalProperties": false,
+      "description": "One hard fail (no statistics): a leak on a case, or a leak check that could not run.\n\n``rule`` is ``\"hard_fail\"`` (the metric is 1 on the case) or ``\"hard_fail_unverifiable\"``\n(the metric is ``error``/``not_applicable`` on a case of a target that declares chunk\nsupport, so the leak could not be ruled out). ``evidence`` is redacted: at most 200\ncharacters, canary tokens masked, never chunk text.\n\nRaises:\n    ValidationError: ``evidence`` is longer than 200 characters.",
+      "properties": {
+        "case_id": {
+          "title": "Case Id",
+          "type": "string"
+        },
+        "evidence": {
+          "maxLength": 200,
+          "title": "Evidence",
+          "type": "string"
+        },
+        "metric": {
+          "title": "Metric",
+          "type": "string"
+        },
+        "rule": {
+          "title": "Rule",
+          "type": "string"
+        }
+      },
+      "required": [
+        "rule",
+        "case_id",
+        "metric",
+        "evidence"
+      ],
+      "title": "HardFailFinding",
+      "type": "object"
+    },
+    "SliceDecision": {
+      "additionalProperties": false,
+      "description": "The decision on one (metric, slice) pair or one absolute check (interfaces §9).\n\n``max_drop`` (paired rows) and ``max_value`` (absolute rows) are copied from the policy so\nrenderers never re-read the config. ``notable`` is set for informational rows only.\n\nRaises:\n    ValidationError: ``informational_reason`` is set although ``gated`` is true (R9 X5.4), or a\n        float is not finite.",
+      "properties": {
+        "baseline_mean": {
+          "title": "Baseline Mean",
+          "type": "number"
+        },
+        "candidate_mean": {
+          "title": "Candidate Mean",
+          "type": "number"
+        },
+        "dimension": {
+          "title": "Dimension",
+          "type": "string"
+        },
+        "gated": {
+          "title": "Gated",
+          "type": "boolean"
+        },
+        "informational_reason": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Informational Reason"
+        },
+        "max_drop": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Max Drop"
+        },
+        "max_value": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Max Value"
+        },
+        "mde": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Mde"
+        },
+        "metric": {
+          "title": "Metric",
+          "type": "string"
+        },
+        "n_clusters": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "N Clusters"
+        },
+        "notable": {
+          "default": false,
+          "title": "Notable",
+          "type": "boolean"
+        },
+        "p_adjusted": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "P Adjusted"
+        },
+        "result": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/BootstrapResult"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "status": {
+          "$ref": "#/$defs/GateStatus"
+        },
+        "value": {
+          "title": "Value",
+          "type": "string"
+        }
+      },
+      "required": [
+        "metric",
+        "dimension",
+        "value",
+        "status",
+        "gated",
+        "baseline_mean",
+        "candidate_mean",
+        "result",
+        "p_adjusted",
+        "mde"
+      ],
+      "title": "SliceDecision",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "description": "The gate's answer for one candidate run (``gate.json``).\n\n``baseline_run_id`` is ``None`` exactly when ``no_baseline`` is true.\n\nRaises:\n    ValidationError: ``baseline_run_id is None`` differs from ``no_baseline``.",
+  "properties": {
+    "absolute_checks": {
+      "items": {
+        "$ref": "#/$defs/SliceDecision"
+      },
+      "title": "Absolute Checks",
+      "type": "array"
+    },
+    "baseline_run_id": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "title": "Baseline Run Id"
+    },
+    "candidate_run_id": {
+      "title": "Candidate Run Id",
+      "type": "string"
+    },
+    "decisions": {
+      "items": {
+        "$ref": "#/$defs/SliceDecision"
+      },
+      "title": "Decisions",
+      "type": "array"
+    },
+    "eval_fingerprint": {
+      "title": "Eval Fingerprint",
+      "type": "string"
+    },
+    "hard_fails": {
+      "items": {
+        "$ref": "#/$defs/HardFailFinding"
+      },
+      "title": "Hard Fails",
+      "type": "array"
+    },
+    "likely_cause": {
+      "anyOf": [
+        {
+          "enum": [
+            "retrieval",
+            "generation",
+            "citation_format",
+            "language",
+            "refusal_policy",
+            "errors",
+            "mixed"
+          ],
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "title": "Likely Cause"
+    },
+    "no_baseline": {
+      "default": false,
+      "title": "No Baseline",
+      "type": "boolean"
+    },
+    "not_applicable_counts": {
+      "additionalProperties": {
+        "type": "integer"
+      },
+      "default": {},
+      "title": "Not Applicable Counts",
+      "type": "object"
+    },
+    "notable_slices": {
+      "items": {
+        "$ref": "#/$defs/SliceDecision"
+      },
+      "title": "Notable Slices",
+      "type": "array"
+    },
+    "schema_version": {
+      "const": "1",
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "status": {
+      "$ref": "#/$defs/GateStatus"
+    },
+    "top_failing_cases": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Top Failing Cases",
+      "type": "array"
+    }
+  },
+  "required": [
+    "schema_version",
+    "status",
+    "baseline_run_id",
+    "candidate_run_id",
+    "eval_fingerprint",
+    "hard_fails",
+    "decisions",
+    "absolute_checks",
+    "notable_slices",
+    "likely_cause",
+    "top_failing_cases"
+  ],
+  "title": "GateReport",
+  "type": "object"
+}

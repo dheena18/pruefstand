@@ -5,6 +5,7 @@ and ``NA`` (NaN) is status ``not_applicable``. The runs are real pydantic models
 model or a target: they carry numbers, as the statistical gate only ever sees numbers.
 """
 
+import functools
 import math
 from collections.abc import Mapping, Sequence
 from datetime import UTC, datetime
@@ -34,7 +35,7 @@ F0_BASELINE = {
 Details = Mapping[str, Mapping[int, Mapping[str, str | float | int | bool]]]
 
 
-def make_case(  # noqa: PLR0913  (builder fixed by the T1.7 prompt; `base` is an extra keyword)
+def make_case(
     i: int,
     *,
     cluster: int,
@@ -83,12 +84,14 @@ def make_case(  # noqa: PLR0913  (builder fixed by the T1.7 prompt; `base` is an
     )
 
 
-def make_record(case: TestCase, *, chunks: bool | None = False, answered: bool = True) -> CaseRecord:
+def make_record(
+    case: TestCase, *, chunks: bool | None = False, answered: bool = True
+) -> CaseRecord:
     """Return the recorded exchange of ``case``.
 
     Args:
         case: The case.
-        chunks: ``True``: the response carries (empty) ``chunks``; ``False``/``None``: it omits them.
+        chunks: ``True``: the response carries (empty) ``chunks``; else it omits them.
         answered: ``False``: the request failed (no response).
 
     Returns:
@@ -110,6 +113,15 @@ def make_record(case: TestCase, *, chunks: bool | None = False, answered: bool =
     )
 
 
+@functools.lru_cache(maxsize=8192)
+def _plain_value(metric: str, number: float | None, status: MetricStatus) -> MetricValue:
+    # MetricValue is frozen, so equal values can be shared; this and model_construct (the range is
+    # checked in `_metric_value`) make 4 000 simulated runs of 300 cases fit the nightly budget
+    return MetricValue.model_construct(
+        metric=metric, metric_version="1", value=number, status=status, details={}
+    )
+
+
 def _metric_value(
     metric: str, value: float | None, details: Mapping[str, str | float | int | bool]
 ) -> MetricValue:
@@ -119,8 +131,53 @@ def _metric_value(
         status, number = MetricStatus.NOT_APPLICABLE, None
     else:
         status, number = MetricStatus.OK, value
-    return MetricValue(
-        metric=metric, metric_version="1", value=number, status=status, details=dict(details)
+        if not 0.0 <= number <= 1.0:
+            msg = f"{metric}: value {number} is outside [0, 1]"
+            raise ValueError(msg)
+    if details:
+        return MetricValue(
+            metric=metric, metric_version="1", value=number, status=status, details=dict(details)
+        )
+    return _plain_value(metric, number, status)
+
+
+def _manifest(
+    run_id: str,
+    n_cases: int,
+    *,
+    eval_fingerprint: str,
+    complete: bool,
+    counts: Mapping[str, int] | None,
+    stack: str,
+) -> RunManifest:
+    return RunManifest(
+        schema_version="1",
+        run_id=run_id,  # type: ignore[arg-type]  # NewType over str
+        created_at=datetime(2026, 11, 2, 22, 0, tzinfo=UTC),
+        pruefstand_version="0.0.1",
+        git_sha=None,
+        git_ref=None,
+        pr_number=None,
+        target=None,
+        target_fingerprint="t" * 16,
+        eval_fingerprint=eval_fingerprint,
+        dataset_name="pruefstand-de",
+        dataset_version="v1",
+        splits=(Split.CORE,),
+        n_cases=n_cases,
+        config_hash="c" * 16,
+        judge_models={},
+        judge_prompt_versions={},
+        metric_versions={},
+        seed=0,
+        cost=CostSummary(usd=0, prompt_tokens=0, completion_tokens=0, gpu_seconds=0, llm_calls=0),
+        duration_s=1.0,
+        counts=dict(counts or {}),
+        complete=complete,
+        stop_reason="completed" if complete else "aborted",
+        stack=stack,  # type: ignore[arg-type]  # Literal checked by pydantic
+        workload="pr",
+        judge_mode="skipped",
     )
 
 
@@ -162,7 +219,7 @@ def make_run(  # noqa: PLR0913  (builder fixed by the T1.7 prompt; extras are ke
             raise ValueError(msg)
     extra = details or {}
     scored = tuple(
-        ScoredCase(
+        ScoredCase.model_construct(  # arguments are built right here; saves simulation time
             case=case,
             values=tuple(
                 _metric_value(metric, column[i], extra.get(metric, {}).get(i, {}))
@@ -171,40 +228,19 @@ def make_run(  # noqa: PLR0913  (builder fixed by the T1.7 prompt; extras are ke
         )
         for i, case in enumerate(cases)
     )
-    manifest = RunManifest(
-        schema_version="1",
-        run_id=run_id,  # type: ignore[arg-type]  # NewType over str
-        created_at=datetime(2026, 11, 2, 22, 0, tzinfo=UTC),
-        pruefstand_version="0.0.1",
-        git_sha=None,
-        git_ref=None,
-        pr_number=None,
-        target=None,
-        target_fingerprint="t" * 16,
+    manifest = _manifest(
+        run_id,
+        len(cases),
         eval_fingerprint=eval_fingerprint,
-        dataset_name="pruefstand-de",
-        dataset_version="v1",
-        splits=(Split.CORE,),
-        n_cases=len(cases),
-        config_hash="c" * 16,
-        judge_models={},
-        judge_prompt_versions={},
-        metric_versions={},
-        seed=0,
-        cost=CostSummary(usd=0, prompt_tokens=0, completion_tokens=0, gpu_seconds=0, llm_calls=0),
-        duration_s=1.0,
-        counts=dict(counts or {}),
         complete=complete,
-        stop_reason="completed" if complete else "aborted",
-        stack=stack,  # type: ignore[arg-type]  # Literal checked by pydantic
-        workload="pr",
-        judge_mode="skipped",
+        counts=counts,
+        stack=stack,
     )
     return RunResults(manifest=manifest, records=tuple(records), values=scored)
 
 
 def fixture_f0() -> tuple[list[TestCase], dict[str, list[float | None]]]:
-    """F0: 120 cases = 60 clusters x 2; tenants by thirds of the clusters; ``de`` 0-49, ``en`` 50-59.
+    """F0: 120 cases = 60 clusters x 2; tenants in thirds; ``de`` for clusters 0-49, ``en`` 50-59.
 
     Returns:
         ``(cases, base_values)``; the baseline values are constant per metric (``F0_BASELINE``).
@@ -232,7 +268,5 @@ def fixture_f1() -> tuple[list[TestCase], dict[str, list[float | None]]]:
         first = 3 * cluster
         cases.append(make_case(first, cluster=cluster))
         for offset, name in ((1, "compound_split"), (2, "typos")):
-            cases.append(
-                make_case(first + offset, cluster=cluster, perturbation=name, base=first)
-            )
+            cases.append(make_case(first + offset, cluster=cluster, perturbation=name, base=first))
     return cases, {m: [v] * 120 for m, v in F0_BASELINE.items()}

@@ -6,12 +6,14 @@ from testsupport.builders import NA, make_case, make_run
 
 from pruefstand.core.errors import GateInputError
 from pruefstand.core.models.gate import ScoreTable
+from pruefstand.core.models.run import RunResults
+from pruefstand.core.models.testcase import TestCase
 from pruefstand.gate.tables import pair_runs, pair_tables, score_table, slice_members, slice_values
 
 M = "context_recall"
 
 
-def _cases() -> list:
+def _cases() -> list[TestCase]:
     return [
         make_case(0, cluster=0, tenant="a", tags=("x", "y")),
         make_case(1, cluster=0, tenant="a"),
@@ -19,7 +21,12 @@ def _cases() -> list:
     ]
 
 
-def _run(run_id: str, column: list[float | None], cases: list | None = None, **extra: list) -> object:
+def _run(
+    run_id: str,
+    column: list[float | None],
+    cases: list[TestCase] | None = None,
+    **extra: list[float | None],
+) -> RunResults:
     cs = cases if cases is not None else _cases()
     return make_run(run_id, cs, {M: column, "error_rate": [0.0] * len(cs), **extra})
 
@@ -104,9 +111,7 @@ def test_judge_error_on_a_successful_request_is_excluded_not_filled() -> None:
 
 
 def test_error_on_a_failed_request_is_worst_filled() -> None:
-    cand = make_run(
-        "c", _cases(), {M: [0.5, None, 1.0], "error_rate": [0.0, 1.0, 0.0]}
-    )
+    cand = make_run("c", _cases(), {M: [0.5, None, 1.0], "error_rate": [0.0, 1.0, 0.0]})
     paired = pair_runs(_run("b", [0.5, 0.5, 1.0]), cand, M, higher_is_better=True)
     assert paired.case_ids == ("c0000", "c0001", "c0002")
     assert paired.diffs.tolist() == [0.0, -0.5, 0.0]
@@ -161,7 +166,7 @@ def test_unknown_dimension_raises() -> None:
 
 def test_pair_tables_counts_filled_and_unmatched_arguments() -> None:
     base = score_table(_run("b", [0.5, 0.5, 1.0]), M, higher_is_better=True)
-    cand = score_table(_run("c", [0.5, 0.5]), M, higher_is_better=True)
+    cand = score_table(_run("c", [0.5, 0.5], _cases()[:2]), M, higher_is_better=True)
     paired = pair_tables(base, cand, filled=frozenset({"c0001"}), n_unmatched=2, n_shared=3)
     assert np.array_equal(paired.diffs, [0.0, 0.0])
     assert (paired.n_unmatched, paired.n_excluded, paired.n_worst_filled) == (2, 1, 1)

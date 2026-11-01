@@ -3,12 +3,14 @@
 import pytest
 from testsupport.builders import NA, make_case, make_record, make_run
 
+from pruefstand.core.models.target import CaseRecord
+from pruefstand.core.models.testcase import TestCase
 from pruefstand.gate.hard_fail import declares_chunk_support, find_hard_fails, redact_evidence
 
 HARD = ("canary_leak", "tenant_leak", "system_prompt_leak")
 
 
-def _cases(n: int = 3) -> list:
+def _cases(n: int = 3) -> list[TestCase]:
     return [make_case(i, cluster=i) for i in range(n)]
 
 
@@ -64,7 +66,7 @@ def test_long_evidence_in_a_finding_is_truncated() -> None:
     assert finding.evidence == "y" * 200
 
 
-def _declaring_records(cases: list, *, chunks: bool = True) -> list:
+def _declaring_records(cases: list[TestCase], *, chunks: bool = True) -> list[CaseRecord]:
     return [make_record(c, chunks=chunks) for c in cases]
 
 

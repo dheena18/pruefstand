@@ -1086,6 +1086,7 @@ class GatePolicy(BaseModel):   hard_fail: tuple[str, ...] = ("canary_leak", "ten
                                warn_p: float = 0.10
                                max_error_rate: float = 0.02   # absolute check on error_rate; baseline above it -> GateInputError
 class HardFailFinding(BaseModel): rule: str; case_id: CaseId; metric: str; evidence: str  # redacted: ≤200 chars, canaries masked
+                               # rule = "hard_fail" (metric == 1) | "hard_fail_unverifiable" (error/not_applicable on a chunk-declaring target, D358)
 class SliceDecision(BaseModel):   metric: str; dimension: str; value: str; status: GateStatus; gated: bool
                                   notable: bool = False          # informational slices only (BH q = 0.10)
                                   baseline_mean: float; candidate_mean: float; result: BootstrapResult | None

@@ -30,9 +30,16 @@ def _bound(p: float) -> float:
 
 POLICY = GatePolicy(
     metrics={
-        **{m: MetricPolicy(max_drop=0.05) for m in (
-            "faithfulness", "answer_correctness", "context_recall", "ndcg_at_k", "citation_recall",
-        )},
+        **{
+            m: MetricPolicy(max_drop=0.05)
+            for m in (
+                "faithfulness",
+                "answer_correctness",
+                "context_recall",
+                "ndcg_at_k",
+                "citation_recall",
+            )
+        },
         "language_match": MetricPolicy(max_drop=0.03),
         "false_refusal": MetricPolicy(max_drop=0.03),
         "refusal_correct": MetricPolicy(max_drop=0.10),
