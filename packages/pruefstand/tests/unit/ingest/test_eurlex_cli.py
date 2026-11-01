@@ -47,3 +47,27 @@ def test_a_pinned_act_without_files_fails(
 def test_unreadable_sources_file_means_no_expectations(tmp_path: Path, content: str | None) -> None:
     raw = make_tree(tmp_path, content)
     assert pinned_celex(raw) == []
+
+
+def long_page(*, numbered: bool) -> bytes:
+    words = " ".join(["Wort"] * 900)
+    paras = ""
+    for n in (1, 2):
+        marker = f"({n}) " if numbered else ""
+        paras += f'<div id="006.00{n}"><p class="oj-normal">{marker}{words}</p></div>'
+    return (
+        '<html><body><div id="art_6"><p class="oj-ti-art">Article 6</p>'
+        f'<div class="eli-title"><p class="oj-sti-art">T</p></div>{paras}</div></body></html>'
+    ).encode()
+
+
+def test_act_whose_chunks_do_not_align_is_not_counted_as_aligned(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    raw = tmp_path / "data" / "raw" / "eurlex" / CELEX
+    raw.mkdir(parents=True)
+    (raw / "de.html").write_bytes(long_page(numbered=True))
+    (raw / "en.html").write_bytes(long_page(numbered=False))
+    assert main([str(raw.parent), "--stats"]) == 1
+    out = capsys.readouterr().out
+    assert out.startswith("acts=0 langs=2 aligned_pairs=0 misaligned_acts=1")
