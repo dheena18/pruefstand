@@ -34,6 +34,8 @@ erDiagram
         string config_hash
         json judge_models
         json judge_prompt_versions
+        json judge_serving "metric to engine, version, quantization, digest[:12] of its gated judge (R9 X3.3)"
+        int judge_epoch "calibration epoch, part of eval_fingerprint (R9 X3.3)"
         json metric_versions
         int seed
         json cost "CostSummary"
@@ -225,6 +227,9 @@ erDiagram
         string difficulty
         string split "smoke, smoke_live, core, robust_pr, full, rq1, human_labels (rq1 offline only, R13 P3.2)"
         json tags "e.g. closed_book_answerable"
+        string evidence_span "answer-bearing sentence(s), at most 60 tokens (R9 AI9-06)"
+        int block "nightly block 0, 1 or 2 of a full case; null for the refusal stratum and outside full (R12 N1.1)"
+        bool judged_subset "member of the fixed 150-case judged subset of core (R12 N1.1)"
         bool expect_refusal
         string injection_marker
         json forbidden_strings

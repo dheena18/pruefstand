@@ -503,7 +503,7 @@ class TestCase(BaseModel):                       # (schema)
 
 # core/models/target.py
 class TargetRequest(BaseModel):  tenant_id: TenantId; question: str; top_k: int | None = None; request_id: str
-class RetrievedChunk(BaseModel): chunk_id: ChunkId; doc_id: DocId; tenant_id: TenantId | None; text: str; score: float; rank: int
+class RetrievedChunk(BaseModel): chunk_id: ChunkId; doc_id: DocId; tenant_id: TenantId | None = None; text: str; score: float; rank: int
                                  used_in_prompt: bool | None = None   # R9 X3.14 (API v1, backward compatible)
 class Usage(BaseModel):          prompt_tokens: int; completion_tokens: int
 class TargetResponse(BaseModel): answer: str; citations: tuple[str, ...] = (); chunks: tuple[RetrievedChunk, ...] | None = None
