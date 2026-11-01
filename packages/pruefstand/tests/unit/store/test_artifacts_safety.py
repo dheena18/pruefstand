@@ -21,14 +21,20 @@ from pruefstand.store.artifacts import ArtifactStore
 def written(base: Path) -> tuple[ArtifactStore, Path]:
     results = make_results(2)
     store = ArtifactStore(base)
-    return store, store.write_run(RunArtifacts(results=results, root=base / results.manifest.run_id))
+    return store, store.write_run(
+        RunArtifacts(results=results, root=base / results.manifest.run_id)
+    )
 
 
 def test_parquet_bomb_is_not_decoded(tmp_path: Path) -> None:
     """A tiny zstd file whose single value decodes to 60 MB must not be materialised."""
-    store, path = written(tmp_path / "store")
+    _, path = written(tmp_path / "store")
     frame = pl.read_parquet(path / "results.parquet")
-    huge = frame.with_columns(tenant=pl.when(pl.int_range(pl.len()) == 0).then(pl.lit("a" * 60_000_000)).otherwise(pl.col("tenant")))
+    huge = frame.with_columns(
+        tenant=pl.when(pl.int_range(pl.len()) == 0)
+        .then(pl.lit("a" * 60_000_000))
+        .otherwise(pl.col("tenant"))
+    )
     huge.write_parquet(path / "results.parquet", compression="zstd", row_group_size=10)
     assert (path / "results.parquet").stat().st_size < 1_000_000
     script = textwrap.dedent(
@@ -49,7 +55,13 @@ def test_parquet_bomb_is_not_decoded(tmp_path: Path) -> None:
         sys.exit(0 if grown_mb < 30 else 1)
         """
     )
-    done = subprocess.run([sys.executable, "-I", "-c", script], capture_output=True, text=True, timeout=120, check=False)  # noqa: S603
+    done = subprocess.run(  # noqa: S603  (fixed interpreter and script)
+        [sys.executable, "-I", "-c", script],
+        capture_output=True,
+        text=True,
+        timeout=120,
+        check=False,
+    )
     assert done.returncode == 0, done.stdout + done.stderr
 
 
@@ -83,7 +95,10 @@ def test_dict_key_names_in_run_json_never_reach_the_error(tmp_path: Path) -> Non
     manifest = json.loads((path / "run.json").read_text(encoding="utf-8"))
     manifest["counts"] = {"CANARY-COUNTKEY": "x"}
     (path / "run.json").write_text(json.dumps(manifest), encoding="utf-8")
-    for action in (lambda: store.read_run(path), lambda: store.add_counts(path, {"model_reloads": 1})):
+    for action in (
+        lambda: store.read_run(path),
+        lambda: store.add_counts(path, {"model_reloads": 1}),
+    ):
         with pytest.raises(StoreError) as info:
             action()
         assert "CANARY" not in str(info.value)
@@ -117,9 +132,9 @@ def test_a_symlink_swapped_in_after_the_lstat_is_still_refused(
     real = os.lstat
 
     def lying(p: str | os.PathLike[str], **kw: object) -> os.stat_result:
-        return os.stat(p) if Path(p).name == "responses.jsonl" else real(p)  # follows the link
+        return Path(p).stat() if Path(p).name == "responses.jsonl" else real(p)  # follows the link
 
-    monkeypatch.setattr(_run_files.os, "lstat", lying)
+    monkeypatch.setattr(os, "lstat", lying)
     with pytest.raises(StoreError) as info:
         store.read_run(path)
     assert "CANARY" not in str(info.value)
@@ -132,7 +147,10 @@ def test_a_file_that_grows_after_the_size_check_is_refused(
     big.write_bytes(b"x" * 500)
     real = big.lstat()
     fake = SimpleNamespace(st_mode=real.st_mode, st_size=10, st_ino=real.st_ino, st_dev=real.st_dev)
-    monkeypatch.setattr(_run_files.os, "lstat", lambda p, **kw: fake)
+    real_lstat = os.lstat
+    monkeypatch.setattr(
+        os, "lstat", lambda p, **kw: fake if Path(p).name == "f.jsonl" else real_lstat(p)
+    )
     with pytest.raises(StoreError, match="grew"):
         _run_files.read_bounded(big, 100)
 

@@ -51,17 +51,6 @@ def test_garbage_parquet_is_a_store_error(tmp_path: Path) -> None:
         store.read_run(path)
 
 
-def test_parquet_that_disagrees_with_scored_jsonl_is_a_store_error(tmp_path: Path) -> None:
-    store, run, path = written(tmp_path)
-    frame = pl.read_parquet(path / "results.parquet").with_columns(
-        pl.col("metric").str.to_uppercase()
-    )
-    frame.write_parquet(path / "results.parquet")
-    with pytest.raises(StoreError, match="disagree"):
-        store.read_run(path)
-    assert run is not None
-
-
 def test_truncated_jsonl_files_are_store_errors(tmp_path: Path) -> None:
     for name in ("responses.jsonl", "scored.jsonl"):
         store, _, path = written(tmp_path / name)

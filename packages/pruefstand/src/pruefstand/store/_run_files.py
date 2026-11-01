@@ -1,12 +1,14 @@
 """Serialisation of one run directory: ``run.json``, ``results.parquet`` and the JSONL files."""
 
+import io
 import json
 import os
 import stat
 from pathlib import Path
+from typing import get_args
 
 import polars as pl
-from pydantic import ValidationError
+from pydantic import BaseModel, ValidationError
 
 from pruefstand.core.errors import StoreError
 from pruefstand.core.models.run import RunManifest, RunResults, ScoredCase
@@ -15,6 +17,8 @@ from pruefstand.core.models.target import CaseRecord
 MAX_FILE_BYTES = 128 * 1024 * 1024
 """Largest run file ``read_results`` accepts; a bigger file is refused before it is read."""
 MAX_MANIFEST_BYTES = 4 * 1024 * 1024
+MAX_PARQUET_BYTES = 64 * 1024 * 1024
+"""``results.parquet`` is never decoded by ``read_results``; this only bounds the footer read."""
 
 RESULT_COLUMNS = (
     "case_id", "base_id", "cluster_id", "tenant", "lang", "category", "perturbation", "split",
@@ -84,25 +88,50 @@ def write_files(root: Path, results: RunResults, llm_calls: pl.DataFrame | None)
         llm_calls.write_parquet(root / "llm_calls.parquet", compression="zstd")
 
 
+def _known_field_names() -> frozenset[str]:
+    """Names of every model field a run file can mention (never a key taken from file content)."""
+    names: set[str] = set()
+    todo: list[type[BaseModel]] = [RunManifest, CaseRecord, ScoredCase]
+    while todo:
+        model = todo.pop()
+        for name, info in model.model_fields.items():
+            names.add(name)
+            for ann in (info.annotation, *get_args(info.annotation)):
+                inner = get_args(ann) or (ann,)
+                todo.extend(
+                    t
+                    for t in (ann, *inner)
+                    if isinstance(t, type) and issubclass(t, BaseModel) and t not in todo
+                )
+    return frozenset(names)
+
+
+_FIELDS = _known_field_names()
+
+
 def safe_error(exc: BaseException) -> str:
-    """Describe ``exc`` without any value taken from file content (no pydantic ``input_value``)."""
+    """Describe ``exc`` without any text taken from file content.
+
+    Pydantic ``input`` values are dropped, and a ``loc`` part that is not a model field name
+    (an extra key, a dict key) is replaced by ``<key>``; list indices are kept.
+    """
     if isinstance(exc, ValidationError):
         items = exc.errors(include_url=False, include_context=False, include_input=False)
-        return "; ".join(f"{'.'.join(str(p) for p in e['loc'])}: {e['type']}" for e in items[:5])
+        return "; ".join(
+            f"{'.'.join(_loc_part(p) for p in e['loc'])}: {e['type']}" for e in items[:5]
+        )
     if isinstance(exc, UnicodeDecodeError):
         return f"invalid UTF-8 at byte {exc.start}"
-    if isinstance(exc, OSError):
-        return type(exc).__name__
     return type(exc).__name__
 
 
-def read_bounded(path: Path, limit: int) -> bytes:
-    """Read a regular, non-symlink file of at most ``limit`` bytes.
+def _loc_part(part: object) -> str:
+    if isinstance(part, int):
+        return str(part)
+    return part if isinstance(part, str) and part in _FIELDS else "<key>"
 
-    Raises:
-        StoreError: The path is a symlink or not a regular file, is larger than ``limit``, or
-            cannot be read. Nothing is followed and no special file is ever opened.
-    """
+
+def _regular_stat(path: Path, limit: int) -> os.stat_result:
     try:
         info = os.lstat(path)
     except OSError as exc:
@@ -117,9 +146,29 @@ def read_bounded(path: Path, limit: int) -> bytes:
     if info.st_size > limit:
         msg = f"{path.name} in {path.parent} is {info.st_size} bytes, larger than the {limit} limit"
         raise StoreError(msg)
+    return info
+
+
+def read_bounded(path: Path, limit: int) -> bytes:
+    """Read a regular, non-symlink file of at most ``limit`` bytes (once).
+
+    The opened descriptor is checked again (regular file, same inode as the ``lstat``), so a
+    path swapped for a symlink or another file in between is refused.
+
+    Raises:
+        StoreError: Not a regular file, a symlink, larger than ``limit``, swapped, or unreadable.
+    """
+    info = _regular_stat(path, limit)
     try:
         fd = os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
         with os.fdopen(fd, "rb") as handle:
+            opened = os.fstat(handle.fileno())
+            if not stat.S_ISREG(opened.st_mode) or (opened.st_ino, opened.st_dev) != (
+                info.st_ino,
+                info.st_dev,
+            ):
+                msg = f"{path.name} in {path.parent} changed while being opened"
+                raise StoreError(msg)
             data = handle.read(limit + 1)
     except OSError as exc:
         msg = f"cannot read {path.name} in {path.parent}: {safe_error(exc)}"
@@ -184,34 +233,34 @@ def read_results(root: Path) -> RunResults:
 
 
 def _check_parquet(path: Path, values: tuple[ScoredCase, ...]) -> None:
-    read_bounded(path, MAX_FILE_BYTES)  # regular file, size limit (content read again by polars)
+    """Check the derived view without decoding it.
+
+    ``results.parquet`` is compressed data from disk, so decoding it is a decompression-bomb
+    risk. Only the footer is read: column names and the total row count must match what
+    ``scored.jsonl`` (the lossless source) implies. The body is never materialised.
+    """
+    _regular_stat(path, MAX_PARQUET_BYTES)
     try:
         columns = tuple(pl.read_parquet_schema(path))
-        if columns != RESULT_COLUMNS:
-            msg = f"results.parquet in {path.parent} has unexpected columns"
-            raise StoreError(msg)
         rows = int(pl.scan_parquet(path).select(pl.len()).collect().item())
-        expected = sum(len(s.values) for s in values)
-        if rows != expected:
-            msg = (
-                f"results.parquet in {path.parent} has {rows} rows, scored.jsonl implies {expected}"
-            )
-            raise StoreError(msg)
-        frame = pl.read_parquet(path)
     except (OSError, pl.exceptions.PolarsError) as exc:
-        msg = f"cannot read results.parquet in {path.parent}: {safe_error(exc)}"
+        msg = f"cannot read results.parquet footer in {path.parent}: {safe_error(exc)}"
         raise StoreError(msg) from exc
-    if not frame.equals(results_frame(values)):
-        msg = f"results.parquet and scored.jsonl disagree in {path.parent}"
+    if columns != RESULT_COLUMNS:
+        msg = f"results.parquet in {path.parent} has unexpected columns"
+        raise StoreError(msg)
+    expected = sum(len(s.values) for s in values)
+    if rows != expected:
+        msg = f"results.parquet in {path.parent} has {rows} rows, scored.jsonl implies {expected}"
         raise StoreError(msg)
 
 
 def _read_lines[M: (CaseRecord, ScoredCase)](path: Path, model: type[M]) -> list[M]:
     data = read_bounded(path, MAX_FILE_BYTES)
     try:
-        text = data.decode("utf-8")
-        # split on "\n" only: str.splitlines() also cuts at U+2028, U+2029, U+0085, \x0b, \x0c ...
-        return [model.model_validate_json(line) for line in text.split("\n") if line.strip()]
+        # BytesIO iterates on b"\n" only (str.splitlines() also cuts at U+2028, U+0085, ...) and
+        # pydantic validates the UTF-8 of each line, so no full-text copy is made.
+        return [model.model_validate_json(line) for line in io.BytesIO(data) if line.strip()]
     except ValueError as exc:
         msg = f"cannot read {path.name} in {path.parent}: {safe_error(exc)}"
         raise StoreError(msg) from exc

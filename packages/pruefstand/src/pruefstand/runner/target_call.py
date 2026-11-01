@@ -151,10 +151,10 @@ class TargetCaller:
             "latency_ms": record.latency_ms,
             "response": record.response.model_dump(mode="json"),
         }
+        payload = json.dumps(entry, ensure_ascii=False).encode("utf-8")  # valid unicode is checked
         try:
-            payload = json.dumps(entry, ensure_ascii=False).encode("utf-8")
             await asyncio.to_thread(self._cache.set, key, payload)
-        except (StoreError, UnicodeError) as exc:
+        except StoreError as exc:
             self._warn_once("target_cache_write_failed", str(exc))
 
     def _warn_once(self, event: str, error: str) -> None:

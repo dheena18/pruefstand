@@ -13,6 +13,7 @@ import os
 import re
 import secrets
 import shutil
+import stat
 import time
 from collections.abc import Callable, Mapping
 from datetime import UTC, datetime
@@ -25,8 +26,11 @@ from pruefstand.core.errors import StoreError
 from pruefstand.core.ids import RunId
 from pruefstand.core.models.run import RunArtifacts, RunManifest
 from pruefstand.store._run_files import (
+    MAX_FILE_BYTES,
+    MAX_MANIFEST_BYTES,
     RESULT_COLUMNS,
     manifest_text,
+    read_bounded,
     read_manifest,
     read_results,
     safe_error,
@@ -175,9 +179,9 @@ class ArtifactStore:
     @staticmethod
     def _update_locked(path: Path, change: Callable[[dict[str, Any]], dict[str, Any]]) -> None:
         read_manifest(path)  # a clear StoreError for a missing or broken run.json
-        data = json.loads((path / "run.json").read_text(encoding="utf-8"))
+        raw = read_bounded(path / "run.json", min(MAX_MANIFEST_BYTES, MAX_FILE_BYTES))
         try:
-            manifest = RunManifest.model_validate(change(data))
+            manifest = RunManifest.model_validate(change(json.loads(raw)))
         except ValueError as exc:
             msg = f"invalid manifest for {path.name}: {safe_error(exc)}"
             raise StoreError(msg) from exc
@@ -194,8 +198,18 @@ class ArtifactStore:
         text = str(run_id_or_path)
         is_id = os.sep not in text and "/" not in text and text not in {"", ".", ".."}
         path = self._root / text if is_id else Path(run_id_or_path)
-        if not path.is_dir():
+        try:
+            info = os.lstat(path)
+        except OSError as exc:
             msg = f"no run directory at {path}"
+            raise StoreError(msg) from exc
+        if stat.S_ISLNK(info.st_mode):
+            msg = f"run directory {path} is a symlink; refusing to follow it"
+            raise StoreError(msg)
+        if not stat.S_ISDIR(info.st_mode) or not path.resolve().is_relative_to(
+            self._root.resolve()
+        ):
+            msg = f"{path} is not a run directory under the store root"
             raise StoreError(msg)
         return path
 

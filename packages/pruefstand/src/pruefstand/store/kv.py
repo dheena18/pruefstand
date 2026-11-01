@@ -83,13 +83,20 @@ class DiskKVCache:
         try:
             with self._lock:
                 row = db.execute(
-                    "SELECT value FROM kv WHERE key = ? AND length(value) <= ?",
+                    "SELECT value FROM kv WHERE key = ? AND typeof(value) = 'blob'"
+                    " AND length(value) <= ?",
                     (key, MAX_VALUE_BYTES),
                 ).fetchone()
         except (sqlite3.Error, UnicodeError, TypeError, OverflowError) as exc:
             msg = f"cache read failed: {exc}"
             raise StoreError(msg) from exc
-        return None if row is None else bytes(row[0])
+        if row is None:
+            return None
+        value = row[0]
+        if not isinstance(value, bytes):
+            msg = "cache row is not a blob"
+            raise StoreError(msg)
+        return value
 
     def set(self, key: str, value: bytes) -> None:
         """Store ``value`` under ``key`` (last write wins).
