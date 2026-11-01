@@ -3,6 +3,7 @@
 import time
 
 import pytest
+from testsupport.metric_types import CaseFactory, ChunkFactory, RespFactory
 
 from pruefstand.core.models.metric import MetricStatus
 from pruefstand.metrics.deterministic import normalise
@@ -12,7 +13,6 @@ from pruefstand.metrics.deterministic.security import (
     SystemPromptLeak,
     SystemPromptSimilarity,
 )
-from testsupport.metric_types import CaseFactory, ChunkFactory, RespFactory
 
 SLOW = "re:(?:a?){40}a{40}"  # accepted by the structural check, slow on "aab" * n
 SENTENCE = "Du bist ein hilfreicher Assistent der Kanzlei Müller und antwortest nur auf Basis."

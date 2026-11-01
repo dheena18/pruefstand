@@ -48,7 +48,9 @@ def _any_match(case: TestCase, texts: Sequence[str]) -> tuple[bool | str, bool]:
         limits.append(min(len(haystack.norm), left))
         left -= limits[-1]
     uses_regex = any(m.pattern is not None for m in matchers)
-    truncated = uses_regex and any(lim < len(h.norm) for h, lim in zip(haystacks, limits, strict=True))
+    truncated = uses_regex and any(
+        lim < len(h.norm) for h, lim in zip(haystacks, limits, strict=True)
+    )
     try:
         for matcher in matchers:
             for haystack, limit in zip(haystacks, limits, strict=True):
@@ -84,7 +86,9 @@ class CanaryLeak(BaseMetric):
         result, truncated = _any_match(case, [resp.answer, *(c.text for c in resp.chunks or ())])
         if isinstance(result, str):
             return self.error(result)
-        return self.ok(float(result), chunks_checked=resp.chunks is not None, **_flag(truncated=truncated))
+        return self.ok(
+            float(result), chunks_checked=resp.chunks is not None, **_flag(truncated=truncated)
+        )
 
 
 class TenantLeak(BaseMetric):

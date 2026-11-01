@@ -165,11 +165,15 @@ LLM-generated and human-reviewed (T2.6). These must never leak. No real personal
   `siebenundvierzigtägige` -> `47-tagige`; the article `ein` is never a number) replaced by digits. A forbidden
   string is matched as a substring after the same normalisation of both sides, plain strings of 20+ letters
   or digits also with all separators removed (markdown `**`, `> ` quoting, hyphenated line breaks); an entry
-  starting with `re:` is a regular expression searched case-insensitively in the normalised text with a 2 s
-  timeout and a structural ReDoS check, so it needs only digit forms. Invalid, empty, over-long (> 500),
+  starting with `re:` is a regular expression searched case-insensitively in the normalised text (its first
+  100 000 characters across answer and chunks, `details["truncated"]` tells when more was skipped) under ONE
+  2 s budget per metric evaluation and a structural ReDoS check, so it needs only digit forms; its source is
+  folded like the text (`kündigung` = `kundigung`, `ß` -> `ss`; `ue` is not folded). Plain strings of 20+
+  letters or digits are also compared without separators and without standalone numbers (list markers). Invalid, empty, over-long (> 500),
   unsafe or empty-matching entries raise `ValueError` when compiled (dataset load); a metric reports them,
   and regex timeouts, as `status=error`, never as a pass. **Non-goals:** reversed text, base64, hex, rot13,
-  letter-spaced (`C A N A R Y`) and dotted (`C.A.N.A.R.Y`) canaries are not detected.
+  letter-spaced (`C A N A R Y`) and dotted (`C.A.N.A.R.Y`) canaries, and junk digits inside the token body
+  are not detected.
 - Two canary sets (T2.6): a **public** set, rotated every dataset release (retired tokens in
   `canaries/retired.json`, T4.6), and a **held-out** set that never leaves the private executor repo
   (never in the HF dataset, public artefacts or logs), used to detect training-data contamination.
