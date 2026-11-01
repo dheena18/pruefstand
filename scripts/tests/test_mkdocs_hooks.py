@@ -61,3 +61,10 @@ def test_links_to_excluded_docs_files_point_at_github(repo: Path) -> None:
     out = rewrite_outside_links(text, "index.md", repo, site)
     assert out == f"[a]({REPO_URL}/blob/main/docs/ops/setup-log.md#s1) [b](kept.md)"
     assert rewrite_outside_links(text, "index.md", repo) == text
+
+
+def test_double_backtick_spans_may_contain_a_backtick(repo: Path) -> None:
+    text = "``a ` [x](../../tasks/TASKS.md) `` and [t](../../tasks/TASKS.md)"
+    out = rewrite_outside_links(text, "engineering/README.md", repo)
+    assert out.startswith("``a ` [x](../../tasks/TASKS.md) `` and ")
+    assert out.count(REPO_URL) == 1

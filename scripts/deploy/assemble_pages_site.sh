@@ -17,6 +17,7 @@ if [ "$#" -ne 3 ]; then
   exit 2
 fi
 dashboard=$1
+[ "$dashboard" = "--placeholder" ] || dashboard=${dashboard%/}  # a trailing slash must not hide a symlinked root
 site=$2
 out=$3
 max_bytes=${PAGES_MAX_BYTES:-800000000}

@@ -16,7 +16,8 @@ REPO_URL = "https://github.com/dheena18/pruefstand"
 DOCS_DIR = "docs"
 _FENCE = re.compile(r"^\s*(```|~~~)")
 _LINK = re.compile(r"(\]\()([^)\s#]+)(#[^)\s]*)?(\))")
-_CODE_SPAN = re.compile(r"(`+[^`]*`+)")
+# A code span opens with a run of N backticks and closes with a run of exactly N.
+_CODE_SPAN = re.compile(r"(?<!`)(`+)(?!`).+?(?<!`)\1(?!`)")
 _SCHEME = re.compile(r"^[a-z][a-z0-9+.-]*:", re.IGNORECASE)
 
 
@@ -49,11 +50,18 @@ def rewrite_outside_links(
 def _rewrite_line(
     line: str, src_uri: str, repo_root: Path, site_files: frozenset[str] | None
 ) -> str:
-    """Rewrite the links of one line, leaving inline code spans (odd split parts) alone."""
-    parts = _CODE_SPAN.split(line)
-    for i in range(0, len(parts), 2):
-        parts[i] = _LINK.sub(lambda m: _replace(m, src_uri, repo_root, site_files), parts[i])
-    return "".join(parts)
+    """Rewrite the links of one line, leaving inline code spans alone."""
+
+    def links(text: str) -> str:
+        return _LINK.sub(lambda m: _replace(m, src_uri, repo_root, site_files), text)
+
+    out: list[str] = []
+    pos = 0
+    for span in _CODE_SPAN.finditer(line):
+        out += [links(line[pos : span.start()]), span.group(0)]
+        pos = span.end()
+    out.append(links(line[pos:]))
+    return "".join(out)
 
 
 def _replace(

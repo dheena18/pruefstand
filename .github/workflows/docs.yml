@@ -159,9 +159,9 @@ jobs:
             elif .head_repository.full_name != $repo then "head repository is \(.head_repository.full_name)"
             elif ([.event] | inside(["push", "schedule", "workflow_dispatch"]) | not) then "event is \(.event)"
             elif .conclusion != "success" then "conclusion is \(.conclusion)"
-            else "" end')
-          if [ -n "$reason" ]; then
-            echo "Provenance check failed for run ${RUN_ID}: ${reason}. Nothing was deployed." | tee -a "$GITHUB_STEP_SUMMARY" >&2
+            else "ok" end')
+          if [ "$reason" != ok ]; then
+            echo "Provenance check failed for run ${RUN_ID}: ${reason:-empty answer from the API}. Nothing was deployed." | tee -a "$GITHUB_STEP_SUMMARY" >&2
             exit 1
           fi
           echo "Provenance check passed for deploy.yml run ${RUN_ID}." >> "$GITHUB_STEP_SUMMARY"

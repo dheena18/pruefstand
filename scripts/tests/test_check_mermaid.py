@@ -54,3 +54,24 @@ def test_other_fences_and_indented_blocks(tmp_path: Path) -> None:
     blocks = _extract(tmp_path)
     assert len(blocks) == 1
     assert "P --> Q" in blocks[0][1]
+
+
+def test_crlf_files_keep_their_blocks(tmp_path: Path) -> None:
+    (tmp_path / "c.md").write_bytes(
+        b"# t\r\n\r\n```mermaid\r\nflowchart TD\r\n  A --> B\r\n```\r\n"
+    )
+    blocks = _extract(tmp_path)
+    assert len(blocks) == 1
+    assert "A --> B" in blocks[0][1]
+    assert "\r" not in blocks[0][1]
+
+
+def test_unterminated_fence_fails_naming_file_and_line(tmp_path: Path) -> None:
+    (tmp_path / "u.md").write_text("# t\n\n```mermaid\nflowchart TD\n  A --> B\n", encoding="utf-8")
+    env = {**os.environ, "MERMAID_DOCS_DIR": str(tmp_path), "MERMAID_EXTRACT_ONLY": "1"}
+    result = subprocess.run(  # noqa: S603  # fixed argv, no shell
+        [BASH, str(SCRIPT)], capture_output=True, text=True, check=False, env=env
+    )
+    assert result.returncode == 1
+    assert "u.md:3" in result.stderr
+    assert "unterminated" in result.stderr

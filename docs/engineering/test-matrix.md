@@ -468,6 +468,7 @@ Every symbol a "Done when" line names outside `packages/` and `apps/rag-demo/`. 
 | Pages assembly (**R11** D243; T0.4 part: placeholder) | `scripts/deploy/assemble_pages_site.sh` | T0.4 | `scripts/deploy/tests/test_assemble_pages_site.py` | mkdocs under `docs/`, `.nojekyll`; placeholder mode links to `docs/`; **R13** (P5.5, D304): `build-id.txt` = `BUILD_ID`, unset or malformed `BUILD_ID` → exit 1; dashboard dir containing `docs/` or `build-id.txt` → exit 1; size above `PAGES_MAX_BYTES` → exit 1 naming the measured size (N5.1); non-empty `<out>` refused; a symlink in the dashboard dir → exit 1; one `slow` case with a real `mkdocs build` | covered |
 | Pages assembly (T8.5 part: real dashboard) | `scripts/deploy/assemble_pages_site.sh` | T8.5 | `scripts/deploy/tests/test_assemble_pages_site.py` | dashboard `out/` at the root, root `404.html` = dashboard 404; dashboard export containing `docs/` → exit 1 | covered |
 | `docs.yml` structure (**T0.4**, N4.5, N5.2, P5.5, UI13-07, UI13-09) | `.github/workflows/docs.yml` | T0.4 | `scripts/tests/test_docs_workflow.py` | triggers exactly `pull_request`/`push`/`workflow_run` (`[deploy]`, `[completed]`), no `workflow_dispatch`; `pages`/`id-token`/`actions` permissions only on `deploy`; `deploy` `if` on `workflow_run` + `success`; `dashboard-site` downloaded with `run-id: workflow_run.id`; `pages` concurrency only on `deploy`, workflow group keyed by event + PR/ref; provenance check before checkout and never followed by a failure-conditional deploy; `BUILD_ID` from `head_sha` + `run.id`; aggregate `build` needs the three build jobs; split `site` (read-only) / `deploy` (Pages permissions only), both skipped on a private repo; paginated artefact lookup; the provenance `jq` filter accepts same-repo main `push`/`schedule`/`workflow_dispatch` runs and rejects fork `pull_request`, null `head_repository`, `workflow_run`, other branch/file, failed runs | covered |
+| `check_workflows` per-job `id-token: write` / `pages: write` allow-lists (T0.4 part, edits T0.2 guard files) | `scripts/check_workflows.py`, `scripts/workflow_policy.py` | T0.4 | `scripts/tests/test_check_workflows_permissions.py` | allowed (file, job) pairs pass; `id-token`/`pages: write` in `site` or `docs-build`, in another job of an allowed file, or at workflow level → rejected; existing workflows still pass | covered |
 | mkdocs hook `rewrite_outside_links` | `scripts/mkdocs_hooks.py` | T0.4 | `scripts/tests/test_mkdocs_hooks.py` | existing outside-docs link → GitHub `blob`/`tree` URL with anchor; missing target untouched (strict mode reports it); links to existing `exclude_docs` files point at GitHub; links to site pages, external links, anchors, code fences and inline code spans untouched | covered |
 | `gen_module_graph.sh` (CI-level, no pytest) | `scripts/gen_module_graph.sh` | T0.4 | PR evidence: `make diagrams` twice → identical sha256; `pydeps` job on `main` | `module-deps.svg` written and non-empty, byte-identical on repeat | covered |
 | `check_mermaid.sh` (CI-level, no pytest) | `scripts/check_mermaid.sh` | T0.4 | `scripts/tests/test_check_mermaid.py` (extraction) + PR evidence: scratch `A->>B: x; y` fails naming `file:line`; `mermaid-render` job | every fenced `mermaid` block under `docs/` renders with the pinned mermaid-cli, a parse error names file and line; numbering stays unique across many files, a fence nested in a longer fence is skipped | covered |
@@ -487,10 +488,10 @@ UI tests (pages × states × theme × locale × viewport) are specified in `docs
 
 | Status | Rows |
 | --- | --- |
-| covered | 314 |
+| covered | 315 |
 | planned | 31 (R13 rows and rows whose case round 13 changed; owners T0.7, T1.8, T1.9, T1.10, T3.1a, T3.6, T4.1, T5.4, T6.1, T6.2a, T6.2b, T7.1b, T7.2, T7.3, T8.1, T8.5) |
 | weak | 1 (backup bundle: drill only, acceptable for an ops script) |
-| **total** | **346** |
+| **total** | **347** |
 
 Round-13 changes (D296): the round-12 table (241 covered / 29 open / 1 weak = 271 rows) was re-derived: 40 multi-owner
 rows split into 90 single-owner rows (+50); 29 open rows flipped (`covered` unless round 13 changed the case); 21 new

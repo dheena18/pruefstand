@@ -123,6 +123,7 @@ def test_provenance_check_comes_first_and_failure_never_deploys() -> None:
     )
     assert provenance == 0 < checkout
     run = str(steps[provenance]["run"])
+    assert '[ "$reason" != ok ]' in run  # an empty answer is a failure, only "ok" passes
     for needle in (".github/workflows/deploy.yml", "main", "exit 1", "GITHUB_STEP_SUMMARY"):
         assert needle in run
     # the failure path fails the job: nothing that deploys is conditional on `failure()`/`always()`
@@ -154,6 +155,8 @@ def _run(**over: Any) -> dict[str, Any]:
 
 
 PROVENANCE_CASES = [
+    ("empty response body", None, False),
+    ("object without fields", {}, False),
     ("same-repo push on main", _run(), True),
     ("schedule on main", _run(event="schedule"), True),
     ("workflow_dispatch on main", _run(event="workflow_dispatch"), True),
@@ -173,18 +176,18 @@ PROVENANCE_CASES = [
 
 @pytest.mark.parametrize(("label", "run", "accepted"), PROVENANCE_CASES)
 def test_provenance_filter_accepts_and_rejects(
-    label: str, run: dict[str, Any], *, accepted: bool
+    label: str, run: dict[str, Any] | None, *, accepted: bool
 ) -> None:
     jq = shutil.which("jq")
     assert jq is not None
     result = subprocess.run(  # noqa: S603  # fixed argv, no shell
         [jq, "-r", "--arg", "repo", REPO, _provenance_filter()],
-        input=json.dumps(run),
+        input="" if run is None else json.dumps(run),
         capture_output=True,
         text=True,
         check=True,
     )
-    assert (result.stdout.strip() == "") is accepted, label
+    assert (result.stdout.strip() == "ok") is accepted, label
 
 
 def test_checkout_uses_the_workflow_run_head_sha_without_credentials() -> None:

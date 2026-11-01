@@ -11,8 +11,21 @@ GATE_ROUTER_ENV = "gate-router"
 GATE_ROUTER_SECRETS = frozenset({"BOT_APP_ID", "BOT_APP_KEY"})
 APP_TOKEN_ACTION = "actions/create-github-app-token@"  # noqa: S105 (an action name, not a secret)
 
-# Files that may grant ``id-token: write`` (ci-cd.md §1; deploy.yml needs no OIDC token, A12-M7).
-ID_TOKEN_FILES = frozenset({"build-images.yml", "docs.yml", "release.yml"})
+# (file, job) -> reason, for ``id-token: write`` (ci-cd.md §1; never at workflow level;
+# deploy.yml needs no OIDC token, A12-M7).
+ID_TOKEN_WRITE: dict[tuple[str, str], str] = {
+    ("build-images.yml", "push-sign"): "keyless cosign signing of the pushed image",
+    ("docs.yml", "deploy"): "actions/deploy-pages (OIDC), the only Pages writer",
+    ("release.yml", "publish-pypi"): "PyPI trusted publishing",
+    ("release.yml", "publish-testpypi"): "TestPyPI trusted publishing",
+    ("release.yml", "sign"): "keyless cosign signing of the release images",
+    ("release.yml", "attest"): "build provenance attestation",
+}
+
+# (file, job) -> reason, for ``pages: write``.
+PAGES_WRITE: dict[tuple[str, str], str] = {
+    ("docs.yml", "deploy"): "publishes the one GitHub Pages artefact (D243)",
+}
 
 # Files that may grant ``models: read`` (security.md X2); ``models: write`` is never allowed.
 MODELS_READ_FILES = frozenset({"live-e2e.yml", "cassettes.yml"})

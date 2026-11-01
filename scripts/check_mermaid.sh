@@ -30,10 +30,11 @@ while IFS= read -r -d '' file; do
     function fence_char(line,   s) { s = line; sub(/^[ \t]+/, "", s); return substr(s, 1, 1) }
     BEGIN { n = start }
     {
+      sub(/\r$/, "")
       len = fence_len($0)
       if (!fenced) {
         if (len >= 3) {
-          fenced = 1; fchar = fence_char($0); flen = len; mermaid = 0
+          fenced = 1; fchar = fence_char($0); flen = len; mermaid = 0; open_at = FNR
           info = $0; sub(/^[ \t]*[`~]+[ \t]*/, "", info); sub(/[ \t]+$/, "", info)
           if (info == "mermaid") {
             mermaid = 1; n++; out = work "/" n ".mmd"
@@ -51,8 +52,15 @@ while IFS= read -r -d '' file; do
       }
       if (mermaid) print > out
     }
-    END { print n }
-  ' "$file")
+    END {
+      if (fenced) {
+        printf "check_mermaid: %s:%d: unterminated code fence\n", file, open_at > "/dev/stderr"
+        print "UNTERMINATED"
+        exit 1
+      }
+      print n
+    }
+  ' "$file") || { echo "check_mermaid: stopping, $file has an unterminated fence" >&2; exit 1; }
 done < <(find "$docs_dir" -name '*.md' -print0 | sort -z)
 
 if [ "$n" -eq 0 ]; then
