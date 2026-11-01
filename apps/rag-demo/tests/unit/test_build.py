@@ -6,7 +6,7 @@ from rag_demo.api import build_health, build_info, to_query_response
 from rag_demo.config import config_hash, load_config
 from rag_demo.generate import build_prompt
 from rag_demo.models import GenOutput, QueryVectors, SparseVector, Stats
-from rag_demo.retrieve import apply_post_topk, build_query, build_shared_query, merge_rrf
+from rag_demo.retrieve import apply_post_topk, build_query, build_shared_query, merge_by_score
 
 GOOD = load_config(CONFIGS / "rag.yaml")
 POST = load_config(CONFIGS / "bugs" / "tenant_filter_post_topk.yaml")
@@ -60,12 +60,13 @@ def test_post_topk_filters_after_the_cut_and_backfills_from_the_unfiltered_list(
     assert out[-1].tenant_id == "versicherung_nord"
 
 
-def test_rrf_merge_keeps_rank_order_and_deduplicates() -> None:
-    a = [hit("gii-bgb-620#0", 1), hit("gii-bgb-621#0", 2)]
-    b = [hit("gii-bgb-621#0", 1), hit("gii-bgb-622#0", 2)]
-    merged = merge_rrf([a, b], top_k=3)
-    assert [h.chunk_id for h in merged] == ["gii-bgb-621#0", "gii-bgb-620#0", "gii-bgb-622#0"]
+def test_merge_by_score_keeps_the_best_score_per_chunk_and_renumbers_ranks() -> None:
+    a = [hit("gii-bgb-620#0", 1, 0.9), hit("gii-bgb-621#0", 2, 0.5)]
+    b = [hit("gii-bgb-621#0", 1, 0.8), hit("gii-bgb-622#0", 2, 0.3)]
+    merged = merge_by_score([a, b], top_k=3)
+    assert [h.chunk_id for h in merged] == ["gii-bgb-620#0", "gii-bgb-621#0", "gii-bgb-622#0"]
     assert [h.rank for h in merged] == [1, 2, 3]
+    assert merged[1].score == 0.8
 
 
 def test_prompt_wraps_chunks_in_dokument_blocks_with_the_guard_note() -> None:

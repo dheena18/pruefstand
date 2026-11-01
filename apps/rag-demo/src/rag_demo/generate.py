@@ -70,7 +70,7 @@ def _document_blocks(hits: list[Hit], cfg: RagConfig) -> str:
     blocks = []
     for hit in hits:
         body = truncate_to_tokens(hit.text, cfg.chunk_prompt_tokens)
-        source = ", ".join(filter(None, (hit.citation_key or hit.doc_id, hit.section)))
+        source = hit.citation_key or hit.doc_id
         if cfg.injection_guard == "on":
             blocks.append(
                 f'<dokument id="{hit.chunk_id}" quelle="{source}">\n{_guarded(body)}\n</dokument>'

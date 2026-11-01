@@ -1,15 +1,13 @@
 """Testcontainers fixtures: real Qdrant (slice snapshot or fresh index) and real TEI."""
 
 import json
-import os
 import time
 from collections.abc import Iterator
-from pathlib import Path
 
 import httpx
 import pytest
 import yaml
-from rd_support import CONFIGS, REPO, SLICE
+from rd_support import CONFIGS, MODEL_DIR, REPO, SLICE
 from testcontainers.core.container import DockerContainer
 from testcontainers.core.waiting_utils import wait_for_logs
 
@@ -23,7 +21,6 @@ from rag_demo.sparse import SparseEncoder
 
 COLLECTION = "slice_v1"
 SNAPSHOT = REPO / ".cache" / "pruefstand" / "qdrant" / "slice_v1.snapshot"
-MODEL_DIR = Path(os.environ.get("LIVE_MODEL_DIR", Path.home() / ".cache" / "pruefstand" / "models"))
 
 
 def _compose_image(service: str) -> str:

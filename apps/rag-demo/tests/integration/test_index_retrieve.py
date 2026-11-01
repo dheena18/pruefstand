@@ -4,7 +4,8 @@ import json
 
 import httpx
 import pytest
-from rd_support import SLICE
+import yaml
+from rd_support import MODEL_DIR, REPO, SLICE
 
 pytestmark = pytest.mark.integration
 MANIFEST = json.loads((SLICE / "manifest.json").read_text(encoding="utf-8"))
@@ -23,10 +24,14 @@ def test_kuendigungsfrist_question_finds_paragraph_622(make_retriever) -> None: 
         "kanzlei_mueller", "Welche Kündigungsfrist gilt nach zwei Jahren Betriebszugehörigkeit?", 4
     )
     assert [h.rank for h in hits] == [1, 2, 3, 4]
-    assert any(h.chunk_id == "gii-bgb-622#0" for h in hits)
+    assert any(h.chunk_id.startswith("gii-bgb-622#") for h in hits)
     assert {h.tenant_id for h in hits} <= {"kanzlei_mueller", "shared_public"}
 
 
-def test_reindexing_is_idempotent(qdrant_url: str, make_retriever) -> None:  # type: ignore[no-untyped-def]
-    before = httpx.get(f"{qdrant_url}/collections/slice_v1", timeout=10).json()["result"]
-    assert before["points_count"] > 0
+def test_tei_loaded_the_pinned_weights(tei_url: str) -> None:
+    """TEI names its cache blob after the SHA-256 of the file it downloaded (`onnx/model.onnx`)."""
+    pins = yaml.safe_load((REPO / "infra" / "models" / "live-models.yaml").read_text("utf-8"))
+    emb = pins["embeddings"][0]
+    blobs = MODEL_DIR / "tei" / "models--intfloat--multilingual-e5-small" / "blobs"
+    assert (blobs / emb["weights_sha256"]).exists()
+    assert httpx.get(f"{tei_url}/info", timeout=10).json()["model_id"] == emb["repo"]

@@ -88,7 +88,6 @@ class Hit(_Frozen):
     score: float
     rank: int
     citation_key: str | None = None
-    section: str | None = None
 
 
 class GenOutput(_Frozen):

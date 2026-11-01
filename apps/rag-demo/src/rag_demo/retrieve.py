@@ -1,7 +1,6 @@
 """Hybrid retrieval: pure query builders and merge functions, plus the thin ``Retriever``."""
 
 import logging
-from collections import defaultdict
 from typing import Any
 
 import httpx
@@ -14,7 +13,6 @@ from rag_demo.sparse import SparseEncoder
 
 _log = logging.getLogger(__name__)
 SHARED = "shared_public"
-RRF_K = 60
 
 
 def _filter(tenant_id: str) -> dict[str, Any]:
@@ -74,24 +72,25 @@ def build_shared_query(vectors: QueryVectors, cfg: RagConfig) -> dict[str, Any] 
     return _body(_prefetch(vectors, max(20, cfg.top_k * 4), None), cfg.top_k)
 
 
-def merge_rrf(lists: list[list[Hit]], top_k: int) -> list[Hit]:
-    """Fuse ranked hit lists by reciprocal rank (k = 60); ranks are renumbered 1..n.
+def merge_by_score(lists: list[list[Hit]], top_k: int) -> list[Hit]:
+    """Merge hit lists of two queries by their scores (best score per chunk); ranks become 1..n.
+
+    The score of a Qdrant RRF result is the fused score of its own query, so the best hits of
+    each list compete on equal terms. This is how the second, unfiltered ``shared_public`` query
+    of the M9 bug gets its top chunk into the answer.
 
     Examples:
-        >>> merge_rrf([], 3)
+        >>> merge_by_score([], 3)
         []
     """
-    score: dict[str, float] = defaultdict(float)
-    first: dict[str, Hit] = {}
+    best: dict[str, Hit] = {}
     for hits in lists:
         for hit in hits:
-            score[hit.chunk_id] += 1.0 / (RRF_K + hit.rank)
-            first.setdefault(hit.chunk_id, hit)
-    order = sorted(score, key=lambda cid: -score[cid])[:top_k]
-    return [
-        first[cid].model_copy(update={"rank": i, "score": score[cid]})
-        for i, cid in enumerate(order, start=1)
-    ]
+            known = best.get(hit.chunk_id)
+            if known is None or hit.score > known.score:
+                best[hit.chunk_id] = hit
+    ordered = sorted(best.values(), key=lambda h: -h.score)[:top_k]
+    return [h.model_copy(update={"rank": i}) for i, h in enumerate(ordered, start=1)]
 
 
 def apply_post_topk(hits: list[Hit], tenant_id: str, top_k: int) -> list[Hit]:
@@ -121,7 +120,6 @@ def to_hits(points: list[dict[str, Any]]) -> list[Hit]:
                 score=float(point["score"]),
                 rank=rank,
                 citation_key=p.get("citation_key"),
-                section=p.get("section"),
             )
         )
     return out
@@ -183,8 +181,8 @@ class Retriever:
             bodies.append(shared)
         results = [to_hits(self._query(b)) for b in bodies]
         if cfg.tenant_filter == "post_topk":
-            return apply_post_topk(merge_rrf(results, top_k), tenant_id, top_k)
-        return merge_rrf(results, top_k) if len(results) > 1 else results[0]
+            return apply_post_topk(merge_by_score(results, top_k), tenant_id, top_k)
+        return merge_by_score(results, top_k) if len(results) > 1 else results[0]
 
     def _query(self, body: dict[str, Any]) -> list[dict[str, Any]]:
         try:

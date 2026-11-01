@@ -1,6 +1,7 @@
 """Shared test helpers: real slice chunks as Hits (no fakes) and integration helpers."""
 
 import json
+import os
 from pathlib import Path
 
 from rag_demo.models import Hit
@@ -10,6 +11,7 @@ REPO = APP_DIR.parents[1]
 CONFIGS = APP_DIR / "configs"
 CASSETTES = Path(__file__).resolve().parent / "cassettes"
 SLICE = REPO / "corpus" / "slice_v1"
+MODEL_DIR = Path(os.environ.get("LIVE_MODEL_DIR", Path.home() / ".cache" / "pruefstand" / "models"))
 
 
 def slice_chunks() -> list[dict[str, object]]:
@@ -29,7 +31,6 @@ def hit(chunk_id: str, rank: int = 1, score: float = 0.5) -> Hit:
         score=score,
         rank=rank,
         citation_key=str(row["citation_key"]) if row["citation_key"] else None,
-        section=str(row["section"]) if row["section"] else None,
     )
 
 
