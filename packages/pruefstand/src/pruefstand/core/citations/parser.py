@@ -11,7 +11,8 @@ every head; qualifiers after a list belong to its last number; several qualifier
 (``Abs. 2, 3``, ``lit. a und b``) keep the first. A law-less citation borrows the law of the next
 one when both heads are of the same kind and joined by ``i.V.m.``, ``und``, ``sowie`` or ``,``.
 A number may carry a suffix of one or two lowercase letters (``5a``, ``53ca``); ``ff``/``f.``
-("folgende") and function words such as ``in`` or ``im`` never are one.
+("folgende") and function words such as ``in`` or ``im`` never are one (heuristic; ``am``/``an``
+are real CRR suffixes and knowingly excluded, to be revisited with T2.4).
 ``§`` (kind ``para``) exists only for national laws: ``§ 6 DSGVO`` is dropped.
 """
 
@@ -29,8 +30,11 @@ _log = get_logger(__name__)
 Kind = Literal["para", "art"]
 
 _WORD_END = r"(?![A-Za-zÄÖÜäöüß])"
-# Two-letter German function words never read as a suffix (`Art. 6in`, `§ 6im`), nor does `ff`
-# ("folgende"). Three or more letters are never a suffix (the word-end lookahead).
+# Two-letter German function words never read as a suffix (`Art. 6in`, `§ 6im`). Heuristic and
+# known to be lossy: `am`/`an` ARE real CRR suffixes (Art. 325am, 325an) but are excluded here;
+# revisit when T2.4 adds EU acts. `ff` ("folgende") is excluded twice on purpose: `ff` without a
+# dot by `_NOT_SUFFIX`, `f.` / `ff.` by the `(?!ff?\.)` in `_NUM`. Three or more letters are never
+# a suffix (the word-end lookahead).
 _NOT_SUFFIX = r"(?!ff|(?:am|an|da|du|er|es|im|in|ja|je|ob|so|um|wo|zu)" + _WORD_END + r")"
 _NUM = (
     r"[0-9]{1,5}(?![0-9])"

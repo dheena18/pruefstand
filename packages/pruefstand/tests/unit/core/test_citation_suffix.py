@@ -108,3 +108,30 @@ def test_suffix_scan_is_linear(unit: str, count: int) -> None:
     small, big = best(unit * (count // 4)), best(unit * count)
     assert big < 120.0
     assert big <= 8.0 * max(small, 1e-3), f"4x input took {big / small:.1f}x"
+
+
+@pytest.mark.parametrize(
+    "text",
+    ["§ 5abAbs. 2 BGB", "§ 5abc Abs. 2 BGB", "§ 5abc und 6 BGB", "§ 5abund 6 BGB"],
+)
+def test_suffix_must_end_at_a_word_boundary(text: str) -> None:
+    """A longer word after the digits is no suffix; without the word-end lookahead `5ab` would match."""
+    assert all(c.number != "5ab" for c in extract_citations(text))
+    assert _norm(text) == []
+
+
+@pytest.mark.parametrize(
+    ("text", "expected"), [("§ 5te BGB", ["§ 5te BGB"]), ("§ 3to BGB", ["§ 3to BGB"])]
+)
+def test_known_false_positives_are_a_conscious_limit(text: str, expected: list[str]) -> None:
+    """Prose like `§ 5te` (fünfte) reads as a suffix: only a deny-list of function words guards.
+
+    Recorded on purpose so a future tightening (or loosening) of the heuristic is deliberate.
+    """
+    assert _norm(text) == expected
+
+
+@pytest.mark.parametrize(("text", "number"), [("§ 5am BGB", "5"), ("§ 5an BGB", "5")])
+def test_am_an_are_knowingly_excluded(text: str, number: str) -> None:
+    """`am`/`an` are real CRR suffixes (Art. 325am) but excluded as prose; revisit with T2.4."""
+    assert [c.number for c in extract_citations(text)] == []
