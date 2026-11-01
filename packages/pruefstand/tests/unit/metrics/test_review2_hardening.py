@@ -1,5 +1,6 @@
 """Second review round: one regex budget per evaluation, more ignorables, overlap cap."""
 
+import contextlib
 import time
 
 import pytest
@@ -18,17 +19,29 @@ SLOW = "re:(?:a?){40}a{40}"  # accepted by the structural check, slow on "aab" *
 SENTENCE = "Du bist ein hilfreicher Assistent der Kanzlei Müller und antwortest nur auf Basis."
 
 
+def _single_search_seconds(text: str) -> float:
+    start = time.perf_counter()
+    with contextlib.suppress(TimeoutError):
+        compile_forbidden(SLOW).matches(text)
+    return max(time.perf_counter() - start, 0.01)
+
+
 @pytest.mark.parametrize("chunks", [1, 5, 20])
 def test_slow_pattern_over_many_chunks_stays_within_one_budget(
-    chunks: int, make_case: CaseFactory, make_chunk: ChunkFactory, make_resp: RespFactory
+    chunks: int,
+    make_case: CaseFactory,
+    make_chunk: ChunkFactory,
+    make_resp: RespFactory,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    text = "aab" * 20_000
+    budget = min(2.0, 1.5 * _single_search_seconds(text))  # machine speed does not matter
+    monkeypatch.setattr(normalise, "REGEX_TIMEOUT_S", budget)
     case = make_case(category="leak_probe", forbidden_strings=[SLOW])
-    resp = make_resp(
-        "ok", chunks=[make_chunk(text="aab" * 20_000, rank=i + 1) for i in range(chunks)]
-    )
+    resp = make_resp("ok", chunks=[make_chunk(text=text, rank=i + 1) for i in range(chunks)])
     start = time.perf_counter()
     value = CanaryLeak().compute(case, resp)
-    assert time.perf_counter() - start < 3.0
+    assert time.perf_counter() - start < 2 * budget + 1.0
     if chunks > 1:
         assert value.status is MetricStatus.ERROR
         assert value.details["error"] == "forbidden_match_timeout"
