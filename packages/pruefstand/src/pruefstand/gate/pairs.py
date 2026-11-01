@@ -22,9 +22,10 @@ from numpy.typing import NDArray
 from pruefstand.core.config import GatePolicy
 from pruefstand.core.enums import GateStatus
 from pruefstand.core.models.gate import BootstrapResult, SliceDecision
+from pruefstand.gate._validate import fail
 from pruefstand.gate.correction import bh_adjust, holm_adjust
 from pruefstand.gate.decision import decide
-from pruefstand.gate.slices import slice_members, slice_values
+from pruefstand.gate.slices import slice_members, slice_values, universe_members
 from pruefstand.gate.stats import minimum_detectable_effect, paired_cluster_bootstrap
 from pruefstand.gate.tables import OVERALL, PERTURBED_ALL, PairedTable
 
@@ -66,25 +67,51 @@ def informational_reason(
     return None
 
 
-def _usable(
-    table: PairedTable, members: NDArray[np.bool_], min_clusters: int
-) -> tuple[NDArray[np.bool_], int]:
-    """Return the rows of a slice to use and the number of judge errors excluded from it.
-
-    Judge errors on successful requests are excluded (W3.9) only while they are at most 20 % of
-    the slice and leave at least ``min_clusters`` clusters when the slice had that many; otherwise
-    they keep their worst value, so a slice cannot vanish or turn untestable through judge errors.
-    """
+def _over_cap(table: PairedTable, members: NDArray[np.bool_], min_clusters: int) -> bool:
+    """Tell whether excluding the judge errors of a slice would exceed the cap or hide clusters."""
     errs = int((members & table.judge_error).sum())
     if errs == 0:
-        return members, 0
+        return False
     kept = members & ~table.judge_error
     before = np.unique(table.cluster_ids[members]).size
     after = np.unique(table.cluster_ids[kept]).size
-    too_many = errs > MAX_EXCLUDED_FRACTION * int(members.sum()) + 1e-9
-    if too_many or (after < min_clusters <= before):
-        return members, 0
-    return kept, errs
+    return (
+        errs > MAX_EXCLUDED_FRACTION * int(members.sum()) + 1e-9 or after < min_clusters <= before
+    )
+
+
+def _check_baseline(
+    table: PairedTable, specs: list[tuple[str, str]], gated_dims: tuple[str, ...]
+) -> None:
+    """Fail when baseline ``error`` values cover more than the cap of a gated slice."""
+    for dimension, value in specs:
+        if dimension not in gated_dims:
+            continue
+        universe = universe_members(table, dimension, value)
+        bad = int((universe & table.all_base_error).sum())
+        if bad > MAX_EXCLUDED_FRACTION * int(universe.sum()) + 1e-9:
+            fail(
+                f"{table.metric}: baseline errors on {bad} of {int(universe.sum())} cases of "
+                f"{dimension}={value}; the baseline cannot judge this slice"
+            )
+
+
+def _forced_fill(
+    table: PairedTable, specs: list[tuple[str, str]], policy: GatePolicy
+) -> NDArray[np.bool_]:
+    """Judge-error rows that keep their worst value in every pair.
+
+    A judge error is excluded only if every gated slice that holds it (testable or not) stays
+    within the cap; otherwise all judge errors of that slice are filled everywhere, ``overall``
+    included, so a small slice cannot hide behind a large one.
+    """
+    forced = np.zeros(len(table.case_ids), dtype=np.bool_)
+    for dimension, value in specs:
+        if dimension in policy.gated_slices:
+            members = slice_members(table, dimension, value)
+            if _over_cap(table, members, policy.min_clusters):
+                forced |= members & table.judge_error
+    return forced
 
 
 def metric_pairs(
@@ -98,9 +125,12 @@ def metric_pairs(
         specs.append((PERTURBED_ALL, PERTURBED_ALL))
     for dimension in policy.slices:
         specs.extend((dimension, value) for value in slice_values(table, dimension))
+    if gated_metric:
+        _check_baseline(table, specs, policy.gated_slices)
+    dropped = table.judge_error & ~_forced_fill(table, specs, policy)
     pairs: list[Pair] = []
     for dimension, value in specs:
-        mask, excluded = _usable(table, slice_members(table, dimension, value), policy.min_clusters)
+        members = slice_members(table, dimension, value)
         pairs.append(
             Pair(
                 metric=metric,
@@ -110,8 +140,8 @@ def metric_pairs(
                 reason=reason,
                 max_drop=max_drop,
                 table=table,
-                mask=mask,
-                n_judge_excluded=excluded,
+                mask=members & ~dropped,
+                n_judge_excluded=int((members & dropped).sum()),
             )
         )
     return pairs

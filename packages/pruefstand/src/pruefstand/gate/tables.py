@@ -27,6 +27,14 @@ TAG_SEP = "|"
 
 
 @dataclass(frozen=True, eq=False)
+class Universe:
+    """Slice columns of every case both runs hold, and which have a baseline ``error``."""
+
+    attrs: dict[str, tuple[str, ...]]
+    base_error: NDArray[np.bool_]
+
+
+@dataclass(frozen=True, eq=False)
 class PairedTable:
     """Two runs paired on ``case_id`` for one metric (rows sorted by case id).
 
@@ -47,6 +55,8 @@ class PairedTable:
     n_excluded: int
     n_worst_filled: int
     judge_error: NDArray[np.bool_]
+    all_attrs: dict[str, tuple[str, ...]]
+    all_base_error: NDArray[np.bool_]
 
 
 def _lookup(scored: ScoredCase, metric: str) -> MetricValue | None:
@@ -154,6 +164,7 @@ def pair_tables(
     *,
     filled: frozenset[str] = frozenset(),
     judge_errors: frozenset[str] = frozenset(),
+    universe: Universe | None = None,
     n_unmatched: int = 0,
     n_shared: int | None = None,
 ) -> PairedTable:
@@ -163,6 +174,8 @@ def pair_tables(
         base: Baseline table.
         cand: Candidate table; its cluster ids and slice columns are used.
         filled: Case ids whose candidate value was worst-filled (for ``n_worst_filled``).
+        universe: Slice columns and baseline-error flags of every case both runs hold (default:
+            the paired rows), so slices without baseline values are still listed.
         judge_errors: Case ids among ``filled`` that are judge errors on a successful request;
             they are flagged in ``judge_error`` and the caller decides per slice (exclude or fill).
         n_unmatched: Number of cases in only one run (counted by the caller).
@@ -185,6 +198,7 @@ def pair_tables(
     cand_values = np.asarray(cand.values, dtype=np.float64)[cand_idx]
     sign = 1.0 if cand.higher_is_better else -1.0
     case_ids = tuple(str(cid) for cid, _ in rows)
+    attrs = {k: tuple(v[j] for j in cand_idx) for k, v in cand.slices.items()}
     shared = n_shared if n_shared is not None else len(case_ids)
     return PairedTable(
         metric=cand.metric,
@@ -194,11 +208,13 @@ def pair_tables(
         diffs=sign * (cand_values - base_values),
         base_values=base_values,
         cand_values=cand_values,
-        attrs={k: tuple(v[j] for j in cand_idx) for k, v in cand.slices.items()},
+        attrs=attrs,
         n_unmatched=n_unmatched,
         n_excluded=shared - len(case_ids),
         n_worst_filled=len((filled - judge_errors).intersection(case_ids)),
         judge_error=np.array([cid in judge_errors for cid in case_ids], dtype=np.bool_),
+        all_attrs=universe.attrs if universe else attrs,
+        all_base_error=universe.base_error if universe else np.zeros(len(case_ids), dtype=np.bool_),
     )
 
 
@@ -232,11 +248,23 @@ def pair_runs(
     cand_table, filled, errors = _build(
         cand, metric, higher_is_better=higher_is_better, fill_worst=True, fill_errors=True
     )
+    shared = sorted(base_ids & cand_ids)
+    by_id = {str(sc.case.id): sc for sc in cand.values}
+    base_bad = {
+        str(sc.case.id)
+        for sc in base.values
+        if (v := _lookup(sc, metric)) is not None and v.status is MetricStatus.ERROR
+    }
+    universe = Universe(
+        attrs=_columns(by_id[i] for i in shared),
+        base_error=np.array([i in base_bad for i in shared], dtype=np.bool_),
+    )
     return pair_tables(
         base_table,
         cand_table,
         filled=filled,
         judge_errors=errors,
+        universe=universe,
         n_unmatched=len(base_ids ^ cand_ids),
         n_shared=len(base_ids & cand_ids),
     )

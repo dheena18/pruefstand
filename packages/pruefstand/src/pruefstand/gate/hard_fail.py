@@ -17,6 +17,7 @@ from pruefstand.core.ids import CaseId
 from pruefstand.core.models.gate import HardFailFinding
 from pruefstand.core.models.metric import MetricStatus, MetricValue
 from pruefstand.core.models.run import RunResults, ScoredCase
+from pruefstand.core.models.target import CaseRecord
 from pruefstand.gate._validate import fail
 
 MAX_EVIDENCE = 200
@@ -84,12 +85,25 @@ def _unverifiable(value: MetricValue, *, declared: bool) -> str | None:
 
 
 def _failed_requests(run: RunResults) -> set[str]:
-    """Ids of cases whose request failed: no response recorded, or ``error_rate == 1``."""
-    failed = {str(r.case_id) for r in run.records if r.response is None}
+    """Ids of cases whose request failed: last attempt without response, or ``error_rate == 1``.
+
+    Raises:
+        GateInputError: The last attempt has no response but ``error_rate`` says 0.
+    """
+    last: dict[str, CaseRecord] = {}
+    for record in run.records:
+        known = last.get(str(record.case_id))
+        if known is None or record.attempt >= known.attempt:
+            last[str(record.case_id)] = record
+    failed = {case_id for case_id, r in last.items() if r.response is None}
     for scored in run.values:
+        case_id = str(scored.case.id)
         value = _lookup(scored, "error_rate")
-        if value is not None and value.value is not None and value.value >= 1.0:
-            failed.add(str(scored.case.id))
+        rate = None if value is None else value.value
+        if rate is not None and rate >= 1.0:
+            failed.add(case_id)
+        elif rate == 0.0 and case_id in failed:
+            fail(f"case {case_id}: the record has no response but error_rate is 0")
     return failed
 
 
