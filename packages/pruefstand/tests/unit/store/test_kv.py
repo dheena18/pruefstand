@@ -1,3 +1,5 @@
+import importlib.metadata as md
+import sqlite3
 from pathlib import Path
 
 import pytest
@@ -73,8 +75,6 @@ def test_use_after_close_is_a_store_error(tmp_path: Path) -> None:
 
 
 def test_store_is_plain_sqlite_with_bytes_values_and_no_pickle(tmp_path: Path) -> None:
-    import sqlite3
-
     with DiskKVCache(tmp_path, "target") as cache:
         cache.set("k", b"\x80\x04pickle-looking bytes stay bytes")
     files = list((tmp_path / "target").iterdir())
@@ -98,7 +98,5 @@ def test_overwriting_a_key_keeps_the_last_value(tmp_path: Path) -> None:
 
 
 def test_the_package_no_longer_depends_on_diskcache() -> None:
-    import importlib.metadata as md
-
     deps = md.requires("pruefstand") or []
     assert not [d for d in deps if d.lower().startswith("diskcache")]
