@@ -43,7 +43,8 @@ def count_pairs(docs: Sequence[Document], stats: EurLexStats) -> tuple[int, list
 
     Args:
         docs: Documents as yielded by the loader (German then English per act).
-        stats: Receives a ``misaligned`` problem for a pair whose chunks do not line up.
+        stats: Receives a ``misaligned`` problem for a pair whose chunks do not line up; such
+            an act is taken out of ``stats.acts``.
 
     Returns:
         ``(total pairs, one table line per act)``.
@@ -57,6 +58,7 @@ def count_pairs(docs: Sequence[Document], stats: EurLexStats) -> tuple[int, list
             de_chunks, _ = chunk_aligned(chunker, de, en)
         except DatasetError as err:
             stats.add_problem(celex, "misaligned", str(err))
+            stats.acts -= 1  # loaded in both languages, but not usable as aligned pairs
             continue
         total += len(de_chunks)
         lines.append(f"{celex:<12} {de.law_abbrev or '':<22} pairs={len(de_chunks)}")

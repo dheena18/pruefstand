@@ -15,7 +15,11 @@ Nothing raises past the loader for bad input. A directory that is not one of the
 file, an unsafe or unreadable file, a file without Articles, or a German and English text whose
 Articles or recitals do not match (:func:`pruefstand.ingest.align.check_aligned`) is recorded in
 ``loader.stats`` and the act is skipped (both languages: a half-loaded pair would break the
-cross-lingual tests). Run ``python -m pruefstand.ingest.eurlex <raw_dir> --stats`` for the counts;
+cross-lingual tests). The loader checks Article and recital sets only; whether the *chunks* line
+up (paragraph splits of long Articles) is checked by
+:func:`pruefstand.ingest.align.chunk_aligned`, which T2.5 must call for every (German, English)
+pair instead of chunking each document alone. Run
+``python -m pruefstand.ingest.eurlex <raw_dir> --stats`` for the counts;
 the exit code is 1 when anything was counted.
 """
 
@@ -62,7 +66,7 @@ class EurLexStats:
     """Counts of one load.
 
     Attributes:
-        acts: Acts loaded in both languages.
+        acts: Acts loaded in both languages (the CLI subtracts acts whose chunks misalign).
         misaligned_acts: Acts skipped (or flagged by the CLI) because DE and EN do not match.
         problems: Every counted problem in order.
     """

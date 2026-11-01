@@ -36,10 +36,11 @@ INVALID_HTML = "invalid_html"
 TOO_DEEP = "too_deep"
 TOO_MANY_ELEMENTS = "too_many_elements"
 NO_ARTICLES = "no_articles"
+TOO_MUCH_TEXT = "too_much_text"
 _MIB = 1024 * 1024
 _ELI_ARTICLE = re.compile(r"art_[0-9A-Za-z]+\Z")
-_ELI_RECITAL = re.compile(r"rct_(\d{1,4})\Z")
-_RECITAL_CELL = re.compile(r"\((\d{1,4})\)\Z")
+_ELI_RECITAL = re.compile(r"rct_([0-9]{1,4})\Z")
+_RECITAL_CELL = re.compile(r"\(([0-9]{1,4})\)\Z")
 _TITLE_CLASSES = frozenset({"eli-title", "sti-art"})
 _STOP_CLASSES = frozenset(
     {"ti-section-1", "ti-section-2", "ti-grseq-1", "doc-end", "final", "signatory"}
@@ -51,7 +52,7 @@ class EurLexParseError(DatasetError):
 
     Attributes:
         kind: ``too_large``, ``invalid_encoding``, ``invalid_html``, ``too_deep``,
-            ``too_many_elements`` or ``no_articles``.
+            ``too_many_elements``, ``too_much_text`` or ``no_articles``.
         detail: Human-readable detail.
     """
 
@@ -69,11 +70,13 @@ class EurLexLimits:
         max_bytes: File size (the largest pinned file, the German AI Act, is 1.3 MB).
         max_depth: Deepest element nesting (real files stay below 20; libxml2 stops at 256).
         max_elements: Elements of the whole file (the largest real file has about 30 000).
+        max_chars: Characters of extracted text per act (the largest real act has about 1.1 M).
     """
 
     max_bytes: int = 4 * _MIB
     max_depth: int = 200
     max_elements: int = 400_000
+    max_chars: int = 8_000_000
 
 
 @dataclass(frozen=True)
@@ -137,8 +140,23 @@ def _check_shape(root: html.HtmlElement, limits: EurLexLimits) -> None:
 
 def _strip_noise(root: html.HtmlElement) -> None:
     etree.strip_elements(root, "script", "style", "noscript", with_tail=False)
+    # ``clear`` empties the reference in place and keeps its tail: linear, unlike ``drop_tree``,
+    # which merges the tail into the previous text node (quadratic for many references).
     for ref in root.xpath('//a[.//span[contains(@class, "note-tag")]]'):
-        ref.drop_tree()
+        ref.clear(keep_tail=True)
+
+
+class _Budget:
+    """Characters of extracted text still allowed for one act."""
+
+    def __init__(self, left: int) -> None:
+        self.left = left
+
+    def charge(self, lines: list[str]) -> None:
+        """Subtract the length of ``lines``; raise when the budget is used up."""
+        self.left -= sum(len(line) for line in lines)
+        if self.left < 0:
+            raise EurLexParseError(TOO_MUCH_TEXT, "extracted text exceeds the limit")
 
 
 def _rows(table: html.HtmlElement) -> list[str]:
@@ -150,28 +168,41 @@ def _rows(table: html.HtmlElement) -> list[str]:
     return lines
 
 
-def block_lines(el: html.HtmlElement) -> list[str]:
-    """Return the text lines of an element: one per paragraph, list item or table row."""
+def block_lines(el: html.HtmlElement, budget: _Budget) -> list[str]:
+    """Return the text lines of an element: one per paragraph, list item or table row.
+
+    Nested Article and recital divs are skipped: each has its own block, so a hostile file that
+    nests them cannot multiply the output. Every line is charged to ``budget``.
+    """
     out: list[str] = []
-    _collect(el, out)
+    _collect(el, out, budget)
     return out
 
 
-def _collect(el: html.HtmlElement, out: list[str]) -> None:
+def _collect(el: html.HtmlElement, out: list[str], budget: _Budget) -> None:
     if not isinstance(el.tag, str):
         return
     if el.tag == "table":
-        out.extend(_rows(el))
+        _emit(_rows(el), out, budget)
     elif el.tag in ("p", "li", "h1", "h2", "h3", "h4", "h5", "h6"):
-        if line := _text(el):
-            out.append(line)
+        _emit([_text(el)], out, budget)
     else:
-        if el.text and (line := clean(el.text)):
-            out.append(line)
+        _emit([clean(el.text or "")], out, budget)
         for child in el:
-            _collect(child, out)
-            if child.tail and (line := clean(child.tail)):
-                out.append(line)
+            if not _is_own_block(child):
+                _collect(child, out, budget)
+            _emit([clean(child.tail or "")], out, budget)
+
+
+def _emit(lines: list[str], out: list[str], budget: _Budget) -> None:
+    kept = [line for line in lines if line]
+    budget.charge(kept)
+    out.extend(kept)
+
+
+def _is_own_block(el: html.HtmlElement) -> bool:
+    ident = el.get("id") or ""
+    return el.tag == "div" and bool(_ELI_ARTICLE.fullmatch(ident) or _ELI_RECITAL.fullmatch(ident))
 
 
 def _heading_number(p: html.HtmlElement) -> str | None:
@@ -191,31 +222,35 @@ def _headings(root: html.HtmlElement) -> tuple[list[html.HtmlElement], bool]:
     return (eli, True) if eli else (found, False)
 
 
-def _is_stop(sibling: html.HtmlElement) -> bool:
+def _is_stop(sibling: html.HtmlElement, *, eli: bool) -> bool:
+    """Whether ``sibling`` ends the Article above it.
+
+    The next Article heading always does; in the flat layout so does a chapter or section heading.
+    """
     classes = _classes(sibling)
-    if "ti-art" in classes:
-        return _heading_number(sibling) is not None
-    return bool(classes & _STOP_CLASSES)
+    if "ti-art" in classes and _heading_number(sibling) is not None:
+        return True
+    return not eli and bool(classes & _STOP_CLASSES)
 
 
-def _article(heading: html.HtmlElement, number: str, *, eli: bool) -> Block:
+def _article(heading: html.HtmlElement, number: str, *, eli: bool, budget: _Budget) -> Block:
     title = ""
     lines: list[str] = []
     for sibling in heading.itersiblings():
-        if not eli and _is_stop(sibling):
+        if _is_stop(sibling, eli=eli):
             break
         if not title and _classes(sibling) & _TITLE_CLASSES:
             title = _text(sibling)
         else:
-            lines.extend(block_lines(sibling))
+            lines.extend(block_lines(sibling, budget))
     return Block("art", number, title, "\n".join(lines))
 
 
-def _eli_recitals(root: html.HtmlElement) -> list[Block]:
+def _eli_recitals(root: html.HtmlElement, budget: _Budget) -> list[Block]:
     blocks = []
     for div in root.iter("div"):
         found = _ELI_RECITAL.fullmatch(div.get("id") or "")
-        if found and (lines := block_lines(div)):
+        if found and (lines := block_lines(div, budget)):
             blocks.append(Block("rec", found.group(1), "", "\n".join(lines)))
     return blocks
 
@@ -263,15 +298,19 @@ def parse_act(data: bytes, limits: EurLexLimits | None = None) -> ParsedAct:
 
     Raises:
         EurLexParseError: The file is too large, not UTF-8, not parseable, too deep or too
-            wide, or holds no Article.
+            wide, has too much text, or holds no Article.
     """
-    root = _tree(data, limits or EurLexLimits())
+    limits = limits or EurLexLimits()
+    budget = _Budget(limits.max_chars)
+    root = _tree(data, limits)
     _strip_noise(root)
     headings, eli = _headings(root)
     if headings:
         numbers = [_heading_number(h) or "" for h in headings]
-        articles = [_article(h, n, eli=eli) for h, n in zip(headings, numbers, strict=True)]
-        recitals = _eli_recitals(root) if eli else _flat_recitals(root, headings[0])
+        articles = [
+            _article(h, n, eli=eli, budget=budget) for h, n in zip(headings, numbers, strict=True)
+        ]
+        recitals = _eli_recitals(root, budget) if eli else _flat_recitals(root, headings[0])
         layout, blocks = ("eli" if eli else "flat"), recitals + articles
     else:
         layout, blocks = "legacy", parse_legacy_lines(_legacy_lines(root))

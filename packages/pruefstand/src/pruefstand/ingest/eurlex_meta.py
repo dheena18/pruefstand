@@ -7,8 +7,8 @@ from lxml import html
 
 from pruefstand.ingest.eurlex_blocks import clean
 
-_DOT_DATE = re.compile(r"(\d{1,2})\.(\d{1,2})\.(\d{4})")
-_SLASH_DATE = re.compile(r"(\d{1,2})/(\d{1,2})/(\d{4})")
+_DOT_DATE = re.compile(r"([0-9]{1,2})\.([0-9]{1,2})\.([0-9]{4})")
+_SLASH_DATE = re.compile(r"([0-9]{1,2})/([0-9]{1,2})/([0-9]{4})")
 _MAX_TITLE = 500
 
 

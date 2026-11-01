@@ -13,11 +13,13 @@ from collections.abc import Sequence
 
 from pruefstand.ingest.eurlex_blocks import Block
 
-ARTICLE = re.compile(r"(?:Article|Artikel)\s+(\d{1,4}[A-Za-z]{0,2})\Z")
-_CHAPTER = re.compile(r"(?:CHAPTER|KAPITEL|SECTION|ABSCHNITT|TITLE|TITEL|PART|TEIL)\s+[IVXLC\d]+\Z")
+ARTICLE = re.compile(r"(?:Article|Artikel)\s+([0-9]{1,4}[A-Za-z]{0,2})\Z")
+_CHAPTER = re.compile(
+    r"(?:CHAPTER|KAPITEL|SECTION|ABSCHNITT|TITLE|TITEL|PART|TEIL)\s+[IVXLC0-9]+\Z"
+)
 _END = re.compile(r"(?:Done at|Geschehen zu|Geschehen|Fait à|ANNEX|ANHANG)\b")
-_RECITAL = re.compile(r"\((\d{1,3})\)\s+(\S.*)\Z")
-_LIST_START = re.compile(r"\(?\d{1,3}[.)]\s|\([a-z]{1,2}\)")
+_RECITAL = re.compile(r"\(([0-9]{1,3})\)\s+(\S.*)\Z")
+_LIST_START = re.compile(r"\(?[0-9]{1,3}[.)]\s|\([a-z]{1,2}\)")
 _MAX_TITLE = 200
 
 

@@ -35,8 +35,8 @@ from pruefstand.ingest.text import count_tokens
 
 DEFAULT_MAX_TOKENS = 1500
 DEFAULT_RECITAL_GROUP = 5
-_DOT = re.compile(r"(\d{1,3})\.\s")
-_PAREN = re.compile(r"\((\d{1,3})\)\s")
+_DOT = re.compile(r"([0-9]{1,3})\.\s")
+_PAREN = re.compile(r"\(([0-9]{1,3})\)\s")
 _Piece = tuple[str, str | None, str | None, str]
 _ARTICLE_WORD = {Lang.DE: "Artikel", Lang.EN: "Article"}
 _RECITAL_WORDS = {Lang.DE: ("Erwägungsgrund", "Erwägungsgründe"), Lang.EN: ("Recital", "Recitals")}
