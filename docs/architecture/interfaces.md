@@ -761,7 +761,8 @@ faithfulness, answer_correctness, perturbation_consistency, refusal_judged
 #   "judge_quota" / "judge_cap" (R9 D9-07; the runner is the single owner of these counts).
 #   BudgetExceeded (USD / tokens) propagates to the runner (stop_reason="budget_exceeded").
 
-# core/citations.py  (lives in core so ingest and metrics share one normaliser)
+# core/citations/  (package, T1.5a: model.py, aliases.py, parser.py; __init__ re-exports; lives in core so ingest
+#                   and metrics share one normaliser; import path stays pruefstand.core.citations)
 def extract_citations(text: str) -> list[Citation]           # §, §§, Art., Artikel, Article, Abs., S., Nr., lit., i.V.m., ff.,
                                                              # plus English forms for German statutes: "Section 622 BGB",
                                                              # "Sec. 622", "Section 622(2) BGB" -> kind="para" (D123)

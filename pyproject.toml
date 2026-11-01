@@ -97,6 +97,7 @@ convention = "google"
 [tool.ruff.lint.per-file-ignores]
 "**/tests/**" = ["S101", "D", "ANN", "PLR2004", "ARG", "RUF001", "RUF002", "RUF003"]   # German test strings (D127)
 "**/llm/backends/litellm.py" = ["TID251"]
+"**/core/data/__init__.py" = ["D104"]   # empty on purpose: T1.2 and T1.5a both create it
 "scripts/**" = ["T201"]            # CLI scripts may print
 "tools/**" = ["T201"]
 "experiments/**" = ["T201"]

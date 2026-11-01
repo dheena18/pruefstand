@@ -87,6 +87,7 @@ owning module's unit test dir (`pt/unit/<module>/`, `rd/unit/…`).
 | `normalise` | `core.citations` | T1.5a | `test_citations.py` | default vs full granularity; idempotence | covered |
 | `citations_match` | `core.citations` | T1.5a | `test_citations.py` | Abs. subsumption, Abs. mismatch, GDPR → DSGVO, other law | covered |
 | `citation_credit` (R9) | `core.citations` | T1.5a | `test_citations.py` (credit rows) | full match → 1.0; gold `§ 622 Abs. 2 BGB` vs pred `§ 622 BGB` → 0.5; other § → 0.0 | covered |
+| `law_aliases`, `LawAliases`, `resolve_law`, `match_law`, `is_national` | `core.citations.aliases` | T1.5a | `test_citations.py` | v1 table has the 10 national and 4 EU acts; `GDPR` → `DSGVO`; case/space folding; broken file and clashing alias → `ConfigError` | covered |
 | `parse_one` | `core.citations` | T1.5a | `test_citations.py`, `test_citation_props.py` | two citations → `None`; „Gebühren“ → `None`; `Art. 6 DSGVO` parsed | covered |
 | `TenantPlan`, `CorpusBuildConfig` | `core.config` | T2.5 | `pt/unit/ingest/test_tenants.py` | unmatched doc / overlapping rules → `ConfigError`; repo plan covers 30 + 20 ids | covered |
 | `SplitPlan`, `DatasetBuildConfig` | `core.config` | T4.1 | `pt/unit/dataset/test_config_models.py` | defaults equal the plan table (`core` 220/50/30, R9 X3.7); negative size → error; extra field → error; JSON round trip | covered |
