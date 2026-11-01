@@ -215,3 +215,12 @@ def test_non_blob_rows_planted_in_the_file_are_misses(tmp_path: Path, planted: o
     with DiskKVCache(tmp_path, "target") as cache:
         assert cache.get("ok") == b"v"
         assert cache.get("planted") is None
+
+
+def test_overlong_keys_are_store_errors(tmp_path: Path) -> None:
+    with DiskKVCache(tmp_path, "target") as cache:
+        with pytest.raises(StoreError, match="key"):
+            cache.set("k" * 10_000, b"v")
+        with pytest.raises(StoreError, match="key"):
+            cache.get("k" * 10_000)
+        cache.set("k" * kv_module.MAX_KEY_CHARS, b"v")

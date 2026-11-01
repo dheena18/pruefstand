@@ -1,9 +1,11 @@
 """Target-cache behaviour of the runner: planted rows, failing caches (review of PR 21)."""
 
+import json
 import pickle
 import sqlite3
 from pathlib import Path
 
+import pytest
 import respx
 from contract.adapter_contract import load_example
 from testsupport.run_builders import make_case, make_cases
@@ -12,6 +14,8 @@ from testsupport.runner_support import DictCache, make_runner, run_cases
 from pruefstand.adapters.http import HttpTargetAdapter
 from pruefstand.core.errors import StoreError
 from pruefstand.core.hashing import stable_hash
+from pruefstand.store.artifacts import ArtifactStore
+from pruefstand.core.models.run import RunArtifacts
 from pruefstand.store.kv import DiskKVCache
 
 
@@ -79,3 +83,65 @@ async def test_a_planted_integer_row_in_a_real_disk_cache_is_a_miss(
         results = await run_cases(make_runner(adapter, cache=cache), [case])
     assert route.call_count == 1
     assert results.manifest.complete is True
+
+
+_GOOD = {"answer": "Ein Monat.", "citations": []}
+
+
+def _entry(**changes: object) -> bytes:
+    body = {"mode": "answer", "latency_ms": 12.5, "response": _GOOD, **changes}
+    return json.dumps(body, ensure_ascii=False).encode("utf-8")
+
+
+PLANTED = {
+    "deep_nesting": b"[" * 200000,
+    "huge_latency": ('{"mode":"answer","latency_ms":' + "9" * 400 + ',"response":{"answer":"x"}}').encode(),
+    "nan_latency": b'{"mode":"answer","latency_ms":NaN,"response":{"answer":"x"}}',
+    "infinite_latency": b'{"mode":"answer","latency_ms":1e999,"response":{"answer":"x"}}',
+    "negative_latency": _entry(latency_ms=-1.0),
+    "lone_surrogate": b'{"mode":"answer","latency_ms":1.0,"response":{"answer":"x\\ud800y"}}',
+    "extra_field": _entry(unexpected=1),
+}
+
+
+@pytest.mark.parametrize("name", sorted(PLANTED))
+async def test_planted_cache_entries_are_misses_and_the_run_stays_writable(
+    router: respx.MockRouter, adapter: HttpTargetAdapter, tmp_path: Path, name: str
+) -> None:
+    route = router.post("/v1/query").respond(200, json=load_example("query_ok.json"))
+    case = make_case(0)
+    cache = DictCache()
+    cache.set(stable_hash("fp-test", case.id, case.question, case.tenant), PLANTED[name])
+    results = await run_cases(make_runner(adapter, cache=cache), [case])
+    assert route.call_count == 1
+    assert results.records[0].cached is False
+    store = ArtifactStore(tmp_path)
+    path = store.write_run(RunArtifacts(results=results, root=tmp_path / results.manifest.run_id))
+    assert store.read_run(path).results == results
+
+
+class _CountingBrokenCache:
+    def __init__(self) -> None:
+        self.gets = 0
+        self.sets = 0
+
+    def get(self, key: str) -> bytes | None:
+        self.gets += 1
+        msg = "database is locked"
+        raise StoreError(msg)
+
+    def set(self, key: str, value: bytes) -> None:
+        self.sets += 1
+        msg = "database is locked"
+        raise StoreError(msg)
+
+
+async def test_a_failing_cache_is_skipped_after_the_first_failure(
+    router: respx.MockRouter, adapter: HttpTargetAdapter
+) -> None:
+    router.post("/v1/query").respond(200, json=load_example("query_ok.json"))
+    cache = _CountingBrokenCache()
+    results = await run_cases(make_runner(adapter, cache=cache, concurrency=1), make_cases(6))
+    assert results.manifest.complete is True
+    assert cache.gets == 1
+    assert cache.sets == 0
