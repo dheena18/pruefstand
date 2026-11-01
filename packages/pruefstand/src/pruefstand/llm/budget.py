@@ -52,6 +52,9 @@ class Budget:
             True when reserved (always, without a request cap); False when the cap would be
             passed, in which case nothing is reserved.
         """
+        if n < 0:
+            msg = f"cannot reserve a negative number of requests ({n})"
+            raise ValueError(msg)
         async with self._lock:
             if self._max_requests is not None and (
                 self._charged + self._reserved + n > self._max_requests
@@ -66,11 +69,32 @@ class Budget:
         Raises:
             ValueError: ``n`` is larger than the currently reserved number.
         """
+        if n < 0:
+            msg = f"cannot release a negative number of requests ({n})"
+            raise ValueError(msg)
         async with self._lock:
             if n > self._reserved:
                 msg = f"cannot release {n} requests, only {self._reserved} are reserved"
                 raise ValueError(msg)
             self._reserved -= n
+
+    def check(self) -> None:
+        """Raise ``BudgetExceeded`` when a limit is already passed (call before sending).
+
+        The request cap counts only charged requests here: a reserved call always has room.
+
+        Raises:
+            BudgetExceeded: USD or tokens are over their limit, or ``max_requests`` are charged.
+        """
+        if self._max_usd is not None and self._usd > self._max_usd:
+            msg = f"USD budget exceeded: {self._usd:.4f} > {self._max_usd}"
+            raise BudgetExceeded(msg)
+        if self._max_tokens is not None and self._tokens > self._max_tokens:
+            msg = f"token budget exceeded: {self._tokens} > {self._max_tokens}"
+            raise BudgetExceeded(msg)
+        if self._max_requests is not None and self._charged >= self._max_requests:
+            msg = f"request budget exhausted: cap {self._max_requests}"
+            raise BudgetExceeded(msg)
 
     def charge(self, r: LLMResponse) -> None:
         """Add one answered request.

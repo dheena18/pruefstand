@@ -1,5 +1,8 @@
 """``build_backend``: model id -> backend, refusing providers the policy does not allow."""
 
+import ipaddress
+from urllib.parse import urlparse
+
 from pruefstand.core.config import LLMPolicyConfig, ModelRef
 from pruefstand.core.errors import ConfigError
 from pruefstand.core.protocols import LLMBackend
@@ -14,6 +17,32 @@ GITHUB_MODELS_URL = (
 GH_MODELS_TOKEN_ENV = "PRUEFSTAND_GH_MODELS_TOKEN"  # noqa: S105  (a variable NAME, not a secret)
 DEFAULT_TIMEOUT_S = 120.0
 _LITELLM_PREFIXES = ("ollama_chat/", "openai/")
+_LOCAL_HOSTS = frozenset({"localhost", "llm", "llm-proxy", "embed", "rerank-cpu"})
+_PRIVATE_NETS = tuple(
+    ipaddress.ip_network(n)
+    for n in ("127.0.0.0/8", "::1/128", "10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16")
+)
+
+
+def _require_local_url(url: str) -> str:
+    """Return ``url`` if it points at loopback, RFC1918 or a compose service; else ConfigError."""
+    parsed = urlparse(url)
+    host = (parsed.hostname or "").lower()
+    ok = parsed.scheme in ("http", "https") and bool(host)
+    if ok and host not in _LOCAL_HOSTS:
+        try:
+            ip = ipaddress.ip_address(host)
+        except ValueError:
+            ok = False
+        else:
+            ok = any(ip in net for net in _PRIVATE_NETS)
+    if not ok:
+        msg = (
+            "PRUEFSTAND_JUDGE_BASE_URL must be an http(s) URL on loopback, a private network "
+            f"or a compose service for openai_compatible_local/ (host '{host}')"
+        )
+        raise ConfigError(msg)
+    return url
 
 
 def build_backend(ref: ModelRef, *, policy: LLMPolicyConfig) -> LLMBackend:
@@ -47,7 +76,7 @@ def build_backend(ref: ModelRef, *, policy: LLMPolicyConfig) -> LLMBackend:
     litellm_model(ref)
     settings = PruefstandSettings()
     if provider == "openai_compatible_local":
-        base = settings.judge_base_url or DEFAULT_LOCAL_URL
+        base = _require_local_url(settings.judge_base_url or DEFAULT_LOCAL_URL)
         return LiteLLMBackend(ref.id, api_base=base, api_key_env=None, timeout_s=DEFAULT_TIMEOUT_S)
     if provider == "ollama":
         msg = "A40 endpoints are resolved from infra/gpu/endpoints.yaml (T5.1)"

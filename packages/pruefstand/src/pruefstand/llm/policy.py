@@ -1,25 +1,48 @@
 """Provider policy: free providers only, no paid provider without ``allow_paid``, data guard."""
 
+import unicodedata
+
 from pruefstand.core.config import LLMPolicyConfig
 from pruefstand.core.errors import ConfigError, PolicyViolation
+from pruefstand.core.logging import get_logger
 from pruefstand.core.models.attacks import CanaryRegistry
-from pruefstand.core.models.llm import LLMRequest
+from pruefstand.core.models.llm import LLMRequest, LLMRole
 
 FREE_PROVIDERS = frozenset(
     {"openai_compatible_local", "ollama", "github", "mistral", "gemini", "groq", "openrouter"}
 )
 LOCAL_PROVIDERS = frozenset({"openai_compatible_local", "ollama"})
 PRIVATE_PROMPT_PREFIX = "datagen.private_docs"
+_log = get_logger(__name__)
+
+
+def normalise(text: str) -> str:
+    """Fold text for matching: NFKC, no format characters, one space, casefolded.
+
+    Examples:
+        >>> normalise("CAN\u00adARY\u200b  \uff11")
+        'canary 1'
+    """
+    folded = unicodedata.normalize("NFKC", text)
+    kept = "".join(c for c in folded if unicodedata.category(c) != "Cf")
+    return " ".join(kept.split()).casefold()
 
 
 def provider_of(model_id: str) -> str:
     """Return the provider prefix of a model id.
 
+    Raises:
+        ConfigError: ``model_id`` is not ``provider/model`` with both parts non-empty.
+
     Examples:
         >>> provider_of("github/meta/llama-3.3-70b-instruct")
         'github'
     """
-    return model_id.split("/", 1)[0]
+    provider, sep, model = model_id.partition("/")
+    if not (sep and provider and model.strip()):
+        msg = f"model id '{model_id}' must be of the form provider/model"
+        raise ConfigError(msg)
+    return provider
 
 
 def is_paid(provider: str, model_id: str = "") -> bool:
@@ -65,15 +88,24 @@ class LLMPolicy:
     Args:
         cfg: Allowed providers and ``allow_paid``.
         canaries: Registry whose tokens and facts must never reach an external provider.
+        external_datagen: Allow ``LLMRole.DATAGEN`` requests to external providers (public-text
+            datagen on GitHub Models, T4.2); off by default.
 
     Raises:
         ConfigError: ``cfg`` fails ``validate_policy_config``.
     """
 
-    def __init__(self, cfg: LLMPolicyConfig, canaries: CanaryRegistry | None = None) -> None:
+    def __init__(
+        self,
+        cfg: LLMPolicyConfig,
+        canaries: CanaryRegistry | None = None,
+        *,
+        external_datagen: bool = False,
+    ) -> None:
         validate_policy_config(cfg)
         self._cfg = cfg
         self._canaries = canaries
+        self._external_datagen = external_datagen
 
     def check(self, req: LLMRequest, provider: str) -> None:
         """Refuse the request before any network call.
@@ -100,16 +132,21 @@ class LLMPolicy:
 
     def _check_data_guard(self, req: LLMRequest, provider: str) -> None:
         """Private documents and canary data never leave for an external provider (ADR-0009)."""
-        if req.prompt_id.startswith(PRIVATE_PROMPT_PREFIX):
+        if normalise(req.prompt_id).startswith(PRIVATE_PROMPT_PREFIX):
             msg = (
                 f"prompt '{req.prompt_id}' holds private documents; "
                 f"external provider '{provider}' refused"
             )
             raise PolicyViolation(msg)
+        if req.role is LLMRole.DATAGEN and not self._external_datagen:
+            msg = f"datagen requests may not use external provider '{provider}' (default deny)"
+            raise PolicyViolation(msg)
         if self._canaries is None:
+            _log.warning("external_provider_without_canary_registry", provider=provider)
             return
-        text = "\n".join(m.content for m in req.messages)
+        text = normalise("\n".join(m.content for m in req.messages))
         for canary in self._canaries.canaries:
-            if canary.token in text or (canary.fact is not None and canary.fact in text):
+            fact = normalise(canary.fact) if canary.fact else None
+            if normalise(canary.token) in text or (fact and fact in text):
                 msg = f"canary data in the request; external provider '{provider}' refused"
                 raise PolicyViolation(msg)

@@ -1,8 +1,11 @@
 name: cassettes
 
 # Weekly re-recording of tests/cassettes/ from real model calls (T1.4 S10: `make cassettes`).
-# The workflow never opens a PR: it pushes branch cassettes/<date> and prints the `gh pr create`
-# command; the maintainer opens the PR (Actions may not create PRs, T0.5 S3).
+# Two jobs, so the job that runs repository code never holds a write token:
+#   record  contents: read   runs `make cassettes`, uploads the changed cassettes as an artefact
+#   push    contents: write  runs NO repository code: unpacks the artefact, pushes cassettes/<date>-<run>
+# The workflow never opens a PR: it prints the `gh pr create` command; the maintainer opens the PR
+# (Actions may not create PRs, T0.5 S3). PRUEFSTAND_RECORD_START_CMD must never be set here.
 on:
   schedule:
     - cron: "29 3 * * 1"
@@ -20,12 +23,13 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 60
     permissions:
-      contents: write  # own cassettes/<date> branch only
-      models: read  # GitHub Models for the judged cassettes
+      contents: read
+    outputs:
+      changed: ${{ steps.detect.outputs.changed }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          persist-credentials: true  # needed to push the own cassettes/<date> branch
+          persist-credentials: false
       - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
         with:
           version: "0.13.6"
@@ -34,20 +38,59 @@ jobs:
       - name: Fetch the pinned test model
         run: uv run python scripts/models/fetch.py
       - name: Record cassettes from the real models
-        env:
-          PRUEFSTAND_GH_MODELS_TOKEN: ${{ github.token }}  # D333; used by the judged recordings
         run: make cassettes
-      - name: Push branch cassettes/<date> and print the PR command
+      - name: Detect changed cassettes
+        id: detect
+        run: bash scripts/models/cassettes_changed.sh >> "$GITHUB_OUTPUT"
+      - name: Pack changed cassettes
+        if: steps.detect.outputs.changed == 'true'
         run: |
-          if git diff --quiet -- 'packages/**/cassettes' && [ -z "$(git ls-files --others --exclude-standard -- 'packages/**/cassettes')" ]; then
-            echo "Cassettes unchanged." >> "$GITHUB_STEP_SUMMARY"
-            exit 0
-          fi
-          branch="cassettes/$(date +%F)"
+          git status --porcelain --untracked-files=all -- packages/pruefstand/tests/cassettes \
+            | cut -c4- | tar -czf cassettes.tgz -T -
+      - name: Upload changed cassettes
+        if: steps.detect.outputs.changed == 'true'
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: cassettes
+          path: cassettes.tgz
+          if-no-files-found: error
+          retention-days: 7
+
+  push:
+    name: push
+    needs: record
+    if: needs.record.outputs.changed == 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: write  # own cassettes/<date>-<run> branch only; this job runs no repository code
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: true  # needed to push the own branch
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: cassettes
+      - name: Unpack (only paths under the cassette directory)
+        run: |
+          prefix="packages/pruefstand/tests/cassettes/"
+          tar -tzf cassettes.tgz | while IFS= read -r path; do
+            case "$path" in
+              "$prefix"*) ;;
+              *) echo "unexpected path in artefact: $path" >&2; exit 1 ;;
+            esac
+            case "$path" in
+              *..*) echo "path escape in artefact: $path" >&2; exit 1 ;;
+            esac
+          done
+          tar -xzf cassettes.tgz --no-same-owner
+      - name: Push the branch and print the PR command
+        run: |
+          branch="cassettes/$(date +%F)-${GITHUB_RUN_ID}"
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git checkout -b "$branch"
-          git add -- 'packages/**/cassettes'
+          git add -- packages/pruefstand/tests/cassettes
           git commit -m "test(llm): re-record cassettes from real models"
           git push origin "$branch"
           {

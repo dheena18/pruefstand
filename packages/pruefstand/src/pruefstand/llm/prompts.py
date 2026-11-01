@@ -11,6 +11,7 @@ from pruefstand.core.models.llm import PromptTemplate
 DEFAULT_ROOT = Path(__file__).resolve().parent / "prompts"
 _SECTION = re.compile(r"^### (system|user)[ \t]*$", re.MULTILINE)
 _VERSION = re.compile(r"^v[0-9]+$")
+_PROMPT_ID = re.compile(r"^[a-z0-9_.]+$")
 
 
 class PromptRegistry:
@@ -43,6 +44,9 @@ class PromptRegistry:
         return self._cache[key]
 
     def _load(self, prompt_id: str, version: str) -> PromptTemplate:
+        if not _PROMPT_ID.match(prompt_id):
+            msg = f"prompt_id '{prompt_id}' must match [a-z0-9_.]+"
+            raise PromptError(msg)
         if not _VERSION.match(version):
             msg = f"prompt version '{version}' is not of the form v<N>"
             raise PromptError(msg)

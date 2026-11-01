@@ -13,11 +13,13 @@ REQUEST_HEADERS = frozenset({"content-type", "accept"})
 RESPONSE_HEADERS = frozenset({"content-type", "content-length"})
 
 
-def scrub_request(request: Any) -> Any:  # noqa: ANN401  (vcr's Request type is an untyped class)
+def scrub_request(request: Any) -> Any:
     request.headers = {k: v for k, v in request.headers.items() if k.lower() in REQUEST_HEADERS}
     assert_no_secrets(request.uri)
     body = request.body
-    assert_no_secrets(body.decode("utf-8", "replace") if isinstance(body, bytes) else str(body or ""))
+    assert_no_secrets(
+        body.decode("utf-8", "replace") if isinstance(body, bytes) else str(body or "")
+    )
     return request
 
 

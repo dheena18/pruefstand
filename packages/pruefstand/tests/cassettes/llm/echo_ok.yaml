@@ -7,54 +7,18 @@ interactions:
     headers:
       accept:
       - application/json
-      accept-encoding:
-      - gzip, deflate
-      connection:
-      - keep-alive
-      content-length:
-      - '251'
       content-type:
       - application/json
-      host:
-      - localhost:18080
-      user-agent:
-      - AsyncOpenAI/Python 2.54.0
-      x-stainless-arch:
-      - x64
-      x-stainless-async:
-      - async:asyncio
-      x-stainless-lang:
-      - python
-      x-stainless-os:
-      - Linux
-      x-stainless-package-version:
-      - 2.54.0
-      x-stainless-raw-response:
-      - 'true'
-      x-stainless-read-timeout:
-      - '120.0'
-      x-stainless-retry-count:
-      - '0'
-      x-stainless-runtime:
-      - CPython
-      x-stainless-runtime-version:
-      - 3.12.16
     method: POST
     uri: http://localhost:18080/v1/chat/completions
   response:
     body:
-      string: "{\"choices\":[{\"finish_reason\":\"stop\",\"index\":0,\"message\":{\"role\":\"assistant\",\"content\":\"Sch\xFCler\"}}],\"created\":1793504674,\"model\":\"/models/qwen2.5-0.5b-instruct-q4_k_m.gguf\",\"system_fingerprint\":\"b12019-1052f7e1d\",\"object\":\"chat.completion\",\"usage\":{\"completion_tokens\":3,\"prompt_tokens\":42,\"total_tokens\":45,\"prompt_tokens_details\":{\"cached_tokens\":0}},\"id\":\"chatcmpl-HSVqZ9JJ1BBgCQ9iitTKZ8icpPtTBxgY\",\"timings\":{\"cache_n\":0,\"prompt_n\":42,\"prompt_ms\":361.888,\"prompt_per_token_ms\":8.616380952380952,\"prompt_per_second\":116.05800689716156,\"predicted_n\":3,\"predicted_ms\":50.169,\"predicted_per_token_ms\":25.0845,\"predicted_per_second\":39.86525543662421}}"
+      string: "{\"choices\":[{\"finish_reason\":\"stop\",\"index\":0,\"message\":{\"role\":\"assistant\",\"content\":\"Sch\xFCler\"}}],\"created\":1793507442,\"model\":\"/models/qwen2.5-0.5b-instruct-q4_k_m.gguf\",\"system_fingerprint\":\"b12019-1052f7e1d\",\"object\":\"chat.completion\",\"usage\":{\"completion_tokens\":3,\"prompt_tokens\":42,\"total_tokens\":45,\"prompt_tokens_details\":{\"cached_tokens\":0}},\"id\":\"chatcmpl-cRFIaFryRu1sdo1IXVLyE85Vzh7KiAo2\",\"timings\":{\"cache_n\":0,\"prompt_n\":42,\"prompt_ms\":428.519,\"prompt_per_token_ms\":10.202833333333334,\"prompt_per_second\":98.01199013345965,\"predicted_n\":3,\"predicted_ms\":47.697,\"predicted_per_token_ms\":23.8485,\"predicted_per_second\":41.931358366354274}}"
     headers:
-      Access-Control-Allow-Origin:
-      - ''
-      Content-Length:
-      - '651'
-      Content-Type:
+      content-length:
+      - '652'
+      content-type:
       - application/json; charset=utf-8
-      Keep-Alive:
-      - timeout=5, max=100
-      Server:
-      - llama.cpp
     status:
       code: 200
       message: OK

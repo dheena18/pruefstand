@@ -10,55 +10,19 @@ interactions:
     headers:
       accept:
       - application/json
-      accept-encoding:
-      - gzip, deflate
-      connection:
-      - keep-alive
-      content-length:
-      - '546'
       content-type:
       - application/json
-      host:
-      - localhost:18080
-      user-agent:
-      - AsyncOpenAI/Python 2.54.0
-      x-stainless-arch:
-      - x64
-      x-stainless-async:
-      - async:asyncio
-      x-stainless-lang:
-      - python
-      x-stainless-os:
-      - Linux
-      x-stainless-package-version:
-      - 2.54.0
-      x-stainless-raw-response:
-      - 'true'
-      x-stainless-read-timeout:
-      - '120.0'
-      x-stainless-retry-count:
-      - '0'
-      x-stainless-runtime:
-      - CPython
-      x-stainless-runtime-version:
-      - 3.12.16
     method: POST
     uri: http://localhost:18080/v1/chat/completions
   response:
     body:
       string: "{\"choices\":[{\"finish_reason\":\"length\",\"index\":0,\"message\":{\"role\":\"assistant\",\"content\":\"{\\n
-        \ \\\"reason\\\": \\\"K\xFCndigung\"}}],\"created\":1793504675,\"model\":\"/models/qwen2.5-0.5b-instruct-q4_k_m.gguf\",\"system_fingerprint\":\"b12019-1052f7e1d\",\"object\":\"chat.completion\",\"usage\":{\"completion_tokens\":12,\"prompt_tokens\":115,\"total_tokens\":127,\"prompt_tokens_details\":{\"cached_tokens\":114}},\"id\":\"chatcmpl-od00nBBkFegylON7hwnljcMtUf148g93\",\"timings\":{\"cache_n\":114,\"prompt_n\":1,\"prompt_ms\":25.579,\"prompt_per_token_ms\":25.579,\"prompt_per_second\":39.094569764259745,\"predicted_n\":12,\"predicted_ms\":269.553,\"predicted_per_token_ms\":24.50481818181818,\"predicted_per_second\":40.808301150423105}}"
+        \ \\\"reason\\\": \\\"K\xFCndigung\"}}],\"created\":1793507443,\"model\":\"/models/qwen2.5-0.5b-instruct-q4_k_m.gguf\",\"system_fingerprint\":\"b12019-1052f7e1d\",\"object\":\"chat.completion\",\"usage\":{\"completion_tokens\":12,\"prompt_tokens\":115,\"total_tokens\":127,\"prompt_tokens_details\":{\"cached_tokens\":114}},\"id\":\"chatcmpl-Q0KpOiitXhWGZ78tDO0Fbkgpg2OLDrh2\",\"timings\":{\"cache_n\":114,\"prompt_n\":1,\"prompt_ms\":24.583,\"prompt_per_token_ms\":24.583,\"prompt_per_second\":40.678517674815936,\"predicted_n\":12,\"predicted_ms\":260.128,\"predicted_per_token_ms\":23.648,\"predicted_per_second\":42.28687415426252}}"
     headers:
-      Access-Control-Allow-Origin:
-      - ''
-      Content-Length:
-      - '681'
-      Content-Type:
+      content-length:
+      - '669'
+      content-type:
       - application/json; charset=utf-8
-      Keep-Alive:
-      - timeout=5, max=100
-      Server:
-      - llama.cpp
     status:
       code: 200
       message: OK
@@ -73,55 +37,19 @@ interactions:
     headers:
       accept:
       - application/json
-      accept-encoding:
-      - gzip, deflate
-      connection:
-      - keep-alive
-      content-length:
-      - '634'
       content-type:
       - application/json
-      host:
-      - localhost:18080
-      user-agent:
-      - AsyncOpenAI/Python 2.54.0
-      x-stainless-arch:
-      - x64
-      x-stainless-async:
-      - async:asyncio
-      x-stainless-lang:
-      - python
-      x-stainless-os:
-      - Linux
-      x-stainless-package-version:
-      - 2.54.0
-      x-stainless-raw-response:
-      - 'true'
-      x-stainless-read-timeout:
-      - '120.0'
-      x-stainless-retry-count:
-      - '0'
-      x-stainless-runtime:
-      - CPython
-      x-stainless-runtime-version:
-      - 3.12.16
     method: POST
     uri: http://localhost:18080/v1/chat/completions
   response:
     body:
       string: "{\"choices\":[{\"finish_reason\":\"length\",\"index\":0,\"message\":{\"role\":\"assistant\",\"content\":\"{\\n
-        \ \\\"reason\\\": \\\"Schriftliche K\xFCndigung\\\",\\n  \\\"score\\\": 2\\n}\"}}],\"created\":1793504676,\"model\":\"/models/qwen2.5-0.5b-instruct-q4_k_m.gguf\",\"system_fingerprint\":\"b12019-1052f7e1d\",\"object\":\"chat.completion\",\"usage\":{\"completion_tokens\":24,\"prompt_tokens\":136,\"total_tokens\":160,\"prompt_tokens_details\":{\"cached_tokens\":113}},\"id\":\"chatcmpl-gSiDgw5j9YYQzRuRKtPllRGMttRO5Fh5\",\"timings\":{\"cache_n\":113,\"prompt_n\":23,\"prompt_ms\":192.448,\"prompt_per_token_ms\":8.367304347826087,\"prompt_per_second\":119.51280345859661,\"predicted_n\":24,\"predicted_ms\":557.397,\"predicted_per_token_ms\":24.234652173913044,\"predicted_per_second\":41.26322890148314}}"
+        \ \\\"reason\\\": \\\"Schriftliche K\xFCndigung\\\",\\n  \\\"score\\\": 2\\n}\"}}],\"created\":1793507444,\"model\":\"/models/qwen2.5-0.5b-instruct-q4_k_m.gguf\",\"system_fingerprint\":\"b12019-1052f7e1d\",\"object\":\"chat.completion\",\"usage\":{\"completion_tokens\":24,\"prompt_tokens\":136,\"total_tokens\":160,\"prompt_tokens_details\":{\"cached_tokens\":113}},\"id\":\"chatcmpl-IvBupr7JwhGkEmDr3RYnq4dgBzejOG0L\",\"timings\":{\"cache_n\":113,\"prompt_n\":23,\"prompt_ms\":186.963,\"prompt_per_token_ms\":8.128826086956522,\"prompt_per_second\":123.01899306279853,\"predicted_n\":24,\"predicted_ms\":550.892,\"predicted_per_token_ms\":23.951826086956522,\"predicted_per_second\":41.75047014659861}}"
     headers:
-      Access-Control-Allow-Origin:
-      - ''
-      Content-Length:
+      content-length:
       - '729'
-      Content-Type:
+      content-type:
       - application/json; charset=utf-8
-      Keep-Alive:
-      - timeout=5, max=100
-      Server:
-      - llama.cpp
     status:
       code: 200
       message: OK

@@ -653,7 +653,9 @@ class Budget:  def __init__(self, max_usd: float | None, max_tokens: int | None,
                # comes from the request cap, even at concurrency 8. Unit = CALLS (the only tier-1 judge cap is
                # budget.max_requests_per_run, D143; no RunnerConfig field)
 class LLMPolicy:                    # llm/policy.py, built from LLMPolicyConfig; T1.4 = allowlist + paid block, T5.1 adds the data guard
-    def __init__(self, cfg: LLMPolicyConfig, canaries: CanaryRegistry | None = None) -> None
+    def __init__(self, cfg: LLMPolicyConfig, canaries: CanaryRegistry | None = None, *, external_datagen: bool = False) -> None
+    # external_datagen (T1.4 review): LLMRole.DATAGEN requests to external providers are denied unless True (T4.2 sets it for public-text datagen)
+    # canary token / fact and the private-doc prompt prefix are matched after NFKC + format-character removal + whitespace collapse + casefold
     def check(self, req: LLMRequest, provider: str) -> None
     # at config load (LLMPolicyConfig / build_backend): unknown or disallowed provider, or a paid provider
     # listed while allow_paid is False -> ConfigError.

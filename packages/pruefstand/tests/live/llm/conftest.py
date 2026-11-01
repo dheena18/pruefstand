@@ -1,4 +1,4 @@
-"""vcr settings for the cassette tests: replay only, allow-list scrubbing (testsupport.vcr_scrub)."""
+"""vcr settings for the cassette tests: replay only, allow-list scrubbing (vcr_scrub)."""
 
 from pathlib import Path
 

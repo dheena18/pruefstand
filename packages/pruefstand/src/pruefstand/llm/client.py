@@ -4,7 +4,7 @@ from typing import TypeVar
 
 from pydantic import BaseModel, ValidationError
 
-from pruefstand.core.errors import LLMError, PolicyViolation
+from pruefstand.core.errors import ConfigError, LLMError, PolicyViolation
 from pruefstand.core.hashing import stable_hash
 from pruefstand.core.models.llm import LLMRequest, LLMResponse
 from pruefstand.core.protocols import KVCache, LLMBackend
@@ -17,6 +17,17 @@ from pruefstand.llm.recorder import CallRecorder
 T = TypeVar("T", bound=BaseModel)
 CACHE_NAMESPACE = "llm"
 _EXCERPT = 200
+MAX_REPAIR_TOKENS = 16384
+
+
+def repair_max_tokens(max_tokens: int) -> int:
+    """Return the repair call's token budget: doubled, capped at 16384, never below the original.
+
+    Examples:
+        >>> repair_max_tokens(12), repair_max_tokens(9000), repair_max_tokens(20000)
+        (24, 16384, 20000)
+    """
+    return max(max_tokens, min(max_tokens * 2, MAX_REPAIR_TOKENS))
 
 
 def cache_key(req: LLMRequest) -> str:
@@ -87,6 +98,10 @@ class LLMClient:
         """
         try:
             self._policy.check(req, provider_of(req.model))
+        except ConfigError as err:  # not provider/model
+            violation = PolicyViolation(str(err))
+            self._recorder.record(req, None, _describe(violation))
+            raise violation from err
         except PolicyViolation as err:
             self._recorder.record(req, None, _describe(err))
             raise
@@ -95,6 +110,7 @@ class LLMClient:
         if cached is not None:
             self._recorder.record(req, cached, None)
             return cached
+        self._budget.check()  # a caller that swallowed BudgetExceeded cannot keep sending
         resp = await self._call(req)
         self._recorder.record(req, resp, None)
         if self._cache is not None:
@@ -147,7 +163,10 @@ class LLMClient:
             return parsed
         repair = self._prompts.get("json_repair", "v1").render()
         again = first.model_copy(
-            update={"messages": (*first.messages, *repair), "max_tokens": first.max_tokens * 2}
+            update={
+                "messages": (*first.messages, *repair),
+                "max_tokens": repair_max_tokens(first.max_tokens),
+            }
         )
         resp = await self.complete(again)
         parsed = _parse(resp.text, schema)

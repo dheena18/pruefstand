@@ -8,12 +8,14 @@ from testsupport.llm_scenarios import echo_request
 from testsupport.loopback import serve
 
 from pruefstand.core.errors import LLMError
-from pruefstand.llm.backends.litellm import LiteLLMBackend, response_limits
+from pruefstand.core.models.llm import LLMRequest
+from pruefstand.llm.backends.limits import response_limits
+from pruefstand.llm.backends.litellm import LiteLLMBackend
 
 MODEL = "openai_compatible_local/loop"
 
 
-def _req(max_tokens: int = 16):
+def _req(max_tokens: int = 16) -> LLMRequest:
     return echo_request(max_tokens=max_tokens).model_copy(update={"model": MODEL})
 
 

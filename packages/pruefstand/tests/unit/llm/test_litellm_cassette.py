@@ -122,7 +122,7 @@ class APIConnectionError(Exception):
     """Same class name as LiteLLM's connection error."""
 
 
-class WithStatus(Exception):
+class StatusError(Exception):
     def __init__(self, status: int) -> None:
         super().__init__("boom SECRETKEY")
         self.status_code = status
@@ -137,10 +137,10 @@ def test_unknown_exceptions_are_not_transient() -> None:
 def test_connection_errors_and_retryable_statuses_are_transient() -> None:
     assert map_error(APIConnectionError("x"), "p", "k").transient is True
     for status in (408, 429, 500, 503):
-        assert map_error(WithStatus(status), "p", "k").transient is True
-    assert map_error(WithStatus(400), "p", "k").transient is False
-    assert map_error(WithStatus(401), "p", "k").status == 401
+        assert map_error(StatusError(status), "p", "k").transient is True
+    assert map_error(StatusError(400), "p", "k").transient is False
+    assert map_error(StatusError(401), "p", "k").status == 401
 
 
 def test_error_text_never_holds_the_key() -> None:
-    assert "SECRETKEY" not in str(map_error(WithStatus(500), "p", "SECRETKEY"))
+    assert "SECRETKEY" not in str(map_error(StatusError(500), "p", "SECRETKEY"))

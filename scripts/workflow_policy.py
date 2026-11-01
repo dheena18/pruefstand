@@ -46,7 +46,10 @@ ACTIONS_READ: dict[tuple[str, str], str] = {
 # (file, job) -> reason, for ``contents: write``.
 CONTENTS_WRITE: dict[tuple[str, str], str] = {
     ("release.yml", "release-assets"): "attaches image-digests.json to the GitHub release",
-    ("cassettes.yml", "record"): "pushes its own cassettes/<date> branch, never opens a PR",
+    (
+        "cassettes.yml",
+        "push",
+    ): "pushes its own cassettes/<date>-<run> branch, runs no repo code, never opens a PR",
     ("demo-ready.yml", "release-demo-ready"): "uploads the demo-ready.json release asset (D318)",
 }
 

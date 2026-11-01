@@ -11,6 +11,7 @@ from pruefstand.core.errors import LLMError
 from pruefstand.core.hashing import stable_hash
 from pruefstand.core.models.llm import LLMRequest, LLMResponse
 from pruefstand.core.protocols import LLMBackend
+from pruefstand.llm.scrub import assert_no_secrets
 
 
 class CassetteFile(BaseModel):
@@ -74,9 +75,10 @@ class _RecordingBackend:
             request=req,
             response=resp,
         )
-        self._dir.mkdir(parents=True, exist_ok=True)
         path = self._dir / f"{stable_hash(req)}.json"
         text = json.dumps(entry.model_dump(mode="json"), ensure_ascii=False, indent=2)
+        assert_no_secrets(text)  # recording REFUSES: nothing is written
+        self._dir.mkdir(parents=True, exist_ok=True)
         path.write_text(text + "\n", encoding="utf-8")
         return resp
 

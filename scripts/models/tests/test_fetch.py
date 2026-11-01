@@ -30,7 +30,10 @@ def test_correct_sha_downloads_then_is_idempotent(tmp_path: Path) -> None:
     dest = tmp_path / "out" / "m.gguf"
     assert fetch_file(url, dest, sha, allowed_schemes=("file",)) == "downloaded"
     assert dest.read_bytes() == PAYLOAD
-    assert fetch_file((tmp_path / "gone.bin").as_uri(), dest, sha, allowed_schemes=("file",)) == "cached"  # no download
+    assert (
+        fetch_file((tmp_path / "gone.bin").as_uri(), dest, sha, allowed_schemes=("file",))
+        == "cached"
+    )  # no download
 
 
 def test_corrupt_existing_file_is_replaced(tmp_path: Path) -> None:
@@ -72,7 +75,19 @@ def test_main_fetches_listed_models(tmp_path: Path) -> None:
         ),
         encoding="utf-8",
     )
-    assert main(["--manifest", str(manifest), "--dest", str(tmp_path / "cache"), "--allow-scheme", "file"]) == 0
+    assert (
+        main(
+            [
+                "--manifest",
+                str(manifest),
+                "--dest",
+                str(tmp_path / "cache"),
+                "--allow-scheme",
+                "file",
+            ]
+        )
+        == 0
+    )
     assert (tmp_path / "cache" / "t.gguf").read_bytes() == PAYLOAD
 
 
@@ -112,7 +127,10 @@ def test_download_is_cut_off_at_size_bytes_plus_one(tmp_path: Path) -> None:
         fetch_file(url, dest, sha, allowed_schemes=("file",), size_bytes=len(PAYLOAD) - 1)
     assert not dest.exists()
     assert not list(tmp_path.glob("*.part"))
-    assert fetch_file(url, dest, sha, allowed_schemes=("file",), size_bytes=len(PAYLOAD)) == "downloaded"
+    assert (
+        fetch_file(url, dest, sha, allowed_schemes=("file",), size_bytes=len(PAYLOAD))
+        == "downloaded"
+    )
 
 
 def test_a_symlinked_part_file_is_refused(tmp_path: Path) -> None:

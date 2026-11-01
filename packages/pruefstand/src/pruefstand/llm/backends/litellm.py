@@ -4,22 +4,30 @@ Providers: ``openai_compatible_local/<m>`` (llama.cpp, LiteLLM ``openai/``), ``g
 Models) and, from T5.1, ``ollama/<tag>`` (LiteLLM ``ollama_chat/``, native ``/api/chat``).
 """
 
+import asyncio
 import os
 import re
 import time
+from typing import Any
 
 # LiteLLM reads its model-cost map at import time; the packaged copy keeps imports offline
-# (CLAUDE.md §3).
+# (CLAUDE.md §3). Outside PRODUCTION mode its __init__ runs dotenv.load_dotenv(), which would pull
+# the repository .env (every secret) into this process and its children (CLAUDE.md §5).
 os.environ.setdefault("LITELLM_LOCAL_MODEL_COST_MAP", "True")
+os.environ.setdefault("LITELLM_MODE", "PRODUCTION")
 
+import httpx
 import litellm
+import openai
 
 from pruefstand.core.config import ModelRef
 from pruefstand.core.errors import ConfigError, LLMError
 from pruefstand.core.models.llm import LLMRequest, LLMResponse
 from pruefstand.core.models.target import Usage
+from pruefstand.llm.backends.limits import LimitedTransport, response_limits
 
 litellm.suppress_debug_info = True
+litellm.telemetry = False
 litellm.drop_params = False
 
 NO_KEY = "not-needed"  # llama.cpp ignores the key; the OpenAI client insists on a non-empty one
@@ -168,16 +176,51 @@ class LiteLLMBackend:
         kwargs = completion_kwargs(
             req, api_base=self.api_base, api_key=key, timeout_s=self.timeout_s
         )
+        max_chars, max_bytes = response_limits(req.max_tokens)
+        tripped: list[bool] = []
+        http_client: httpx.AsyncClient | None = None
+        if provider == "openai_compatible_local":
+            http_client = httpx.AsyncClient(
+                transport=LimitedTransport(max_bytes, tripped), timeout=self.timeout_s
+            )
+            kwargs["client"] = openai.AsyncOpenAI(
+                base_url=self.api_base, api_key=key, http_client=http_client, max_retries=0
+            )
         start = time.perf_counter()
         try:
-            raw = await litellm.acompletion(**kwargs)
+            raw = await asyncio.wait_for(litellm.acompletion(**kwargs), timeout=self.timeout_s)
+        except TimeoutError:
+            msg = f"{provider}: timeout after {self.timeout_s:g} s"
+            raise LLMError(msg, transient=True) from None
         except Exception as err:
-            raise _map_error(err, provider, key) from err
+            if tripped:
+                msg = f"{provider}: response too large (limit {max_bytes} bytes)"
+                raise LLMError(msg, transient=False) from None
+            raise map_error(err, provider, key) from None
+        finally:
+            if http_client is not None:
+                await http_client.aclose()
         latency_ms = (time.perf_counter() - start) * 1000
+        return self._to_response(raw, req, provider, latency_ms, max_chars)
+
+    def _to_response(
+        self,
+        raw: Any,  # noqa: ANN401  (LiteLLM's response union is untyped at the attribute level)
+        req: LLMRequest,
+        provider: str,
+        latency_ms: float,
+        max_chars: int,
+    ) -> LLMResponse:
         if not raw.choices:
             msg = f"{provider}: the answer holds no choices"
             raise LLMError(msg, transient=True)
         text = raw.choices[0].message.content or ""
+        if len(text) > max_chars:
+            msg = (
+                f"{provider}: response too large "
+                f"({len(text)} characters, max_tokens={req.max_tokens})"
+            )
+            raise LLMError(msg, transient=False)
         if "qwen3" in req.model.lower():
             text, stripped = strip_think(text)
             self.think_stripped += int(stripped)
@@ -197,13 +240,19 @@ class LiteLLMBackend:
         )
 
 
-def _map_error(err: Exception, provider: str, key: str) -> LLMError:
-    """Map a LiteLLM/OpenAI exception to ``LLMError``; the key never appears in the text."""
+def map_error(err: Exception, provider: str, key: str) -> LLMError:
+    """Map a LiteLLM/OpenAI exception to ``LLMError``; the key never appears in the text.
+
+    Only connection problems, 408/409/425/429 and 5xx are transient; an exception without a
+    status that is not a connection error is permanent.
+    """
     name = type(err).__name__
     raw_status = getattr(err, "status_code", None)
     connection = name in _CONNECTION_ERRORS
     status = raw_status if isinstance(raw_status, int) and not connection else None
-    transient = status is None or status >= 500 or status in _TRANSIENT_STATUS
+    transient = connection or (
+        status is not None and (status >= 500 or status in _TRANSIENT_STATUS)
+    )
     detail = str(err).replace(key, "***")[:_MAX_ERROR_TEXT]
     where = f"HTTP {status}" if status is not None else name
     return LLMError(f"{provider}: {where}: {detail}", transient=transient, status=status)

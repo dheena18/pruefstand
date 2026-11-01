@@ -24,9 +24,8 @@ def _repo(tmp_path: Path) -> Path:
 
 
 def _changed(repo: Path) -> str:
-    out = subprocess.run(  # noqa: S603
-        ["bash", str(SCRIPT)], cwd=repo, capture_output=True, text=True, check=True
-    )
+    cmd = ["bash", str(SCRIPT)]
+    out = subprocess.run(cmd, cwd=repo, capture_output=True, text=True, check=True)  # noqa: S603
     return out.stdout.strip()
 
 

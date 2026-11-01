@@ -1,7 +1,8 @@
 """Loopback HTTP servers for the hardening tests (real sockets, no model stand-in).
 
-They speak just enough of the OpenAI chat-completions wire format to exercise how the backend and
-the cassette hooks treat hostile or sloppy servers (cookies, secrets in headers, slow or huge bodies).
+They speak just enough of the OpenAI chat-completions wire format to exercise how the backend
+and the cassette hooks treat hostile or sloppy servers (cookies, secrets in headers, slow or huge
+bodies).
 """
 
 import json
@@ -10,6 +11,7 @@ import time
 from collections.abc import Iterator
 from contextlib import contextmanager
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from typing import ClassVar
 
 
 def completion_json(content: str) -> bytes:
@@ -18,7 +20,11 @@ def completion_json(content: str) -> bytes:
         "object": "chat.completion",
         "model": "loop",
         "choices": [
-            {"index": 0, "finish_reason": "stop", "message": {"role": "assistant", "content": content}}
+            {
+                "index": 0,
+                "finish_reason": "stop",
+                "message": {"role": "assistant", "content": content},
+            }
         ],
         "usage": {"prompt_tokens": 3, "completion_tokens": 2, "total_tokens": 5},
     }
@@ -27,7 +33,7 @@ def completion_json(content: str) -> bytes:
 
 class _Handler(BaseHTTPRequestHandler):
     protocol_version = "HTTP/1.1"
-    extra_headers: dict[str, str] = {}
+    extra_headers: ClassVar[dict[str, str]] = {}
     content = "ok"
     drip_s = 0.0
     huge_bytes = 0
@@ -35,7 +41,7 @@ class _Handler(BaseHTTPRequestHandler):
     def log_message(self, format: str, *args: object) -> None:  # noqa: A002
         return
 
-    def do_POST(self) -> None:  # noqa: N802
+    def do_POST(self) -> None:
         self.rfile.read(int(self.headers.get("content-length", "0")))
         try:
             if self.drip_s:
@@ -97,7 +103,12 @@ def serve(
     handler = type(
         "Handler",
         (_Handler,),
-        {"extra_headers": headers or {}, "content": content, "drip_s": drip_s, "huge_bytes": huge_bytes},
+        {
+            "extra_headers": headers or {},
+            "content": content,
+            "drip_s": drip_s,
+            "huge_bytes": huge_bytes,
+        },
     )
     server = ThreadingHTTPServer(("127.0.0.1", 0), handler)
     server.daemon_threads = True

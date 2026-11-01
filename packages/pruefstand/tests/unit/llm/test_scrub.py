@@ -1,10 +1,11 @@
 """Cassette scrubbing: an allow-list in the vcr hooks, one secret scanner, recording refuses."""
 
+import asyncio
 import json
 from pathlib import Path
 
 import pytest
-import vcr
+import vcr  # type: ignore[import-untyped]  # vcrpy ships no stubs
 import yaml
 from testsupport.llm_scenarios import BACKEND_CASSETTE_DIR, CASSETTE_DIR, echo_request
 from testsupport.loopback import serve
@@ -17,6 +18,7 @@ from pruefstand.llm.scrub import assert_no_secrets
 
 LOOP_MODEL = "openai_compatible_local/loop"
 GHP = "ghp_abcdefghijklmnop1234567890"
+HOOKS = {k: v for k, v in VCR_CONFIG.items() if k.startswith("before_")}
 
 
 @pytest.mark.parametrize(
@@ -51,12 +53,10 @@ def test_the_message_never_repeats_the_secret() -> None:
 
 
 def _record_with_vcr(tmp_path: Path, base: str) -> str:
-    import asyncio
-
     backend = LiteLLMBackend(LOOP_MODEL, api_base=base, api_key_env=None, timeout_s=10)
     req = echo_request().model_copy(update={"model": LOOP_MODEL})
     path = tmp_path / "c.yaml"
-    with vcr.VCR(record_mode="all", **VCR_CONFIG).use_cassette(str(path)):
+    with vcr.VCR(record_mode="all", **HOOKS).use_cassette(str(path)):
         asyncio.run(backend.acomplete(req))
     return path.read_text("utf-8")
 
@@ -70,7 +70,15 @@ def test_vcr_hooks_keep_only_the_allow_listed_headers(tmp_path: Path) -> None:
     }
     with serve(headers=headers) as base:
         text = _record_with_vcr(tmp_path, base)
-    for leaked in ("SECRETCOOKIE123", "req-1", "gh-1", "ghp_", "Bearer", "x-stainless", "user-agent"):
+    for leaked in (
+        "SECRETCOOKIE123",
+        "req-1",
+        "gh-1",
+        "ghp_",
+        "Bearer",
+        "x-stainless",
+        "user-agent",
+    ):
         assert leaked.lower() not in text.lower()
     data = yaml.safe_load(text)
     for item in data["interactions"]:

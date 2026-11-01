@@ -147,6 +147,11 @@ owning module's unit test dir (`pt/unit/<module>/`, `rd/unit/…`).
 | `invalidate_judge`, `clear_drift` (cache epoch ≠ `judge_epoch`) | `llm.cache_epochs` | T5.1 | `test_cache_epochs.py` | epoch 0 → 1; verdict cached before is a miss, other models still hit; `clear_drift` removes the flag; neither touches `eval_fingerprint` | covered |
 | Qwen3 thinking off + `<think>` strip (D95, R9 D191) | `llm.client` | T5.1 | `test_qwen_thinking.py` | `qwen3*` request has `enable_thinking: false` (llama.cpp) / `"think": false` on native `/api/chat` (Ollama, R11 D219; never `/no_think`); leading `<think>` block stripped, strip function returns `(text, True)`; counted in `RunManifest.counts["think_stripped"]` by the pipeline | covered |
 | `PromptRegistry.get` | `llm.prompts` | T1.4 | `test_prompts.py` | unknown version → `PromptError` | covered |
+| `assert_no_secrets`, vcr allow-list hooks (T1.4 review) | `llm.scrub`, `testsupport/vcr_scrub.py` | T1.4 | `pt/unit/llm/test_scrub.py` | secret shapes refused, ordinary text passes; loopback server with `Set-Cookie`, request ids and a `Bearer ghp_…` header → none in the cassette; secret in a body → recording refused; every committed cassette scanned | covered |
+| `response_limits`, `LimitedTransport`, hard `timeout_s` (T1.4 review) | `llm.backends.limits`, `llm.backends.litellm` | T1.4 | `pt/unit/llm/test_limits.py` | dripping loopback server → transient timeout; 60 MB body → permanent "too large" with bounded RSS; answer longer than `max_tokens` allows refused; no provider exception chained | covered |
+| `import litellm` does not load `.env` (T1.4 review) | `llm.backends.litellm` | T1.4 | `pt/unit/llm/test_litellm_env.py` | subprocess with a canary `.env`: DEV mode loads it (control), our import does not; telemetry off | covered |
+| `Budget.check`, negative reservations, `repair_max_tokens` (T1.4 review) | `llm.budget`, `llm.client` | T1.4 | `pt/unit/llm/test_budget.py`, `test_client.py` | exhausted budget → next call refused without HTTP; `reserve(-1)` → `ValueError`; repair tokens doubled, capped | covered |
+| `cassettes_changed.sh` (T1.4 review) | `scripts/models/cassettes_changed.sh` | T1.4 | `scripts/models/tests/test_cassette_changes.py` | scratch repo: clean / modified / new file under the cassette dir / change elsewhere | covered |
 | `extract_json_object` | `llm.json_extract` | T1.4 | `pt/unit/llm/test_json_extract.py` | plain, fenced, prose around, braces inside strings, umlauts kept, unbalanced → `None` | covered |
 | `cache_key` (T1.4 part) | `llm.client` | T1.4 | `pt/unit/llm/test_client.py` | every request field changes the key; equal requests equal keys | covered |
 | `LLM cache key` includes `model_version` (D113) | `llm.client` | T5.1 | `test_client_cache.py` | same answer text from a model with another `model_version` → miss | planned |
@@ -498,10 +503,10 @@ UI tests (pages × states × theme × locale × viewport) are specified in `docs
 
 | Status | Rows |
 | --- | --- |
-| covered | 323 |
+| covered | 328 |
 | planned | 32 (R13 rows and rows whose case round 13 changed; owners T0.7, T1.8, T1.9, T1.10, T3.1a, T3.6, T4.1, T5.1, T5.4, T6.1, T6.2a, T6.2b, T7.1b, T7.2, T7.3, T8.1, T8.5) |
 | weak | 1 (backup bundle: drill only, acceptable for an ops script) |
-| **total** | **356** |
+| **total** | **361** |
 
 Round-13 changes (D296): the round-12 table (241 covered / 29 open / 1 weak = 271 rows) was re-derived: 40 multi-owner
 rows split into 90 single-owner rows (+50); 29 open rows flipped (`covered` unless round 13 changed the case); 21 new
@@ -536,4 +541,4 @@ mapping, `write_gate_json`, and the R9 additions on both); file names corrected 
 `test_gate_models.py` + `test_tables.py`, `test_perturb_case_async.py`, `test_fixed_chunker.py`,
 `test_baseline_cli.py`); new rows for every R9 symbol and for the out-of-package symbols that Done-when lines name.
 
-T1.4 (D344–D346): +7 `covered` rows (`extract_json_object`, `cache_key`, request builder, `litellm_model`, policy validation, `fetch.py`, `record_cassettes.sh`) and +1 `planned` row (cache key with `model_version`, owner T5.1); five T1.4 rows re-worded to the tests that exist.
+T1.4 (D344–D346): +12 `covered` rows (7 from the first pass, 5 from the review pass) (`extract_json_object`, `cache_key`, request builder, `litellm_model`, policy validation, `fetch.py`, `record_cassettes.sh`) and +1 `planned` row (cache key with `model_version`, owner T5.1); five T1.4 rows re-worded to the tests that exist.

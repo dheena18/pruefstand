@@ -19,10 +19,10 @@ LOCAL = ModelRef(id="openai_compatible_local/qwen2.5-0.5b-instruct", family="qwe
 
 
 def test_local_backend_uses_the_judge_base_url(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("PRUEFSTAND_JUDGE_BASE_URL", "http://judge.test:9999/v1")
+    monkeypatch.setenv("PRUEFSTAND_JUDGE_BASE_URL", "http://10.1.2.3:9999/v1")
     backend = build_backend(LOCAL, policy=LLMPolicyConfig())
     assert isinstance(backend, LiteLLMBackend)
-    assert backend.api_base == "http://judge.test:9999/v1"
+    assert backend.api_base == "http://10.1.2.3:9999/v1"
 
 
 def test_local_backend_default_base_url(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -248,7 +248,9 @@ def test_provider_of_requires_provider_and_model(model_id: str) -> None:
         provider_of(model_id)
 
 
-@pytest.mark.parametrize("prompt_id", [" datagen.private_docs.x", "Datagen.Private_Docs.x", "DATAGEN.PRIVATE_DOCS.X\n"])
+@pytest.mark.parametrize(
+    "prompt_id", [" datagen.private_docs.x", "Datagen.Private_Docs.x", "DATAGEN.PRIVATE_DOCS.X\n"]
+)
 def test_private_prompt_ids_are_matched_after_normalisation(prompt_id: str) -> None:
     with pytest.raises(PolicyViolation, match="private documents"):
         LLMPolicy(LLMPolicyConfig()).check(_github("x", prompt_id), "github")
@@ -288,5 +290,7 @@ def test_external_use_without_a_canary_registry_logs_a_warning() -> None:
         LLMPolicy(LLMPolicyConfig()).check(_github("harmlos"), "github")
     assert any(entry["log_level"] == "warning" for entry in logs)
     with structlog.testing.capture_logs() as logs:
-        LLMPolicy(LLMPolicyConfig(), canaries=_canary_registry()).check(_github("harmlos"), "github")
+        LLMPolicy(LLMPolicyConfig(), canaries=_canary_registry()).check(
+            _github("harmlos"), "github"
+        )
     assert not logs
