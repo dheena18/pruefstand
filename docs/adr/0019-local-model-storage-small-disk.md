@@ -118,4 +118,4 @@ The owner checked the real machines on 2026-10-31 and decided to "manage with wh
 - The disk stays nearly full: every extra model is a swap under `MAINTENANCE`, and an unexpected
   `ollama pull` by another user can fill it (preflight digest check and the `/data` free-space WARN).
 - Follow-ups: T3.1b pins `gemma3:12b` and measures VRAM/time; T4.2 pins the GitHub Models datagen model;
-  the NAS dataset `/mnt/SDD/SSD/Ollama` holds an SSH private key that must be moved out (setup log §7).
+  the NAS dataset `/mnt/SDD/SSD/Ollama` held Ollama's identity key; moved out of the share on 2026-11-01 (setup log §7).
