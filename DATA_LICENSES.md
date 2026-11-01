@@ -118,6 +118,12 @@ embeddings (licences **verify**): `BAAI/bge-m3` (MIT; served as the Ollama `bge-
 (Apache-2.0), `jinaai/jina-embeddings-v2-base-de` (Apache-2.0, optional). Rejected:
 `jinaai/jina-reranker-v2-base-multilingual` and jina-embeddings-v3 (CC BY-NC 4.0).
 
+**Tier-1 `live` models (T1.13, `infra/models/live-models.yaml`, checked 2026-11-01).** Generator
+`Qwen/Qwen2.5-0.5B-Instruct-GGUF` Q4_K_M (Apache-2.0, card `license: apache-2.0`; downloaded, never redistributed);
+embedding `intfloat/multilingual-e5-small` (MIT) served by Hugging Face Text Embeddings Inference (Apache-2.0)
+from the pinned revision. The candidates that were measured and not pinned (`Qwen/Qwen2.5-1.5B-Instruct-GGUF`,
+Apache-2.0; `unsloth/Qwen3-1.7B-GGUF`, Apache-2.0) are listed in `scripts/models/candidates/live-candidates.yaml`.
+
 **Tokenizers (round 13, AI13-05).** Every catalogue chat entry carries `tokenizer: {source, sha256}`; the
 generator's tokenizer is baked into the rag-demo image next to `bge-m3`'s so prompt budgets are counted with
 the right vocabulary. Tokenizer files follow the licence of their model: Qwen from its HF repo
@@ -156,3 +162,14 @@ that value, anything else exits 3). These are owner decisions of 2026-10-31, not
   says the derived work inherits **CC BY-SA 4.0** from GermanDPR; we use the stricter reading. GermanRAG
   therefore has its own config `germanrag_derived`; `load_sources` fails if any config mixes CC BY, CC BY-SA
   and ODbL sources.
+
+## 8. Slice corpus `corpus/slice_v1` (T1.13, built 2026-11-01 from the 2026-10-31 pins)
+
+The only committed corpus (about 50 KB), the tier-1 test corpus of `apps/rag-demo`; rebuilt byte for byte by
+`scripts/slice/build_slice.py` from the `data/sources.yaml` pins.
+
+| Part | Source | Licence / terms | Attribution |
+| --- | --- | --- | --- |
+| KSchG §§ 1-4, ArbZG §§ 3-5, BGB §§ 620-626, BDSG § 26 | Gesetze im Internet (GII XML) | official works, § 5 UrhG (`§5-UrhG`) | "Gesetzestexte: Bundesministerium der Justiz / juris GmbH, www.gesetze-im-internet.de. Amtliche Werke gemäß § 5 UrhG." |
+| DSGVO (Regulation (EU) 2016/679) Art. 5-6, German and English | EUR-Lex via the Publications Office CELLAR | EUR-Lex legal notice, Commission Decision 2011/833/EU (`eurlex-legal-notice`) | "Source: EUR-Lex, © European Union, https://eur-lex.europa.eu. Reuse authorised under the EUR-Lex legal notice and Commission Decision 2011/833/EU. Consolidated versions are not authentic. The content has been modified." (paragraph split, tables flattened) |
+| 6 private tenant documents, 4 planted injection documents | hand-written, `scripts/slice/handwritten/` | CC0-1.0 | none; the names, canaries (`CANARY-VN-...`, `CANARY-KM-...`) and `PWNED-...` markers are fictitious test data, never real personal data |

@@ -118,6 +118,12 @@ filtered | unfiltered`, `reranker: on | off`, `injection_guard: on | off`, `syst
 runs on CPU (BM25 + small dense model, llama.cpp generator); T3.x adds hybrid, the CPU reranker (VM) and the Ollama generator on the A40s. The package reads corpus files through its own
 reader validated by `schemas/chunk.schema.json` and never imports `pruefstand`.
 
+**v0 layout (T1.13).** `rag_demo` is flat: `models`, `config`, `schemas` (wire models), `api`, `protocols`, `analysis`,
+`sparse`, `dense` (`TeiDenseEncoder`), `index` (corpus reader, `Indexer`), `retrieve` (`build_query`, `Retriever`),
+`generate` (`build_prompt`, guards, `LlamaCppGenerator`), `auth`, `errors`; the request and response logic is in pure
+functions that the unit tests cover, the classes that talk HTTP are thin wrappers (integration and `live` tests).
+Retriever and indexer speak the Qdrant REST API through `httpx` (no client library). T3.x may regroup the modules.
+
 | Component | Responsibility |
 | --- | --- |
 | `create_app` | Implements Target HTTP API v1; computes `config_hash`; exposes `/v1/info` incl. `serving` with **static fields only** (engine, engine_version, quantization, GPU model, model file sha256, X3.13) and `/v1/health` with runtime counters (stripped `<think>` blocks, truncated passages) |
