@@ -1,6 +1,7 @@
 """Gate policy: gated metrics, thresholds and statistical settings (SPEC §5.6, §7.2)."""
 
 import difflib
+import re
 from typing import Any, Literal, Self
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
@@ -42,6 +43,14 @@ KNOWN_METRICS: frozenset[str] = frozenset(
 JUDGED_METRICS: frozenset[str] = frozenset(
     {"faithfulness", "answer_correctness", "perturbation_consistency", "refusal_judged"}
 )
+
+_SECRET_KEY = re.compile(r"token|secret|password|passwd|api[_-]?key|bearer|credential", re.I)
+
+
+def redact_key(name: str) -> str:
+    """Return ``name``, or a placeholder when it looks like a secret (never echo those)."""
+    return "<redacted key>" if _SECRET_KEY.search(name) else name
+
 
 # Report-only metrics never get a MetricPolicy (R9 X3.2).
 REPORT_ONLY_METRICS: frozenset[str] = frozenset({"system_prompt_similarity"})
@@ -85,7 +94,8 @@ class GatePolicy(BaseModel):
     When ``gated_slices`` is omitted (or ``None``) it is derived from ``slices``: ``overall`` and
     ``perturbed_all`` always, ``tenant`` and ``lang`` only if they are in ``slices``. The stored
     value is always a tuple, so ``model_validate(model_dump())`` round-trips and
-    ``GatePolicy(metrics={}, slices=())`` is valid.
+    ``GatePolicy(metrics={}, slices=())`` is valid. Derivation happens at validation time only:
+    ``model_copy(update={"slices": ...})`` does not re-derive ``gated_slices``.
     """
 
     model_config = ConfigDict(frozen=True, extra="forbid")
@@ -106,6 +116,8 @@ class GatePolicy(BaseModel):
     def _derive_gated_slices(cls, data: Any) -> Any:  # noqa: ANN401  (pydantic before-validator)
         if isinstance(data, dict) and data.get("gated_slices") is None:
             slices = data.get("slices", cls.model_fields["slices"].default)
+            if not isinstance(slices, list | tuple):
+                return data  # field validation reports the bad `slices` as a ValidationError
             derived = ["overall"]
             derived += [name for name in ("tenant", "lang") if name in slices]
             derived.append("perturbed_all")
@@ -118,7 +130,7 @@ class GatePolicy(BaseModel):
             if name not in KNOWN_METRICS:
                 close = difflib.get_close_matches(name, sorted(KNOWN_METRICS), n=1)
                 hint = f" (did you mean {close[0]!r}?)" if close else ""
-                msg = f"gate.metrics.{name}: unknown metric{hint}"
+                msg = f"gate.metrics.{redact_key(name)}: unknown metric{hint}"
                 raise ConfigError(msg)
             if name in REPORT_ONLY_METRICS:
                 msg = f"gate.metrics.{name}: report-only metric, never gated"
@@ -127,7 +139,7 @@ class GatePolicy(BaseModel):
             log.warning("gate_hard_fail_empty", detail="no hard-fail metrics: leaks will not block")
         for name in self.hard_fail:
             if name not in KNOWN_METRICS:
-                msg = f"gate.hard_fail: unknown metric {name!r}"
+                msg = f"gate.hard_fail: unknown metric {redact_key(name)!r}"
                 raise ConfigError(msg)
             if name in self.metrics:
                 msg = f"gate.metrics.{name}: metric is also in gate.hard_fail (pick one)"

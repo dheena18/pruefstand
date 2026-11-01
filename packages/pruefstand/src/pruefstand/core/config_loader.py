@@ -1,7 +1,6 @@
 """``load_config``: YAML file -> validated, frozen ``PruefstandConfig``."""
 
 import os
-import re
 import stat
 from pathlib import Path
 
@@ -9,12 +8,11 @@ import yaml
 from pydantic import ValidationError
 
 from pruefstand.core.config import PruefstandConfig
+from pruefstand.core.config.gate import _SECRET_KEY
 from pruefstand.core.errors import ConfigError
 
 MAX_CONFIG_BYTES = 1_000_000  # 1 MB: configs are small; a larger file is an error, not a workload
 MAX_CONFIG_DEPTH = 32  # nesting of mappings/sequences; real configs stay below 8
-
-_SECRET_KEY = re.compile(r"token|secret|password|passwd|api[_-]?key|bearer|credential", re.I)
 
 
 def _read(path: Path) -> str:
