@@ -1,7 +1,7 @@
 """Pure builders (D9-18a): Qdrant query, prompt, response mapping, info and health payloads."""
 
-from conftest import CONFIGS
-from rd_support import attack_hits, hit
+from rd_support import CONFIGS, attack_hits, hit
+
 from rag_demo.api import build_health, build_info, to_query_response
 from rag_demo.config import config_hash, load_config
 from rag_demo.generate import build_prompt
@@ -19,9 +19,7 @@ def test_inside_puts_the_tenant_filter_in_every_prefetch() -> None:
     assert [p["using"] for p in body["prefetch"]] == ["dense", "sparse"]
     for prefetch in body["prefetch"]:
         assert prefetch["filter"] == {
-            "must": [
-                {"key": "tenant_id", "match": {"any": ["kanzlei_mueller", "shared_public"]}}
-            ]
+            "must": [{"key": "tenant_id", "match": {"any": ["kanzlei_mueller", "shared_public"]}}]
         }
     assert body["query"] == {"fusion": "rrf"}
     assert body["limit"] == 4
@@ -87,7 +85,11 @@ def test_prompt_with_english_switch_demands_english() -> None:
 
 
 def test_response_marks_prompted_hits_and_keeps_rank_order() -> None:
-    hits = [hit("gii-bgb-622#0", 1, 0.9), hit("gii-bgb-620#0", 2, 0.8), hit("gii-bgb-621#0", 3, 0.7)]
+    hits = [
+        hit("gii-bgb-622#0", 1, 0.9),
+        hit("gii-bgb-620#0", 2, 0.8),
+        hit("gii-bgb-621#0", 3, 0.7),
+    ]
     gen = GenOutput(
         answer="Einen Monat (§ 622 BGB).",
         citations=["§ 622 BGB"],

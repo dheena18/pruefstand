@@ -37,6 +37,7 @@ EXAMPLE_COMPONENT = {
     "query_refused.json": "QueryResponse",
     "query_no_chunks.json": "QueryResponse",
     "query_chunks_no_tenant.json": "QueryResponse",
+    "query_other_tenant.json": "QueryResponse",  # T1.13: recorded from tenant_filter_post_topk
     "retrieve_ok.json": "RetrieveResponse",
     "info.json": "InfoResponse",
     "health.json": "HealthResponse",

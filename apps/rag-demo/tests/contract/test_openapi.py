@@ -7,7 +7,8 @@ T3.5 removes the exclusion when it adds the endpoint.
 from typing import Any
 
 import yaml
-from conftest import CONFIGS, REPO
+from rd_support import CONFIGS, REPO
+
 from rag_demo.api import create_app
 from rag_demo.config import Settings, load_config
 
@@ -32,8 +33,11 @@ def _types(schema: dict[str, Any]) -> frozenset[str]:
     return frozenset(names)
 
 
+T3_6_PROPERTIES = {"prompt_overflow"}  # T3.6 adds this counter to /v1/health.stats
+
+
 def _component(schema: dict[str, Any]) -> dict[str, Any]:
-    props = schema.get("properties", {})
+    props = {k: v for k, v in schema.get("properties", {}).items() if k not in T3_6_PROPERTIES}
     return {
         "required": sorted(schema.get("required", [])),
         "properties": {name: sorted(_types(p)) for name, p in props.items()},

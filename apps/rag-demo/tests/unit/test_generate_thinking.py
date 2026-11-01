@@ -1,8 +1,8 @@
 """Qwen3 thinking switch, <think> stripping and chunk truncation (pure + cassette)."""
 
 import pytest
-from conftest import CONFIGS
-from rd_support import hit
+from rd_support import CONFIGS, hit
+
 from rag_demo.config import load_config
 from rag_demo.generate import (
     LlamaCppGenerator,
@@ -26,7 +26,9 @@ def test_qwen3_request_disables_thinking() -> None:
 
 
 def test_non_qwen3_request_has_no_template_kwargs() -> None:
-    other = CFG.model_copy(update={"generator": CFG.generator.model_copy(update={"family": "qwen"})})
+    other = CFG.model_copy(
+        update={"generator": CFG.generator.model_copy(update={"family": "qwen"})}
+    )
     assert "chat_template_kwargs" not in build_chat_request([], other)
 
 
@@ -51,14 +53,15 @@ def test_short_text_is_untouched() -> None:
     assert truncate_to_tokens("Kurz.  Text", 256) == "Kurz.  Text"
 
 
-@pytest.mark.vcr("generate_smoke_622.yaml")
+@pytest.mark.default_cassette("generate_smoke_622.yaml")
+@pytest.mark.vcr
 async def test_recorded_real_answer_has_no_think_block() -> None:
     stats = Stats()
     out = await LlamaCppGenerator(CFG, "http://llm.test:8080", stats=stats).answer(
         "Welche Kündigungsfrist gilt nach zwei Jahren Betriebszugehörigkeit?",
-        [hit("gii-bgb-622#0")],
+        [hit("gii-bgb-622#1")],
     )
     assert "<think>" not in out.answer
     assert out.answer.strip()
-    assert out.prompt_chunk_ids == ["gii-bgb-622#0"]
+    assert out.prompt_chunk_ids == ["gii-bgb-622#1"]
     assert stats.requests == 0  # the API counts requests, not the generator

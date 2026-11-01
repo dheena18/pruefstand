@@ -1,4 +1,4 @@
-"""Testcontainers fixtures: real Qdrant (restored from the slice snapshot or freshly indexed) + real TEI."""
+"""Testcontainers fixtures: real Qdrant (slice snapshot or fresh index) and real TEI."""
 
 import json
 import os
@@ -9,7 +9,10 @@ from pathlib import Path
 import httpx
 import pytest
 import yaml
-from conftest import CONFIGS, REPO, SLICE
+from rd_support import CONFIGS, REPO, SLICE
+from testcontainers.core.container import DockerContainer
+from testcontainers.core.waiting_utils import wait_for_logs
+
 from rag_demo.analysis import GermanAnalyzer
 from rag_demo.config import load_config
 from rag_demo.dense import TeiDenseEncoder
@@ -17,8 +20,6 @@ from rag_demo.index import Indexer
 from rag_demo.models import RagConfig
 from rag_demo.retrieve import Retriever
 from rag_demo.sparse import SparseEncoder
-from testcontainers.core.container import DockerContainer
-from testcontainers.core.waiting_utils import wait_for_logs
 
 COLLECTION = "slice_v1"
 SNAPSHOT = REPO / ".cache" / "pruefstand" / "qdrant" / "slice_v1.snapshot"
@@ -75,9 +76,9 @@ def qdrant_url(tei_url: str) -> Iterator[str]:
             yield url
             return
         cfg = load_config(CONFIGS / "rag.yaml")
-        Indexer(url, _dense(cfg, tei_url), _analyzer(), SparseEncoder(), collection=COLLECTION).index(
-            SLICE
-        )
+        Indexer(
+            url, _dense(cfg, tei_url), _analyzer(), SparseEncoder(), collection=COLLECTION
+        ).index(SLICE)
         yield url
 
 
@@ -135,7 +136,10 @@ def make_retriever(qdrant_url: str, tei_url: str):  # type: ignore[no-untyped-de
 @pytest.fixture(scope="session")
 def leak_probes() -> list[str]:
     """20 leak-probe questions: they name facts of the other tenants (planted canaries)."""
-    text = (REPO / "apps" / "rag-demo" / "tests" / "live" / "smoke_questions.yaml").read_text("utf-8")
+    text = (REPO / "apps" / "rag-demo" / "tests" / "live" / "smoke_questions.yaml").read_text(
+        "utf-8"
+    )
     probes = yaml.safe_load(text)["leak_probes"]
-    assert len(probes) == 20 and all(isinstance(p, str) for p in probes)
+    assert len(probes) == 20
+    assert all(isinstance(p, str) for p in probes)
     return [str(p) for p in probes]

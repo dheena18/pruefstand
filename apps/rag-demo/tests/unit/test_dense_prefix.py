@@ -3,7 +3,12 @@
 import json
 
 import httpx
+import numpy as np
+import pytest
 import respx
+from rd_support import CONFIGS
+
+from rag_demo.config import load_config
 from rag_demo.dense import TeiDenseEncoder
 from rag_demo.models import EmbedCfg
 
@@ -66,3 +71,14 @@ def test_long_passage_is_sent_once_and_counted_as_truncated() -> None:
     assert enc.truncated == 1
     assert out.shape == (2, 3)
     assert out.dtype.name == "float32"
+
+
+@pytest.mark.default_cassette("tei_query_e5.yaml")
+@pytest.mark.vcr
+def test_recorded_real_tei_answer_has_the_configured_shape() -> None:
+    cfg = load_config(CONFIGS / "rag.yaml")
+    vectors = TeiDenseEncoder(cfg.embed, "http://embed.test:8090").encode(
+        ["Welche Kündigungsfrist gilt nach zwei Jahren Betriebszugehörigkeit?"], kind="query"
+    )
+    assert vectors.shape == (1, cfg.embed.dim)
+    assert abs(float(np.linalg.norm(vectors[0])) - 1.0) < 1e-3  # TEI normalises

@@ -6,8 +6,8 @@ import logging
 import httpx
 import pytest
 import respx
-from conftest import CONFIGS
-from rd_support import hit
+from rd_support import CONFIGS, hit
+
 from rag_demo.auth import auth_headers
 from rag_demo.config import load_config
 from rag_demo.dense import TeiDenseEncoder
@@ -48,7 +48,9 @@ async def test_generator_request_carries_the_bearer_key(monkeypatch: pytest.Monk
     route = respx.post("http://llm.test/v1/chat/completions").mock(
         return_value=httpx.Response(200, json=CHAT)
     )
-    await LlamaCppGenerator(cfg, "http://llm.test", stats=Stats()).answer("Frage?", [hit("gii-bgb-622#0")])
+    await LlamaCppGenerator(cfg, "http://llm.test", stats=Stats()).answer(
+        "Frage?", [hit("gii-bgb-622#0")]
+    )
     assert route.calls.last.request.headers["Authorization"] == "Bearer k1"
     assert json.loads(route.calls.last.request.content)["messages"]
 
@@ -69,7 +71,9 @@ async def test_no_header_when_unset_or_empty(
     emb_route = respx.post("http://embed.test/embed").mock(
         return_value=httpx.Response(200, json=[[0.0] * cfg.embed.dim])
     )
-    await LlamaCppGenerator(cfg, "http://llm.test", stats=Stats()).answer("Frage?", [hit("gii-bgb-622#0")])
+    await LlamaCppGenerator(cfg, "http://llm.test", stats=Stats()).answer(
+        "Frage?", [hit("gii-bgb-622#0")]
+    )
     TeiDenseEncoder(cfg.embed, "http://embed.test").encode(["x"])
     assert "Authorization" not in gen_route.calls.last.request.headers
     assert "Authorization" not in emb_route.calls.last.request.headers
@@ -87,7 +91,9 @@ async def test_api_key_env_null_sends_no_header_even_when_set(
     route = respx.post("http://llm.test/v1/chat/completions").mock(
         return_value=httpx.Response(200, json=CHAT)
     )
-    await LlamaCppGenerator(cfg, "http://llm.test", stats=Stats()).answer("Frage?", [hit("gii-bgb-622#0")])
+    await LlamaCppGenerator(cfg, "http://llm.test", stats=Stats()).answer(
+        "Frage?", [hit("gii-bgb-622#0")]
+    )
     assert "Authorization" not in route.calls.last.request.headers
 
 

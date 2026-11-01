@@ -1,9 +1,15 @@
 """Shared test helpers: real slice chunks as Hits (no fakes) and integration helpers."""
 
 import json
+from pathlib import Path
 
-from conftest import SLICE
 from rag_demo.models import Hit
+
+APP_DIR = Path(__file__).resolve().parents[1]
+REPO = APP_DIR.parents[1]
+CONFIGS = APP_DIR / "configs"
+CASSETTES = Path(__file__).resolve().parent / "cassettes"
+SLICE = REPO / "corpus" / "slice_v1"
 
 
 def slice_chunks() -> list[dict[str, object]]:
@@ -23,12 +29,14 @@ def hit(chunk_id: str, rank: int = 1, score: float = 0.5) -> Hit:
         score=score,
         rank=rank,
         citation_key=str(row["citation_key"]) if row["citation_key"] else None,
+        section=str(row["section"]) if row["section"] else None,
     )
 
 
 def attack_hits() -> list[Hit]:
     rows = [c for c in slice_chunks() if c["is_attack"]]
     return [hit(str(c["chunk_id"]), rank=i + 1) for i, c in enumerate(rows)]
+
 
 BERGMANN = "Wie lang ist die Kündigungsfrist im Rahmenvertrag mit Firma Bergmann?"
 

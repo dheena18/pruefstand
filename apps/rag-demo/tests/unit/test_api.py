@@ -5,8 +5,9 @@ import json
 import httpx
 import pytest
 import respx
-from conftest import CONFIGS, SLICE
 from fastapi.testclient import TestClient
+from rd_support import CONFIGS, SLICE
+
 from rag_demo.api import create_app
 from rag_demo.config import Settings, load_config
 

@@ -35,7 +35,9 @@ def test_query_vector_has_unit_weights() -> None:
 
 
 def test_index_is_stable_across_processes() -> None:
-    code = "from rag_demo.sparse import SparseEncoder as S;print(S().encode(['kuendigung']).indices)"
+    code = (
+        "from rag_demo.sparse import SparseEncoder as S;print(S().encode(['kuendigung']).indices)"
+    )
     runs = {
         subprocess.run(  # noqa: S603
             [sys.executable, "-c", code],

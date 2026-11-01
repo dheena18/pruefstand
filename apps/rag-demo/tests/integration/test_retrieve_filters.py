@@ -18,7 +18,7 @@ def test_inside_request_carries_the_filter_in_every_prefetch(make_retriever) -> 
     retriever, transport = make_retriever("rag.yaml")
     retriever.retrieve("kanzlei_mueller", BERGMANN, 4)
     (body,) = transport.bodies
-    assert len(body["prefetch"]) == 2  # type: ignore[arg-type]
+    assert len(body["prefetch"]) == 2
     assert all(f is not None for f in prefetch_filters(body))
 
 

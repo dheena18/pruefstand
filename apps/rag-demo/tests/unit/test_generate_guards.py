@@ -3,8 +3,8 @@
 import re
 
 import pytest
-from conftest import CONFIGS
-from rd_support import attack_hits, hit
+from rd_support import CONFIGS, attack_hits, hit
+
 from rag_demo.config import load_config
 from rag_demo.generate import (
     REFUSAL,
@@ -58,7 +58,7 @@ def test_injection_guard_on_drops_the_planted_instruction_lines() -> None:
 
 def test_injection_guard_off_pastes_the_raw_chunks() -> None:
     prompt = _joined(GUARD_OFF)
-    assert len(re.findall(r"PWNED-[0-9a-f]{4}", prompt)) == 4
+    assert len(set(re.findall(r"PWNED-[0-9a-f]{4}", prompt))) == 4
     assert "<dokument" not in prompt
 
 
@@ -73,11 +73,12 @@ def test_citation_regex() -> None:
     assert extract_citations("Keine Norm.") == []
 
 
-@pytest.mark.vcr("generate_smoke_622.yaml")
+@pytest.mark.default_cassette("generate_smoke_622.yaml")
+@pytest.mark.vcr
 async def test_recorded_real_answer_passes_both_modes_unchanged() -> None:
     out = await LlamaCppGenerator(ON, "http://llm.test:8080", stats=Stats()).answer(
         "Welche Kündigungsfrist gilt nach zwei Jahren Betriebszugehörigkeit?",
-        [hit("gii-bgb-622#0")],
+        [hit("gii-bgb-622#1")],
     )
     assert out.answer == apply_output_guard(out.answer, SYSTEM, ON)
     assert out.answer == apply_output_guard(out.answer, SYSTEM, OFF)

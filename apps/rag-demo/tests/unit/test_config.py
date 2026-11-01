@@ -5,9 +5,10 @@ from pathlib import Path
 
 import pytest
 import yaml
-from conftest import CONFIGS
 from pydantic import ValidationError
-from rag_demo.config import config_hash, load_config, parse_config
+from rd_support import CONFIGS
+
+from rag_demo.config import PACKAGE_DIR, config_hash, load_config, parse_config
 from rag_demo.models import RagConfig
 
 BUG_FIELDS = {
@@ -104,7 +105,7 @@ def test_top_k_bounds() -> None:
 
 def test_one_changed_character_in_the_prompt_changes_the_hash(tmp_path: Path) -> None:
     cfg = load_config(CONFIGS / "rag.yaml")
-    package_prompts = Path(__import__("rag_demo").__file__).parent / "prompts"
+    package_prompts = PACKAGE_DIR / "prompts"
     shutil.copytree(package_prompts, tmp_path / "prompts")
     before = config_hash(cfg, prompts_root=tmp_path)
     target = tmp_path / "prompts" / "answer_de_v1.txt"

@@ -4,7 +4,7 @@ import json
 
 import httpx
 import pytest
-from conftest import SLICE
+from rd_support import SLICE
 
 pytestmark = pytest.mark.integration
 MANIFEST = json.loads((SLICE / "manifest.json").read_text(encoding="utf-8"))

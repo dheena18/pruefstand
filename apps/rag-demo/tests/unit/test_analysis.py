@@ -3,6 +3,7 @@
 import pytest
 from hypothesis import given
 from hypothesis import strategies as st
+
 from rag_demo.analysis import GermanAnalyzer
 
 A = GermanAnalyzer(compound_split=False, stemmer="none")
@@ -37,9 +38,9 @@ def test_without_folding_umlauts_stay() -> None:
 
 
 def test_stemming_and_compound_splitting_arrive_with_t3_3() -> None:
-    with pytest.raises(ValueError, match="T3.3"):
+    with pytest.raises(ValueError, match=r"T3\.3"):
         GermanAnalyzer(compound_split=True, stemmer="none")
-    with pytest.raises(ValueError, match="T3.3"):
+    with pytest.raises(ValueError, match=r"T3\.3"):
         GermanAnalyzer(compound_split=False, stemmer="snowball_de")
 
 
