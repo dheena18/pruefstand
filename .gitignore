@@ -34,3 +34,6 @@ site/
 
 # T0.4: assembled Pages site (scripts/deploy/assemble_pages_site.sh)
 _pages/
+
+# T1.6: mutmut working copy
+mutants/

@@ -6,10 +6,11 @@ import time
 import pytest
 from testsupport.metric_types import CaseFactory, ChunkFactory, RespFactory
 
+from pruefstand.core.citations import Citation, extract_citations
 from pruefstand.core.config.gate import KNOWN_METRICS
+from pruefstand.core.enums import Category
 from pruefstand.core.errors import ConfigError
 from pruefstand.core.models.metric import MetricKind, MetricStatus
-from pruefstand.metrics.deterministic import citation
 from pruefstand.metrics.deterministic.citation import (
     CitationF1,
     CitationGrounded,
@@ -59,9 +60,14 @@ def test_citation_beyond_the_cap_is_not_seen(
 def test_predicted_citations_are_computed_once_per_response(
     make_case: CaseFactory, make_resp: RespFactory, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    calls = []
-    original = citation.extract_citations
-    monkeypatch.setattr(citation, "extract_citations", lambda t: calls.append(t) or original(t))
+    calls: list[str] = []
+    original = extract_citations
+
+    def spy(text: str) -> list[Citation]:
+        calls.append(text)
+        return original(text)
+
+    monkeypatch.setattr("pruefstand.metrics.deterministic.citation.extract_citations", spy)
     resp = make_resp("Nach § 622 Abs. 2 BGB gilt das, siehe auch § 623 BGB (einzigartig-9f3a).")
     for metric in CITATION_METRICS[:3]:
         metric.compute(make_case(), resp)
@@ -147,7 +153,7 @@ def test_registry_rejects_a_deterministic_metric_without_compute() -> None:
         kind = MetricKind.DETERMINISTIC
         higher_is_better = True
         requires: frozenset[str] = frozenset()
-        applies_to = None
+        applies_to: frozenset[Category] | None = None
 
     assert "context_recall" in KNOWN_METRICS
     with pytest.raises(ConfigError, match="no compute"):

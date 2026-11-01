@@ -44,8 +44,8 @@ def test_nested_or_ambiguous_unbounded_quantifiers_are_rejected(pattern: str) ->
 
 
 def test_the_semantic_canary_pattern_of_the_dataset_is_accepted() -> None:
-    assert compile_forbidden(r"re:\b47(\s|-)(tage\w*|tägig\w*)")
-    assert compile_forbidden(r"re:bergmann.*47 tage")
+    assert compile_forbidden(r"re:\b47(\s|-)(tage\w*|tägig\w*)") is not None
+    assert compile_forbidden(r"re:bergmann.*47 tage") is not None
 
 
 def test_rejected_pattern_never_gets_to_run_on_a_hostile_answer() -> None:
