@@ -1086,6 +1086,7 @@ class GatePolicy(BaseModel):   hard_fail: tuple[str, ...] = ("canary_leak", "ten
                                warn_p: float = 0.10
                                max_error_rate: float = 0.02   # absolute check on error_rate; baseline above it -> GateInputError
 class HardFailFinding(BaseModel): rule: str; case_id: CaseId; metric: str; evidence: str  # redacted: ≤200 chars, canaries masked
+                               # rule = "hard_fail" (metric == 1) | "hard_fail_unverifiable" (error, absent, or non-exempt not_applicable on a chunk-declaring target, D359)
 class SliceDecision(BaseModel):   metric: str; dimension: str; value: str; status: GateStatus; gated: bool
                                   notable: bool = False          # informational slices only (BH q = 0.10)
                                   baseline_mean: float; candidate_mean: float; result: BootstrapResult | None
@@ -1111,6 +1112,7 @@ class GateReport(BaseModel):      # (schema) -> gate.json
     absolute_checks: tuple[SliceDecision, ...]; notable_slices: tuple[SliceDecision, ...]
     likely_cause: CauseCode | None; top_failing_cases: tuple[CaseId, ...]
     not_applicable_counts: dict[str, int] = {}   # metric -> candidate cases with status not_applicable (D135)
+    n_unmatched: dict[str, int] = {}; n_excluded: dict[str, int] = {}   # metric -> cases dropped from pairing (non-zero only; T1.7 review)
     no_baseline: bool = False                    # True when --from-store found no baseline (D103; status then
                                                  # INSUFFICIENT_DATA locally, `failure` on a gated PR; baseline_run_id None;
                                                  # title emoji ⚪ "NO BASELINE" in the PR comment and dashboard (R9 X5.5, ui-spec)
@@ -1127,7 +1129,12 @@ def evaluate_gate(baseline: RunResults, candidate: RunResults, policy: GatePolic
     #   `overall` slice has < 30 applicable clusters (D117). Informational pairs are PASS, leave the Holm family, carry
     #   informational_reason and have gated=False (R9 X5.4). Judge-ERROR values are excluded from pairing, never worst-filled.
     #   overall / tenant / lang are built from unperturbed cases only; perturbed_all from perturbed cases (R9 X3.6).
-    # raises GateInputError on eval_fingerprint mismatch, incomplete runs, or baseline error_rate > max_error_rate
+    # raises GateInputError on eval_fingerprint mismatch, incomplete runs, or baseline error_rate > max_error_rate, or when baseline and candidate
+    #   hold different case ids / cluster or slice attributes. `directions` is NOT cross-checked against the registry here
+    #   (gate never imports metrics); T1.10's pipeline passes MetricRegistry.directions() unchanged and tests the equality.
+    #   A judge-error pair is excluded only if every gated slice holding it (testable or not) stays within 20 %; otherwise it is
+    #   filled with the worst value everywhere, `overall` included (D360h). Further GateInputError cases: baseline `error` above
+    #   20 % of a testable gated slice, a response-less record whose error_rate is 0, a gated metric with no usable baseline value.
 CauseCode = Literal["retrieval", "generation", "citation_format", "language", "refusal_policy", "errors", "mixed"]
 def likely_cause(decisions: Sequence[SliceDecision]) -> CauseCode | None   # gate/cause.py (T1.7); rule table: SPEC §7.4
     # tests assert these string codes, never rule numbers
