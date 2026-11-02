@@ -161,7 +161,7 @@ def test_missing_go_check_is_no_go() -> None:
     assert "net: check missing" in out
 
 
-def test_worst_status_wins_for_duplicate_ids() -> None:
+def test_last_status_wins_for_duplicate_ids() -> None:
     out = summarise(_probe() + "CHECK gpu FAIL second run\n")
     assert _verdict(out) == "VERDICT: no-go"
 
@@ -175,3 +175,59 @@ def test_model_load_skip_adds_the_not_measured_condition() -> None:
     out = summarise(_probe(model_load="PASS SKIP: opt-in MEASURE_LOAD=1"))
     assert _verdict(out) == "VERDICT: go-with-conditions"
     assert "cold load not measured" in out
+
+
+SKIP_LOAD = "CHECK model-load PASS SKIP: opt-in MEASURE_LOAD=1\n"
+MEASURED_LOAD = "CHECK model-load PASS cold load 4.5 min (270 s) from <models-dir>\n"
+
+
+@pytest.mark.parametrize("order", ["skip-first", "measured-first"])
+def test_measured_model_load_beats_skip_in_either_order(order: str) -> None:
+    base = _probe().replace("CHECK model-load", "# x")
+    pair = MEASURED_LOAD + SKIP_LOAD if order == "measured-first" else SKIP_LOAD + MEASURED_LOAD
+    out = summarise(base + pair)
+    assert "cold load not measured" not in out
+    assert "cold load 4.5 min" in out
+    assert "SKIP" not in out
+    assert out.count("| model-load |") == 1
+
+
+def test_stale_skip_condition_goes_but_a_real_warn_stays() -> None:
+    text = _probe(models_space="WARN 11 GB free") + SKIP_LOAD + MEASURED_LOAD
+    out = summarise(text)
+    assert _verdict(out) == "VERDICT: go-with-conditions"
+    assert "cold load not measured" not in out
+    assert "free space on /data first" in out
+
+
+def test_skip_alone_still_reports_the_condition() -> None:
+    out = summarise(_probe() + SKIP_LOAD)
+    assert _verdict(out) == "VERDICT: go-with-conditions"
+    assert "cold load not measured" in out
+
+
+def test_measured_warn_load_after_skip_gives_minutes_condition() -> None:
+    out = summarise(_probe() + SKIP_LOAD + "CHECK model-load WARN cold load 6 min\n")
+    assert "first model load ≈ 6 min" in out
+    assert "cold load not measured" not in out
+
+
+def test_fail_then_pass_last_result_wins() -> None:
+    out = summarise(_probe(gpu="FAIL no gpu") + "CHECK gpu PASS 2 x A40\n")
+    assert _verdict(out) == "VERDICT: go"
+    assert "no gpu" not in out
+    assert out.count("| gpu |") == 1
+
+
+def test_pass_then_fail_last_result_wins() -> None:
+    out = summarise(_probe() + "CHECK gpu FAIL tunnel dropped\n")
+    assert _verdict(out) == "VERDICT: no-go"
+    assert "gpu FAIL: tunnel dropped" in out
+    assert out.count("| gpu |") == 1
+
+
+def test_table_has_one_row_per_id_in_first_seen_order() -> None:
+    text = "CHECK b PASS 1\nCHECK a PASS 1\nCHECK b WARN 2\n"
+    rows = [x for x in summarise(text).splitlines() if x.startswith("| ") and "---" not in x][1:]
+    assert [r.split(" | ")[0] for r in rows] == ["| b", "| a"]
+    assert "| b | WARN | 2 |" in rows
