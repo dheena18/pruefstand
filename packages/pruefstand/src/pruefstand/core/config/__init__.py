@@ -6,6 +6,7 @@
 - ``build.py``: build configs added by T2.5 and T4.1.
 """
 
+from pruefstand.core.config.build import CorpusBuildConfig, TenantPlan, TenantRule
 from pruefstand.core.config.gate import KNOWN_METRICS, REPORT_ONLY_METRICS, GatePolicy, MetricPolicy
 from pruefstand.core.config.run import (
     BaselineStoreConfig,
@@ -23,6 +24,7 @@ __all__ = [
     "REPORT_ONLY_METRICS",
     "BaselineStoreConfig",
     "BudgetConfig",
+    "CorpusBuildConfig",
     "GatePolicy",
     "HttpTargetConfig",
     "JudgeConfig",
@@ -32,4 +34,6 @@ __all__ = [
     "PruefstandConfig",
     "RunnerConfig",
     "TargetConfig",
+    "TenantPlan",
+    "TenantRule",
 ]

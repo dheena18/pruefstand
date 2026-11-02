@@ -293,6 +293,7 @@ both fast and the natural place for the tenant boundary.
 corpus/<corpus_version>/            read by the rag-demo indexer
   manifest.json
   <tenant_id>.chunks.jsonl          kanzlei_mueller, versicherung_nord, stadtwerke_sued, shared_public
+                                    (one Chunk per line sorted by doc_id, chunk_id; tenant ids match [a-z][a-z0-9_]{0,62}; T2.5, D431-D438)
 corpus/<corpus_version>/canaries.public.json   public canaries of the slice registry (read by the dashboard export)
 datasets/canaries/<corpus_version>/
   canaries.json                     public CanaryRegistry (outside the corpus dir the app reads)
