@@ -1,0 +1,6 @@
+# Direct pins of rerank-cpu; requirements.txt is compiled from this file with hashes for every package:
+#   uv pip compile requirements.in --generate-hashes --python-version 3.12 --python-platform x86_64-manylinux_2_28 \
+#     --index-url https://pypi.org/simple --extra-index-url https://download.pytorch.org/whl/cpu -o requirements.txt
+# torch+cpu exists only on the PyTorch CPU index (no CUDA wheels in the image).
+torch==2.15.0+cpu
+sentence-transformers==6.2.0

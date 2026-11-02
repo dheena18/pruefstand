@@ -1,7 +1,7 @@
-"""T3.1a CPU tests: the installer and the deploy refuse an unreviewed working tree (M3, confused deputy).
+"""T3.1a CPU tests: the installer and the deploy refuse an unreviewed tree (M3, confused deputy).
 
 Both run with the owner's rights (sudo / the cluster key), so they only act on a tree that equals
-``origin/main`` for ``infra/gpu`` and ``infra/cluster``. The tests use temp git repos with a local bare
+``origin/main`` for ``infra/gpu`` and ``infra/cluster``. The tests use temp git repos with a bare
 ``origin`` and a ``DESTDIR``; the real ``/etc`` and ``/usr/local`` are never touched.
 """
 
@@ -12,7 +12,7 @@ from pathlib import Path
 import pytest
 from gpu_repo import Repo
 from gpu_testkit import GPU_DIR, fake_ssh
-from vm_testkit import Result, Stubs
+from vm_testkit import Result
 
 MARKER = "installed-by: infra/gpu/install-cluster-wrapper.sh"
 

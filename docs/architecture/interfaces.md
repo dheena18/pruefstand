@@ -370,7 +370,7 @@ VM scripts (infra/gpu/; never take the lock; exit 2 unless PRUEFSTAND_LOCK_HELD=
                                      (same rule as the generator swap)
   fetch-model.sh <models.yaml id>    ollama pull <tag> via the one server into /data/dheena/Models, then
                                      manifest-digest check; mismatch -> ollama rm <tag>, exit 1 (D207); refuses
-                                     (exit 17, D413) if /data would keep < 2 GB free; --rm <id> removes a non-generator
+                                     (exit 17, D413) if the models disk would keep less than model size + 2 GB free; --rm <id> removes a non-generator
                                      model, only while MAINTENANCE exists (swap rule, ADR-0019)
                                      T3.1a (D413, owner's disk rule): the free space of the models disk is read from
                                      status.sh right before the pull; below model size + 2 GB reserve it stops with

@@ -132,6 +132,11 @@ def test_make_gpu_targets_take_the_lock_and_run_health_under_it() -> None:
     assert "health.sh --repair" in dry("gpu-repair")
     assert "deploy-cluster-bin.sh" in dry("gpu-deploy-bin")
     assert "pruefstand-lock" not in dry("gpu-deploy-bin")  # deploy needs no lock
+    for target in ("gpu-deploy-bin", "gpu-install-wrapper"):
+        text = dry(target)
+        assert "git archive origin/main infra/gpu infra/cluster" in text  # never the working tree
+        assert "cp -r" not in text
+    assert "install-cluster-wrapper.sh" in dry("gpu-install-wrapper")
     assert "fetch-model.sh ollama/bge-m3" in dry("gpu-pull", "ID=ollama/bge-m3")
     assert "fetch-model.sh --rm ollama/gemma3:12b" in dry("gpu-rm", "ID=ollama/gemma3:12b")
     down = dry("gpu-down")

@@ -172,7 +172,10 @@ def _broken_catalogue(gpu: GpuWorld, **changes: object) -> str:
 
 @pytest.mark.parametrize(
     "changes",
-    [{"disk_bytes": None}, {"disk_bytes": 0}, {"digest": None}, {"digest": "abc"}, {"digest": "G" * 64}],
+    [
+        {"disk_bytes": None}, {"disk_bytes": 0}, {"digest": None}, {"digest": "abc"},
+        {"digest": "G" * 64},
+    ],
 )  # fmt: skip
 def test_an_incomplete_catalogue_entry_is_refused_before_anything_runs(
     gpu: GpuWorld, changes: dict[str, object]

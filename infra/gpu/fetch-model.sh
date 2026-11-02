@@ -6,7 +6,9 @@
 # DISK RULE (owner, binding): the shared cluster disk has little room. Right before every pull the free space of the
 # models disk is read from the cluster (status.sh); if it is below model size + the 2 GB reserve, the script STOPS
 # with exit 17 and asks the owner to free space (swap rule); it never starts the pull in that case.
-# A model that is already present with the pinned digest is not pulled again.
+# A model that is already present with the pinned digest is not pulled again. The size also goes to the cluster, which
+# checks it against the free space again (ollama-op.sh, exit 17). Limit: a pull the owner starts by hand at the same time
+# is invisible to this check; one pull at a time is a rule, not something the script can enforce.
 # --rm <id> removes a non-generator catalogue model (swap rule) and only while the file MAINTENANCE exists.
 # Exit: 0 ok, 1 pull failed / digest mismatch / space unreadable, 2 not under the lock, 3 --rm without MAINTENANCE,
 # 17 not enough free disk space (ask the owner), 64 usage / unknown id / the generator with --rm.
@@ -32,6 +34,10 @@ id_re='^ollama/[A-Za-z0-9._:/-]+$'
 row="$(cat_py lookup "$id")" || exit "$?"
 IFS=$'\t' read -r tag digest role disk_bytes engine <<<"$row"
 [ "$engine" = ollama ] || die "$id is not served by Ollama" 64
+# the catalogue entry must carry the pin and the size the disk rule needs (gpu_catalogue.py checked them too)
+if ! [[ $digest =~ ^[0-9a-f]{64}$ ]] || ! [[ $disk_bytes =~ ^[1-9][0-9]{0,14}$ ]]; then
+  die "catalogue entry $id has no valid digest or disk_bytes; refusing" 1
+fi
 
 if [ "$remove" -eq 1 ]; then
   [ "$role" != generator ] || die "never remove the generator ($id)" 64
@@ -53,13 +59,15 @@ fi
 status="$(cluster_op status 2>/dev/null)" || [ -n "$status" ] || die "cannot read the free space of the cluster disk (status.sh failed); not pulling" 1
 free_kb="$(sed -n 's/^disk-models,[A-Z]*,.*free_kb=\([0-9]*\).*/\1/p' <<<"$status" | head -n 1)"
 reserve_gb="$(sed -n 's/^disk-models,[A-Z]*,.*min_free_gb=\([0-9]*\).*/\1/p' <<<"$status" | head -n 1)"
-[ -n "$free_kb" ] && [ -n "$reserve_gb" ] || die "status.sh reports no free space of the models disk; not pulling" 1
+if [ -z "$free_kb" ] || [ -z "$reserve_gb" ]; then
+  die "status.sh reports no free space of the models disk; not pulling" 1
+fi
 need_kb=$(((disk_bytes + 1023) / 1024 + reserve_gb * 1024 * 1024))
 if [ "$free_kb" -lt "$need_kb" ]; then
   die "free space first: swap rule. $tag needs $((need_kb / 1024)) MiB free (model plus the ${reserve_gb} GB reserve) but the cluster disk has $((free_kb / 1024)) MiB. Not pulling: ask the owner to free space" 17
 fi
 
-cluster_mut pull "$tag"
+cluster_mut pull "$tag" "$disk_bytes"
 actual="$(listed)"
 if [ "$DRY" -eq 1 ] && [ -z "$actual" ]; then
   say "would verify the digest of $tag after the pull"

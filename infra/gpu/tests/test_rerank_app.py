@@ -23,9 +23,9 @@ from rerank.rerank_app import (
     MAX_TOKENS_FULL,
     MAX_TOKENS_TRUNCATED,
     RerankState,
-    verify_sha256,
     handle_rerank,
     make_server,
+    verify_sha256,
 )
 
 FIXTURE = json.loads(
@@ -211,7 +211,7 @@ def test_the_handler_sets_a_socket_timeout_of_30_seconds(server: tuple[str, Rera
     state = RerankState()
     httpd = make_server("127.0.0.1", 0, state)
     try:
-        assert httpd.RequestHandlerClass.timeout == 30
+        assert getattr(httpd.RequestHandlerClass, "timeout", None) == 30
     finally:
         httpd.server_close()
 

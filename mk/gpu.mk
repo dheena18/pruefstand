@@ -9,7 +9,8 @@ PRUEFSTAND_HOME ?= $(HOME)/pruefstand
 export QDRANT_STORAGE := $(PRUEFSTAND_HOME)/qdrant
 endif
 
-.PHONY: gpu-up gpu-night-up gpu-down gpu-health gpu-repair gpu-deploy-bin gpu-pull gpu-rm test-gpu-locked
+.PHONY: gpu-up gpu-night-up gpu-down gpu-health gpu-repair gpu-deploy-bin gpu-install-wrapper gpu-pull gpu-rm \
+        test-gpu-locked
 
 GPU_LOCK := pruefstand-lock
 need_id = $(if $(ID),,$(error ID=<models.yaml id, e.g. ollama/bge-m3> is required))
@@ -40,11 +41,19 @@ gpu-rm:
 	$(need_id)
 	$(GPU_LOCK) infra/gpu/fetch-model.sh --rm $(ID)
 
-# OWNER step (sudo): the cluster key belongs to user pruefstand, which cannot read the owner's checkout, so the
-# scripts are copied to a world-readable temp dir first. No lock needed. DEPLOY_ARGS=--check only compares.
+# OWNER steps (sudo). Both export origin/main with `git archive` and run THAT copy, never the working tree: an edited
+# dev worktree must not be able to borrow sudo or the cluster key (M3). The cluster key belongs to user pruefstand, which
+# cannot read the owner's checkout, hence the world-readable temp dir. No lock needed. DEPLOY_ARGS=--check only compares.
 gpu-deploy-bin:
-	d=$$(mktemp -d) && cp -r infra/gpu infra/cluster "$$d"/ && chmod -R a+rX "$$d" \
-	  && { sudo -u pruefstand "$$d/gpu/deploy-cluster-bin.sh" $(DEPLOY_ARGS); rc=$$?; rm -rf "$$d"; exit $$rc; }
+	git fetch -q origin && d=$$(mktemp -d) && git archive origin/main infra/gpu infra/cluster | tar -x -C "$$d" \
+	  && git rev-parse origin/main > "$$d/COMMIT" && chmod -R a+rX "$$d" \
+	  && { sudo -u pruefstand "$$d/infra/gpu/deploy-cluster-bin.sh" $(DEPLOY_ARGS); rc=$$?; rm -rf "$$d"; exit $$rc; }
+
+# Installs the pruefstand-cluster wrapper, its allow-list and the sudoers file from origin/main (INSTALL_ARGS=--replace).
+gpu-install-wrapper:
+	git fetch -q origin && d=$$(mktemp -d) && git archive origin/main infra/gpu infra/cluster | tar -x -C "$$d" \
+	  && git rev-parse origin/main > "$$d/COMMIT" && chmod -R a+rX "$$d" \
+	  && { sudo "$$d/infra/gpu/install-cluster-wrapper.sh" $(INSTALL_ARGS); rc=$$?; rm -rf "$$d"; exit $$rc; }
 
 # The `gpu` smoke tests under the same lock (R11 D212, DEV11-20).
 test-gpu-locked:

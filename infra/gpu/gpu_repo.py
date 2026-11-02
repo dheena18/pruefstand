@@ -1,7 +1,7 @@
-"""A temp git repo with a local bare ``origin`` holding the files the installer and the deploy use (T3.1a).
+"""A temp git repo with a local bare ``origin`` and the files the installer and the deploy use.
 
-The installer and the deploy only act on a tree equal to ``origin/main`` (M3); tests that run them need a
-clean checkout, which the real working tree of a task branch never is.
+The installer and the deploy only act on a tree equal to ``origin/main`` (M3); tests that run
+them need a clean checkout, which the real working tree of a task branch never is.
 """
 
 import getpass
@@ -23,26 +23,30 @@ GPU_FILES = (
 
 @dataclass
 class Repo:
+    """A temp checkout (``root``), its bare ``origin`` and a ``DESTDIR`` for the installer."""
+
     root: Path
     stubs: Stubs
     dest: Path
     remote: Path
 
     def git(self, *args: str) -> str:
+        """Run ``git <args>`` in the checkout (fixed identity, no global config); return stdout."""
         env = {**os.environ, "HOME": str(self.root.parent), "GIT_CONFIG_GLOBAL": "/dev/null"}
         env.update(GIT_AUTHOR_NAME="t", GIT_AUTHOR_EMAIL="t@example.org")
         env.update(GIT_COMMITTER_NAME="t", GIT_COMMITTER_EMAIL="t@example.org")
         out = subprocess.run(  # noqa: S603
-            ["git", *args],
+            ["git", *args],  # noqa: S607
             cwd=self.root,
             env=env,
             capture_output=True,
             text=True,
-            check=True,  # noqa: S607
+            check=True,
         )
         return out.stdout.strip()
 
     def run(self, script: str, *args: str, **env: str) -> Result:
+        """Run ``infra/gpu/<script>`` of the checkout as the service user."""
         path = self.root / "infra" / "gpu" / script
         base = {"PRUEFSTAND_SERVICE_USER": getpass.getuser(), "PRUEFSTAND_PYTHON": "python3"}
         return run_script(path, *args, stubs=self.stubs, env={**base, **env})
@@ -59,13 +63,15 @@ def make_repo(tmp_path: Path, stubs: Stubs) -> Repo:
         shutil.copy(src, root / "infra" / "cluster" / src.name)
     remote = tmp_path / "origin.git"
     result = Repo(root, stubs, tmp_path / "dest", remote)
-    subprocess.run(["git", "init", "-q", "--bare", "-b", "main", str(remote)], check=True)  # noqa: S607
+    bare = ["git", "init", "-q", "--bare", "-b", "main", str(remote)]
+    subprocess.run(bare, check=True)  # noqa: S603
     result.git("init", "-q", "-b", "main")
     result.git("add", "-A")
     result.git("commit", "-q", "-m", "base")
     result.git("remote", "add", "origin", str(remote))
     result.git("push", "-q", "origin", "main")
-    link_tools(stubs, "git", "diff", "install", "cat", "cp", "mv", "mkdir", "chmod", "sort")
+    link_tools(stubs)
+    link_tools(stubs, "git", "diff", "install", "cat", "cp", "mv", "mkdir", "chmod", "find", "cmp")
     python_stub(stubs)
     stubs.add("visudo", [("-c -f *", "parsed OK", 0)])
     return result

@@ -15,7 +15,7 @@ DEPLOY = GPU_DIR / "deploy-cluster-bin.sh"
 
 @pytest.fixture(autouse=True)
 def _clean_checkout(repo: Repo, monkeypatch: pytest.MonkeyPatch) -> None:
-    """The real deploy only acts on a clean tree equal to origin/main: run the copy in a temp repo."""
+    """The real deploy acts only on a clean tree equal to origin/main: run it from a temp repo."""
     monkeypatch.setattr(
         sys.modules[__name__], "DEPLOY", repo.root / "infra/gpu/deploy-cluster-bin.sh"
     )

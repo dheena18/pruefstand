@@ -12,6 +12,7 @@ Commands (``PRUEFSTAND_GPU_CATALOGUE`` overrides the catalogue path):
                          fallback for embedding-only models
   unload-body <tag> [--embed]    ``{"model", "keep_alive": 0}`` (--embed: with ``input``)
   catalogue-tags         every Ollama tag of the catalogue
+  allowlist              TSV ``tag disk_bytes`` of every Ollama entry (the installer's allow-list)
   lookup <id>            TSV ``tag digest role disk_bytes engine`` of an ``ollama/<tag>`` id
   server <tag>           ``gpu0`` or ``gpu1``: the lane (URL setting) of a tag
   role <tag>             ``generator|judge|embed``
@@ -32,6 +33,8 @@ import yaml
 
 DEFAULT = Path(__file__).resolve().parent / "models.yaml"
 TAG_RE = re.compile(r"^[a-z0-9._:/-]+$")
+HEX64 = re.compile(r"^[0-9a-f]{64}$")
+OPTION_KEYS = frozenset({"num_ctx", "num_predict", "temperature", "seed", "top_p"})
 ORDER = {"generator": 0, "embed": 1, "judge": 2}
 EXIT_USAGE = 64
 Entry = dict[str, Any]
@@ -46,8 +49,8 @@ class UsageError(Exception):
         self.code = code
 
 
-def _refuse(message: str) -> NoReturn:
-    raise UsageError(message)
+def _refuse(message: str, code: int = EXIT_USAGE) -> NoReturn:
+    raise UsageError(message, code)
 
 
 def entries(path: Path | None = None) -> list[Entry]:
@@ -57,9 +60,25 @@ def entries(path: Path | None = None) -> list[Entry]:
     return list(data["models"])
 
 
+def check_entry(entry: Entry) -> Entry:
+    """Fail closed (exit 1) when an Ollama entry lacks the pin, size or options the scripts use."""
+    ident = entry.get("id", "?")
+    if not HEX64.match(str(entry.get("digest", ""))):
+        _refuse(f"{ident}: digest must be 64 lowercase hex characters", 1)
+    size = entry.get("disk_bytes")
+    if not isinstance(size, int) or isinstance(size, bool) or size <= 0:
+        _refuse(f"{ident}: disk_bytes must be a positive integer", 1)
+    options = entry.get("options")
+    if not isinstance(options, dict) or not set(options) >= OPTION_KEYS:
+        _refuse(f"{ident}: options need {sorted(OPTION_KEYS)}", 1)
+    if not isinstance(entry.get("keep_alive"), str) or entry.get("role") not in ORDER:
+        _refuse(f"{ident}: keep_alive and a known role are required", 1)
+    return entry
+
+
 def ollama_entries() -> list[Entry]:
-    """Entries served by the Ollama server (not the CPU reranker)."""
-    return [e for e in entries() if e["engine"] == "ollama"]
+    """Validated entries served by the Ollama server (not the CPU reranker)."""
+    return [check_entry(e) for e in entries() if e["engine"] == "ollama"]
 
 
 def by_tag(tag: str) -> Entry:
@@ -76,7 +95,7 @@ def by_id(model_id: str) -> Entry:
     """The entry with this id (``ollama/<tag>`` or ``cpu/...``); exit 64 when unknown."""
     for entry in entries():
         if entry["id"] == model_id:
-            return entry
+            return check_entry(entry) if entry["engine"] == "ollama" else entry
     return _refuse(f"{model_id} is not in the catalogue")
 
 
@@ -161,6 +180,7 @@ ONE_ARG: dict[str, Callable[[str, frozenset[str]], list[str]]] = {
     "tag-digest": lambda arg, _opts: [tag_digest(sys.stdin.read(), arg)],
 }
 NO_ARG: dict[str, Callable[[], list[str]]] = {
+    "allowlist": lambda: [_tsv(e["tag"], e["disk_bytes"]) for e in ollama_entries()],
     "catalogue-tags": lambda: [e["tag"] for e in ollama_entries()],
     "ps-rows": lambda: [_tsv(*row) for row in ps_rows(sys.stdin.read())],
 }

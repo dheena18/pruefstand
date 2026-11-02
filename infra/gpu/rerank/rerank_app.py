@@ -8,9 +8,12 @@ is reachable only on the internal candidate network, publishes no host port in t
 and an ``Authorization`` header is neither required nor read. Tier-2 callers send the top 10
 passages, truncated to 256 tokens, batched (D222). Standard library HTTP server on purpose: the
 only extra dependency in the image is the model library. Query and passages are never logged.
-Env: RERANK_MODEL, RERANK_REVISION (HF commit, required), RERANK_PORT (default 8201).
+Env: RERANK_MODEL, RERANK_REVISION (HF commit, required), RERANK_WEIGHTS_SHA256 (sha256 of
+model.safetensors, checked after the load), RERANK_PORT (default 8201), HF_HUB_OFFLINE=1 once
+the weights are cached.
 """
 
+import hashlib
 import importlib
 import json
 import os
@@ -19,11 +22,15 @@ import threading
 from collections.abc import Sequence
 from dataclasses import dataclass
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from pathlib import Path
 from typing import Any, NoReturn, Protocol
 
 MAX_TOKENS_TRUNCATED = 256
 MAX_TOKENS_FULL = 512
 MAX_TEXTS = 128
+MAX_QUERY_CHARS = 2000
+SOCKET_TIMEOUT_S = 30
+HASH_CHUNK = 1024 * 1024
 MAX_BODY_BYTES = 4 * 1024 * 1024
 BATCH_SIZE = 8
 
@@ -61,11 +68,27 @@ class RerankRequest:
     truncate: bool
 
 
+def verify_sha256(path: Path, expected: str) -> None:
+    """Raise ``ValueError`` unless the file's sha256 equals ``expected`` (the pinned weights)."""
+    digest = hashlib.sha256()
+    with path.open("rb") as handle:
+        for chunk in iter(lambda: handle.read(HASH_CHUNK), b""):
+            digest.update(chunk)
+    if digest.hexdigest() != expected.lower():
+        message = f"sha256 of {path.name} is {digest.hexdigest()}, not the pinned {expected}"
+        raise ValueError(message)
+
+
 class CrossEncoderScorer:
     """The real model (sentence-transformers CrossEncoder, CPU, sigmoid scores like TEI)."""
 
     def __init__(self, model_id: str, revision: str) -> None:
         """Load ``model_id`` at ``revision`` on the CPU (downloads into the HF cache volume)."""
+        pinned = os.environ.get("RERANK_WEIGHTS_SHA256", "")
+        if pinned:
+            hub = importlib.import_module("huggingface_hub")
+            weights = hub.hf_hub_download(model_id, "model.safetensors", revision=revision)
+            verify_sha256(Path(weights), pinned)
         module = importlib.import_module("sentence_transformers")
         self._model: Any = module.CrossEncoder(
             model_id, revision=revision, device="cpu", max_length=MAX_TOKENS_FULL
@@ -93,6 +116,8 @@ def parse_request(body: bytes) -> RerankRequest:
     query, texts, truncate = data.get("query"), data.get("texts"), data.get("truncate", True)
     if not isinstance(query, str):
         _refuse(422, "query must be a string")
+    if len(query) > MAX_QUERY_CHARS:
+        _refuse(413, f"query longer than {MAX_QUERY_CHARS} characters")
     if not isinstance(texts, list) or not all(isinstance(t, str) for t in texts):
         _refuse(422, "texts must be a list of strings")
     if not isinstance(truncate, bool):
@@ -124,10 +149,42 @@ def handle_rerank(body: bytes, scorer: Scorer) -> tuple[int, Any]:
     return 200, rank(scorer.score(request.query, request.texts, limit))
 
 
+def _content_length(header: str | None) -> int | None:
+    """The declared body length, or ``None`` for a malformed or negative value."""
+    try:
+        length = int(header or 0)
+    except ValueError:
+        return None
+    return length if length >= 0 else None
+
+
+def _health(path: str, state: RerankState) -> tuple[int, Any]:
+    if path != "/health":
+        return 404, {"error": "not found"}
+    if state.scorer is None:
+        return 503, {"status": "loading"}
+    return 200, {"status": "ok"}
+
+
+def _post_refusal(path: str, length: int | None, state: RerankState) -> tuple[int, Any] | None:
+    """The error answer for a POST that must not be read or scored, or ``None`` to go on."""
+    if path != "/rerank":
+        return 404, {"error": "not found"}
+    if length is None:
+        return 400, {"error": "invalid Content-Length"}
+    if length > MAX_BODY_BYTES:
+        return 413, {"error": "body too large"}
+    if state.scorer is None:
+        return 503, {"error": "model is still loading"}
+    return None
+
+
 def make_server(host: str, port: int, state: RerankState) -> ThreadingHTTPServer:
     """Build the HTTP server (not started); ``port`` 0 picks a free port."""
 
     class Handler(BaseHTTPRequestHandler):
+        timeout = SOCKET_TIMEOUT_S  # a stalled client cannot hold a thread for ever
+
         def _reply(self, status: int, payload: object) -> None:
             data = json.dumps(payload).encode()
             self.send_response(status)
@@ -138,24 +195,16 @@ def make_server(host: str, port: int, state: RerankState) -> ThreadingHTTPServer
 
         def do_GET(self) -> None:
             """``GET /health``: 200 when the model is loaded, 503 while loading."""
-            if self.path != "/health":
-                self._reply(404, {"error": "not found"})
-            elif state.scorer is None:
-                self._reply(503, {"status": "loading"})
-            else:
-                self._reply(200, {"status": "ok"})
+            self._reply(*_health(self.path, state))
 
         def do_POST(self) -> None:
             """``POST /rerank``."""
-            length = int(self.headers.get("Content-Length") or 0)
-            if self.path != "/rerank":
-                self._reply(404, {"error": "not found"})
-            elif length > MAX_BODY_BYTES:
-                self._reply(413, {"error": "body too large"})
-            elif state.scorer is None:
-                self._reply(503, {"error": "model is still loading"})
-            else:
-                self._reply(*handle_rerank(self.rfile.read(length), state.scorer))
+            length = _content_length(self.headers.get("Content-Length"))
+            refusal = _post_refusal(self.path, length, state)
+            if refusal is not None:
+                self._reply(*refusal)
+            elif state.scorer is not None:
+                self._reply(*handle_rerank(self.rfile.read(length or 0), state.scorer))
 
         def log_message(self, format: str, *args: object) -> None:  # noqa: A002
             """Never log requests: they carry queries and passages."""

@@ -7,7 +7,7 @@ import subprocess
 from pathlib import Path
 
 import pytest
-from gpu_testkit import GPU_DIR, link_tools, run_script
+from gpu_testkit import GPU_DIR, run_script
 from gpu_world import ENTRIES, GpuWorld
 from vm_testkit import Result
 
@@ -168,10 +168,10 @@ def test_tags_outside_the_installed_allow_list_exit_64(
 def test_a_missing_allow_list_fails_closed_for_model_ops_but_not_for_status(
     gpu: GpuWorld,
 ) -> None:
-    missing = {"PRUEFSTAND_CLUSTER_ALLOW": str(gpu.root / "absent")}
-    assert _wrap(gpu, "show", "bge-m3", **missing).rc == 64
+    absent = str(gpu.root / "absent")
+    assert _wrap(gpu, "show", "bge-m3", PRUEFSTAND_CLUSTER_ALLOW=absent).rc == 64
     assert not _ssh(gpu)
-    assert _wrap(gpu, "status", **missing).rc == 0
+    assert _wrap(gpu, "status", PRUEFSTAND_CLUSTER_ALLOW=absent).rc == 0
 
 
 def test_rm_needs_the_maintenance_file(gpu: GpuWorld) -> None:

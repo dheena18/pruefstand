@@ -7,6 +7,8 @@
 # Needs NO lock. It talks to the cluster with plain ssh, so it runs as the service user (the only holder of the cluster
 # key): as the owner `sudo -u pruefstand infra/gpu/deploy-cluster-bin.sh`. Any user other than the service user (or
 # --bin-dev) writes /data/dheena/pruefstand-bin-dev/ instead, so a dev checkout never replaces the trusted scripts.
+# Confused-deputy guard (M3): it deploys only a tree equal to origin/main (lib/git_verify.sh); `make gpu-deploy-bin`
+# exports origin/main with `git archive` and runs the exported copy. --check and --print-sums only read and skip it.
 # --check: compare the remote SHA256SUMS with this checkout's and exit 1 if they differ; writes nothing.
 # --print-sums: print the SHA256SUMS this checkout would deploy (no ssh); health.sh compares against it (exit 14).
 # Env: CLUSTER_SSH_HOST (alias), PRUEFSTAND_SERVICE_USER (default pruefstand), CLUSTER_ENV_TEMPLATE (test seam).
@@ -68,6 +70,12 @@ render || exit 1
 if [ "$print" -eq 1 ]; then
   cat "$stage/SHA256SUMS"
   exit 0
+fi
+
+if [ "$check" -eq 0 ]; then
+  # shellcheck source=lib/git_verify.sh
+  . "$GPU_DIR/lib/git_verify.sh"
+  verify_reviewed_tree "$(cd "$GPU_DIR/../.." && pwd)"
 fi
 
 remote_ssh() { ssh -o BatchMode=yes -o ConnectTimeout=15 "$host" "$@"; }

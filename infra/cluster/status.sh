@@ -78,9 +78,10 @@ check_env() {
 
 check_disk() {
   local free_kb min_kb=$((MODELS_MIN_FREE_GB * 1024 * 1024)) st=OK
-  free_kb="$({ df -Pk "$OLLAMA_MODELS" 2>/dev/null || df -Pk /data; } | awk 'END{print $4}')"
-  [ "${free_kb:-0}" -ge "$min_kb" ] || st=WARN
-  emit disk-models "$st" "free_kb=${free_kb:-0} min_free_gb=$MODELS_MIN_FREE_GB"
+  free_kb="$(df -Pk "$OLLAMA_MODELS" 2>/dev/null | awk 'END{print $4}')" || free_kb=0
+  if ! [[ $free_kb =~ ^[0-9]+$ ]]; then free_kb=0; fi
+  if [ "$free_kb" -lt "$min_kb" ]; then st=WARN; fi
+  emit disk-models "$st" "free_kb=$free_kb min_free_gb=$MODELS_MIN_FREE_GB"
 }
 
 check_gpus() {
@@ -99,7 +100,7 @@ check_gpus() {
   out="$(nvidia-smi --query-compute-apps=pid,gpu_uuid,used_memory --format=csv,noheader,nounits 2>/dev/null || true)"
   while IFS=',' read -r pid uuid used; do
     pid="${pid// /}"
-    [ -n "$pid" ] && [[ $pid =~ ^[0-9]+$ ]] || continue
+    if ! [[ $pid =~ ^[0-9]+$ ]]; then continue; fi
     uuid="${uuid// /}"
     idx="${UUID_IDX[$uuid]:-?}"
     PID_GPU["$pid"]="$idx"

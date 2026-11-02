@@ -52,9 +52,11 @@ space (ask the owner), `64`.
 
 Run on the VM `pruefstand-exec` as the owner login user from a checkout of the merged `main`, in this order.
 
-1. **Install the wrapper** (sudo): `sudo infra/gpu/install-cluster-wrapper.sh`. It checks the sudoers file with
-   `visudo -c` before installing. Check: `sudo -n -u pruefstand /usr/local/bin/pruefstand-cluster status` prints a CSV.
-2. **Deploy the cluster scripts** (needs sudo; no lock): `make gpu-deploy-bin`, then
+1. **Install the wrapper** (sudo): `make gpu-install-wrapper` (runs `git fetch`, exports `origin/main` with `git archive` and
+   runs the installer from that copy, so an edited working tree can never borrow sudo; it also writes the allow-list
+   `/usr/local/lib/pruefstand-cluster.allow` from `models.yaml`, checks the sudoers file with `visudo -c`, refuses to overwrite a
+   file it did not create unless `INSTALL_ARGS=--replace`, and prints the commit it installed). Check: `sudo -n -u pruefstand /usr/local/bin/pruefstand-cluster status` prints a CSV.
+2. **Deploy the cluster scripts** (needs sudo; no lock): `make gpu-deploy-bin` (also from the exported `origin/main`), then
    `make gpu-deploy-bin DEPLOY_ARGS=--check` (exit 0 = deployed set equals this checkout).
 3. **S2b [GPU][HUMAN] pull the ADR-0019 set** (each pull is refused with exit 17 if the disk is too full):
    `sudo -n -u pruefstand /usr/local/bin/pruefstand-cluster status | grep disk-models` (before), then
@@ -70,6 +72,19 @@ Run on the VM `pruefstand-exec` as the owner login user from a checkout of the m
    `docker compose --profile gpu --profile dev exec rerank-cpu python -c "import urllib.request as u; print(u.urlopen('http://127.0.0.1:8201/health').status)"`
    (200 once the model has loaded), `docker image inspect` for the image digest, `make down`.
    The executor stack must publish no rerank host port: it does not (T6.2a resets `ports`).
+
+## Trust and limits
+
+- The wrapper accepts only tags in its installed allow-list, takes the pull size from it (the cluster checks size + reserve),
+  allows `rm` only while `MAINTENANCE` exists, and allows the mutating ops only when the GPU lock is held by one of its own
+  ancestors (`/proc/locks` plus the parent chain through `sudo`): a lock held by the executor is no proof for an agent.
+- Preflight (`health.sh`, exit 14) is what verifies the cluster scripts (`bin-integrity`, `bin-sums`) before the VM
+  trusts them; the cluster scripts themselves cannot check their own integrity.
+- `fetch-model.sh` cannot see a pull the owner runs by hand at the same time: one pull at a time is a rule.
+- `rerank-cpu` supply chain: every package in `rerank/requirements.txt` is pinned with hashes (`uv pip install
+  --require-hashes`), the base images by digest, the weights by HF commit and by the sha256 of `model.safetensors`
+  (checked at load). The first start needs egress to huggingface.co to fetch the weights; afterwards set
+  `RERANK_OFFLINE=1` (`HF_HUB_OFFLINE`). The recorded image digest is the final pin of what runs.
 
 ## Tests
 

@@ -22,5 +22,5 @@ def gpu(tmp_path: Path, stubs: Stubs) -> GpuWorld:
 
 @pytest.fixture
 def repo(tmp_path: Path, stubs: Stubs) -> Repo:
-    """A clean temp git checkout (local bare origin) holding the installer, deploy and cluster scripts."""
+    """A clean temp git checkout (local bare origin) with the installer and deploy scripts."""
     return make_repo(tmp_path, stubs)

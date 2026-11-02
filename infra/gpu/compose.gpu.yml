@@ -20,6 +20,10 @@ services:
       dockerfile: Dockerfile
       args:
         GIT_SHA: ${GIT_SHA:-unknown}
+    environment:
+      # 0 = the first start downloads the pinned weights from huggingface.co (needs egress); set RERANK_OFFLINE=1 after
+      # that first start, so the running service never reaches the network (supply chain, D419)
+      HF_HUB_OFFLINE: ${RERANK_OFFLINE:-0}
     ports:
       - "127.0.0.1:${RERANK_HOST_PORT:-8201}:8201"
     volumes:

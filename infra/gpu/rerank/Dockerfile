@@ -16,6 +16,7 @@ WORKDIR /app
 COPY requirements.txt ./
 RUN uv venv /app/.venv --python /usr/local/bin/python \
     && uv pip install --python /app/.venv/bin/python \
+        --require-hashes \
         --index-url https://pypi.org/simple \
         --extra-index-url https://download.pytorch.org/whl/cpu \
         -r requirements.txt
@@ -37,7 +38,8 @@ ENV PATH="/app/.venv/bin:$PATH" \
     HF_HOME=/models \
     RERANK_PORT=8201 \
     RERANK_MODEL=BAAI/bge-reranker-v2-m3 \
-    RERANK_REVISION=953dc6f6f85a1b2dbfca4c34a2796e7dde08d41e
+    RERANK_REVISION=953dc6f6f85a1b2dbfca4c34a2796e7dde08d41e \
+    RERANK_WEIGHTS_SHA256=d9e3e081faff1eefb84019509b2f5558fd74c1a05a2c7db22f74174fcedb5286
 WORKDIR /app
 USER 10001
 EXPOSE 8201
