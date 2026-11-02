@@ -6,8 +6,6 @@ from pathlib import Path
 from typing import Any
 
 import pytest
-from click.testing import Result
-from pruefstand.store.baselines_local import LocalDirBaselineStore
 from testsupport.pipeline_support import config_file, mini_config
 from testsupport.run_builders import make_case
 from testsupport.store_support import (
@@ -19,12 +17,13 @@ from testsupport.store_support import (
     run_of,
     token,
 )
-from typer.testing import CliRunner
+from typer.testing import CliRunner, Result
 
 from pruefstand.cli import app
 from pruefstand.core.config import BaselineStoreConfig
 from pruefstand.core.models.run import RunArtifacts
 from pruefstand.store.artifacts import ArtifactStore
+from pruefstand.store.baselines_local import LocalDirBaselineStore
 
 
 def write(tmp_path: Path, run: RunArtifacts) -> Path:

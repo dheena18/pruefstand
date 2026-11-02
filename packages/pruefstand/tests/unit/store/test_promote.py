@@ -4,12 +4,12 @@ from pathlib import Path
 from typing import Any
 
 import pytest
-from pruefstand.store.promote import prepare_promotion
 from testsupport.store_support import FP, full_cases, release_run, run_id, run_of
 
 from pruefstand.core.enums import Split
 from pruefstand.core.errors import ConfigError, StoreError
 from pruefstand.core.fingerprint import eval_fingerprint
+from pruefstand.store.promote import prepare_promotion
 
 
 def block_fingerprint(block: int) -> str:

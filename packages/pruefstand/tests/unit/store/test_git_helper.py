@@ -6,9 +6,9 @@ from pathlib import Path
 from typing import Any
 
 import pytest
-from pruefstand.store._git import Git, remote_url
 
 from pruefstand.core.errors import StoreError
+from pruefstand.store._git import Git, remote_url
 
 SECRET = "ghp_" + "".join(chr(97 + (i * 11) % 26) for i in range(36))
 

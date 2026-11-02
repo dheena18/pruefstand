@@ -7,6 +7,8 @@ from pathlib import Path
 from typing import Any
 
 import pytest
+
+from pruefstand.core.errors import StoreError
 from pruefstand.store.baseline_index import (
     MAX_INDEX_BYTES,
     BaselineIndex,
@@ -16,8 +18,6 @@ from pruefstand.store.baseline_index import (
     render_index,
     with_promotion,
 )
-
-from pruefstand.core.errors import StoreError
 
 FP = "0123456789abcdef"
 NOW = datetime(2026, 11, 2, 22, 0, tzinfo=UTC)

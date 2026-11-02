@@ -5,11 +5,11 @@ from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 import pytest
-from pruefstand.store.baselines_local import LocalDirBaselineStore
-from pruefstand.store.retention import prune_baselines
 from testsupport.store_support import FP, run_id, run_of
 
 from pruefstand.core.errors import StoreError
+from pruefstand.store.baselines_local import LocalDirBaselineStore
+from pruefstand.store.retention import prune_baselines
 
 NOW = datetime(2026, 11, 2, 22, 0, tzinfo=UTC)
 

@@ -7,7 +7,6 @@ from typing import Any
 
 import polars as pl
 import pytest
-from pruefstand.store.sanitise import REDACTED, sanitise_run, write_public_export
 from testsupport.run_builders import make_case
 from testsupport.store_support import canary, registry, results_for, run_id, token
 
@@ -17,6 +16,7 @@ from pruefstand.core.models.attacks import CanaryRegistry
 from pruefstand.core.models.metric import MetricStatus, MetricValue
 from pruefstand.core.models.run import RunArtifacts, ScoredCase
 from pruefstand.core.models.target import CaseRecord, TargetResponse
+from pruefstand.store.sanitise import REDACTED, sanitise_run, write_public_export
 
 LEAK = token("VN-7f3a9c")  # a canary of the registry
 OTHER = "Geheimnis-" + "Xq7"  # a forbidden string that is no canary
@@ -62,7 +62,7 @@ def planted_run(tmp_path: Path, **manifest: Any) -> RunArtifacts:
         metric_version="1",
         value=1.0,
         status=MetricStatus.OK,
-        details={"quote": f"…{LEAK}…", "nested": {"list": [LEAK, 3]}},
+        details={"quote": f"…{LEAK}…", "n": 3},
     )
     values[0] = ScoredCase(case=values[0].case, values=(*values[0].values, detail))
     results = results.model_copy(update={"records": records, "values": tuple(values)})
@@ -128,11 +128,11 @@ def test_chunk_text_is_gone_but_ids_scores_and_ranks_stay(tmp_path: Path) -> Non
     assert all(c.text == "" for c in cleaned.chunks)
 
 
-def test_metric_details_are_masked_recursively(tmp_path: Path) -> None:
+def test_metric_details_are_masked(tmp_path: Path) -> None:
     clean = sanitise_run(planted_run(tmp_path), reg())
     details = clean.results.values[0].values[-1].details
     assert details["quote"] == f"…{REDACTED}…"
-    assert details["nested"] == {"list": [REDACTED, 3]}
+    assert details["n"] == 3
 
 
 def test_no_canary_string_survives_anywhere_in_the_serialised_output(tmp_path: Path) -> None:

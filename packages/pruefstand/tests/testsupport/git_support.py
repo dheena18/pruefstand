@@ -5,7 +5,7 @@ from pathlib import Path
 
 
 def git(*args: str, cwd: Path | None = None, git_dir: Path | None = None) -> str:
-    """Run ``git`` and return stdout; the identity is given on the command line, never from config."""
+    """Run ``git`` and return stdout; the identity comes from the command line, not from config."""
     base = ["git", "-c", "user.name=test", "-c", "user.email=test@invalid"]
     if git_dir is not None:
         base += ["--git-dir", str(git_dir)]
@@ -49,7 +49,8 @@ def reject_pushes(bare: Path, *, times: int | None = None) -> None:
         body = (
             "#!/bin/sh\n"
             f"n=$(cat {counter} 2>/dev/null || echo 0)\n"
-            f'if [ "$n" -lt {times} ]; then echo $((n + 1)) > {counter}; echo refused >&2; exit 1; fi\n'
+            f'if [ "$n" -lt {times} ]; then echo $((n + 1)) > {counter}; '
+            "echo refused >&2; exit 1; fi\n"
             "exit 0\n"
         )
     hook.parent.mkdir(exist_ok=True)

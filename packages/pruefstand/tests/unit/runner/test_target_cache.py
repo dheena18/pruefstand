@@ -1,4 +1,4 @@
-"""The target cache keyed by ``target_fingerprint`` (T6.1 S1): what invalidates it, what does not."""
+"""The target cache keyed by ``target_fingerprint`` (T6.1 S1): what invalidates it."""
 
 from pathlib import Path
 from typing import Any

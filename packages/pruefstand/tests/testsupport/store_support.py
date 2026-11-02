@@ -4,12 +4,14 @@ from collections.abc import Sequence
 from pathlib import Path
 from typing import Any
 
+from testsupport.builders import fixture_f0, make_record, make_run
 from testsupport.run_builders import make_case, make_results
 
 from pruefstand.core.ids import CaseId, DocId, TenantId
 from pruefstand.core.models.attacks import Canary, CanaryRegistry
-from pruefstand.core.models.run import RunArtifacts, RunResults, ScoredCase
+from pruefstand.core.models.run import RunArtifacts, RunManifest, RunResults, ScoredCase
 from pruefstand.core.models.testcase import TestCase
+from pruefstand.store.artifacts import ArtifactStore
 
 FP = "0123456789abcdef"
 PREFIX = "CANARY-"
@@ -24,13 +26,16 @@ def results_for(cases: Sequence[TestCase], **changes: Any) -> RunResults:
     """Results with one record and two metric values per case; manifest fields can be overridden."""
     base = make_results(len(cases))
     values = tuple(
-        ScoredCase(case=case, values=scored.values) for case, scored in zip(cases, base.values)
+        ScoredCase(case=case, values=scored.values)
+        for case, scored in zip(cases, base.values, strict=True)
     )
     records = tuple(
         rec.model_copy(update={"case_id": CaseId(case.id)})
-        for case, rec in zip(cases, base.records)
+        for case, rec in zip(cases, base.records, strict=True)
     )
-    manifest = base.manifest.model_copy(update={"n_cases": len(cases), **changes})
+    manifest = RunManifest.model_validate(
+        {**base.manifest.model_dump(), "n_cases": len(cases), **changes}
+    )
     return RunResults(manifest=manifest, records=records, values=values)
 
 
@@ -100,8 +105,6 @@ def registry(*names: str) -> CanaryRegistry:
 
 def gate_run(root: Path, name: str, *, fp: str, **manifest: Any) -> RunArtifacts:
     """A gateable run (fixture F0: 120 cases) named ``name`` under ``root``; not yet written."""
-    from testsupport.builders import fixture_f0, make_record, make_run
-
     cases, values = fixture_f0()
     values = {m: v for m, v in values.items() if m != "faithfulness"}
     records = [make_record(c) for c in cases]
@@ -112,6 +115,4 @@ def gate_run(root: Path, name: str, *, fp: str, **manifest: Any) -> RunArtifacts
 
 def write_gate_run(root: Path, name: str, *, fp: str, **manifest: Any) -> Path:
     """``gate_run`` written into ``root`` through the artifact store; returns the directory."""
-    from pruefstand.store.artifacts import ArtifactStore
-
     return ArtifactStore(root).write_run(gate_run(root, name, fp=fp, **manifest))

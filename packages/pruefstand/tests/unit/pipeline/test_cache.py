@@ -3,9 +3,9 @@
 from pathlib import Path
 
 import pytest
-from pruefstand.pipeline.cache import cache_mode, target_cache
 
 from pruefstand.core.errors import ConfigError
+from pruefstand.pipeline.cache import cache_mode, target_cache
 from pruefstand.store.kv import DiskKVCache, LayeredKVCache
 
 
@@ -17,6 +17,12 @@ def env_of(tmp_path: Path, mode: str | None = None) -> dict[str, str]:
     if mode is not None:
         env["PRUEFSTAND_CACHE_MODE"] = mode
     return env
+
+
+def failing_job(env: dict[str, str]) -> None:
+    with target_cache(env):
+        msg = "job failed"
+        raise RuntimeError(msg)
 
 
 def seed(tmp_path: Path) -> None:
@@ -63,8 +69,8 @@ def test_the_overlay_is_deleted_even_when_the_job_fails(
     temp = tmp_path / "tmp"
     temp.mkdir()
     monkeypatch.setattr("tempfile.tempdir", str(temp))
-    with pytest.raises(RuntimeError), target_cache(env_of(tmp_path)):
-        raise RuntimeError("job failed")
+    with pytest.raises(RuntimeError):
+        failing_job(env_of(tmp_path))
     assert list(temp.iterdir()) == []
 
 

@@ -1,0 +1,112 @@
+"""``pruefstand baseline``: promote, export-public, prune, publish-dashboard (T6.1 S7-S9)."""
+
+import re
+from datetime import UTC, datetime
+from pathlib import Path
+from typing import Annotated
+
+import typer
+
+from pruefstand.cli._common import EXIT_FAIL, EXIT_USAGE, fail, guarded
+from pruefstand.core.config_loader import load_config
+from pruefstand.core.protocols import BaselineStore
+from pruefstand.store.artifacts import ArtifactStore
+from pruefstand.store.baseline_index import REFS
+from pruefstand.store.baselines_git import GitBranchBaselineStore
+from pruefstand.store.baselines_local import LocalDirBaselineStore
+from pruefstand.store.canary_source import load_canary_registry
+from pruefstand.store.dashboard_repo import push_dashboard_data
+from pruefstand.store.factory import build_baseline_store
+from pruefstand.store.promote import BaselineRefused, prepare_promotion
+from pruefstand.store.sanitise import sanitise_run, write_public_export
+
+_REPO = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]*/[A-Za-z0-9][A-Za-z0-9._-]*")
+_Run = Annotated[Path, typer.Option("--run", help="Run directory runs/<id>.")]
+_Config = Annotated[
+    Path,
+    typer.Option(
+        "--config", envvar="PRUEFSTAND_CONFIG", help="pruefstand.yaml (its baseline_store is used)."
+    ),
+]
+
+
+def promote_command(
+    ctx: typer.Context,
+    *,
+    run: _Run,
+    ref: Annotated[str, typer.Option("--ref", help=f"One of: {', '.join(REFS)}.")],
+    config: _Config = Path("pruefstand.yaml"),
+) -> None:
+    """Promote a complete run to the baseline of its fingerprint and ref."""
+    with guarded(ctx):
+        artifacts = ArtifactStore(run.parent).read_run(run)
+        cfg = load_config(config)
+        try:
+            prepared = prepare_promotion(artifacts, ref)
+            build_baseline_store(cfg.baseline_store).put(prepared, ref)
+        except BaselineRefused as exc:
+            fail(f"error: {exc}", EXIT_FAIL)
+        manifest = prepared.results.manifest
+        typer.echo(f"promoted {manifest.run_id} to {manifest.eval_fingerprint}/{ref}")
+
+
+def export_public_command(
+    ctx: typer.Context,
+    *,
+    run: _Run,
+    out: Annotated[Path, typer.Option("--out", help="New directory for the public copy.")],
+) -> None:
+    """Write a sanitised copy of a run (no chunk text, no canaries) for the public repo."""
+    with guarded(ctx):
+        artifacts = ArtifactStore(run.parent).read_run(run)
+        clean = sanitise_run(artifacts, load_canary_registry())
+        typer.echo(str(write_public_export(clean, out)))
+
+
+def _prunable(store: BaselineStore) -> LocalDirBaselineStore | GitBranchBaselineStore:
+    if not isinstance(store, LocalDirBaselineStore | GitBranchBaselineStore):
+        fail("error: this baseline store cannot be pruned", EXIT_USAGE)
+    return store
+
+
+def prune_command(
+    ctx: typer.Context,
+    *,
+    keep: Annotated[
+        int, typer.Option("--keep", min=1, help="History entries per fingerprint.")
+    ] = 20,
+    unused_days: Annotated[
+        int, typer.Option("--unused-days", min=0, help="Drop fingerprints unused this long.")
+    ] = 90,
+    config: _Config = Path("pruefstand.yaml"),
+) -> None:
+    """Delete old baselines (last N per fingerprint) and unused fingerprints."""
+    with guarded(ctx):
+        store = _prunable(build_baseline_store(load_config(config).baseline_store))
+        removed = store.prune(keep=keep, unused_days=unused_days, now=datetime.now(UTC))
+        for item in removed:
+            typer.echo(f"removed {item}")
+        typer.echo(f"{len(removed)} removed")
+
+
+def publish_command(
+    ctx: typer.Context,
+    *,
+    src: Annotated[Path, typer.Option("--src", help="Sanitised export directory.")],
+    repo: Annotated[str, typer.Option("--repo", help="owner/pruefstand-dashboard-data.")],
+) -> None:
+    """Push a sanitised export to the public dashboard-data repo (token: DASHBOARD_DATA_PAT)."""
+    if _REPO.fullmatch(repo) is None:
+        fail("error: --repo must be owner/name", EXIT_USAGE)
+    with guarded(ctx):
+        typer.echo(push_dashboard_data(src, repo))
+
+
+def register(app: typer.Typer) -> None:
+    """Add the ``baseline`` command group to ``app``."""
+    baseline = typer.Typer(help="Baseline store, sanitised export and dashboard data (T6.1).")
+    baseline.command("promote")(promote_command)
+    baseline.command("export-public")(export_public_command)
+    baseline.command("prune")(prune_command)
+    baseline.command("publish-dashboard")(publish_command)
+    app.add_typer(baseline, name="baseline")

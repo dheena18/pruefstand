@@ -5,12 +5,9 @@ from collections.abc import Iterator
 from pathlib import Path
 
 import pytest
-from click.testing import Result
-from pruefstand.store.baselines_local import LocalDirBaselineStore
-from pruefstand.store.canary_source import load_canary_registry
 from testsupport.pipeline_support import config_file, mini_config
 from testsupport.store_support import gate_run, registry, token, write_gate_run
-from typer.testing import CliRunner
+from typer.testing import CliRunner, Result
 
 from pruefstand.cli import app
 from pruefstand.core.config import BaselineStoreConfig, GatePolicy, MetricPolicy
@@ -18,6 +15,8 @@ from pruefstand.core.enums import GateStatus
 from pruefstand.core.errors import StoreError
 from pruefstand.core.logging import configure_logging
 from pruefstand.core.models.gate import GateReport
+from pruefstand.store.baselines_local import LocalDirBaselineStore
+from pruefstand.store.canary_source import load_canary_registry
 
 FP = "feedfacefeedface"
 POLICY = GatePolicy(

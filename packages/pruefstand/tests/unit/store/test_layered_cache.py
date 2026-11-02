@@ -114,7 +114,7 @@ def test_the_llm_namespace_is_separate(tmp_path: Path) -> None:
 
 def test_an_unknown_mode_is_refused(tmp_path: Path) -> None:
     with pytest.raises(StoreError, match="cache mode"):
-        build_cache("both", tmp_path / "s", tmp_path / "o")  # type: ignore[arg-type]  # the check under test
+        build_cache("both", tmp_path / "s", tmp_path / "o")
 
 
 def test_closing_twice_is_fine(tmp_path: Path) -> None:

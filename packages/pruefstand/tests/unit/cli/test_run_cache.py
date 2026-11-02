@@ -1,4 +1,4 @@
-"""``pruefstand run`` with the target cache: shared for main, overlay for PRs (T6.1 S3, Done-when)."""
+"""``pruefstand run`` with the target cache: shared for main, overlay for PRs (T6.1 S3)."""
 
 import tempfile
 from pathlib import Path

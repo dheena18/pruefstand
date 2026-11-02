@@ -1,10 +1,15 @@
 """Dashboard models (interfaces §10.1). T1.9 owns ``LabelsDocument``; T8.1 adds the other models."""
 
-from typing import Literal
+from typing import Final, Literal
 
 from pydantic import BaseModel, ConfigDict
 
 from pruefstand.core.models.gate import CauseCode
+
+MAX_INDEX_RUNS: Final = 200
+"""Newest runs listed in ``runs/index.json`` of the dashboard-data repo (D259, D300)."""
+MAX_CASE_RUNS: Final = 20
+"""Newest runs that keep ``cases/<run_id>/`` shards and ``report.html`` there (D259, D300)."""
 
 
 class LabelsDocument(BaseModel):

@@ -8,11 +8,11 @@ from pathlib import Path
 import httpx
 import pytest
 import respx
-from pruefstand.store._dashboard_tree import rewrite_tree
-from pruefstand.store.dashboard_repo import MAX_REPO_KB, check_repo_size
 from testsupport.run_builders import make_manifest
 
 from pruefstand.core.errors import StoreError
+from pruefstand.store._dashboard_tree import rewrite_tree
+from pruefstand.store.dashboard_repo import MAX_REPO_KB, check_repo_size
 
 T0 = datetime(2026, 10, 1, tzinfo=UTC)
 

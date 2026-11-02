@@ -20,9 +20,10 @@ from pruefstand.core.logging import get_logger
 from pruefstand.core.models.run import RunArtifacts, RunManifest, RunResults
 from pruefstand.core.models.target import TargetInfo
 from pruefstand.core.models.testcase import TestCase
-from pruefstand.core.protocols import JudgePoolLike, TargetAdapter
+from pruefstand.core.protocols import JudgePoolLike, KVCache, TargetAdapter
 from pruefstand.llm.budget import Budget, ChargeTally
 from pruefstand.metrics.registry import MetricRegistry
+from pruefstand.pipeline.cache import target_cache
 from pruefstand.pipeline.datasets import Dataset, load_dataset
 from pruefstand.pipeline.fingerprints import JudgeFacts, build_eval_fingerprint, judge_facts
 from pruefstand.pipeline.judge_mode import (
@@ -160,13 +161,15 @@ def _abort_on_corpus_mismatch(plan: _Plan, info: TargetInfo | None, out: Path) -
     raise CorpusMismatch(msg)
 
 
-def _runner(plan: _Plan, adapter: TargetAdapter, judges: JudgePoolLike | None) -> Runner:
+def _runner(
+    plan: _Plan, adapter: TargetAdapter, judges: JudgePoolLike | None, cache: KVCache | None
+) -> Runner:
     budget = plan.cfg.budget
     return Runner(
         adapter,
         plan.registry,
         judges,
-        None,
+        cache,
         Budget(
             max_usd=budget.max_usd_per_run,
             max_tokens=budget.max_tokens_per_run,
@@ -177,14 +180,14 @@ def _runner(plan: _Plan, adapter: TargetAdapter, judges: JudgePoolLike | None) -
 
 
 async def _execute(
-    plan: _Plan, judges: JudgePoolLike | None, out: Path
+    plan: _Plan, judges: JudgePoolLike | None, out: Path, cache: KVCache | None
 ) -> tuple[RunResults, TargetInfo | None]:
     """Ask the target for its info, check the corpus, then run the selected cases."""
     adapter = build_adapter(plan.cfg.target)
     try:
         info = await adapter.info()
         _abort_on_corpus_mismatch(plan, info, out)
-        results = await _runner(plan, adapter, judges).run(
+        results = await _runner(plan, adapter, judges, cache).run(
             plan.cases,
             target_fingerprint=_target_fingerprint(plan, info),
             seed=plan.cfg.seed,
@@ -208,8 +211,10 @@ async def run_eval(
 
     The run directory is ``out / <run_id>``. ``block`` is the resolved nightly block (the CLI
     resolves ``auto``). Stack and judge mode come from ``PRUEFSTAND_STACK`` (default ``live``) and
-    ``PRUEFSTAND_JUDGE_MODE``; git facts from ``GITHUB_SHA`` / ``GITHUB_REF`` /
-    ``GITHUB_EVENT_PATH`` or ``git``. An opaque target (no ``/v1/info``) continues with a warning.
+    ``PRUEFSTAND_JUDGE_MODE``; the target cache from ``PRUEFSTAND_CACHE_MODE`` (``overlay`` by
+    default, ``shared`` for main and nightly) and ``PRUEFSTAND_CACHE_DIR``; git facts from
+    ``GITHUB_SHA`` / ``GITHUB_REF`` / ``GITHUB_EVENT_PATH`` or ``git``. An opaque target (no
+    ``/v1/info``) continues with a warning.
     The returned results carry the manifest as the runner and the pipeline built it (the stored
     ``run.json`` also holds ``artifact_sha256``).
 
@@ -235,7 +240,8 @@ async def run_eval(
     """
     plan = _plan(cfg, tier, block=block, judged_subset=judged_subset, stratum=stratum)
     judges = None if plan.mode == "skipped" else build_judge_pool(cfg, plan.mode)
-    results, info = await _execute(plan, judges, out)
+    with target_cache() as cache:  # shared for main/nightly, a per-job overlay for PRs
+        results, info = await _execute(plan, judges, out, cache)
     mode = final_judge_mode(plan.mode, judged_cases=results.manifest.judged_cases)
     manifest = _complete(results.manifest, plan, info, mode)
     done = results.model_copy(update={"manifest": manifest})

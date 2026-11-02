@@ -3,15 +3,17 @@
 from pathlib import Path
 
 import pytest
-from pruefstand.store.baselines_local import LocalDirBaselineStore
-from pruefstand.store.promote import prepare_promotion
 from structlog.testing import capture_logs
 from testsupport.pipeline_support import mini_config
-from testsupport.store_support import gate_run, write_gate_run
+from testsupport.store_support import gate_run, release_run, write_gate_run
 
 from pruefstand.core.config import BaselineStoreConfig, GatePolicy, MetricPolicy
 from pruefstand.core.errors import GateInputError, StoreError
+from pruefstand.core.models.run import RunArtifacts
 from pruefstand.pipeline.gate import gate_from_store, run_gate
+from pruefstand.store.artifacts import ArtifactStore
+from pruefstand.store.baselines_local import LocalDirBaselineStore
+from pruefstand.store.promote import prepare_promotion
 
 BASE_ID, CAND_ID = "20261102T220000-aaaaaa", "20261102T220001-bbbbbb"
 POLICY = GatePolicy(
@@ -64,13 +66,14 @@ def test_a_nightly_ref_for_a_candidate_without_a_block_is_a_gate_input_error(
 
 
 def test_drift_against_the_release_projection_uses_the_same_fingerprint(tmp_path: Path) -> None:
-    from testsupport.store_support import release_run
-
     release = release_run(tmp_path / "rel")
     projected = prepare_promotion(release, "release-b1")
     store_of(tmp_path).put(projected, "release-b1")
-    fp = projected.results.manifest.eval_fingerprint
-    candidate = write_gate_run(tmp_path / "runs", CAND_ID, fp=fp, block=1)
+    # the candidate is the nightly of block 1: the same cases, so the fingerprint is the same
+    manifest = projected.results.manifest.model_copy(update={"run_id": CAND_ID})
+    nightly = projected.results.model_copy(update={"manifest": manifest})
+    root = tmp_path / "runs"
+    candidate = ArtifactStore(root).write_run(RunArtifacts(results=nightly, root=root / CAND_ID))
     report = gate_from_store(candidate, cfg(tmp_path), ref="release-b1")
     assert report.no_baseline is False
     assert report.baseline_run_id == release.results.manifest.run_id

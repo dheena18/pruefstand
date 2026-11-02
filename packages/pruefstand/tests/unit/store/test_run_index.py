@@ -1,17 +1,18 @@
 """``RunIndex``: DuckDB over run directories, never parsing an unverified parquet (T6.1 S6)."""
 
 import json
+import shutil
 import time
 from pathlib import Path
 
 import polars as pl
 import pytest
-from pruefstand.store.run_index import RunIndex
 from testsupport.run_builders import refresh_hashes
 from testsupport.store_support import run_id, run_of
 
 from pruefstand.core.errors import StoreError
 from pruefstand.store.artifacts import ArtifactStore
+from pruefstand.store.run_index import RunIndex
 
 
 def write_runs(root: Path, count: int = 3) -> list[Path]:
@@ -28,7 +29,7 @@ def index_of(tmp_path: Path) -> RunIndex:
 
 
 def count(index: RunIndex, table: str) -> int:
-    return int(index.query(f"SELECT count(*) AS n FROM {table}")["n"][0])
+    return int(index.query(f"SELECT count(*) AS n FROM {table}")["n"][0])  # noqa: S608  (test table)
 
 
 def test_three_runs_are_three_rows(tmp_path: Path) -> None:
@@ -63,8 +64,6 @@ def test_a_vanished_run_leaves_the_index(tmp_path: Path) -> None:
     paths = write_runs(tmp_path / "runs")
     index = index_of(tmp_path)
     index.refresh()
-    import shutil
-
     shutil.rmtree(paths[0])
     index.refresh()
     assert count(index, "runs") == 2
@@ -150,7 +149,7 @@ def test_a_query_cannot_read_files_or_write(tmp_path: Path) -> None:
     index = index_of(tmp_path)
     index.refresh()
     with pytest.raises(StoreError):
-        index.query(f"SELECT * FROM read_csv('{secret}')")
+        index.query(f"SELECT * FROM read_csv('{secret}')")  # noqa: S608  (a test path)
     with pytest.raises(StoreError):
         index.query("DELETE FROM runs")
     with pytest.raises(StoreError):

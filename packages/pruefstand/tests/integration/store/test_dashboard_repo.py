@@ -8,21 +8,28 @@ from pathlib import Path
 from typing import Any
 
 import pytest
-from pruefstand.store.dashboard_repo import push_dashboard_data, push_heartbeat
-from pruefstand.store.sanitise import sanitise_run, seal_export, write_public_export
 from testsupport.git_support import bare_repo, commit_count, git, show, tree_names
 from testsupport.run_builders import make_manifest
 from testsupport.store_support import registry, run_id, run_of, token
 
 from pruefstand.core.errors import StoreError
 from pruefstand.core.models.dashboard import MAX_CASE_RUNS, MAX_INDEX_RUNS
+from pruefstand.store.dashboard_repo import push_dashboard_data, push_heartbeat
+from pruefstand.store.sanitise import sanitise_run, seal_export, write_public_export
 
 pytestmark = pytest.mark.integration
 
 T0 = datetime(2026, 10, 1, tzinfo=UTC)
 
 
-def export(tmp: Path, index: int, *, cases: bool = True, name: str = "pub", **extra: bytes) -> Path:
+def export(
+    tmp: Path,
+    index: int,
+    *,
+    cases: bool = True,
+    name: str = "pub",
+    added: dict[str, bytes] | None = None,
+) -> Path:
     run = run_of(tmp, index)
     out = write_public_export(sanitise_run(run, registry("VN-7f3a9c")), tmp / f"{name}{index}")
     if cases:
@@ -30,7 +37,7 @@ def export(tmp: Path, index: int, *, cases: bool = True, name: str = "pub", **ex
         (out / "cases" / "000.json").write_text('{"cases": []}', encoding="utf-8")
         (out / "report.html").write_text("<html>report</html>", encoding="utf-8")
         (out / "gate.json").write_text('{"status": "pass"}', encoding="utf-8")
-    for filename, data in extra.items():
+    for filename, data in (added or {}).items():
         (out / filename).write_bytes(data)
     seal_export(out)
     return out
@@ -122,7 +129,7 @@ def test_an_unsanitised_directory_is_refused_and_nothing_is_pushed(tmp_path: Pat
 
 def test_a_file_with_a_canary_is_refused_even_when_sealed(tmp_path: Path) -> None:
     bare = bare_repo(tmp_path)
-    leaking = export(tmp_path, 1, **{"slices.json": f'{{"x": "{token("LEAK")}"}}'.encode()})
+    leaking = export(tmp_path, 1, added={"slices.json": f'{{"x": "{token("LEAK")}"}}'.encode()})
     with pytest.raises(StoreError, match="CANARY-"):
         push(bare, leaking)
     assert git("for-each-ref", git_dir=bare).strip() == ""

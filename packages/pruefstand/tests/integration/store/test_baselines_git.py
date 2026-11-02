@@ -1,7 +1,9 @@
 """``GitBranchBaselineStore`` against a local bare repository (T6.1 S4, X2.7, R9-17)."""
 
+import hashlib
 import json
 import os
+import shutil
 import subprocess
 from collections.abc import Callable
 from datetime import UTC, datetime, timedelta
@@ -9,13 +11,13 @@ from pathlib import Path
 from typing import Any
 
 import pytest
-from pruefstand.store.baselines_git import GitBranchBaselineStore
-from pruefstand.store.baselines_local import LocalDirBaselineStore
 from testsupport.git_support import bare_repo, commit_count, git, reject_pushes, show, tree_names
 from testsupport.run_builders import unhashed
 from testsupport.store_support import FP, run_id, run_of
 
 from pruefstand.core.errors import StoreError, StoreIntegrityError
+from pruefstand.store.baselines_git import GitBranchBaselineStore
+from pruefstand.store.baselines_local import LocalDirBaselineStore
 
 pytestmark = pytest.mark.integration
 
@@ -66,8 +68,6 @@ def test_put_writes_the_files_under_the_data_root_and_only_the_index_into_git(en
 
 
 def test_the_index_pins_the_manifest_sha256(env: Setup) -> None:
-    import hashlib
-
     env.store().put(run_of(env.tmp, 1), "main")
     index = json.loads(show(env.bare, "baselines", "baselines/index.json"))
     entry = index["entries"][FP]["main"]["runs"][-1]
@@ -113,8 +113,6 @@ def test_a_consistently_rewritten_manifest_no_longer_matches_the_index(env: Setu
 
 
 def test_an_index_entry_without_files_is_an_error_not_none(env: Setup) -> None:
-    import shutil
-
     store = env.store()
     store.put(run_of(env.tmp, 1), "main")
     shutil.rmtree(env.data_root / FP / "main")
@@ -123,8 +121,6 @@ def test_an_index_entry_without_files_is_an_error_not_none(env: Setup) -> None:
 
 
 def test_a_missing_data_root_is_a_store_error_never_an_empty_store(env: Setup) -> None:
-    import shutil
-
     store = env.store()
     store.put(run_of(env.tmp, 1), "main")
     shutil.rmtree(env.data_root)
