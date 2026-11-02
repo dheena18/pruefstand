@@ -36,8 +36,12 @@ class Played:
         return {h["case_id"] for h in self.gate["hard_fails"] if h["metric"] == metric}
 
     def absolute(self, metric: str) -> dict[str, Any]:
-        """The absolute-check row of ``metric``."""
-        (row,) = [r for r in self.gate["absolute_checks"] if r["metric"] == metric]
+        """The overall absolute-check row of ``metric``."""
+        (row,) = [
+            r
+            for r in self.gate["absolute_checks"]
+            if r["metric"] == metric and r["dimension"] == "overall"
+        ]
         return row
 
 
@@ -58,7 +62,8 @@ def _play(
     url = start_bug(bug) if bug else target_url
     try:
         config = write_config(scenario, url, tmp_path)
-        done = call("run", "--config", str(config), "--tier", "pr", "--out", str(tmp_path / "runs"))
+        # same --out as the baseline: `report` looks the baseline run up next to the candidate
+        done = call("run", "--config", str(config), "--tier", "pr", "--out", str(baseline.parent))
         candidate = run_dir(done)
         args = ["--config", str(config), "--candidate", str(candidate), "--baseline", str(baseline)]
         gated = call("gate", *args)
@@ -69,7 +74,7 @@ def _play(
     assert rendered.exit_code == 0, rendered.output
     gate = json.loads((candidate / "gate.json").read_text(encoding="utf-8"))
     seconds = done.seconds + gated.seconds + rendered.seconds
-    return Played(gated.exit_code, gate, rendered.output, seconds)
+    return Played(gated.exit_code, gate, rendered.stdout, seconds)
 
 
 def _common(request: pytest.FixtureRequest, name: str, played: Played, base: Baseline) -> None:

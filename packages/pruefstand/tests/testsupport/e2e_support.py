@@ -26,7 +26,8 @@ class Timed:
     """The result of a CLI call and how long it took."""
 
     exit_code: int
-    output: str
+    output: str  # stdout and stderr, for failure messages
+    stdout: str
     seconds: float
 
 
@@ -96,10 +97,10 @@ def call(*args: str) -> Timed:
     """Invoke the real CLI in-process and time it."""
     started = time.monotonic()
     result = CliRunner().invoke(app, list(args))
-    return Timed(result.exit_code, result.output, time.monotonic() - started)
+    return Timed(result.exit_code, result.output, result.stdout, time.monotonic() - started)
 
 
 def run_dir(done: Timed) -> Path:
     """The run directory a successful `run` printed on its last line."""
     assert done.exit_code == 0, done.output
-    return Path(done.output.strip().splitlines()[-1])
+    return Path(done.stdout.strip().splitlines()[-1])
