@@ -128,7 +128,8 @@ async def test_judge_degraded_and_judged_cases_reach_run_json(
 ) -> None:
     async def act(task: JudgeTask) -> None:
         if task.inputs["case_id"] in {"law-0003", "law-0004"}:
-            raise LLMError("judge down", transient=True)
+            message = "judge down"
+            raise LLMError(message, transient=True)
 
     use_stub_judges(monkeypatch, SpyPool(act))
     monkeypatch.setenv("PRUEFSTAND_STACK", "a40")

@@ -1,10 +1,11 @@
 """Replay of exchanges recorded from the REAL rag-demo (T1.10 S9, ADR-0008).
 
-A cassette directory under ``tests/cassettes/target/<name>/`` holds ``info.yaml`` (the ``GET /v1/info``
-answer) and ``query.yaml`` (every ``POST /v1/query`` exchange, keyed by tenant and question).
+A cassette directory under ``tests/cassettes/target/<name>/`` holds ``info.yaml`` (the
+``GET /v1/info`` answer) and ``query.yaml`` (every ``POST /v1/query`` exchange, keyed by tenant
+and question).
 ``scripts/live/record_target.py`` writes them from a running target; nothing is edited by hand.
-Replay goes through the real ``HttpTargetAdapter`` under ``respx``; a request that was never recorded
-is answered with HTTP 404 and listed in ``misses`` so a test can assert there was none.
+Replay goes through the real ``HttpTargetAdapter`` under ``respx``; a request that was never
+recorded is answered with HTTP 404 and listed in ``misses`` so a test can assert there was none.
 """
 
 import json
@@ -44,7 +45,7 @@ class TargetCassette:
 
         Args:
             router: The respx router.
-            base: URL prefix such as ``http://localhost:8000``; empty when the router has a base URL.
+            base: URL prefix such as ``http://localhost:8000``; empty with a router base URL.
         """
         router.get(f"{base}/v1/info").mock(return_value=httpx.Response(200, json=self.info))
         router.post(f"{base}/v1/query").mock(side_effect=self._answer)

@@ -2,6 +2,7 @@
 
 import json
 from datetime import UTC, date, datetime
+from pathlib import Path
 
 import pytest
 from pydantic import ValidationError
@@ -84,8 +85,6 @@ def test_review_round_round_trip() -> None:
     assert again == _round()
 
 
-def test_dataset_manifest_schema_is_exported(tmp_path: object) -> None:
-    from pathlib import Path
-
-    paths = export_schemas(Path(str(tmp_path)))
+def test_dataset_manifest_schema_is_exported(tmp_path: Path) -> None:
+    paths = export_schemas(tmp_path)
     assert "dataset_manifest.schema.json" in {p.name for p in paths}

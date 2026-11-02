@@ -4,7 +4,7 @@ from pathlib import Path
 from typing import Any
 
 import pytest
-from testsupport.builders import fixture_f0, make_run
+from testsupport.builders import fixture_f0, make_record, make_run
 from testsupport.pipeline_support import config_file, mini_config
 from typer.testing import CliRunner
 
@@ -22,15 +22,14 @@ from pruefstand.core.models.run import RunArtifacts
 from pruefstand.runner.runner import Runner
 from pruefstand.store.artifacts import ArtifactStore
 
+KEEP = {"context_recall", "error_rate", "tenant_leak", "canary_leak", "system_prompt_leak"}
 POLICY = GatePolicy(metrics={"context_recall": MetricPolicy(max_drop=0.05)}, n_resamples=300)
 
 
 def stored(root: Path, run_id: str, **kwargs: Any) -> Path:
     cases, values = fixture_f0()
-    values = {
-        m: v for m, v in values.items() if m in {"context_recall", "error_rate", "tenant_leak"}
-    }
-    run = make_run(run_id, cases, values, **kwargs)
+    values = {m: v for m, v in values.items() if m in KEEP}
+    run = make_run(run_id, cases, values, records=[make_record(c) for c in cases], **kwargs)
     return ArtifactStore(root).write_run(RunArtifacts(results=run, root=root / run_id))
 
 
@@ -59,13 +58,11 @@ def test_a_gate_fail_is_exit_one(tmp_path: Path, gate_config: Path) -> None:
     cases, values = fixture_f0()
     cand = stored(tmp_path, "20261102T220001-bbbbbb")  # same values, so fail via a hard fail below
     leak = tmp_path / "leaky"
-    leaky_values = {
-        m: list(v)
-        for m, v in values.items()
-        if m in {"context_recall", "error_rate", "tenant_leak"}
-    }
+    leaky_values = {m: list(v) for m, v in values.items() if m in KEEP}
     leaky_values["tenant_leak"][0] = 1.0
-    run = make_run("20261102T220002-cccccc", cases, leaky_values)
+    run = make_run(
+        "20261102T220002-cccccc", cases, leaky_values, records=[make_record(c) for c in cases]
+    )
     ArtifactStore(leak).write_run(RunArtifacts(results=run, root=leak / "20261102T220002-cccccc"))
     args = ["gate", "--config", str(gate_config), "--baseline", str(base)]
     result = CliRunner().invoke(app, [*args, "--candidate", str(leak / "20261102T220002-cccccc")])
@@ -128,7 +125,8 @@ def test_an_unexpected_exception_is_exit_three_without_a_traceback(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path, good: object
 ) -> None:
     async def boom(self: Runner, *args: object, **kwargs: object) -> None:
-        raise RuntimeError("kaputt")
+        message = "kaputt"
+        raise RuntimeError(message)
 
     monkeypatch.setattr(Runner, "run", boom)
     cfg = config_file(tmp_path / "c.yaml", mini_config())
@@ -143,7 +141,8 @@ def test_verbose_shows_the_traceback(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path, good: object
 ) -> None:
     async def boom(self: Runner, *args: object, **kwargs: object) -> None:
-        raise RuntimeError("kaputt")
+        message = "kaputt"
+        raise RuntimeError(message)
 
     monkeypatch.setattr(Runner, "run", boom)
     cfg = config_file(tmp_path / "c.yaml", mini_config())

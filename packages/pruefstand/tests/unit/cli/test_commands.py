@@ -1,8 +1,10 @@
-"""CLI commands end to end: mini fixture, targets replayed from cassettes recorded off the real rag-demo."""
+"""CLI commands end to end: mini fixture, targets replayed from cassettes of the real rag-demo."""
 
 import json
+import os
 import time
 from pathlib import Path
+from typing import Any
 
 import httpx
 import pytest
@@ -19,8 +21,7 @@ from testsupport.pipeline_support import (
 )
 from testsupport.run_builders import make_case
 from testsupport.target_cassette import TargetCassette
-from typer.testing import CliRunner
-from typer.testing import Result
+from typer.testing import CliRunner, Result
 
 from pruefstand.cli import app
 from pruefstand.core.config import TargetConfig
@@ -183,7 +184,7 @@ def _nonzero_clusters(base: Path, cand: Path, metric: str) -> int:
     return sum(1 for d in diffs.values() if abs(d) > 1e-12)
 
 
-def test_the_citation_bug_is_informational_with_twelve_clusters(
+def test_the_citation_bug_is_informational_with_twelve_clusters(  # noqa: PLR0917  (fixtures)
     cli: CliRunner,
     good: TargetCassette,
     router: respx.MockRouter,
@@ -201,7 +202,10 @@ def test_the_citation_bug_is_informational_with_twelve_clusters(
     row = _overall((*report.decisions, *report.notable_slices), "citation_recall")
     assert row.gated is False
     assert row.informational_reason == "applicable_clusters<30"
-    assert row.status is GateStatus.PASS
+    # decide() reports too few clusters as INSUFFICIENT_DATA even for informational rows (T1.7);
+    # the run as a whole stays PASS because informational rows never change it.
+    assert row.status is GateStatus.INSUFFICIENT_DATA
+    assert report.status is GateStatus.PASS
     assert row.result is not None
     assert row.result.mean_diff < 0
     wanted = "sign_test" if _nonzero_clusters(one, two, "citation_recall") < 10 else "bootstrap"
@@ -261,7 +265,8 @@ def test_report_markdown_starts_with_marker_and_verdict(cli: CliRunner, gated_pa
     assert result.exit_code == 0, result.output
     lines = result.stdout.splitlines()
     assert lines[0] == MARKER
-    assert lines[1].startswith("## Prüfstand: ✅ PASS")
+    assert lines[1].startswith("## Prüfstand")  # tier 1 reads "## Prüfstand tier 1: ✅ PASS ..."
+    assert "✅ PASS" in lines[1]
 
 
 def test_report_json_is_the_gate_report(cli: CliRunner, gated_pair: Path) -> None:
@@ -350,8 +355,9 @@ def full_config(tmp_path: Path, router: respx.MockRouter) -> Path:
     return config_file(tmp_path / "full.yaml", synthetic_config(dataset, (Split.FULL,)))
 
 
-def manifest_of(result: Result) -> dict[str, object]:
-    return json.loads((run_dir(result) / "run.json").read_text(encoding="utf-8"))  # type: ignore[no-any-return]  # json
+def manifest_of(result: Result) -> dict[str, Any]:
+    data: dict[str, Any] = json.loads((run_dir(result) / "run.json").read_text(encoding="utf-8"))
+    return data
 
 
 def test_block_flag_is_written_to_run_json(
@@ -367,7 +373,7 @@ def test_block_flag_is_written_to_run_json(
     ("counter", "expected"),
     [("4", 1), ("5", 2), ("3", 0), ("7", 1)],
 )
-def test_block_auto_reads_the_counter_file(
+def test_block_auto_reads_the_counter_file(  # noqa: PLR0917  (parametrized fixtures)
     cli: CliRunner,
     full_config: Path,
     tmp_path: Path,
@@ -482,7 +488,7 @@ def test_split_flags_override_the_configured_splits(
     manifest = manifest_of(
         do_run(cli, full_config, tmp_path / "r", "--split", "smoke", "--split", "core")
     )
-    assert manifest["splits"] == ["smoke", "core"] or set(manifest["splits"]) == {"smoke", "core"}  # type: ignore[arg-type]  # json
+    assert manifest["splits"] == ["smoke", "core"] or set(manifest["splits"]) == {"smoke", "core"}
     assert manifest["n_cases"] == 4
 
 
@@ -492,3 +498,22 @@ def test_the_config_hash_sees_the_effective_splits(
     default = manifest_of(do_run(cli, full_config, tmp_path / "a"))
     overridden = manifest_of(do_run(cli, full_config, tmp_path / "b", "--split", "core"))
     assert default["config_hash"] != overridden["config_hash"]
+
+
+def test_a_counter_that_is_a_fifo_is_exit_two_and_does_not_hang(
+    cli: CliRunner, full_config: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    fifo = tmp_path / "counter"
+    os.mkfifo(fifo)
+    monkeypatch.setenv("PRUEFSTAND_NIGHTLY_COUNTER", str(fifo))
+    result = do_run(cli, full_config, tmp_path / "r", "--split", "full", "--block", "auto")
+    assert result.exit_code == 2
+    assert "nightly counter" in result.output
+
+
+def test_a_counter_that_is_a_directory_is_exit_two(
+    cli: CliRunner, full_config: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("PRUEFSTAND_NIGHTLY_COUNTER", str(tmp_path))
+    result = do_run(cli, full_config, tmp_path / "r", "--split", "full", "--block", "auto")
+    assert result.exit_code == 2

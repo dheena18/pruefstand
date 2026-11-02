@@ -5,7 +5,7 @@ from pathlib import Path
 from typing import Any
 
 import pytest
-from testsupport.builders import fixture_f0, make_run
+from testsupport.builders import fixture_f0, make_record, make_run
 from testsupport.pipeline_support import mini_config
 from testsupport.run_builders import make_manifest
 
@@ -107,7 +107,6 @@ def _fingerprint(stack: str, serving: dict[str, str], epoch: int) -> str:
     cfg = mini_config(gate=POLICY)
     facts = judge_facts(cfg, stack=stack, tier="pr", serving=serving, epoch=epoch)  # type: ignore[arg-type]  # Literal in the helper
     return build_eval_fingerprint(
-        cfg,
         facts,
         name="mini",
         version="v0",
@@ -175,7 +174,8 @@ def stored(root: Path, run_id: str, **run_kwargs: object) -> Path:
     for metric, change in dict(edits).items():  # type: ignore[call-overload]  # test-only mapping
         for index, value in change.items():
             values[metric][index] = value
-    run = make_run(run_id, cases, values, **run_kwargs)  # type: ignore[arg-type]  # kwargs forwarded
+    records = [make_record(c) for c in cases]
+    run = make_run(run_id, cases, values, records=records, **run_kwargs)  # type: ignore[arg-type]  # kwargs forwarded
     return ArtifactStore(root).write_run(RunArtifacts(results=run, root=root / run_id))
 
 

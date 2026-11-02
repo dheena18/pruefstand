@@ -5,13 +5,12 @@ import re
 from pathlib import Path
 from typing import Any
 
-import httpx
 import pytest
 import respx
 from contract.adapter_contract import load_openapi_example
 from testsupport.pipeline_support import CORPUS_VERSION, case_rows, synthetic_config, write_dataset
 from testsupport.run_builders import make_case
-from testsupport.runner_support import StubJudgedMetric
+from testsupport.runner_support import SpyPool, StubJudgedMetric
 
 from pruefstand.core.enums import Split
 from pruefstand.core.errors import ConfigError
@@ -267,8 +266,6 @@ async def test_judged_subset_generates_only_subset_answerable_and_security_cases
 async def test_judged_metrics_run_only_on_subset_cases(
     core_dataset: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    from testsupport.runner_support import SpyPool
-
     pool = SpyPool()
     monkeypatch.setattr(
         run_module,

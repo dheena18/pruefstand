@@ -1,6 +1,7 @@
 """The CLI against two real rag-demo instances (needs ``scripts/live/two_targets.sh``)."""
 
 import json
+import os
 from pathlib import Path
 
 import httpx
@@ -12,6 +13,10 @@ from pruefstand.cli import app
 
 pytestmark = pytest.mark.live
 
+# On the VM the stack runs with PORT_OFFSET: scripts/live/two_targets.sh prints the two URLs.
+GOOD = os.environ.get("PRUEFSTAND_LIVE_GOOD_URL", GOOD_URL)
+BAD = os.environ.get("PRUEFSTAND_LIVE_BUG_URL", BUG_URL)
+
 
 def _reachable(url: str) -> bool:
     try:
@@ -22,7 +27,7 @@ def _reachable(url: str) -> bool:
 
 @pytest.fixture(autouse=True)
 def _targets() -> None:
-    for url in (GOOD_URL, BUG_URL):
+    for url in (GOOD, BAD):
         if not _reachable(url):
             pytest.skip(
                 f"{url} is not reachable; start scripts/live/two_targets.sh tenant_filter_post_topk"
@@ -48,8 +53,8 @@ def _run(config: Path, out: Path) -> Path:
 
 
 def test_good_against_bug_fails_on_tenant_leak(tmp_path: Path) -> None:
-    good = _config(tmp_path, "good", GOOD_URL)
-    bug = _config(tmp_path, "bug", BUG_URL)
+    good = _config(tmp_path, "good", GOOD)
+    bug = _config(tmp_path, "bug", BAD)
     one = _run(good, tmp_path / "runs")
     two = _run(bug, tmp_path / "runs")
     args = ["gate", "--config", str(good), "--candidate", str(two), "--baseline", str(one)]

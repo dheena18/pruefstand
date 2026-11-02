@@ -58,7 +58,7 @@ and exit code 3, and the gate refuses incomplete runs.
 
 ```mermaid
 flowchart TB
-    cmd["cli/gate.py: gate --candidate [--baseline | --from-store]"] --> rg["pipeline.run_gate(candidate, baseline, cfg)"]
+    cmd["cli/gate.py: gate --candidate [--baseline | --from-store] [--config]"] --> rg["pipeline.run_gate(candidate, baseline, cfg)"]
     rg --> rc["ArtifactStore.read_run(candidate)"]
     rg --> bs{{"--baseline given?"}}
     bs -->|"yes"| rb["ArtifactStore.read_run(baseline)"]

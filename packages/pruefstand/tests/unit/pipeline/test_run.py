@@ -10,6 +10,7 @@ from contract.adapter_contract import load_openapi_example
 from testsupport.pipeline_support import (
     CORPUS_VERSION,
     case_rows,
+    mini_config,
     synthetic_config,
     write_dataset,
 )
@@ -60,12 +61,15 @@ async def test_writes_a_readable_run_directory_with_a_completed_manifest(
         "live",
     )
     assert m.config_hash == stable_hash(cfg)
-    assert m.eval_fingerprint and m.eval_fingerprint != m.target_fingerprint
+    assert m.eval_fingerprint
+    assert m.eval_fingerprint != m.target_fingerprint
     assert m.target is not None
     assert m.target_fingerprint == target_fingerprint(m.target, url="", run_id="")
     assert m.complete is True
     assert set(m.metric_versions) >= {"context_recall", "tenant_leak"}
-    assert m.judge_models == {} and m.judge_prompt_versions == {} and m.judge_epoch == 0
+    assert m.judge_models == {}
+    assert m.judge_prompt_versions == {}
+    assert m.judge_epoch == 0
 
 
 async def test_corpus_mismatch_aborts_before_any_query(
@@ -97,8 +101,8 @@ async def test_an_opaque_target_continues(
 
 
 async def test_hf_datasets_raise_a_config_error(tmp_path: Path) -> None:
-    cfg = synthetic_config(tmp_path, (Split.SMOKE,), dataset="hf://x/y@v1")
-    with pytest.raises(ConfigError, match="T4.7b"):
+    cfg = mini_config(dataset="hf://x/y@v1", splits=(Split.SMOKE,))
+    with pytest.raises(ConfigError, match=r"T4\.7b"):
         await run_eval(cfg, tier="pr", out=tmp_path / "runs")
 
 
@@ -129,7 +133,8 @@ async def test_git_facts_ignore_malformed_environment(
 
 
 def _no_git(*args: object, **kwargs: object) -> subprocess.CompletedProcess[str]:
-    raise FileNotFoundError("git")
+    message = "git"
+    raise FileNotFoundError(message)
 
 
 async def test_pr_number_comes_from_the_event_file(

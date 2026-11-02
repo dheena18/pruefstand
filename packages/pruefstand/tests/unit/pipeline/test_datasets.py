@@ -1,6 +1,5 @@
 """``load_cases``: local dataset directories, validated row by row (T1.10 S1)."""
 
-import os
 import time
 from pathlib import Path
 
@@ -22,7 +21,7 @@ def test_a_bad_row_names_file_and_line(tmp_path: Path) -> None:
 
 
 def test_hf_datasets_are_not_supported_yet() -> None:
-    with pytest.raises(ConfigError, match="T4.7b"):
+    with pytest.raises(ConfigError, match=r"T4\.7b"):
         load_cases("hf://x/y@v1", (Split.CORE,))
 
 
@@ -86,10 +85,10 @@ def test_duplicate_case_ids_are_refused(tmp_path: Path) -> None:
 
 def test_missing_split_file_and_missing_manifest(tmp_path: Path) -> None:
     directory = write_dataset(tmp_path, {"smoke": case_rows([make_case(0, split="smoke")])})
-    with pytest.raises(DatasetError, match="core.jsonl"):
+    with pytest.raises(DatasetError, match=r"core\.jsonl"):
         load_cases(str(directory), (Split.CORE,))
     (directory / "dataset_manifest.json").unlink()
-    with pytest.raises(DatasetError, match="dataset_manifest.json"):
+    with pytest.raises(DatasetError, match=r"dataset_manifest\.json"):
         load_cases(str(directory), (Split.SMOKE,))
 
 
@@ -103,8 +102,8 @@ def test_symlinked_split_file_is_refused(tmp_path: Path) -> None:
     real = directory / "smoke.jsonl"
     other = tmp_path / "elsewhere.jsonl"
     real.rename(other)
-    os.symlink(other, real)
-    with pytest.raises(DatasetError, match="symlink|regular file"):
+    Path(real).symlink_to(other)
+    with pytest.raises(DatasetError, match=r"symlink|regular file"):
         load_cases(str(directory), (Split.SMOKE,))
 
 

@@ -1524,7 +1524,10 @@ pruefstand run        --config pruefstand.yaml --tier pr|nightly|bench --out run
                       # nightly (T6.2b): pruefstand run --tier nightly --split full --stratum all --block auto
                       # release run (T6.2b, R13 D321): the newest v* tag's image, --split full --stratum all (no --block),
                       # alone on its night, never gated; promoted to release-b0..b2 (one block-k projection each)
-pruefstand gate       --candidate runs/<id> [--baseline runs/<id> | --from-store [--ref main|nightly-b0|nightly-b1|nightly-b2|release-b0|release-b1|release-b2]] [--fail-on-warn]   (--ref: T6.1)
+pruefstand gate       --candidate runs/<id> [--baseline runs/<id> | --from-store [--ref main|nightly-b0|nightly-b1|nightly-b2|release-b0|release-b1|release-b2]] [--fail-on-warn] [--config pruefstand.yaml]   (--ref: T6.1)
+                      # T1.10 (D401): --config (default: env PRUEFSTAND_CONFIG, else ./pruefstand.yaml) supplies the gate policy and the
+                      # bootstrap seed that run_gate needs; run.json holds only config_hash. Neither --baseline nor --from-store -> exit 2;
+                      # both -> exit 2; --from-store -> exit 2 "not implemented yet (T6.1)" until T6.1; stdout: `gate <status>: <path>/gate.json`
                       # R12 N1.4 (D251): PR runs -> --ref main; nightly gate -> --ref nightly-b<k> with k = the
                       # candidate's RunManifest.block; R13 (D305): drift job -> --ref release-b<k> (same k, same
                       # fingerprint); no release-b<k> -> INSUFFICIENT_DATA + no_baseline as below, and the nightly
@@ -1548,7 +1551,9 @@ pruefstand build-dataset --config dataset.yaml
 pruefstand ingest     --config corpus.yaml --out corpus/ [--date YYYY-MM-DD]
 pruefstand validate   config|dataset <path>
 pruefstand schema     export --out schemas/
-pruefstand power      --sigma 0.25 --n 300 --delta 0.05 [--alpha 0.025] [--m 3]   (T1.10; uses gate.stats)
+pruefstand power      --sigma 0.25 --n 300 --delta 0.05 [--alpha 0.025] [--m 3] [--true-drop X]   (T1.10; uses gate.stats)
+                      # prints one line `power=<p:.3f> mde=<x:.4f>`: power_estimate(sigma, n, delta, alpha, m, true_drop=X) and
+                      # minimum_detectable_effect(sigma / sqrt(n), alpha, delta, m=m); a value gate.stats rejects -> exit 2, stdout empty
 pruefstand export-dashboard --runs runs/ --out apps/dashboard/public/data   (T8.1; layout §10.1; the executor pushes
                       the sanitised output to the public repo dheena18/pruefstand-dashboard-data, D108)
 pruefstand init       --example quickstart <dir>   (T9.2, cli/init.py)

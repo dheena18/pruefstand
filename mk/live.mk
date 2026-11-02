@@ -1,5 +1,5 @@
 # Targets of the tier-1 `live` stack (T1.13). Included by the root Makefile (-include mk/*.mk, after docker.mk).
-.PHONY: index-slice rag-demo-bug cassettes-contract
+.PHONY: index-slice rag-demo-bug cassettes-contract cassettes-target
 
 # Builds the Qdrant collection from corpus/slice_v1/ with the real TEI container and writes the snapshot that
 # T1.12 caches. Needs a running `live` stack: make up PROFILES="core live dev" WAIT=1  (ports come from docker.mk).
@@ -20,3 +20,9 @@ rag-demo-bug:
 cassettes-contract:
 	RAG_DEMO_URL=http://127.0.0.1:$(RAG_DEMO_HOST_PORT) \
 	    uv run python scripts/models/record_contract.py --bug-url http://127.0.0.1:$(BUG_PORT)
+
+# T1.10: records the exchanges of the good rag-demo and of two bug instances (tenant_filter_post_topk,
+# no_citations) for the CLI unit tests: packages/pruefstand/tests/cassettes/target/{good,bug_tenant,bug_citations}.
+# One stack session under stack.lock; needs the pinned models (scripts/models/fetch.py --manifest ...).
+cassettes-target:
+	$(MAKE) --no-print-directory stack-run PROFILES="core live dev" CMD="bash scripts/live/record_targets.sh"

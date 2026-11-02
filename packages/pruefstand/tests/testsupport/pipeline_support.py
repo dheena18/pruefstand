@@ -6,7 +6,6 @@ from pathlib import Path
 from typing import Any
 
 import yaml
-from testsupport.run_builders import make_case
 
 from pruefstand.core.config import PruefstandConfig, RunnerConfig, TargetConfig
 from pruefstand.core.config_loader import load_config
