@@ -136,6 +136,7 @@ def test_measure_load_times_the_load_when_nothing_is_loaded(
         "POST /api/generate",
         "GET /api/ps",
         "POST /api/generate",
+        "GET /api/ps",
     ]
     assert json.loads(handler.bodies[0])["keep_alive"] != 0
     assert json.loads(handler.bodies[1])["keep_alive"] == 0
