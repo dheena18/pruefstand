@@ -178,4 +178,4 @@ def test_output_never_leaks_the_binary_path_or_the_home_directory(rig: Rig) -> N
     assert str(binary) not in out
     assert str(rig.home) not in out
     assert "exuser" not in out
-    assert "<home>/models" in out
+    assert "<models-dir>" in out

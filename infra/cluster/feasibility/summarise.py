@@ -5,6 +5,10 @@ skipped, anything else is reported as an ignored line. Output: a Markdown table,
 a last line ``VERDICT: go|go-with-conditions|no-go``. The exit code is always 0 (the verdict is
 data).
 
+An id may appear several times (a normal run, a ``MEASURE_LOAD`` run and the tunnel check are
+concatenated): the last line wins, except that a ``SKIP`` line never overrides a measured one. The
+table, the conditions and the verdict use the winning lines only.
+
 Example:
     >>> text = "CHECK gpu PASS 2 x A40\\nCHECK net WARN huggingface unreachable\\n"
     >>> out = summarise(text)
@@ -76,13 +80,19 @@ def parse_checks(text: str) -> tuple[list[Check], list[str]]:
     return checks, bad
 
 
-def _worst(checks: list[Check]) -> dict[str, Check]:
-    worst: dict[str, Check] = {}
+def _is_skip(check: Check) -> bool:
+    return check.status == "PASS" and check.detail.startswith("SKIP")
+
+
+def _winning(checks: list[Check]) -> dict[str, Check]:
+    """One line per id in first-seen order: the last real result; SKIP never beats a real one."""
+    won: dict[str, Check] = {}
     for check in checks:
-        current = worst.get(check.id)
-        if current is None or _RANK[check.status] > _RANK[current.status]:
-            worst[check.id] = check
-    return worst
+        current = won.get(check.id)
+        if current is not None and _is_skip(check) and not _is_skip(current):
+            continue
+        won[check.id] = check
+    return won
 
 
 def _minutes(detail: str) -> str:
@@ -122,7 +132,7 @@ def _condition(check: Check, by_id: dict[str, Check]) -> str:
 def _verdict(checks: list[Check]) -> tuple[str, list[str]]:
     if not checks:
         return "no-go", ["no checks: the probe produced no CHECK lines"]
-    by_id = _worst(checks)
+    by_id = _winning(checks)
     conditions: list[str] = []
     no_go = False
     for cid in GO_CHECKS:
@@ -134,7 +144,7 @@ def _verdict(checks: list[Check]) -> tuple[str, list[str]]:
             no_go = True
             conditions.append(_condition(check, by_id))
     for cid, check in by_id.items():
-        if cid == "model-load" and check.status == "PASS" and check.detail.startswith("SKIP"):
+        if cid == "model-load" and _is_skip(check):
             conditions.append(
                 "model-load: cold load not measured (opt-in MEASURE_LOAD=1, owner step)"
             )
@@ -160,11 +170,11 @@ def summarise(text: str) -> str:
         text: Raw probe and tunnel output.
 
     Returns:
-        A table, a ``Conditions`` list and the final ``VERDICT: ...`` line.
+        A table (one row per id, winning line), the conditions and the final VERDICT line.
     """
     checks, bad = parse_checks(text)
     rows = ["| id | status | detail |", "| --- | --- | --- |"]
-    rows += [f"| {c.id} | {c.status} | {_cell(c.detail)} |" for c in checks]
+    rows += [f"| {c.id} | {c.status} | {_cell(c.detail)} |" for c in _winning(checks).values()]
     rows += [f"| ? | WARN | ignored line: {_cell(line)} |" for line in bad]
     verdict, conditions = _verdict(checks)
     out = [*rows, "", "Conditions:", ""]

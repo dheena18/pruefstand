@@ -19,7 +19,8 @@
 # A non-interactive ssh has a minimal PATH, so the Ollama binary is taken from the process that serves
 # :11434 (fallback `command -v ollama`); a pid counts only if we own it and its executable is a regular
 # executable file named `ollama`.
-# Confidentiality: every output line is filtered. Scrubbed: the binary path (`<ollama-bin>`), its install
+# Confidentiality: every output line is filtered. Scrubbed: MODELS_DIR (`<models-dir>`, also in the header
+# line, so the published `/data/<login>/Models` form is never printed), the binary path (`<ollama-bin>`), its install
 # prefix (`<ollama-prefix>`), $HOME, its resolved path and the passwd home directory (`<home>`), each only
 # on a path-segment boundary, and the login (`id -un`, $USER, $LOGNAME; case-insensitive) as a path segment
 # or before `@` (`<cluster-user>`). The last filter FAILS CLOSED: a line that still contains one of
@@ -81,6 +82,7 @@ add_login() { # login; empty and duplicate values are ignored
 
 init_redact() { # builds the scrub lists from the binary path, HOME, passwd and the login
   local bin_dir h pw
+  add_redact "$MODELS_DIR" "<models-dir>" # first: it wins over the home and prefix paths
   if [ -n "$OLLAMA_BIN" ]; then
     add_redact "$OLLAMA_BIN" "<ollama-bin>"
     bin_dir="${OLLAMA_BIN%/*}"
