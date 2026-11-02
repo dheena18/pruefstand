@@ -28,7 +28,6 @@ _AUTOLINK = re.compile(r"(?i)(://|www\.)")
 _REF = re.compile(r"#(?=\d)")
 _GHREF = re.compile(r"(?i)(gh)(?=-\d)")
 _CANARY = re.compile(r"canary[a-z]{2}(?:(?!canary)[0-9a-f]){6,}")
-_INVISIBLE = frozenset({"Cf", "Mn", "Me", "Cc"})
 CANARY_MASK = "CANARY-**-******"
 MAX_INPUT = 8000
 _URL_BAD = re.compile(r"[\s<>\"\\\x00-\x1f\x7f-\x9f\u200b-\u200f\u2028-\u202e\u2060-\u2069\ufeff]")
@@ -118,15 +117,17 @@ def mask_canaries(text: str) -> str:
     chars: list[str] = []
     index: list[int] = []
     for i, ch in enumerate(text):
-        if unicodedata.category(ch) in _INVISIBLE:
-            continue
         for part in unicodedata.normalize("NFKD", ch):
-            if IGNORABLE.match(part) or unicodedata.category(part) == "Mn":
+            if IGNORABLE.match(part):
                 continue
-            for folded in part.casefold().translate(CONFUSABLES):
-                if folded.isalnum():
-                    chars.append(folded)
-                    index.append(i)
+            # the detector's order: casefold, then drop marks, then map look-alikes
+            for folded in part.casefold():
+                if unicodedata.category(folded) == "Mn":
+                    continue
+                for letter in folded.translate(CONFUSABLES):
+                    if letter.isalnum():
+                        chars.append(letter)
+                        index.append(i)
     out: list[str] = []
     pos = 0
     for match in _CANARY.finditer("".join(chars)):
