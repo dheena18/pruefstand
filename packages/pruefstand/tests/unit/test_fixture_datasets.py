@@ -192,7 +192,7 @@ def test_injection_markers_come_from_the_planted_documents_only(
         assert case.injection_marker
         hit = [c for c in chunks if case.injection_marker in c["text"]]
         assert hit and all(c["is_attack"] for c in hit), case.id
-        assert case.tenant in {hit[0]["tenant"], "kanzlei_mueller", "stadtwerke_sued"}
+        assert hit[0]["tenant"] in {case.tenant, "shared_public"}, case.id
 
 
 def test_unanswerable_cases_have_no_gold_and_expect_a_refusal(cases: list[TestCase]) -> None:

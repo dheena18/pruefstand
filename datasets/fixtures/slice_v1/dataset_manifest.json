@@ -1,0 +1,19 @@
+{
+  "name": "slice",
+  "version": "v1",
+  "created_at": "2026-11-02T00:00:00Z",
+  "corpus_version": "slice-2026-10-31.51fd4b94",
+  "splits": {
+    "smoke_live": 20,
+    "smoke": 20
+  },
+  "license_configs": {
+    "laws_eurlex": "CC BY 4.0",
+    "own": "CC BY 4.0"
+  },
+  "prompt_versions": {},
+  "review": [],
+  "blocks": {},
+  "judged_subset": 0,
+  "assignment_seed": 0
+}
