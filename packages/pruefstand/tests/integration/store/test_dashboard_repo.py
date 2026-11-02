@@ -8,43 +8,18 @@ from pathlib import Path
 from typing import Any
 
 import pytest
+from testsupport.dashboard_support import export, push
 from testsupport.git_support import bare_repo, commit_count, git, show, tree_names
 from testsupport.run_builders import make_manifest
-from testsupport.store_support import registry, run_id, run_of, token
+from testsupport.store_support import run_id, token
 
 from pruefstand.core.errors import StoreError
 from pruefstand.core.models.dashboard import MAX_CASE_RUNS, MAX_INDEX_RUNS
-from pruefstand.store.dashboard_repo import push_dashboard_data, push_heartbeat
-from pruefstand.store.sanitise import sanitise_run, seal_export, write_public_export
+from pruefstand.store.dashboard_repo import push_heartbeat
 
 pytestmark = pytest.mark.integration
 
 T0 = datetime(2026, 10, 1, tzinfo=UTC)
-
-
-def export(
-    tmp: Path,
-    index: int,
-    *,
-    cases: bool = True,
-    name: str = "pub",
-    added: dict[str, bytes] | None = None,
-) -> Path:
-    run = run_of(tmp, index)
-    out = write_public_export(sanitise_run(run, registry("VN-7f3a9c")), tmp / f"{name}{index}")
-    if cases:
-        (out / "cases").mkdir()
-        (out / "cases" / "000.json").write_text('{"cases": []}', encoding="utf-8")
-        (out / "report.html").write_text("<html>report</html>", encoding="utf-8")
-        (out / "gate.json").write_text('{"status": "pass"}', encoding="utf-8")
-    for filename, data in (added or {}).items():
-        (out / filename).write_bytes(data)
-    seal_export(out)
-    return out
-
-
-def push(bare: Path, src: Path, **kwargs: Any) -> str:
-    return push_dashboard_data(src, "owner/pruefstand-dashboard-data", remote=str(bare), **kwargs)
 
 
 def seed_repo(bare: Path, tmp: Path, runs: int, with_cases: int) -> None:
@@ -278,63 +253,3 @@ def test_a_bad_heartbeat_payload_is_refused(tmp_path: Path, payload: Any) -> Non
     with pytest.raises(StoreError, match="payload"):
         push_heartbeat("owner/data", payload, remote=str(bare))
     assert git("for-each-ref", git_dir=bare).strip() == ""
-
-
-def test_an_extra_file_with_a_canary_is_refused(tmp_path: Path) -> None:
-    bare = bare_repo(tmp_path)
-    with pytest.raises(StoreError, match="CANARY-"):
-        push(bare, export(tmp_path, 1), extra={"labels.json": token("X").encode()})
-    assert git("for-each-ref", git_dir=bare).strip() == ""
-
-
-def test_a_hard_link_in_the_source_is_refused(tmp_path: Path) -> None:
-    bare = bare_repo(tmp_path)
-    src = export(tmp_path, 1)
-    outside = tmp_path / "outside.txt"
-    outside.write_text("x", encoding="utf-8")
-    (src / "linked.txt").hardlink_to(outside)
-    with pytest.raises(StoreError, match="hard link"):
-        push(bare, src)
-
-
-def test_the_published_bytes_are_the_verified_bytes(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    from pruefstand.store import dashboard_repo
-
-    bare = bare_repo(tmp_path)
-    src = export(tmp_path, 1)
-    real = dashboard_repo._clone_or_init  # noqa: SLF001
-
-    def tamper(*args: Any) -> None:
-        real(*args)
-        (src / "gate.json").write_text(f'{{"status": "{token("LATE")}"}}', encoding="utf-8")
-
-    monkeypatch.setattr(dashboard_repo, "_clone_or_init", tamper)
-    push(bare, src)
-    assert "CANARY-" not in show(bare, "main", f"runs/{run_id(1)}/gate.json")
-
-
-def test_a_remote_that_moves_between_clone_and_push_is_retried_never_overwritten(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    from pruefstand.store import dashboard_repo
-
-    bare = bare_repo(tmp_path)
-    push(bare, export(tmp_path, 1))
-    real = dashboard_repo._clone_or_init  # noqa: SLF001
-    state = {"moved": False}
-
-    def racing(git_: Any, url: str, branch: str, work: Path) -> None:
-        real(git_, url, branch, work)
-        if not state["moved"]:
-            state["moved"] = True
-            push(bare, export(tmp_path, 3, name="racer"))  # someone else pushes meanwhile
-
-    monkeypatch.setattr(dashboard_repo, "_clone_or_init", racing)
-    sha = push(bare, export(tmp_path, 2, name="mine"))
-    names = tree_names(bare, "main")
-    assert f"runs/{run_id(3)}/run.json" in names  # the other push survived
-    assert f"runs/{run_id(2)}/run.json" in names
-    assert git("rev-parse", "main", git_dir=bare).strip() == sha
-    assert commit_count(bare, "main") == 3

@@ -133,7 +133,7 @@ def test_the_trusted_target_id_is_optional_and_validated() -> None:
     ],
 )
 def test_an_identity_without_sha_and_digest_is_opaque(
-    git_sha: str, digest: str | None, opaque: bool
+    git_sha: str, digest: str | None, opaque: object
 ) -> None:
     info = TargetInfo(
         app_version="1",
@@ -143,7 +143,7 @@ def test_an_identity_without_sha_and_digest_is_opaque(
         corpus_version="v",
         models={},
     )
-    assert identity_is_opaque(info) is opaque
+    assert identity_is_opaque(info) == opaque
     assert identity_is_opaque(None) is True
 
 

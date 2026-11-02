@@ -27,6 +27,7 @@ REFS = (
 """The only refs a baseline can have (ADR-0004, R13 D305); any other ref is a ``StoreError``."""
 MAX_INDEX_BYTES = 4 * 1024 * 1024
 _NAME = re.compile(r"[A-Za-z0-9][A-Za-z0-9_-]{0,63}")
+_FINGERPRINT = re.compile(r"[0-9a-f]{16}")
 _SHA256 = re.compile(r"[0-9a-f]{64}")
 
 
@@ -39,10 +40,10 @@ def validate_fingerprint(value: str) -> str:
     """Return ``value`` if it is a safe path component for a fingerprint.
 
     Raises:
-        StoreError: Not 1..64 characters of ``[A-Za-z0-9_-]`` starting with a letter or digit.
+        StoreError: Not 16 lowercase hex characters (the output of ``stable_hash``).
     """
-    if _NAME.fullmatch(value) is None:
-        msg = f"invalid eval fingerprint {_shown(value)}: use 1..64 of [A-Za-z0-9_-]"
+    if _FINGERPRINT.fullmatch(value) is None:
+        msg = f"invalid eval fingerprint {_shown(value)}: expected 16 lowercase hex characters"
         raise StoreError(msg)
     return value
 

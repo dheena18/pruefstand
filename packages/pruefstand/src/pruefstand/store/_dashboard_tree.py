@@ -15,10 +15,12 @@ from typing import Any
 from pydantic import ValidationError
 
 from pruefstand.core.errors import StoreError
+from pruefstand.core.logging import get_logger
 from pruefstand.core.models.dashboard import MAX_CASE_RUNS, MAX_INDEX_RUNS
 from pruefstand.core.models.run import RunManifest
 from pruefstand.store._run_files import read_bounded
 
+_log = get_logger(__name__)
 MAX_JSON_BYTES = 4 * 1024 * 1024
 _SKIP = ".git"
 
@@ -81,10 +83,12 @@ def _runs(root: Path) -> list[tuple[RunManifest, Path]]:
                 read_bounded(directory / "run.json", MAX_JSON_BYTES)
             )
         except (StoreError, ValidationError):
-            shutil.rmtree(directory)
+            _log.warning(
+                "dashboard_run_skipped", directory=directory.name, reason="invalid run.json"
+            )
             continue
         if manifest.run_id != directory.name:
-            shutil.rmtree(directory)
+            _log.warning("dashboard_run_skipped", directory=directory.name, reason="name differs")
             continue
         found.append((manifest, directory))
     found.sort(key=lambda item: (item[0].created_at, item[0].run_id), reverse=True)

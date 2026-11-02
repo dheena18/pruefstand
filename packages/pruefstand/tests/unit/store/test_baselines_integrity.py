@@ -256,7 +256,9 @@ def test_a_hard_linked_file_is_refused(tmp_path: Path) -> None:
         store.get(FP, "main")
 
 
-@pytest.mark.parametrize("fp", ["ABCDEF0123456789", "0123456789abcde", "0123456789abcdef0", "ef-test"])
+@pytest.mark.parametrize(
+    "fp", ["ABCDEF0123456789", "0123456789abcde", "0123456789abcdef0", "ef-test"]
+)
 def test_only_sixteen_lowercase_hex_characters_are_a_fingerprint(tmp_path: Path, fp: str) -> None:
     with pytest.raises(StoreError, match="fingerprint"):
         store_at(tmp_path).get(fp, "main")

@@ -141,6 +141,10 @@ def _open_verified(path: Path, limit: int) -> BinaryIO:
         handle.close()
         msg = f"{path.name} in {path.parent} changed while being opened"
         raise StoreError(msg)
+    if opened.st_nlink > 1:
+        handle.close()
+        msg = f"{path.name} in {path.parent} is a hard link; run files must be plain files"
+        raise StoreError(msg)
     return handle
 
 

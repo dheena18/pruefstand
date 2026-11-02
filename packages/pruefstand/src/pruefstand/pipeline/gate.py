@@ -129,9 +129,16 @@ def _decide(cand: RunResults, base: RunResults | None, cfg: PruefstandConfig) ->
             run_id=cand.manifest.run_id,
             note="the gate policy of this config is not the one the run was made with",
         )
+    from_base = cand.manifest.counts.get("cached_from_base", 0)
+    if from_base > 0 and from_base >= cand.manifest.n_cases:
+        msg = (
+            f"all {from_base} answers of the candidate came from the baseline cache: "
+            "the candidate never ran, so there is nothing to gate"
+        )
+        raise GateInputError(msg)
     if base is None:
         return _without_baseline(cand, cfg.gate)
-    return evaluate_gate(
+    report = evaluate_gate(
         base,
         cand,
         cfg.gate,
@@ -139,6 +146,10 @@ def _decide(cand: RunResults, base: RunResults | None, cfg: PruefstandConfig) ->
         directions=MetricRegistry.default().directions(),
         informational=informational_mapping(base.manifest, cand.manifest, cfg.gate),
     )
+    if from_base > 0 and report.status is GateStatus.PASS:
+        _log.warning("gate_answers_from_base_cache", count=from_base)
+        return report.model_copy(update={"status": GateStatus.WARN})
+    return report
 
 
 def _finish(report: GateReport, candidate: Path) -> GateReport:

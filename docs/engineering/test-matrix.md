@@ -252,6 +252,7 @@ owning module's unit test dir (`pt/unit/<module>/`, `rd/unit/…`).
 | `sanitise_run` | `store.sanitise` | T6.1 | `test_sanitise.py` | chunk text gone; canary redacted (case-insensitive); probe cases dropped; input unchanged; export without `scored.jsonl`, sealed manifest, unknown canary stops the export | covered |
 | `sanitise_run` `infra_error` kind (**R13** UI13-13, D315) | `store.sanitise` | T6.1 | `test_sanitise.py` | `infra_error="tunnel_lost: host cairo-s101lp"` → sanitised `"tunnel_lost"` (no `:` detail); `None` stays `None` | covered |
 | `RunIndex.refresh`, `.query` | `store.run_index` | T6.1 | `test_run_index.py` | 3 runs → count 3; refresh idempotent; a tampered parquet is never parsed (run skipped); queries cannot read or write files; linear cost | covered |
+| Target cache identity and cached-answer gate rule (review of PR 41, D446) | `pipeline.cache`, `pipeline.run`, `pipeline.gate`, `report` | T6.1 | `pt/unit/cli/test_run_cache.py`, `pt/unit/pipeline/test_gate_refs.py`, `pt/unit/report/test_markdown_cache_notice.py` | a PR run with main's self-reported identity gets zero cache hits; opaque identity (`unknown`, no digest) -> no cache at all; a different trusted id misses; trusted id equal -> `cached_from_base`; all answers from the base cache -> `GateInputError`, some -> WARN, shown in the PR comment | covered |
 | Target cache with PR overlay | `pipeline` / `store.kv` | T6.1 | `test_target_cache.py`, `pt/unit/pipeline/test_cache.py` | same fingerprint twice → 0 target calls; `/v1/health.stats` change does not change the fingerprint (R9 X3.13) | covered |
 
 ## runner (§8)
@@ -558,10 +559,10 @@ UI tests (pages × states × theme × locale × viewport) are specified in `docs
 
 | Status | Rows |
 | --- | --- |
-| covered | 394 |
+| covered | 395 |
 | planned | 21 (R13 rows and rows whose case round 13 changed; owners T3.1a, T3.6, T4.1, T5.1, T5.4, T6.2a, T6.2b, T7.1b, T7.2, T7.3, T8.1, T8.5) |
 | weak | 1 (backup bundle: drill only, acceptable for an ops script) |
-| **total** | **416** |
+| **total** | **417** |
 
 Round-13 changes (D296): the round-12 table (241 covered / 29 open / 1 weak = 271 rows) was re-derived: 40 multi-owner
 rows split into 90 single-owner rows (+50); 29 open rows flipped (`covered` unless round 13 changed the case); 21 new

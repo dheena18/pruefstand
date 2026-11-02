@@ -23,7 +23,12 @@ from pruefstand.core.models.testcase import TestCase
 from pruefstand.core.protocols import JudgePoolLike, KVCache, TargetAdapter
 from pruefstand.llm.budget import Budget, ChargeTally
 from pruefstand.metrics.registry import MetricRegistry
-from pruefstand.pipeline.cache import target_cache
+from pruefstand.pipeline.cache import (
+    cache_mode,
+    identity_is_opaque,
+    target_cache,
+    trusted_target_id,
+)
 from pruefstand.pipeline.datasets import Dataset, load_dataset
 from pruefstand.pipeline.fingerprints import JudgeFacts, build_eval_fingerprint, judge_facts
 from pruefstand.pipeline.judge_mode import (
@@ -127,7 +132,10 @@ def _complete(
 
 
 def _target_fingerprint(plan: _Plan, info: TargetInfo | None) -> str:
-    return target_fingerprint(info, url=plan.cfg.target.url, run_id=new_run_id())
+    """Self-reported fingerprint; a trusted id from the executor is added to it, never replaced."""
+    fingerprint = target_fingerprint(info, url=plan.cfg.target.url, run_id=new_run_id())
+    trusted = trusted_target_id(os.environ)
+    return fingerprint if trusted is None else stable_hash(trusted, fingerprint)
 
 
 def _store(out: Path, results: RunResults) -> Path:
@@ -180,22 +188,44 @@ def _runner(
 
 
 async def _execute(
-    plan: _Plan, judges: JudgePoolLike | None, out: Path, cache: KVCache | None
+    plan: _Plan, judges: JudgePoolLike | None, out: Path
 ) -> tuple[RunResults, TargetInfo | None]:
-    """Ask the target for its info, check the corpus, then run the selected cases."""
+    """Ask the target for its info, check the corpus, then run the selected cases.
+
+    The target cache is opened only now, because it depends on the identity the target reports:
+    an opaque identity gets no cache, and without ``PRUEFSTAND_TRUSTED_TARGET_ID`` a PR job never
+    reads main's cache (D446).
+    """
     adapter = build_adapter(plan.cfg.target)
     try:
         info = await adapter.info()
         _abort_on_corpus_mismatch(plan, info, out)
-        results = await _runner(plan, adapter, judges, cache).run(
-            plan.cases,
-            target_fingerprint=_target_fingerprint(plan, info),
-            seed=plan.cfg.seed,
-            judged_subset=plan.judged_subset,
-        )
+        usable = not identity_is_opaque(info)
+        if not usable:
+            _log.warning("target_cache_off", note="the target reports no usable identity")
+        trusted = trusted_target_id(os.environ)
+        with target_cache(os.environ, enabled=usable, use_base=trusted is not None) as cache:
+            results = await _runner(plan, adapter, judges, cache).run(
+                plan.cases,
+                target_fingerprint=_target_fingerprint(plan, info),
+                seed=plan.cfg.seed,
+                judged_subset=plan.judged_subset,
+            )
+        results = _mark_base_hits(results, base_read=usable and trusted is not None)
     finally:
         await adapter.aclose()
     return results, info
+
+
+def _mark_base_hits(results: RunResults, *, base_read: bool) -> RunResults:
+    """Record ``cached_from_base``: answers a PR candidate got from main's cache (D446)."""
+    cached = results.manifest.counts.get("cached", 0)
+    if not base_read or cache_mode(os.environ) != "overlay" or cached == 0:
+        return results
+    counts = {**results.manifest.counts, "cached_from_base": cached}
+    return results.model_copy(
+        update={"manifest": results.manifest.model_copy(update={"counts": counts})}
+    )
 
 
 async def run_eval(
@@ -240,8 +270,7 @@ async def run_eval(
     """
     plan = _plan(cfg, tier, block=block, judged_subset=judged_subset, stratum=stratum)
     judges = None if plan.mode == "skipped" else build_judge_pool(cfg, plan.mode)
-    with target_cache() as cache:  # shared for main/nightly, a per-job overlay for PRs
-        results, info = await _execute(plan, judges, out, cache)
+    results, info = await _execute(plan, judges, out)
     mode = final_judge_mode(plan.mode, judged_cases=results.manifest.judged_cases)
     manifest = _complete(results.manifest, plan, info, mode)
     done = results.model_copy(update={"manifest": manifest})

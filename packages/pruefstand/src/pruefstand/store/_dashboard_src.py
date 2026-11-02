@@ -32,6 +32,8 @@ class Export:
     root: Path
     run_id: str
     files: tuple[str, ...]
+    data: dict[str, bytes]
+    """The verified bytes of every file: what is written is what was hashed and scanned."""
 
 
 def _collect(src: Path) -> dict[str, Path]:
@@ -46,6 +48,9 @@ def _collect(src: Path) -> dict[str, Path]:
             msg = f"{path.relative_to(src)} is a symlink; exports hold regular files only"
             raise StoreError(msg)
         if path.is_file():
+            if path.lstat().st_nlink > 1:
+                msg = f"{path.relative_to(src)} is a hard link; exports hold plain files only"
+                raise StoreError(msg)
             total += path.lstat().st_size
             found[path.relative_to(src).as_posix()] = path
     if len(found) > MAX_SRC_FILES or total > MAX_SRC_BYTES:
@@ -75,8 +80,10 @@ def load_export(src: Path) -> Export:
     if not isinstance(listed, dict) or sorted(listed) != names:
         msg = "manifest.json does not list exactly the files of the export"
         raise StoreError(msg)
+    verified: dict[str, bytes] = {}
     for name in names:
         data = read_bounded(found[name], MAX_FILE_BYTES)
+        verified[name] = data
         if hashlib.sha256(data).hexdigest() != listed[name]:
             msg = f"manifest.json does not match {name}: the export changed after it was sealed"
             raise StoreError(msg)
@@ -87,7 +94,7 @@ def load_export(src: Path) -> Export:
     if not isinstance(run_id, str):
         msg = "manifest.json names no run_id"
         raise StoreError(msg)
-    return Export(src, validate_run_id(run_id), tuple(names))
+    return Export(src, validate_run_id(run_id), tuple(names), verified)
 
 
 def check_extra(extra: Mapping[str, bytes] | None) -> dict[str, bytes]:
@@ -106,6 +113,9 @@ def check_extra(extra: Mapping[str, bytes] | None) -> dict[str, bytes]:
             msg = (
                 f"extra file {name[:60]!r} is not allowed (relative path, not under runs/, cases/)"
             )
+            raise StoreError(msg)
+        if _CANARY.search(data):
+            msg = f"extra file {name!r} contains 'CANARY-': refusing to publish"
             raise StoreError(msg)
         total += len(data)
         checked[name] = data

@@ -265,7 +265,7 @@ def test_prune_updates_the_index_in_one_commit(env: Setup) -> None:
 
 def test_prune_drops_a_stale_fingerprint_from_the_index(env: Setup) -> None:
     store = env.store(clock=clock())
-    store.put(run_of(env.tmp, 1, eval_fingerprint="a" * 16), "main")
+    store.put(run_of(env.tmp, 1, block=0, eval_fingerprint="a" * 16), "nightly-b0")
     store.prune(keep=20, unused_days=90, now=START + timedelta(days=100))
     index = json.loads(show(env.bare, "baselines", "baselines/index.json"))
     assert "a" * 16 not in index["entries"]

@@ -7,6 +7,7 @@ cannot be opened means "no cache", never a failed run.
 """
 
 import os
+import re
 import shutil
 import tempfile
 from collections.abc import Iterator, Mapping
@@ -15,11 +16,45 @@ from pathlib import Path
 
 from pruefstand.core.errors import ConfigError, StoreError
 from pruefstand.core.logging import get_logger
+from pruefstand.core.models.target import TargetInfo
 from pruefstand.core.protocols import KVCache
 from pruefstand.store.kv import CacheMode, DiskKVCache, build_cache
 
 _log = get_logger(__name__)
 _MODES: tuple[CacheMode, ...] = ("overlay", "shared")
+_TRUSTED_ID = re.compile(r"[A-Za-z0-9][A-Za-z0-9:._@/+-]{0,199}")
+UNKNOWN_SHA = ("", "unknown")
+
+
+def trusted_target_id(env: Mapping[str, str]) -> str | None:
+    """The identity of the candidate that the *executor* vouches for, or None.
+
+    ``PRUEFSTAND_TRUSTED_TARGET_ID`` is the image digest the executor pulled. When set it goes into
+    the cache key and into ``target_fingerprint``; what the target reports about itself can only
+    add to it. Without it a PR job never reads main's cache.
+
+    Raises:
+        ConfigError: The value is not a plausible digest or id.
+    """
+    value = env.get("PRUEFSTAND_TRUSTED_TARGET_ID")
+    if not value:
+        return None
+    if _TRUSTED_ID.fullmatch(value) is None:
+        msg = (
+            "PRUEFSTAND_TRUSTED_TARGET_ID: expected an image digest or id (1..200 safe characters)"
+        )
+        raise ConfigError(msg)
+    return value
+
+
+def identity_is_opaque(info: TargetInfo | None) -> bool:
+    """True when the target reports no usable identity.
+
+    That is: no ``/v1/info``, or git sha ``unknown``/empty and no image digest. Every build without
+    the build arguments would share one fingerprint, so its answers are neither read from nor
+    written to any cache.
+    """
+    return info is None or (info.git_sha in UNKNOWN_SHA and not info.image_digest)
 
 
 def cache_mode(env: Mapping[str, str]) -> CacheMode:
@@ -51,11 +86,16 @@ def shared_cache_dir(env: Mapping[str, str]) -> Path:
 
 
 @contextmanager
-def target_cache(env: Mapping[str, str] | None = None) -> Iterator[KVCache | None]:
+def target_cache(
+    env: Mapping[str, str] | None = None, *, enabled: bool = True, use_base: bool = True
+) -> Iterator[KVCache | None]:
     """Open the target cache of this job and close it (and delete the overlay) afterwards.
 
     Args:
         env: Environment; default ``os.environ``.
+        enabled: False yields None (opaque target identity: no cache at all).
+        use_base: In ``overlay`` mode False keeps main's shared cache out entirely (no trusted
+            target id: the candidate's own claims must never select main's answers).
 
     Yields:
         The cache, or None when it cannot be opened (the run then continues without one).
@@ -65,11 +105,14 @@ def target_cache(env: Mapping[str, str] | None = None) -> Iterator[KVCache | Non
     """
     values = os.environ if env is None else env
     mode = cache_mode(values)
+    if not enabled:
+        yield None
+        return
     shared = shared_cache_dir(values)
     overlay = tempfile.mkdtemp(prefix="pruefstand-overlay-") if mode == "overlay" else None
     cache: KVCache | None = None
     try:
-        cache = _open(mode, shared, Path(overlay) if overlay else None)
+        cache = _open(mode, shared, Path(overlay) if overlay else None, use_base=use_base)
         yield cache
     finally:
         closer = getattr(cache, "close", None)
@@ -79,14 +122,18 @@ def target_cache(env: Mapping[str, str] | None = None) -> Iterator[KVCache | Non
             shutil.rmtree(overlay, ignore_errors=True)
 
 
-def _open(mode: CacheMode, shared: Path, overlay: Path | None) -> KVCache | None:
+def _open(mode: CacheMode, shared: Path, overlay: Path | None, *, use_base: bool) -> KVCache | None:
+    if overlay is not None and not use_base:
+        return _own_overlay(overlay)
     try:
         return build_cache(mode, shared, overlay or shared)
     except StoreError as exc:
         _log.warning("target_cache_unavailable", mode=mode, error=str(exc))
-    if overlay is None:
-        return None
-    try:  # main's cache is unreadable: the PR still gets a working cache of its own
+    return None if overlay is None else _own_overlay(overlay)
+
+
+def _own_overlay(overlay: Path) -> KVCache | None:
+    try:  # the PR's per-job cache only; main's cache is not (or cannot be) read
         return DiskKVCache(overlay, "target")
     except StoreError as exc:
         _log.warning("target_cache_overlay_unavailable", error=str(exc))

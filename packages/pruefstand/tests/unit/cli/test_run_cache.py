@@ -6,7 +6,6 @@ target that reports no usable identity gets no cache at all.
 """
 
 import tempfile
-from collections.abc import Iterator
 from pathlib import Path
 
 import pytest
@@ -31,11 +30,11 @@ def _cache_env(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
 
 
 @pytest.fixture
-def good(router: respx.MockRouter) -> Iterator[TargetCassette]:
+def good(router: respx.MockRouter) -> TargetCassette:
     """A target that reports a usable identity (a git sha)."""
     cassette = TargetCassette("good", info_overrides={"git_sha": "abc123"})
     cassette.install(router, GOOD_URL)
-    yield cassette
+    return cassette
 
 
 @pytest.fixture

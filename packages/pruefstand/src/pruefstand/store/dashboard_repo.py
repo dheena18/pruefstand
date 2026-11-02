@@ -75,7 +75,7 @@ def _copy_export(work: Path, export: Export) -> None:
         else:
             target = runs / relative
         target.parent.mkdir(parents=True, exist_ok=True)
-        shutil.copyfile(export.root / name, target)
+        target.write_bytes(export.data[name])
 
 
 def _clone_or_init(git: Git, url: str, branch: str, work: Path) -> None:
