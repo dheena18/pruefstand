@@ -17,6 +17,7 @@ from pruefstand.core.models.perturb import PerturbResult
 from pruefstand.perturb._common import finish, nfc
 
 _NUMBER = re.compile(r"(?<![\w.,§])(?P<int>\d{1,3}(?:\.\d{3})+|\d+)(?:,(?P<dec>\d+))?(?!\d|[.,]\d)")
+_LEFTOVER = re.compile(r"\d,\d|\d\.\d{3}(?!\d)")  # no lookbehind: glued numbers count too
 _UNIT_AFTER = re.compile(r"\s?(?:%|€|EUR(?!\w)|Euro(?!\w)|Prozent(?!\w))")
 _UNIT_BEFORE = re.compile(r"(?:€|EUR|Euro)\s?$")
 _EURO_AFTER_DIGIT = re.compile(r"(?<=\d)\s*€")
@@ -64,7 +65,7 @@ class Numbers:
         del rng  # deterministic rule
         source = nfc(text)
         out = _NUMBER.sub(_convert, source)
-        if any(m.group("dec") or "." in m.group("int") for m in _NUMBER.finditer(out)):
+        if _LEFTOVER.search(out):
             return finish(source, source)  # a German-format number would stay: mixed readings
         out = _EURO_AFTER_DIGIT.sub(" EUR", out)
         out = _EURO_BEFORE_DIGIT.sub("EUR ", out)

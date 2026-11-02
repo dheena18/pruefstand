@@ -2,9 +2,10 @@
 
 Edit types (D392): deletion, adjacent transposition, substitution by a neighbouring key of the
 QWERTZ layout. Each is edit distance 1 (Damerau-Levenshtein). The first letter is never edited.
-Numbers, ``§`` and every word that resolves to a law name or contains a capital after its first
-letter (``KSchG``, ``GmbHG``, ``DSGVO``) are never touched; neither are runs over 40 letters
-or words inside URLs, e-mail addresses, domains and canary-like tokens (D394).
+Numbers and ``§`` are never touched. Skipped words: a single-word law name or alias (full
+multi-word names are not protected), a capital after the first letter (``KSchG``, ``DSGVO``),
+runs over 40 letters, and words inside URLs, e-mail addresses, domains and canary-like
+tokens (D394).
 """
 
 import re

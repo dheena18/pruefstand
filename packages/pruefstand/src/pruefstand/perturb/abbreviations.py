@@ -17,6 +17,8 @@ _FULL = {
 }
 _ABBREVIATION = re.compile(r"(?<![\w.])(?:Abs\.|Nr\.|ggf\.|i\.\s?V\.\s?m\.|z\.\s?B\.|bzw\.)")
 
+_MAX_PASSES = 4
+
 
 def _expand(m: re.Match[str]) -> str:
     found = m.group(0)
@@ -49,4 +51,10 @@ class Abbreviations:
         """
         del rng  # deterministic rule
         source = nfc(text)
-        return finish(source, _ABBREVIATION.sub(_expand, source))
+        out = source
+        for _ in range(_MAX_PASSES):  # glued ones (Abs.Nr.) only match after the first expansion
+            expanded = _ABBREVIATION.sub(_expand, out)
+            if expanded == out:
+                break
+            out = expanded
+        return finish(source, out)
