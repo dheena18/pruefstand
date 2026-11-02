@@ -102,14 +102,32 @@ def test_user_is_looked_up_once_across_calls(mock: respx.MockRouter) -> None:
     assert user.call_count == 1
 
 
-def test_5xx_is_retried(mock: respx.MockRouter) -> None:
+def test_patch_5xx_is_retried(mock: respx.MockRouter) -> None:
+    mock.get("/user").respond(200, json={"login": "b"})
+    _comments(mock, [[_c(4, "b", MARKER)]])
+    patch = mock.patch(f"/repos/{REPO}/issues/comments/4").mock(
+        side_effect=[httpx.Response(502), httpx.Response(502), httpx.Response(200, json={"id": 4})]
+    )
+    assert _pub().upsert_pr_comment(7, MARKER, MARKER) == 4
+    assert patch.call_count == 3
+
+
+def test_comment_post_is_never_retried(mock: respx.MockRouter) -> None:
     mock.get("/user").respond(200, json={"login": "b"})
     _comments(mock, [[]])
-    post = mock.post(f"/repos/{REPO}/issues/7/comments").mock(
-        side_effect=[httpx.Response(502), httpx.Response(502), httpx.Response(201, json={"id": 8})]
-    )
-    assert _pub().upsert_pr_comment(7, MARKER, MARKER) == 8
-    assert post.call_count == 3
+    post = mock.post(f"/repos/{REPO}/issues/7/comments").respond(502)
+    with pytest.raises(PruefstandError):
+        _pub().upsert_pr_comment(7, MARKER, MARKER)
+    assert post.call_count == 1
+
+
+def test_comment_post_transport_error_is_not_retried(mock: respx.MockRouter) -> None:
+    mock.get("/user").respond(200, json={"login": "b"})
+    _comments(mock, [[]])
+    post = mock.post(f"/repos/{REPO}/issues/7/comments").mock(side_effect=httpx.ConnectError("x"))
+    with pytest.raises(PruefstandError):
+        _pub().upsert_pr_comment(7, MARKER, MARKER)
+    assert post.call_count == 1
 
 
 def test_5xx_gives_up_after_three_retries(mock: respx.MockRouter) -> None:
@@ -291,3 +309,52 @@ def test_set_check_infra_error_truncates(mock: respx.MockRouter) -> None:
     route = mock.post(f"/repos/{REPO}/statuses/{SHA}").respond(201, json={})
     _pub().set_check(SHA, G.FAIL, "s" * 300, infra_error=True)
     assert len(_sent(route)["description"]) == 140
+
+
+@pytest.mark.parametrize(
+    "url",
+    [
+        "http://api.github.com",
+        "https://evil.example",
+        "https://api.github.com@evil.example",
+        "https://user:pw@api.github.com",
+        "https://api.github.com:8443",
+        "https://api.github.com.evil.example",
+    ],
+)
+def test_api_url_is_pinned(url: str) -> None:
+    with pytest.raises(ValueError, match="api_url"):
+        GitHubPublisher(TOKEN, REPO, url)
+
+
+def test_enterprise_host_is_an_explicit_opt_in() -> None:
+    pub = GitHubPublisher(
+        TOKEN, REPO, "https://ghe.example.org/api/v3", enterprise_host="ghe.example.org"
+    )
+    assert "ghe.example.org" not in repr(pub) or REPO in repr(pub)
+    with pytest.raises(ValueError, match="api_url"):
+        GitHubPublisher(TOKEN, REPO, "https://other.example.org", enterprise_host="ghe.example.org")
+
+
+def test_redirects_are_not_followed(mock: respx.MockRouter) -> None:
+    mock.post(f"/repos/{REPO}/statuses/{SHA}").respond(
+        302, headers={"location": "https://evil.example/x"}
+    )
+    target = mock.route(host="evil.example").respond(200)
+    with pytest.raises(PruefstandError):
+        _pub().post_status(SHA, "pending", "d")
+    assert not target.called
+
+
+def test_hitting_the_page_cap_warns_and_posts(
+    mock: respx.MockRouter, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(github, "MAX_PAGES", 2)
+    mock.get("/user").respond(200, json={"login": "b"})
+    page = [_c(i, "x", "y") for i in range(100)]
+    _comments(mock, [page, page, page])
+    mock.post(f"/repos/{REPO}/issues/7/comments").respond(201, json={"id": 9})
+    warnings: list[str] = []
+    monkeypatch.setattr(github.log, "warning", lambda event, **_k: warnings.append(event))
+    assert _pub().upsert_pr_comment(7, MARKER, MARKER) == 9
+    assert warnings == ["comment_search_page_cap"]

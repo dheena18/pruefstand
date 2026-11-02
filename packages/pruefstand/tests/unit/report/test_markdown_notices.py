@@ -6,10 +6,11 @@ from testsupport.report_builders import (
     decision,
     gate_report,
     hard_fail,
+    info_row,
     manifest,
     no_baseline_report,
 )
-from testsupport.report_render import DRIFT, ROW, render
+from testsupport.report_render import DRIFT, ROW, line_with, render
 
 from pruefstand.report.markdown import render_pr_comment
 
@@ -133,3 +134,52 @@ def test_no_gpu_without_a40_and_no_secret_like_text() -> None:
     out = render(cand=manifest(stack="live"))
     assert "GPU-s" not in out
     assert BASE_SHA not in out
+
+
+def test_reasonless_absolute_slice_rows_do_not_crowd_the_informational_line() -> None:
+    slices = [f"s{i}" for i in range(7)]
+    noise = tuple(
+        decision(
+            m,
+            dimension="tenant",
+            value=v,
+            status=PASS,
+            gated=False,
+            base=0.0,
+            cand=0.0,
+            ci=None,
+            mde=None,
+            max_drop=None,
+            max_value=0.02,
+        )
+        for m in ("error_rate", "injection_success")
+        for v in slices
+    )
+    small = tuple(
+        info_row("citation_f1", "applicable_clusters<30", 0.9, 0.9, diff=0.0) for _ in range(12)
+    )
+    drift = info_row("faithfulness", "judge_drift", 0.9, 0.8, diff=-0.1)
+    loud = decision(
+        "error_rate",
+        dimension="lang",
+        value="loud",
+        status=PASS,
+        gated=False,
+        notable=True,
+        base=0.0,
+        cand=0.05,
+        ci=None,
+        mde=None,
+        max_drop=None,
+        max_value=0.02,
+    )
+    report = gate_report(
+        hard_fails=(), decisions=(), absolute_checks=(*noise, loud), notable_slices=(*small, drift)
+    )
+    out = render(report)
+    line = line_with(out, "Informational (does not block):")
+    assert "Faithfulness 0.90 → 0.80 (−0.10) — judge drift" in line
+    assert "and" not in line.split("judge drift")[-1]
+    assert "— –" not in line
+    assert "tenant=s0" not in out
+    assert "lang=loud" in line_with(out, "Notable slice drops (informational):")

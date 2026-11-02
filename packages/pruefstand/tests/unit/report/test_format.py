@@ -1,5 +1,6 @@
 """Number and string formats of the PR comment (ui-spec §10.2) and the Markdown escaping."""
 
+import re
 import time
 
 import pytest
@@ -151,3 +152,16 @@ def test_md_escape_is_linear() -> None:
 
     small, large = cost(2_000), cost(8_000)
     assert large <= 8 * max(small, 1e-4)
+
+
+@pytest.mark.parametrize("text", ["GH-123", "gh-9 x", "see Gh-42"])
+def test_gh_autolinks_are_broken(text: str) -> None:
+    for out in (md_escape(text), md_code(text)):
+        assert not re.search(r"(?i)gh-\d", out)
+
+
+@pytest.mark.parametrize(
+    "url", ["https://e.vx/a\u200bb", "https://e.vx/\u202eevil", "https://e.vx/\x85"]
+)
+def test_safe_url_rejects_invisible_characters(url: str) -> None:
+    assert safe_url(url) is None

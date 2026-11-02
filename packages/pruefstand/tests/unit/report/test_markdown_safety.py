@@ -4,6 +4,7 @@ import time
 
 import pytest
 from testsupport.report_builders import (
+    PASS,
     WARN,
     base_manifest,
     decision,
@@ -142,3 +143,11 @@ def _timed(n: int) -> float:
 def test_render_time_is_linear_in_input_size() -> None:
     small, large = _timed(250), _timed(1_000)
     assert large <= 8 * max(small, 0.005)
+
+
+def test_hard_cut_when_even_the_minimal_step_is_too_long() -> None:
+    rows = tuple(decision("|" * 200 + str(i), status=PASS) for i in range(200))
+    out = render(gate_report(hard_fails=(), decisions=rows, status=PASS))
+    assert len(out) <= MAX_CHARS
+    assert out.rstrip().endswith("… truncated, see full report")
+    assert out.count("<details>") == out.count("</details>")
