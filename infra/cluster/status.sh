@@ -3,7 +3,8 @@
 #
 # usage: status.sh            (no arguments; writes nothing on the cluster)
 # status: OK | INFO | WARN | FAIL; exit 1 when any row is FAIL (the CSV is complete anyway), else 0.
-# Rows: server, second-server (FAIL when two `ollama serve` run), listener, env / env:<KEY> (WARN per key that
+# Rows: server, second-server (FAIL when two `ollama serve` run), listener, start-script (WARN when the start script of
+# record `~/start-ollama.sh` is missing, a dangling link or not executable), env / env:<KEY> (WARN per key that
 # differs from cluster.env), disk-models (WARN below MODELS_MIN_FREE_GB), api-tags, ps:<tag> (size, size_vram,
 # digest), gpu:<index>, gpu-proc:<pid> (WARN for a pid that is not ours), placement:<tag> (the card(s) of every
 # resident model: the model's blob in its manifest, matched to the runner process whose command line names that
