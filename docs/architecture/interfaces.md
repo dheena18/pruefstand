@@ -1209,6 +1209,8 @@ class GitHubPublisher:
     # signature and the infra_error row; T6.2a calls it with infra_error=True and summary =
     # "<RunManifest.infra_error>; retrying once" (first failure) or "<RunManifest.infra_error>; re-dispatch to
     # retry" (second failure, D274, R13 P1.2), so the description is exactly the table's text.
+    # T1.9 (D380): for no_baseline=True the caller passes GateReport.eval_fingerprint as `summary`; errors raise
+    # PublishError (PruefstandError; endpoint + status code only, never the token or a response body)
     # R13 P4.2 (D297): set_check is a thin wrapper that maps (status, no_baseline, infra_error) through the table
     # below and calls post_status(sha, state, description) with the default context
     def post_status(self, sha: str, state: Literal["pending", "success", "failure", "error"], description: str,
