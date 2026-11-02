@@ -14,7 +14,7 @@ from pruefstand.core.config_loader import load_model
 from pruefstand.core.enums import Lang
 from pruefstand.core.ids import DocId, TenantId
 from pruefstand.core.models.corpus import Chunk, CorpusManifest, Document
-from pruefstand.ingest.writer import verify_corpus
+from pruefstand.ingest.corpus_verify import verify_corpus
 from pruefstand.pipeline import ingest as pipeline_ingest
 
 TENANTS = {"kanzlei_mueller", "versicherung_nord", "stadtwerke_sued", "shared_public"}
@@ -104,7 +104,8 @@ def test_the_german_and_english_act_are_twins(built: tuple[Path, Path, Result]) 
     gdpr = chunks_of(version_dir(built), "stadtwerke_sued")
     de = sorted(c.parallel_id for c in gdpr if c.lang is Lang.DE and c.parallel_id)
     en = sorted(c.parallel_id for c in gdpr if c.lang is Lang.EN and c.parallel_id)
-    assert de and de == en
+    assert de
+    assert de == en
 
 
 def test_two_runs_give_byte_identical_directories(
@@ -132,7 +133,8 @@ def test_the_date_defaults_to_today(built: tuple[Path, Path, Result], tmp_path: 
     result = CliRunner().invoke(app, ["ingest", "--config", str(built[0]), "--out", str(tmp_path)])
     assert result.exit_code == 0, result.output
     (directory,) = tmp_path.iterdir()
-    assert directory.name[:4].isdigit() and directory.name[10] == "."
+    assert directory.name[:4].isdigit()
+    assert directory.name[10] == "."
 
 
 @pytest.mark.parametrize("date", ["2026-13-01", "11/02/2026", "2026-11-02.abc", "x"])
@@ -174,7 +176,7 @@ def test_a_source_without_a_pin_is_refused(tmp_path: Path) -> None:
     config.write_text(yaml.safe_dump(data), encoding="utf-8")
     result = ingest(config, tmp_path / "out")
     assert result.exit_code == 2
-    assert "gii:" in result.output
+    assert "has no pin" in result.output
 
 
 def test_the_committed_fixture_plan_is_unchanged_by_the_helper() -> None:
@@ -194,7 +196,7 @@ def extra_doc(doc_id: str, tenant: str, source: str = "synthetic:private") -> Do
 
 def test_the_extra_documents_hook_is_empty_by_default() -> None:
     config = load_model(PLAN_FIXTURE, CorpusBuildConfig)
-    assert pipeline_ingest._extra_documents(config) == []  # noqa: SLF001  (named hook, interface)
+    assert pipeline_ingest._extra_documents(config) == []
 
 
 def test_extra_documents_join_their_own_tenant(

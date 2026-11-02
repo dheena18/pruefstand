@@ -1,4 +1,4 @@
-"""Helpers of the ingest tests (T2.5): a raw data tree in the T2.1 layout built from the real fixtures.
+"""Helpers of the ingest tests (T2.5): a raw data tree (T2.1 layout) built from real fixtures.
 
 ``build_raw_root`` zips the trimmed GII norms, copies the EUR-Lex pairs and writes the three OLDP
 records as one JSON-lines dump, exactly where ``make data`` would put them. ``fixture_config``
@@ -51,9 +51,8 @@ def build_raw_root(root: Path, *, skip: frozenset[str] = frozenset()) -> Path:
         target = root / "eurlex" / celex
         target.mkdir(parents=True, exist_ok=True)
         for lang in ("de", "en"):
-            (target / f"{lang}.html").write_bytes(
-                (FIXTURES / "eurlex" / f"{stem}_{lang}.html").read_bytes()
-            )
+            source = FIXTURES / "eurlex" / f"{stem}_{lang}.html"
+            (target / f"{lang}.html").write_bytes(source.read_bytes())
     if "oldp" not in skip:
         dump = root / "hf" / "oldp_decisions" / "dump-fixture"
         dump.mkdir(parents=True, exist_ok=True)
@@ -68,7 +67,7 @@ def build_raw_root(root: Path, *, skip: frozenset[str] = frozenset()) -> Path:
 
 
 def fixture_config(directory: Path, raw_root: Path) -> Path:
-    """Copy the committed fixture plan to ``directory`` with ``raw_root`` and the pins made absolute.
+    """Copy the committed fixture plan to ``directory`` with ``raw_root`` and pins made absolute.
 
     Args:
         directory: Where to write ``corpus.yaml``.

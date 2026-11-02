@@ -11,6 +11,7 @@ import typer
 from pydantic import ValidationError
 
 from pruefstand.cli import gate as _gate
+from pruefstand.cli import ingest as _ingest
 from pruefstand.cli import power as _power
 from pruefstand.cli import report as _report
 from pruefstand.cli import run as _run
@@ -51,5 +52,5 @@ def version() -> None:
     typer.echo(f"pruefstand {_package_version('pruefstand')}")
 
 
-for _module in (_run, _gate, _report, _validate, _schema, _power, _stubs):
+for _module in (_run, _gate, _report, _validate, _schema, _power, _ingest, _stubs):
     _module.register(app)

@@ -1349,8 +1349,30 @@ def load_citation_graph(raw_dir: Path, *, decisions_dir: Path | None = None,
     # ingest/citation_graph.py (T2.3): OLDP Case->Law edges, slug -> `oldp-<id>` via the sibling oldp_decisions dir
     # (or decisions_dir), values = sorted distinct normalised law keys; unknown law codes kept as "§ 5 FMStFG" and logged
 def assign_tenants(docs: Iterable[Document], plan: TenantPlan) -> Iterator[Document]
-# TenantPlan, CorpusBuildConfig (core.config): fields defined by T2.5 and recorded here in that PR
-def write_corpus(chunks: Iterable[Chunk], out_dir: Path, corpus_version: str) -> CorpusManifest
+# TenantPlan, CorpusBuildConfig (core.config.build, T2.5; D431-D438):
+class TenantRule(BaseModel):      tenant: TenantId; source: str | None; law_abbrev: str | None; metadata: dict[str, str] = {}
+                                  # all given criteria must match; at least one is required; frozen, extra="forbid"
+class TenantPlan(BaseModel):      tenants: tuple[TenantId, ...]          # 1..64 safe ids, unique; each must receive chunks
+                                  rules: tuple[TenantRule, ...] = ()     # <= 1000, disjoint (a document matching two -> ConfigError)
+                                  default_tenant: TenantId | None = None # None: a document no rule claims -> ConfigError(doc_id)
+                                  def sources(self, kind: str) -> tuple[str, ...]   # rule sources "gii:*" / "eurlex:*", sorted
+class CorpusBuildConfig(BaseModel):  # corpus.yaml; relative paths are relative to the file
+    version: Literal[1] = 1; raw_root: Path = "data/raw"; sources_file: Path = "data/sources.yaml"   # pins
+    loaders: tuple[Literal["gii", "eurlex", "oldp"], ...] = all three; plan: TenantPlan
+    max_tokens: int = 512 (128..8192); max_chunks: int = 2_000_000; max_problems: int = 0
+def validate_tenant_id(value: str) -> TenantId     # core.config.build: [a-z][a-z0-9_]{0,62}, not "unassigned"; ValueError otherwise
+def load_model(path: Path, model: type[M]) -> M    # core.config_loader: load_config's hardened YAML loader for any config model
+def write_corpus(chunks: Iterable[Chunk], out_dir: Path, corpus_version: str, *,
+                 sources: Mapping[str, str] | None = None) -> CorpusManifest
+    # T2.5 (D433): `sources` (source id -> pinned version) is a keyword-only addition; writes <tenant>.chunks.jsonl (sorted by
+    # (doc_id, chunk_id), compact sorted-key JSON, U+2028/2029/0085 escaped) + manifest.json via a staging dir; recomputes and
+    # checks corpus_version; an existing out_dir must hold the same bytes; DatasetError on unsafe tenant ids, duplicate
+    # chunk_id, a doc_id in two tenants, empty licence, memerag source, symlinked out_dir/parent
+def provisional_manifest(chunks: Iterable[Chunk], sources: Mapping[str, str]) -> CorpusManifest   # ingest/writer.py: manifest with
+    # corpus_version "", input of core.fingerprint.corpus_version; created_at of the final manifest = midnight UTC of the version date
+def verify_corpus(directory: Path) -> CorpusManifest   # ingest/corpus_verify.py (D437): DatasetError on any inconsistency
+def build_corpus(config_path: Path, out: Path, date_tag: str) -> CorpusManifest   # pipeline/ingest.py; hook
+    # _extra_documents(cfg) -> list[Document] (empty; T2.6 canary-planted private docs, T4.6 injection docs; pin "synthetic")
 ```
 
 ## 12. perturb
@@ -1549,6 +1571,9 @@ pruefstand judge-drift --judge <model> --anchors <file>   (T5.4, pre-approved ad
                       publish-dashboard --src <dir> --repo dheena18/pruefstand-dashboard-data   (T6.1; token from env DASHBOARD_DATA_PAT)
 pruefstand build-dataset --config dataset.yaml
 pruefstand ingest     --config corpus.yaml --out corpus/ [--date YYYY-MM-DD]
+                      # T2.5: writes corpus/<corpus_version>/ (<tenant>.chunks.jsonl + manifest.json); --out defaults to corpus/, --date to today
+                      # (UTC) so CI can pin it; prints `corpus_version=<v>` and `<tenant>: <chunks>` per tenant; exit 0; 2 invalid config/date or
+                      # unmatched/ambiguous document or unpinned source; 3 loader problems, empty tenant, chunk limit, inconsistent corpus
 pruefstand validate   config|dataset <path>
 pruefstand schema     export --out schemas/
 pruefstand power      --sigma 0.25 --n 300 --delta 0.05 [--alpha 0.025] [--m 3] [--true-drop X]   (T1.10; uses gate.stats)

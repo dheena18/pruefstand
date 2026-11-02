@@ -10,6 +10,7 @@ from pruefstand.core.config import CorpusBuildConfig, TenantPlan
 from pruefstand.core.config.build import validate_tenant_id
 from pruefstand.core.config_loader import load_model
 from pruefstand.core.errors import ConfigError
+from pruefstand.core.ids import TenantId
 
 T1, T2 = "kanzlei_mueller", "shared_public"
 
@@ -65,7 +66,7 @@ def test_the_plan_is_bounded() -> None:
 def test_models_are_frozen_and_forbid_extra_fields() -> None:
     parsed = TenantPlan.model_validate(plan())
     with pytest.raises(ValidationError):
-        parsed.default_tenant = T1  # type: ignore[misc]  # frozen model: the assignment must fail
+        parsed.default_tenant = TenantId(T1)  # type: ignore[misc]  # frozen: assignment must fail
     with pytest.raises(ValidationError):
         TenantPlan.model_validate(plan(surprise=True))
 

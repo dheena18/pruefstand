@@ -5,7 +5,7 @@ import stat
 from pathlib import Path
 
 import yaml
-from pydantic import ValidationError
+from pydantic import BaseModel, ValidationError
 
 from pruefstand.core.config import PruefstandConfig
 from pruefstand.core.config.gate import _SECRET_KEY
@@ -113,6 +113,33 @@ def _format(path: Path, exc: ValidationError) -> str:
     return "\n".join(lines)
 
 
+def load_model[M: BaseModel](path: Path, model: type[M]) -> M:
+    """Read, parse and validate any YAML config file into a frozen Pydantic model.
+
+    Same rules as :func:`load_config` (regular file, no symlink, at most 1 MB, ``safe_load``, no
+    aliases, no duplicate keys, nesting at most 32 levels, errors without input values).
+
+    Args:
+        path: The YAML file.
+        model: The Pydantic model class of the file.
+
+    Returns:
+        The validated model.
+
+    Raises:
+        ConfigError: unreadable, non-regular or oversized file, invalid YAML, a non-mapping
+            document, or any validation failure.
+    """
+    data = _parse(path, _read(path))
+    try:
+        return model.model_validate(data)
+    except ValidationError as exc:
+        raise ConfigError(_format(path, exc)) from exc
+    except ConfigError as exc:
+        msg = f"{path}: {exc}"
+        raise ConfigError(msg) from exc
+
+
 def load_config(path: Path) -> PruefstandConfig:
     """Read, parse and validate a ``pruefstand.yaml``.
 
@@ -132,11 +159,4 @@ def load_config(path: Path) -> PruefstandConfig:
         ConfigError: unreadable, non-regular or oversized file, invalid YAML, a non-mapping
             document, or any validation failure (family rules of ADR-0009, unknown metrics, ...).
     """
-    data = _parse(path, _read(path))
-    try:
-        return PruefstandConfig.model_validate(data)
-    except ValidationError as exc:
-        raise ConfigError(_format(path, exc)) from exc
-    except ConfigError as exc:
-        msg = f"{path}: {exc}"
-        raise ConfigError(msg) from exc
+    return load_model(path, PruefstandConfig)

@@ -24,10 +24,36 @@ KANZLEI, VERSICHERUNG = TenantId("kanzlei_mueller"), TenantId("versicherung_nord
 STADTWERKE, SHARED = TenantId("stadtwerke_sued"), TenantId("shared_public")
 REPO_PLAN = load_model(REPO_ROOT / "corpus.yaml", CorpusBuildConfig).plan
 
-KANZLEI_LAWS = "kschg arbzg arbschg tzbfg burlg entgfg betrvg nachwg muschg arbgg".split()
-VERSICHERUNG_LAWS = "vvg vag kwg".split()
-STADTWERKE_LAWS = "enwg ensig bsig".split()
-SHARED_LAWS = "bgb egbgb hgb bdsg urhg agg gewo sgbiv prodhaftg uwg tdddg gmbhg aktg inso".split()
+KANZLEI_LAWS = [
+    "kschg",
+    "arbzg",
+    "arbschg",
+    "tzbfg",
+    "burlg",
+    "entgfg",
+    "betrvg",
+    "nachwg",
+    "muschg",
+    "arbgg",
+]
+VERSICHERUNG_LAWS = ["vvg", "vag", "kwg"]
+STADTWERKE_LAWS = ["enwg", "ensig", "bsig"]
+SHARED_LAWS = [
+    "bgb",
+    "egbgb",
+    "hgb",
+    "bdsg",
+    "urhg",
+    "agg",
+    "gewo",
+    "sgbiv",
+    "prodhaftg",
+    "uwg",
+    "tdddg",
+    "gmbhg",
+    "aktg",
+    "inso",
+]
 KANZLEI_CELEX = ("32003L0088", "32019L1152", "32019L1937")
 VERSICHERUNG_CELEX = ("32011L0083", "32024L2853")
 
@@ -37,7 +63,7 @@ def raw(tmp_path_factory: pytest.TempPathFactory) -> Path:
     return build_raw_root(tmp_path_factory.mktemp("raw"))
 
 
-def tenant_of(docs: list[Document], source: str) -> set[str]:
+def tenant_of(docs: list[Document], source: str) -> set[TenantId]:
     found = {d.tenant for d in assign_tenants(docs, REPO_PLAN) if d.source == source}
     assert found, f"no document with source {source}"
     return found
@@ -195,7 +221,7 @@ def test_the_rules_encode_the_spec_tenant_table() -> None:
     ]
     assert len(others) == 15
     wanted.update(dict.fromkeys(others, STADTWERKE))
-    got = {r.source: r.tenant for r in REPO_PLAN.rules if r.source}
+    got = {r.source: r.tenant for r in REPO_PLAN.rules if r.source and not r.metadata}
     assert got == wanted
     assert REPO_PLAN.default_tenant is None
     assert set(REPO_PLAN.tenants) == {KANZLEI, VERSICHERUNG, STADTWERKE, SHARED}

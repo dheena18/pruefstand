@@ -89,7 +89,7 @@ owning module's unit test dir (`pt/unit/<module>/`, `rd/unit/…`).
 | `citation_credit` (R9) | `core.citations` | T1.5a | `test_citations.py` (credit rows) | full match → 1.0; gold `§ 622 Abs. 2 BGB` vs pred `§ 622 BGB` → 0.5; other § → 0.0 | covered |
 | `law_aliases`, `LawAliases`, `resolve_law`, `match_law`, `is_national` | `core.citations.aliases` | T1.5a | `test_citations.py` | v1 table has the 10 national and 4 EU acts; `GDPR` → `DSGVO`; case/space folding; broken file and clashing alias → `ConfigError` | covered |
 | `parse_one` | `core.citations` | T1.5a | `test_citations.py`, `test_citation_props.py` | two citations → `None`; „Gebühren“ → `None`; `Art. 6 DSGVO` parsed | covered |
-| `TenantPlan`, `CorpusBuildConfig` | `core.config` | T2.5 | `pt/unit/ingest/test_tenants.py` | unmatched doc / overlapping rules → `ConfigError`; repo plan covers 30 + 20 ids | covered |
+| `TenantPlan`, `TenantRule`, `CorpusBuildConfig` | `core.config.build` | T2.5 | `pt/unit/core/test_build_config.py`, `pt/unit/ingest/test_tenants.py` | unsafe tenant ids, undeclared tenants, empty/duplicate rules, bounds; repo plan covers 30 + 20 ids exactly once and encodes the SPEC table | covered |
 | `SplitPlan`, `DatasetBuildConfig` | `core.config` | T4.1 | `pt/unit/dataset/test_config_models.py` | defaults equal the plan table (`core` 220/50/30, R9 X3.7); negative size → error; extra field → error; JSON round trip | covered |
 | `DatasetManifest`, `ReviewRound` | `core.models.dataset` | T1.10 | `pt/unit/core/test_dataset_models.py` | JSON round trip (German text); extra field → error; frozen; unknown split key → error; schema `dataset_manifest` exported (interfaces §14 defines no `error_rate` validator, so none is tested) | covered |
 | `DatasetManifest.blocks`, `.judged_subset`, `.assignment_seed` (**R12** D248; T1.10 part: model) | `core.models.dataset` | T1.10 | `pt/unit/core/test_dataset_models.py` | defaults `{}` / 0 / 0; `blocks={"refusal": 120, "0": 460, "1": 455, "2": 458}` round-trips; extra key → error | covered |
@@ -343,8 +343,15 @@ owning module's unit test dir (`pt/unit/<module>/`, `rd/unit/…`).
 | `load_citation_graph` | `ingest.citation_graph` | T2.3 | `test_citation_graph.py` | sorted normalised edges; unknown law kept and logged once per code; Case→Case and unresolved slugs left out; `decisions_dir`; parquet with the real schema; bad rows skipped; 20 000 edges fast; fails closed (no file, corrupt only, all unresolved), `problems` returned, Case→Law filter, boolean ids | covered |
 | `html_to_text` | `ingest.html_text` | T2.3 | `test_html_text.py` | 4x markup ≤ 8x time for adjacent script/style/title; tail kept; parser built with `huge_tree=False`; blocks → lines, inline tags keep words, tables, entities, script/style/comment dropped, plain text, broken markup, NFC, hyphenation; linear time; pathological markup terminates | covered |
 | `classify_court`, `tenant_domain` | `ingest.oldp_courts` | T2.3 | `test_oldp_courts.py` | 25 court names → jurisdiction; level; labour / insurance / other with the 4 000-character head | covered |
-| `assign_tenants` | `ingest.tenants` | T2.5 | `test_tenants.py` | rule hits, no match, overlap | covered |
-| `write_corpus` | `ingest.writer` | T2.5 | `test_writer.py`, `test_ingest_fixtures.py` | byte-identical; order-independent; counts + sha256 | covered |
+| `assign_tenants` | `ingest.tenants` | T2.5 | `test_tenants.py` | KSchG/VVG/GDPR EN/BGB/OLDP labour; unmatched (names doc_id) and default; two rules; loader-set tenant; same `doc_id` twice; lazy; linear time | covered |
+| `write_corpus` | `ingest.writer` | T2.5 | `test_writer.py`, `test_ingest_fixtures.py` | byte-identical; order-independent (incl. Hypothesis permutations); counts + sha256; wrong/malformed `corpus_version`; immutable version; symlinked out dir; staging cleanup | covered |
+| `serialise_chunk`, `render_corpus`, `provisional_manifest` | `ingest.writer` | T2.5 | `test_writer.py` | U+2028/2029/0085 escaped; lone surrogate; duplicate `chunk_id`; `doc_id` in two tenants; unsafe tenant id; empty licence; memerag source | covered |
+| `verify_corpus`, `read_manifest` | `ingest.corpus_verify` | T2.5 | `test_corpus_verify.py` | changed byte; extra/missing file; symlinked file; chunk in the wrong tenant file; oversized manifest | covered |
+| `validate_tenant_id` | `core.config.build` | T2.5 | `test_build_config.py` | ten unsafe ids rejected, doctest | covered |
+| `load_model` | `core.config_loader` | T2.5 | `test_build_config.py`, `test_config_loader.py` | corpus.yaml loads; unknown key, alias and symlink refused | covered |
+| `load_pins`, `pin_for` | `ingest.pins` | T2.5 | `test_ingest_fixtures.py` | manifest pins equal `data/sources.yaml`; unpinned source → exit 2 | covered |
+| `build_corpus`, `chunk_documents`, `_extra_documents` | `pipeline.ingest`, `pipeline.ingest_chunks` | T2.5 | `test_ingest_fixtures.py` | 4 tenant files, byte-identical reruns, DE/EN twins, missing law → exit 3, chunk limit, extra docs keep isolation | covered |
+| `scripts/validate_corpus.py` | `scripts` | T2.5 | `scripts/tests/test_validate_corpus.py` | `OK n=<N>`; schema violation names file:line; changed file fails sha256 | covered |
 
 ## perturb (§12)
 
@@ -419,7 +426,7 @@ owning module's unit test dir (`pt/unit/<module>/`, `rd/unit/…`).
 | `read_provenance` | `pipeline.provenance` | T1.10 | `pt/unit/pipeline/test_run.py` | `GITHUB_SHA` / `GITHUB_REF` used when well-formed, malformed or absent → `git` or None; PR number from the event file, oversized or malformed file ignored | covered |
 | `scripts/live/record_target.py`, `make cassettes-target` | `scripts.live` | T1.10 | `scripts/live/tests/test_record_target.py` | recording a replayed target reproduces the cassette; a failing query writes nothing and exits 1 | covered |
 | `scripts/live/two_targets.sh` | `scripts.live` | T1.10 | `scripts/live/tests/test_two_targets.py`, `pt/live/cli/test_cli_live.py` | no or unknown bug name (also `../rag`) → exit 2 with usage before anything starts; two live instances give `tenant_leak` (live) | covered |
-| CLI `ingest` | `cli.ingest` | T2.5 | `test_ingest_fixtures.py`, `test_commands.py` | 4 tenant files; `corpus_version` prefix | covered |
+| CLI `ingest` | `cli.ingest` | T2.5 | `test_ingest_fixtures.py`, `test_commands.py` | 4 tenant files; `corpus_version` prefix and printed counts; bad `--date` → 2; missing config → 2 | covered |
 | CLI `baseline promote` / `export-public` / `prune` / `publish-dashboard` | `cli.baseline` | T6.1 | `pt/unit/cli/test_baseline_cli.py` | promote `complete=False` → exit 1, store unchanged; export has no `CANARY-`; prune keeps 20 | covered |
 | CLI `judge-drift` (R9) | `cli` → `pipeline.judge_drift` | T5.4 | `test_judge_drift.py` | recorded anchors: agree → no file, epoch unchanged; drift → `judge_drift.json` + `invalidate_judge` | covered |
 | CLI `export-dashboard` | `cli` | T8.1 | `test_dashboard_export.py` | `runs/index.json`, `slices.json` (typed rows), `cases/<run_id>/<shard>.json`, `labels.json`, `report.html` only with `gate.json` | covered |
@@ -549,10 +556,10 @@ UI tests (pages × states × theme × locale × viewport) are specified in `docs
 
 | Status | Rows |
 | --- | --- |
-| covered | 367 |
+| covered | 374 |
 | planned | 27 (R13 rows and rows whose case round 13 changed; owners T3.1a, T3.6, T4.1, T5.1, T5.4, T6.1, T6.2a, T6.2b, T7.1b, T7.2, T7.3, T8.1, T8.5) |
 | weak | 1 (backup bundle: drill only, acceptable for an ops script) |
-| **total** | **395** |
+| **total** | **402** |
 
 Round-13 changes (D296): the round-12 table (241 covered / 29 open / 1 weak = 271 rows) was re-derived: 40 multi-owner
 rows split into 90 single-owner rows (+50); 29 open rows flipped (`covered` unless round 13 changed the case); 21 new

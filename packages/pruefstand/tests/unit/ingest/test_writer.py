@@ -2,12 +2,14 @@
 
 import hashlib
 import json
-import os
-import random
+import re
 import time
 from pathlib import Path
 
+import numpy as np
 import pytest
+from hypothesis import HealthCheck, given, settings
+from hypothesis import strategies as st
 from testsupport.corpus_support import REPO_ROOT, build_raw_root
 
 from pruefstand.core.config import CorpusBuildConfig
@@ -17,12 +19,13 @@ from pruefstand.core.fingerprint import corpus_version
 from pruefstand.core.ids import ChunkId, DocId, TenantId
 from pruefstand.core.models.corpus import Chunk, CorpusManifest
 from pruefstand.ingest.chunkers.paragraph import ParagraphChunker
+from pruefstand.ingest.corpus_verify import verify_corpus
 from pruefstand.ingest.gii_xml import GiiXmlLoader
 from pruefstand.ingest.tenants import assign_tenants
 from pruefstand.ingest.writer import (
     provisional_manifest,
+    render_corpus,
     serialise_chunk,
-    verify_corpus,
     write_corpus,
 )
 
@@ -70,7 +73,7 @@ def test_writing_twice_gives_identical_bytes_and_version(
 
 def test_shuffled_input_gives_identical_output(chunks: list[Chunk], tmp_path: Path) -> None:
     shuffled = list(chunks)
-    random.Random(7).shuffle(shuffled)
+    np.random.default_rng(7).shuffle(shuffled)
     one, two = write(chunks, tmp_path / "a"), write(shuffled, tmp_path / "b")
     assert one.corpus_version == two.corpus_version
     assert snapshot(tmp_path / "a" / one.corpus_version) == snapshot(
@@ -120,7 +123,8 @@ def test_every_line_round_trips_to_the_chunk(chunks: list[Chunk], tmp_path: Path
 def test_umlauts_are_written_as_utf8_and_line_separators_are_escaped(chunks: list[Chunk]) -> None:
     line = serialise_chunk(clone(chunks[0], text="Kündigung neu \u0085 ende\r\nx"))
     assert "Kündigung".encode() in line
-    assert line.endswith(b"\n") and line.count(b"\n") == 1
+    assert line.endswith(b"\n")
+    assert line.count(b"\n") == 1
     text = line.decode("utf-8")
     assert not any(ch in text[:-1] for ch in (" ", " ", "\u0085", "\r"))
     assert json.loads(text)["text"] == "Kündigung neu \u0085 ende\r\nx"
@@ -128,7 +132,7 @@ def test_umlauts_are_written_as_utf8_and_line_separators_are_escaped(chunks: lis
 
 def test_a_lone_surrogate_is_a_dataset_error_naming_the_chunk(chunks: list[Chunk]) -> None:
     bad = clone(chunks[0], text="a\ud800b")
-    with pytest.raises(DatasetError, match=str(bad.chunk_id)):
+    with pytest.raises(DatasetError, match=re.escape(str(bad.chunk_id))):
         serialise_chunk(bad)
 
 
@@ -147,7 +151,7 @@ def test_a_version_that_changes_with_the_sources(chunks: list[Chunk]) -> None:
 
 
 def test_a_chunk_id_twice_is_refused(chunks: list[Chunk], tmp_path: Path) -> None:
-    with pytest.raises(DatasetError, match=str(chunks[0].chunk_id)):
+    with pytest.raises(DatasetError, match=re.escape(str(chunks[0].chunk_id))):
         provisional_manifest([*chunks, chunks[0]], SOURCES)
 
 
@@ -159,7 +163,7 @@ def test_a_doc_in_two_tenants_is_refused(chunks: list[Chunk]) -> None:
         ),
         chunk_id=ChunkId("elsewhere"),
     )
-    with pytest.raises(DatasetError, match=str(chunks[0].doc_id)):
+    with pytest.raises(DatasetError, match=re.escape(str(chunks[0].doc_id))):
         provisional_manifest([*chunks, other], SOURCES)
 
 
@@ -234,67 +238,6 @@ def test_a_stale_staging_directory_is_replaced(chunks: list[Chunk], tmp_path: Pa
     assert not stale.exists()
 
 
-# --- verify_corpus ---------------------------------------------------------------------------
-
-
-@pytest.fixture
-def written(chunks: list[Chunk], tmp_path: Path) -> Path:
-    return tmp_path / write(chunks, tmp_path).corpus_version
-
-
-def test_verify_detects_a_changed_byte(written: Path) -> None:
-    path = written / "shared_public.chunks.jsonl"
-    data = bytearray(path.read_bytes())
-    data[10] ^= 1
-    path.write_bytes(bytes(data))
-    with pytest.raises(DatasetError, match="sha256"):
-        verify_corpus(written)
-
-
-def test_verify_detects_a_missing_and_an_extra_file(written: Path) -> None:
-    (written / "extra.chunks.jsonl").write_text("{}\n", encoding="utf-8")
-    with pytest.raises(DatasetError, match="extra.chunks.jsonl"):
-        verify_corpus(written)
-    (written / "extra.chunks.jsonl").unlink()
-    (written / "shared_public.chunks.jsonl").unlink()
-    with pytest.raises(DatasetError, match="shared_public"):
-        verify_corpus(written)
-
-
-def test_verify_refuses_a_symlinked_file(written: Path, tmp_path: Path) -> None:
-    path = written / "shared_public.chunks.jsonl"
-    copy = tmp_path / "copy.jsonl"
-    copy.write_bytes(path.read_bytes())
-    path.unlink()
-    path.symlink_to(copy)
-    with pytest.raises(DatasetError, match="symlink|regular"):
-        verify_corpus(written)
-
-
-def test_verify_detects_a_chunk_in_the_wrong_tenant_file(written: Path) -> None:
-    manifest = CorpusManifest.model_validate_json((written / "manifest.json").read_bytes())
-    path = written / "kanzlei_mueller.chunks.jsonl"
-    line = json.loads(path.read_text("utf-8").splitlines()[0])
-    line["tenant"] = "shared_public"
-    data = (json.dumps(line, sort_keys=True) + "\n").encode()
-    path.write_bytes(data)
-    bad = manifest.model_copy(
-        update={
-            "sha256": {**manifest.sha256, path.name: hashlib.sha256(data).hexdigest()},
-            "tenants": {**manifest.tenants, "kanzlei_mueller": 1},
-        }
-    )
-    (written / "manifest.json").write_text(bad.model_dump_json(), encoding="utf-8")
-    with pytest.raises(DatasetError, match="tenant|corpus_version"):
-        verify_corpus(written)
-
-
-def test_verify_refuses_an_oversized_manifest(written: Path) -> None:
-    (written / "manifest.json").write_bytes(b" " * (2 * 1024 * 1024))
-    with pytest.raises(DatasetError, match="manifest"):
-        verify_corpus(written)
-
-
 def test_writing_scales_linearly(chunks: list[Chunk], tmp_path: Path) -> None:
     def many(factor: int) -> list[Chunk]:
         return [
@@ -310,4 +253,13 @@ def test_writing_scales_linearly(chunks: list[Chunk], tmp_path: Path) -> None:
 
     small, large = many(100), many(400)
     ratio = timed(large, "large") / max(timed(small, "small"), 1e-6)
-    assert ratio < 12 and os.path.isdir(tmp_path)
+    assert ratio < 12
+
+
+@settings(
+    max_examples=25, deadline=None, suppress_health_check=[HealthCheck.function_scoped_fixture]
+)
+@given(data=st.data())
+def test_any_input_order_gives_the_same_bytes(chunks: list[Chunk], data: st.DataObject) -> None:
+    order = data.draw(st.permutations(chunks))
+    assert render_corpus(order).files == render_corpus(chunks).files

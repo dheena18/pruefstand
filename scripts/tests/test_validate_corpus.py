@@ -1,4 +1,4 @@
-"""scripts/validate_corpus.py (T2.5): checks a corpus directory against schemas/chunk.schema.json."""
+"""scripts/validate_corpus.py (T2.5): a corpus directory against schemas/chunk.schema.json."""
 
 import json
 from pathlib import Path
