@@ -1,0 +1,83 @@
+# corpus.yaml: the tenant plan and inputs of `pruefstand ingest` (T2.5, SPEC section 3.1).
+#
+# Every document goes to exactly one tenant: the one rule it matches. Rules must be disjoint, a
+# document that no rule claims stops the build (there is no default_tenant), and the same doc_id
+# can never appear in two tenants. A test checks that each of the 30 GII laws and 20 CELEX ids of
+# data/sources.yaml appears in exactly one rule.
+#
+# `source` is the loader's Document.source ("gii:<slug>", "eurlex:<celex>", "oldp:decisions");
+# `metadata` entries must all be equal. Relative paths are relative to this file.
+#
+# BGB contract law lives in shared_public on purpose: the law firm and the insurer both see it.
+version: 1
+raw_root: data/raw
+sources_file: data/sources.yaml
+loaders: [gii, eurlex, oldp]
+max_tokens: 512
+plan:
+  tenants: [kanzlei_mueller, versicherung_nord, stadtwerke_sued, shared_public]
+  default_tenant: null
+  rules:
+    # kanzlei_mueller: labour law
+    - {tenant: kanzlei_mueller, source: "gii:arbzg"}
+    - {tenant: kanzlei_mueller, source: "gii:arbschg"}
+    - {tenant: kanzlei_mueller, source: "gii:tzbfg"}
+    - {tenant: kanzlei_mueller, source: "gii:burlg"}
+    - {tenant: kanzlei_mueller, source: "gii:entgfg"}
+    - {tenant: kanzlei_mueller, source: "gii:betrvg"}
+    - {tenant: kanzlei_mueller, source: "gii:nachwg"}
+    - {tenant: kanzlei_mueller, source: "gii:muschg"}
+    - {tenant: kanzlei_mueller, source: "gii:arbgg"}
+    - {tenant: kanzlei_mueller, source: "gii:kschg"}
+    # kanzlei_mueller: EU labour acts (working time, working conditions, whistleblowers)
+    - {tenant: kanzlei_mueller, source: "eurlex:32003L0088"}
+    - {tenant: kanzlei_mueller, source: "eurlex:32019L1152"}
+    - {tenant: kanzlei_mueller, source: "eurlex:32019L1937"}
+    # kanzlei_mueller: decisions of labour courts
+    - {tenant: kanzlei_mueller, source: "oldp:decisions", metadata: {jurisdiction: Arbeitsgericht}}
+    # versicherung_nord: insurance and banking supervision
+    - {tenant: versicherung_nord, source: "gii:vvg"}
+    - {tenant: versicherung_nord, source: "gii:vag"}
+    - {tenant: versicherung_nord, source: "gii:kwg"}
+    # versicherung_nord: consumer rights directive, product liability directive
+    - {tenant: versicherung_nord, source: "eurlex:32011L0083"}
+    - {tenant: versicherung_nord, source: "eurlex:32024L2853"}
+    # versicherung_nord: decisions that mention insurance (keyword in the head of the text, T2.3)
+    - {tenant: versicherung_nord, source: "oldp:decisions", metadata: {tenant_domain: insurance}}
+    # stadtwerke_sued: energy and IT security law
+    - {tenant: stadtwerke_sued, source: "gii:enwg"}
+    - {tenant: stadtwerke_sued, source: "gii:ensig"}
+    - {tenant: stadtwerke_sued, source: "gii:bsig"}
+    # stadtwerke_sued: the other 15 EU acts (German and English version)
+    - {tenant: stadtwerke_sued, source: "eurlex:32016R0679"}
+    - {tenant: stadtwerke_sued, source: "eurlex:32024R1689"}
+    - {tenant: stadtwerke_sued, source: "eurlex:32022L2555"}
+    - {tenant: stadtwerke_sued, source: "eurlex:32022R2065"}
+    - {tenant: stadtwerke_sued, source: "eurlex:32022R1925"}
+    - {tenant: stadtwerke_sued, source: "eurlex:32023R2854"}
+    - {tenant: stadtwerke_sued, source: "eurlex:32022R0868"}
+    - {tenant: stadtwerke_sued, source: "eurlex:32002L0058"}
+    - {tenant: stadtwerke_sued, source: "eurlex:32024R2847"}
+    - {tenant: stadtwerke_sued, source: "eurlex:32022R2554"}
+    - {tenant: stadtwerke_sued, source: "eurlex:32014R0910"}
+    - {tenant: stadtwerke_sued, source: "eurlex:32019L0944"}
+    - {tenant: stadtwerke_sued, source: "eurlex:32019R0943"}
+    - {tenant: stadtwerke_sued, source: "eurlex:32023L1791"}
+    - {tenant: stadtwerke_sued, source: "eurlex:32011R1227"}
+    # shared_public: general civil, commercial, data protection and company law
+    - {tenant: shared_public, source: "gii:bgb"}
+    - {tenant: shared_public, source: "gii:egbgb"}
+    - {tenant: shared_public, source: "gii:hgb"}
+    - {tenant: shared_public, source: "gii:bdsg"}
+    - {tenant: shared_public, source: "gii:urhg"}
+    - {tenant: shared_public, source: "gii:agg"}
+    - {tenant: shared_public, source: "gii:gewo"}
+    - {tenant: shared_public, source: "gii:sgbiv"}
+    - {tenant: shared_public, source: "gii:prodhaftg"}
+    - {tenant: shared_public, source: "gii:uwg"}
+    - {tenant: shared_public, source: "gii:tdddg"}
+    - {tenant: shared_public, source: "gii:gmbhg"}
+    - {tenant: shared_public, source: "gii:aktg"}
+    - {tenant: shared_public, source: "gii:inso"}
+    # shared_public: all other decisions
+    - {tenant: shared_public, source: "oldp:decisions", metadata: {tenant_domain: other}}

@@ -8,12 +8,7 @@ _LENIENT = {"allow_extra_args": True, "ignore_unknown_options": True}
 
 
 def register(app: typer.Typer) -> None:
-    """Add ``ingest``, ``build-dataset`` and ``baseline promote`` to ``app``."""
-
-    @app.command("ingest", context_settings=_LENIENT)
-    def ingest_command() -> None:
-        """Build a corpus from public sources (T2.5)."""
-        not_implemented("ingest", "T2.5")
+    """Add ``build-dataset`` and ``baseline promote`` to ``app``."""
 
     @app.command("build-dataset", context_settings=_LENIENT)
     def build_dataset_command() -> None:

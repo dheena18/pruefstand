@@ -209,10 +209,12 @@ def test_a_corpus_mismatch_is_exit_one_and_no_query_is_sent(
     assert manifest["counts"]["corpus_mismatch"] == 1
 
 
-def test_ingest_is_not_implemented_yet(cli: CliRunner) -> None:
-    result = cli.invoke(app, ["ingest", "--config", "corpus.yaml", "--out", "corpus/"])
+def test_ingest_with_a_missing_config_is_a_usage_error(cli: CliRunner, tmp_path: Path) -> None:
+    result = cli.invoke(
+        app, ["ingest", "--config", str(tmp_path / "corpus.yaml"), "--out", str(tmp_path / "o")]
+    )
     assert result.exit_code == 2
-    assert "T2.5" in result.output
+    assert "corpus.yaml" in result.output
 
 
 # --- report -----------------------------------------------------------------------------------

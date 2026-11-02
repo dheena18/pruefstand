@@ -166,7 +166,6 @@ def test_a_missing_option_is_a_usage_error() -> None:
 @pytest.mark.parametrize(
     ("args", "needle"),
     [
-        (["ingest", "--config", "c.yaml", "--out", "corpus/"], "T2.5"),
         (["build-dataset", "--config", "d.yaml"], "T4.7a"),
         (["baseline", "promote", "--run", "runs/x", "--ref", "main"], "T6.1"),
     ],
