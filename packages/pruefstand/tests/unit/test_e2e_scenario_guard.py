@@ -1,4 +1,4 @@
-"""A misspelled `PRUEFSTAND_E2E_SCENARIO` or `SCENARIO` fails; it never passes by skipping (T1.11)."""
+"""A misspelled `PRUEFSTAND_E2E_SCENARIO` or `SCENARIO` fails, it never skips green (T1.11)."""
 
 import os
 import shutil
