@@ -1,5 +1,6 @@
 # The only law-name table in the repo (T1.5a, D334). Read through pruefstand.core.citations.aliases;
 # T2.4 appends EU acts, T4.4 reads it, nobody keeps a copy.
+# T4.4: the alias starting with `des`/`der` is the genitive phrase `perturb.citation_style` writes out (one per law).
 # Shape: <scope>: {<canonical abbreviation>: [aliases]}. The abbreviation itself is always an alias.
 # `national` = German federal statutes (cited with § or Art.); `eu` = EU acts (cited with Art.).
 version: 1
@@ -11,45 +12,55 @@ national:
     - Bürgerlichen Gesetzbuches
     - German Civil Code
     - Civil Code
+    - des Bürgerlichen Gesetzbuchs
   HGB:
     - Handelsgesetzbuch
     - Handelsgesetzbuchs
     - Handelsgesetzbuches
     - Commercial Code
     - German Commercial Code
+    - des Handelsgesetzbuchs
   KSchG:
     - Kündigungsschutzgesetz
     - Kündigungsschutzgesetzes
     - Protection Against Unfair Dismissal Act
     - Dismissal Protection Act
+    - des Kündigungsschutzgesetzes
   ArbZG:
     - Arbeitszeitgesetz
     - Arbeitszeitgesetzes
     - Working Hours Act
+    - des Arbeitszeitgesetzes
   BDSG:
     - Bundesdatenschutzgesetz
     - Bundesdatenschutzgesetzes
     - Federal Data Protection Act
+    - des Bundesdatenschutzgesetzes
   UrhG:
     - Urheberrechtsgesetz
     - Urheberrechtsgesetzes
     - Copyright Act
+    - des Urheberrechtsgesetzes
   VVG:
     - Versicherungsvertragsgesetz
     - Versicherungsvertragsgesetzes
     - Insurance Contract Act
+    - des Versicherungsvertragsgesetzes
   EnWG:
     - Energiewirtschaftsgesetz
     - Energiewirtschaftsgesetzes
     - Energy Industry Act
+    - des Energiewirtschaftsgesetzes
   UWG:
     - Gesetz gegen den unlauteren Wettbewerb
     - Gesetzes gegen den unlauteren Wettbewerb
     - Unfair Competition Act
+    - des Gesetzes gegen den unlauteren Wettbewerb
   GG:
     - Grundgesetz
     - Grundgesetzes
     - Basic Law
+    - des Grundgesetzes
   # --- T2.2: the other national laws of the GII corpus (data/sources.yaml). `BGBEG`, `SGB 4`, `KredWG`
   # and `TTDSG` are the spellings of <jurabk> in the GII files.
   EGBGB:
@@ -59,89 +70,110 @@ national:
     - Einführungsgesetzes zum Bürgerlichen Gesetzbuche
     - Einführungsgesetzes zum Bürgerlichen Gesetzbuch
     - Introductory Act to the Civil Code
+    - des Einführungsgesetzes zum Bürgerlichen Gesetzbuche
   ArbSchG:
     - Arbeitsschutzgesetz
     - Arbeitsschutzgesetzes
     - Occupational Safety and Health Act
+    - des Arbeitsschutzgesetzes
   TzBfG:
     - Teilzeit- und Befristungsgesetz
     - Teilzeit- und Befristungsgesetzes
     - Part-Time and Fixed-Term Employment Act
+    - des Teilzeit- und Befristungsgesetzes
   BUrlG:
     - Bundesurlaubsgesetz
     - Bundesurlaubsgesetzes
     - Federal Leave Act
+    - des Bundesurlaubsgesetzes
   EntgFG:
     - Entgeltfortzahlungsgesetz
     - Entgeltfortzahlungsgesetzes
     - Continued Remuneration Act
+    - des Entgeltfortzahlungsgesetzes
   MuSchG:
     - Mutterschutzgesetz
     - Mutterschutzgesetzes
     - Maternity Protection Act
+    - des Mutterschutzgesetzes
   AGG:
     - Allgemeines Gleichbehandlungsgesetz
     - Allgemeinen Gleichbehandlungsgesetz
     - Allgemeinen Gleichbehandlungsgesetzes
     - General Equal Treatment Act
+    - des Allgemeinen Gleichbehandlungsgesetzes
   BetrVG:
     - Betriebsverfassungsgesetz
     - Betriebsverfassungsgesetzes
     - Works Constitution Act
+    - des Betriebsverfassungsgesetzes
   GewO:
     - Gewerbeordnung
     - Trade Regulation Act
+    - der Gewerbeordnung
   NachwG:
     - Nachweisgesetz
     - Nachweisgesetzes
+    - des Nachweisgesetzes
   ArbGG:
     - Arbeitsgerichtsgesetz
     - Arbeitsgerichtsgesetzes
     - Labour Courts Act
+    - des Arbeitsgerichtsgesetzes
   SGB IV:
     - SGB 4
     - Sozialgesetzbuch Viertes Buch
     - Sozialgesetzbuch IV
     - Sozialgesetzbuches Viertes Buch
     - Social Code Book IV
+    - des Vierten Buches Sozialgesetzbuch
   ProdHaftG:
     - Produkthaftungsgesetz
     - Produkthaftungsgesetzes
     - Product Liability Act
+    - des Produkthaftungsgesetzes
   TDDDG:
     - TTDSG
     - Telekommunikation-Digitale-Dienste-Datenschutz-Gesetz
     - Telekommunikation-Telemedien-Datenschutz-Gesetz
+    - des Telekommunikation-Digitale-Dienste-Datenschutz-Gesetzes
   GmbHG:
     - GmbH-Gesetz
     - GmbH-Gesetzes
     - Gesetz betreffend die Gesellschaften mit beschränkter Haftung
     - Limited Liability Companies Act
+    - des GmbH-Gesetzes
   AktG:
     - Aktiengesetz
     - Aktiengesetzes
     - Stock Corporation Act
+    - des Aktiengesetzes
   InsO:
     - Insolvenzordnung
     - Insolvency Code
+    - der Insolvenzordnung
   KWG:
     - KredWG
     - Kreditwesengesetz
     - Kreditwesengesetzes
     - Banking Act
+    - des Kreditwesengesetzes
   VAG:
     - Versicherungsaufsichtsgesetz
     - Versicherungsaufsichtsgesetzes
     - Insurance Supervision Act
+    - des Versicherungsaufsichtsgesetzes
   EnSiG:
     - Energiesicherungsgesetz
     - Energiesicherungsgesetzes
     - Energy Security Act
+    - des Energiesicherungsgesetzes
   BSIG:
     - BSI-Gesetz
     - BSI-Gesetzes
     - Gesetz über das Bundesamt für Sicherheit in der Informationstechnik
     - Federal Office for Information Security Act
+    - des BSI-Gesetzes
 eu:
   DSGVO:
     - GDPR
@@ -149,84 +181,105 @@ eu:
     - Datenschutz-Grundverordnung
     - Datenschutzgrundverordnung
     - General Data Protection Regulation
+    - der Datenschutz-Grundverordnung
   KI-VO:
     - AI Act
     - EU AI Act
     - KI-Verordnung
+    - der KI-Verordnung
   NIS2-RL:
     - NIS2
     - NIS-2-Richtlinie
     - NIS2-Richtlinie
     - NIS 2 Directive
     - NIS2 Directive
+    - der NIS-2-Richtlinie
   DSA:
     - Digital Services Act
     - Gesetz über digitale Dienste
+    - des Gesetzes über digitale Dienste
   # --- T2.4: the other 16 pinned EUR-Lex acts (data/sources.yaml); the first four are above.
   DMA:
     - Gesetz über digitale Märkte
     - Gesetzes über digitale Märkte
     - Digital Markets Act
+    - des Gesetzes über digitale Märkte
   Data Act:
     - Datenverordnung
     - Datengesetz
+    - der Datenverordnung
   DGA:
     - Daten-Governance-Rechtsakt
     - Data Governance Act
+    - des Daten-Governance-Rechtsakts
   ePrivacy-RL:
     - ePrivacy-Richtlinie
     - ePrivacy Directive
     - Datenschutzrichtlinie für elektronische Kommunikation
     - Directive on privacy and electronic communications
+    - der ePrivacy-Richtlinie
   CRA:
     - Cyberresilienzgesetz
     - Cyber-Resilienz-Verordnung
     - Cyber Resilience Act
+    - des Cyberresilienzgesetzes
   DORA:
     - DORA-VO
     - Verordnung über die digitale operationale Resilienz
     - Digital Operational Resilience Act
+    - der DORA-Verordnung
   eIDAS-VO:
     - eIDAS
     - eIDAS-Verordnung
     - eIDAS Regulation
+    - der eIDAS-Verordnung
   Strombinnenmarkt-RL:
     - Elektrizitätsbinnenmarkt-Richtlinie
     - Elektrizitätsbinnenmarktrichtlinie
     - Strombinnenmarktrichtlinie
     - Electricity Directive
+    - der Elektrizitätsbinnenmarkt-Richtlinie
   Strombinnenmarkt-VO:
     - Elektrizitätsbinnenmarkt-Verordnung
     - Elektrizitätsbinnenmarktverordnung
     - Strombinnenmarktverordnung
     - Electricity Regulation
+    - der Elektrizitätsbinnenmarkt-Verordnung
   EED:
     - Energieeffizienzrichtlinie
     - Energieeffizienz-Richtlinie
     - Energy Efficiency Directive
+    - der Energieeffizienzrichtlinie
   REMIT:
     - REMIT-Verordnung
     - REMIT-VO
     - REMIT Regulation
+    - der REMIT-Verordnung
   Whistleblower-RL:
     - Hinweisgeberrichtlinie
     - Hinweisgeber-Richtlinie
     - Whistleblower Directive
     - Whistleblowing Directive
+    - der Hinweisgeberrichtlinie
   VRRL:
     - Verbraucherrechterichtlinie
     - Verbraucherrechte-Richtlinie
     - Consumer Rights Directive
+    - der Verbraucherrechterichtlinie
   ProdHaft-RL:
     - Produkthaftungsrichtlinie
     - Produkthaftungs-Richtlinie
     - Product Liability Directive
+    - der Produkthaftungsrichtlinie
   Arbeitszeit-RL:
     - Arbeitszeitrichtlinie
     - Arbeitszeit-Richtlinie
     - Working Time Directive
+    - der Arbeitszeitrichtlinie
   Arbeitsbedingungen-RL:
     - Arbeitsbedingungenrichtlinie
     - Arbeitsbedingungen-Richtlinie
     - Working Conditions Directive
     - Transparent and Predictable Working Conditions Directive
+
+    - der Arbeitsbedingungenrichtlinie

@@ -1,12 +1,13 @@
 """Structural protocols implemented by other modules (interfaces §4, §5, §7, §11).
 
-``Perturbation`` / ``LLMPerturbation`` (T4.4, T4.5) are added by their owning tasks.
+``Perturbation`` is added by T4.4; ``LLMPerturbation`` follows with T4.5.
 """
 
 from collections.abc import Iterator
 from pathlib import Path
 from typing import Protocol, TypeVar, runtime_checkable
 
+import numpy as np
 from pydantic import BaseModel
 
 from pruefstand.core.enums import Category
@@ -14,6 +15,7 @@ from pruefstand.core.models.corpus import Chunk, Document
 from pruefstand.core.models.judge import JudgeTask, JudgeVerdict
 from pruefstand.core.models.llm import LLMRequest, LLMResponse
 from pruefstand.core.models.metric import MetricKind, MetricValue
+from pruefstand.core.models.perturb import PerturbResult
 from pruefstand.core.models.run import RunArtifacts
 from pruefstand.core.models.target import (
     RetrieveResponse,
@@ -161,4 +163,17 @@ class JudgedMetric(Metric, Protocol):
         self, case: TestCase, resp: TargetResponse, judges: JudgePoolLike
     ) -> MetricValue:
         """Compute the metric for one case. Raises ``LLMError``, ``BudgetExceeded``."""
+        ...
+
+
+@runtime_checkable
+class Perturbation(Protocol):
+    """A rule-based, deterministic question perturbation (``pruefstand.perturb``)."""
+
+    name: str
+    version: str
+    uses_llm: bool
+
+    def apply(self, text: str, rng: np.random.Generator) -> PerturbResult:
+        """Perturb ``text``; ``changed`` is False when no rule applied. Never raises on text."""
         ...

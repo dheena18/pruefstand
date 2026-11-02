@@ -278,3 +278,15 @@ GII_LAW_ROWS: list[tuple[str, list[str]]] = [
 @pytest.mark.parametrize(("text", "expected"), GII_LAW_ROWS)
 def test_gii_laws_parse(text: str, expected: list[str]) -> None:
     assert [normalise(c) for c in extract_citations(text)] == expected
+
+
+def test_genitive_phrases_resolve_to_their_law() -> None:
+    """T4.4: the ``des``/``der`` alias of each law is a known alias of that same law."""
+    phrases = {
+        law: alias
+        for law, aliases in law_aliases().all_laws().items()
+        for alias in aliases
+        if alias.split(" ", 1)[0] in {"des", "der"}
+    }
+    assert len(phrases) == len(law_aliases().all_laws())
+    assert all(resolve_law(alias) == law for law, alias in phrases.items())
