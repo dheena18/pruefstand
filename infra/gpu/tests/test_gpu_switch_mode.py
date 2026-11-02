@@ -1,4 +1,4 @@
-"""T3.1a CPU tests: ``switch-mode.sh`` / ``unload-all.sh`` (API loads and unloads only, ADR-0018/0019)."""
+"""T3.1a CPU tests: ``switch-mode.sh`` and ``unload-all.sh`` (API loads/unloads only, ADR-0018)."""
 
 import json
 import re

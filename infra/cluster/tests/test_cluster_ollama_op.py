@@ -1,9 +1,10 @@
-"""T3.1a CPU tests: ``ollama-op.sh`` (pull / rm / show on the one server; disk rule, generator protection)."""
+"""T3.1a CPU tests: ``ollama-op.sh`` (pull / rm / show; the disk rule, generator protection)."""
 
 import pytest
 from gpu_testkit import ClusterWorld
 
-DF_OK = "Filesystem 1024-blocks Used Available Capacity Mounted on\n/dev/sdb1 500000000 480000000 14000000 97% /data"
+DF_HEAD = "Filesystem 1024-blocks Used Available Capacity Mounted on\n"
+DF_OK = DF_HEAD + "/dev/sdb1 500000000 480000000 14000000 97% /data"
 DF_LOW = DF_OK.replace("14000000", "1500000")
 
 

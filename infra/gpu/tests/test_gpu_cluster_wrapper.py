@@ -1,7 +1,7 @@
-"""T3.1a CPU tests: ``lib/cluster_ssh.sh``, the ``pruefstand-cluster`` wrapper and its installer (Y1.1, A12-M5)."""
+"""T3.1a CPU tests: ``cluster_ssh.sh``, the ``pruefstand-cluster`` wrapper and its installer."""
 
 import fcntl
-import subprocess
+import os
 from pathlib import Path
 
 import pytest
@@ -27,8 +27,11 @@ def _ssh(gpu: GpuWorld) -> list[str]:
 
 @pytest.mark.parametrize(
     "args",
-    [(), ("reboot",), ("rm", "x; reboot"), ("rm", "$(id)"), ("pull",), ("pull", "a", "b"), ("pull", "-x"),
-     ("status", "extra"), ("start-ollama", "day"), ("stop-ollama", "--force"), ("show", "A/B"), ("exec", "ls")],
+    [
+        (), ("reboot",), ("rm", "x; reboot"), ("rm", "$(id)"), ("pull",), ("pull", "a", "b"),
+        ("pull", "-x"), ("status", "extra"), ("start-ollama", "day"), ("stop-ollama", "--force"),
+        ("show", "A/B"), ("exec", "ls"),
+    ],
 )  # fmt: skip
 def test_anything_outside_the_fixed_ops_exits_64_and_runs_nothing(
     gpu: GpuWorld, args: tuple[str, ...]
@@ -142,10 +145,7 @@ def test_the_sudoers_fragment_keeps_the_lock_flag_and_names_one_wrapper(gpu: Gpu
 
 
 def test_install_refuses_without_root_and_changes_nothing(gpu: GpuWorld, tmp_path: Path) -> None:
-    if (
-        subprocess.run(["id", "-u"], capture_output=True, text=True, check=False).stdout.strip()
-        == "0"
-    ):
+    if os.geteuid() == 0:
         pytest.skip("running as root")
     res = run_script(INSTALL, stubs=gpu.stubs, env={"DESTDIR": ""})
     assert res.rc == 2

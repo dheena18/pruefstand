@@ -1,7 +1,8 @@
 """T3.1a ``gpu`` smoke tests: the one Ollama server through the VM tunnel (ADR-0018, ADR-0019).
 
-Run on the VM under the GPU lock: ``pruefstand-lock make test-gpu`` (``make test-gpu-locked``). They need the
-day-mode set loaded (``make gpu-up``) and, for the reranker, the dev stack (``rerank-cpu`` on the dev port).
+Run on the VM under the GPU lock: ``pruefstand-lock make test-gpu`` (``make test-gpu-locked``).
+They need the day-mode set loaded (``make gpu-up``) and, for the reranker, the dev stack
+(``rerank-cpu`` on the dev port).
 """
 
 import math
@@ -26,10 +27,10 @@ GPU0 = os.environ.get("OLLAMA_GPU0_URL", "http://127.0.0.1:11434")
 GPU1 = os.environ.get("OLLAMA_GPU1_URL", "http://127.0.0.1:11434")
 RERANK = os.environ.get("RERANK_URL", "http://127.0.0.1:18201")
 PARAGRAPH = (
-    "Die Kündigungsfrist für Arbeitnehmer beträgt nach § 622 Absatz 1 BGB vier Wochen zum Fünfzehnten "
-    "oder zum Ende eines Kalendermonats. Verlängert sich die Frist für eine Kündigung durch den "
-    "Arbeitgeber, wenn das Arbeitsverhältnis in dem Betrieb oder Unternehmen zwei Jahre bestanden hat, "
-    "so beträgt sie einen Monat zum Ende eines Kalendermonats. "
+    "Die Kündigungsfrist für Arbeitnehmer beträgt nach § 622 Absatz 1 BGB vier Wochen zum "
+    "Fünfzehnten oder zum Ende eines Kalendermonats. Verlängert sich die Frist für eine Kündigung "
+    "durch den Arbeitgeber, wenn das Arbeitsverhältnis in dem Betrieb oder Unternehmen zwei Jahre "
+    "bestanden hat, so beträgt sie einen Monat zum Ende eines Kalendermonats. "
 )
 
 

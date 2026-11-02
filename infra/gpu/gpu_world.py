@@ -1,7 +1,7 @@
 """A healthy fake VM + cluster for the VM-script tests: catalogue rows, ``/api/*`` bodies, stubs.
 
 ``GpuWorld`` writes the bodies that ``curl`` stubs answer and the CSV that ``ssh`` stubs print, so
-the VM scripts run end to end without a cluster, a GPU or a model (ADR-0008: shell environment only).
+the VM scripts run end to end without a cluster, a GPU or a model (ADR-0008: shell only).
 """
 
 import getpass
@@ -24,6 +24,7 @@ CATALOGUE: dict[str, Any] = yaml.safe_load((GPU_DIR / "models.yaml").read_text(e
 ENTRIES: dict[str, dict[str, Any]] = {m["tag"]: m for m in CATALOGUE["models"]}
 DAY_TAGS = ("qwen3.8:27b-q8_0", "bge-m3", "gemma3:12b")
 GIB = 1024**3
+DF_HEAD = "Filesystem 1024-blocks Used Available Capacity Mounted on\n"
 
 
 def ps_model(tag: str, *, digest: str | None = None, vram_ratio: float = 1.0) -> dict[str, Any]:
@@ -37,16 +38,21 @@ def ps_model(tag: str, *, digest: str | None = None, vram_ratio: float = 1.0) ->
 
 
 def status_csv(
-    *, gpu_used: tuple[int, int] = (36000, 14000), free_kb: int = 14_000_000, spread: str | None = None,
-    sums: str = "0" * 64, extra: Sequence[str] = (),
-) -> str:  # fmt: skip
-    """The CSV a healthy ``status.sh`` prints (placement: generator + bge-m3 on gpu 0, judge on gpu 1)."""
+    *,
+    gpu_used: tuple[int, int] = (36000, 14000),
+    free_kb: int = 14_000_000,
+    spread: str | None = None,
+    sums: str = "0" * 64,
+    extra: Sequence[str] = (),
+) -> str:
+    """The CSV a healthy ``status.sh`` prints (generator + bge-m3 on gpu 0, the judge on gpu 1)."""
+    disk_state = "OK" if free_kb >= 2 * 1024 * 1024 else "WARN"
     rows = [
         "check,status,detail",
         "server,OK,pid=4242",
         "listener,OK,127.0.0.1 pid=4242",
         "env,OK,matches cluster.env",
-        f"disk-models,{'OK' if free_kb >= 2 * 1024 * 1024 else 'WARN'},free_kb={free_kb} min_free_gb=2",
+        f"disk-models,{disk_state},free_kb={free_kb} min_free_gb=2",
         "api-tags,OK,models=3",
         f"gpu:0,INFO,uuid=GPU-aaa used_mib={gpu_used[0]} total_mib=46068",
         f"gpu:1,INFO,uuid=GPU-bbb used_mib={gpu_used[1]} total_mib=46068",
@@ -82,22 +88,17 @@ class GpuWorld:
         self.set_ps([ps_model(t) for t in DAY_TAGS])
         self.curl()
         self.ssh(status_csv(sums=self.expected_sums()))
-        self.stubs.add(
-            "df",
-            [
-                (
-                    "*",
-                    "Filesystem 1024-blocks Used Available Capacity Mounted on\n/dev/vda 500000000 50000000 400000000 12% /mnt",
-                    0,
-                )
-            ],
-        )
+        df_out = DF_HEAD + "/dev/vda 500000000 50000000 400000000 12% /mnt"
+        self.stubs.add("df", [("*", df_out, 0)])
 
     def expected_sums(self) -> str:
         """sha256 of the SHA256SUMS text that ``deploy-cluster-bin.sh --print-sums`` prints."""
+        script = str(GPU_DIR / "deploy-cluster-bin.sh")
         proc = subprocess.run(  # noqa: S603
-            [shutil.which("bash") or "bash", str(GPU_DIR / "deploy-cluster-bin.sh"), "--print-sums"],
-            capture_output=True, env={"PATH": str(self.stubs.bin), "HOME": str(self.root)}, check=False,
+            [shutil.which("bash") or "bash", script, "--print-sums"],
+            capture_output=True,
+            env={"PATH": str(self.stubs.bin), "HOME": str(self.root)},
+            check=False,
         )  # fmt: skip
         return hashlib.sha256(proc.stdout).hexdigest()
 
@@ -111,7 +112,7 @@ class GpuWorld:
         self.ps_file.write_text(json.dumps({"models": list(models)}), encoding="utf-8")
 
     def curl(self, *, tags_fail_first: int = 0, generate_rc: int = 0) -> None:
-        """A stateful ``curl``: ``/api/tags`` fails ``tags_fail_first`` times (rc 7), then answers."""
+        """A stateful ``curl``: ``/api/tags`` fails ``tags_fail_first`` times (rc 7), then works."""
         self.counter.unlink(missing_ok=True)
         script = f"""#!/usr/bin/env bash
 echo "curl $*" >> {shlex.quote(str(self.stubs.log))}

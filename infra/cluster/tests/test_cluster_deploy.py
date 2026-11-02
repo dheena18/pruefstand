@@ -1,4 +1,4 @@
-"""T3.1a CPU tests: ``infra/gpu/deploy-cluster-bin.sh`` (copy over SSH, ``*.partial`` + ``mv``, SHA256SUMS)."""
+"""T3.1a CPU tests: ``deploy-cluster-bin.sh`` (copy over SSH, ``*.partial``, SHA256SUMS)."""
 
 import getpass
 import hashlib
@@ -21,6 +21,7 @@ def remote(tmp_path: Path, stubs: Stubs) -> Path:
 
 
 def _deploy(stubs: Stubs, *args: str, user: str | None = None, **env: str) -> Result:
+    link_tools(stubs)
     env = {
         "PRUEFSTAND_SERVICE_USER": user or getpass.getuser(),
         "CLUSTER_SSH_HOST": "cairo-s101lp",

@@ -1,4 +1,4 @@
-"""T3.1a CPU tests: ``fetch-model.sh`` (pull + digest check, the disk rule, ``--rm``; ADR-0019, D207)."""
+"""T3.1a CPU tests: ``fetch-model.sh`` (pull, digest check, the disk rule, ``--rm``; ADR-0019)."""
 
 import pytest
 from gpu_world import ENTRIES, GIB, GpuWorld, status_csv
@@ -11,7 +11,7 @@ RESERVE_KB = 2 * 1024 * 1024
 
 def _need_kb(tag: str) -> int:
     """Model size plus the 2 GiB reserve, in KiB (rounded up)."""
-    return -(-ENTRIES[tag]["disk_bytes"] // 1024) + RESERVE_KB
+    return int(-(-ENTRIES[tag]["disk_bytes"] // 1024)) + RESERVE_KB
 
 
 def _remote(gpu: GpuWorld, word: str) -> list[str]:
@@ -132,13 +132,13 @@ def test_rm_with_maintenance_removes_a_non_generator_model(gpu: GpuWorld) -> Non
     assert (gpu.lock_dir / "MAINTENANCE").exists()
 
 
-@pytest.mark.parametrize("maintenance", [False, True])
-def test_rm_of_the_generator_exits_64(gpu: GpuWorld, maintenance: bool) -> None:
-    if maintenance:
-        (gpu.lock_dir / "MAINTENANCE").touch()
-    res = gpu.script("fetch-model.sh", "--rm", GEN)
-    assert res.rc == 64
-    assert "generator" in res.err
+def test_rm_of_the_generator_exits_64_with_or_without_maintenance(gpu: GpuWorld) -> None:
+    for with_maintenance in (False, True):
+        if with_maintenance:
+            (gpu.lock_dir / "MAINTENANCE").touch()
+        res = gpu.script("fetch-model.sh", "--rm", GEN)
+        assert res.rc == 64
+        assert "generator" in res.err
     assert not _remote(gpu, "ollama-op.sh")
 
 

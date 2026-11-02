@@ -1,0 +1,37 @@
+# VM services of the compose profile `gpu` (T3.1a S5): rerank-cpu. Included by the root docker-compose.yml, which
+# also adds `gpu` to qdrant's profiles (storage $PRUEFSTAND_HOME/qdrant). The GPU models run in Ollama on the cluster,
+# never in compose (R10). rerank-cpu has NO auth and holds no secrets (D217): container port 8201, reached by name on
+# the candidate network (RERANK_URL=http://rerank-cpu:8201). The dev stack publishes it on 127.0.0.1:${RERANK_HOST_PORT}
+# (18201 with PORT_OFFSET=10000, Y1.4); the executor's compose file (T6.2a) resets `ports`, so the executor stack
+# publishes no rerank host port (Y6.5). Models: <= 24 GB of CPU models on the VM in total (Z7).
+services:
+  rerank-cpu:
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    logging:
+      driver: json-file
+      options:
+        max-size: 10m
+        max-file: "3"
+    profiles: [gpu]
+    build:
+      context: rerank
+      dockerfile: Dockerfile
+      args:
+        GIT_SHA: ${GIT_SHA:-unknown}
+    ports:
+      - "127.0.0.1:${RERANK_HOST_PORT:-8201}:8201"
+    volumes:
+      - rerank_models:/models
+    mem_limit: 8g
+    cpus: ${RERANK_CPUS:-8}
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8201/health', timeout=2).status==200 else 1)"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+      start_period: 180s
+
+volumes:
+  rerank_models:

@@ -1,10 +1,10 @@
-"""T3.1a CPU tests: ``health.sh`` exit codes 0/10-16, CSV and ``--repair`` (interfaces 1.5, A12-M12)."""
+"""T3.1a CPU tests: ``health.sh`` exit codes 0/10-16, the CSV and ``--repair`` (interfaces 1.5)."""
 
 import os
 import re
 
 import pytest
-from gpu_world import DAY_TAGS, ENTRIES, GpuWorld, ps_model, status_csv
+from gpu_world import DAY_TAGS, DF_HEAD, ENTRIES, GpuWorld, ps_model, status_csv
 from vm_testkit import Result
 
 EXTRA = "jeffh/intfloat-multilingual-e5-large-instruct:f16"
@@ -113,16 +113,7 @@ def test_data_root_not_writable_exits_16(gpu: GpuWorld) -> None:
 
 
 def test_data_root_with_less_than_20_gb_free_exits_16(gpu: GpuWorld) -> None:
-    gpu.stubs.add(
-        "df",
-        [
-            (
-                "*",
-                "Filesystem 1024-blocks Used Available Capacity Mounted on\n/dev/vda 500000000 480000000 19000000 96% /mnt",
-                0,
-            )
-        ],
-    )
+    gpu.stubs.add("df", [("*", DF_HEAD + "/dev/vda 500000000 480000000 19000000 96% /mnt", 0)])
     res = gpu.script("health.sh")
     assert res.rc == 16
     assert gpu.script("health.sh", PRUEFSTAND_DATA_ROOT_MIN_FREE_GB="10").rc == 0

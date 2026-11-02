@@ -1,0 +1,4 @@
+# rerank-cpu image (T3.1a S5): CPU-only torch from the PyTorch CPU index (the +cpu local version exists only there)
+# and sentence-transformers (Apache-2.0); transformers etc. come in as its dependencies. Recorded in decisions.md.
+torch==2.15.0+cpu
+sentence-transformers==6.2.0

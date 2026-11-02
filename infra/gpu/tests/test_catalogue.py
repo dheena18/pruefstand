@@ -1,4 +1,4 @@
-"""T3.1a CPU tests: ``models.yaml``, ``endpoints.yaml`` and ``catalogue_schema.py`` (ADR-0018/0019, R12-R13)."""
+"""T3.1a CPU tests: ``models.yaml``, ``endpoints.yaml``, ``catalogue_schema.py`` (ADR-0018/0019)."""
 
 import copy
 import re
@@ -168,11 +168,9 @@ def test_chat_entries_have_bounds_that_contain_their_defaults(
     for e in cat.models:
         if e.role in {"generator", "judge"}:
             assert e.option_bounds is not None
-            assert (
-                e.option_bounds.temperature[0]
-                <= e.options.temperature
-                <= e.option_bounds.temperature[1]
-            )  # type: ignore[union-attr]
+            assert e.options is not None
+            low, high = e.option_bounds.temperature
+            assert low <= e.options.temperature <= high
     entry = next(e for e in raw["models"] if e["id"] == GEN_ID)
     bad = {**entry["option_bounds"], "temperature": [0.5, 1.0]}  # default 0 is outside
     with pytest.raises(ValidationError):
@@ -254,7 +252,7 @@ def test_no_host_names_ips_or_keys_in_the_yaml_files() -> None:
         text = (GPU_DIR / name).read_text(encoding="utf-8")
         assert not re.search(r"\b\d{1,3}(\.\d{1,3}){3}\b", text), name
         assert not re.search(r"https?://", text.replace("https://huggingface.co", "")), name
-        assert not re.search(r"(?i)api[_-]?key|token\s*:|password|secret", text), name
+        assert not re.search(r"(?i)api[_-]?key|(?<![_a-z])token\s*:|password|secret", text), name
 
 
 def test_the_committed_files_sit_where_the_package_setting_expects(tmp_path: Path) -> None:

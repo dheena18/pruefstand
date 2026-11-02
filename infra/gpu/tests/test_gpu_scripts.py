@@ -1,4 +1,4 @@
-"""T3.1a CPU tests: the lock rule of the VM scripts, static hardening, ``mk/gpu.mk`` (D211/D212, A11-01)."""
+"""T3.1a CPU tests: the lock rule of the VM scripts, static hardening, ``mk/gpu.mk`` (D211/D212)."""
 
 import fcntl
 import re
@@ -143,7 +143,7 @@ def test_make_gpu_targets_take_the_lock_and_run_health_under_it() -> None:
 def test_make_gpu_pull_and_rm_require_an_id() -> None:
     make = shutil.which("make") or "make"
     for target in ("gpu-pull", "gpu-rm"):
-        proc = subprocess.run(
+        proc = subprocess.run(  # noqa: S603
             [make, "-n", "-C", str(REPO), target], capture_output=True, text=True, check=False
         )
         assert proc.returncode != 0

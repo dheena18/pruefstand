@@ -1,8 +1,9 @@
-"""T3.1a CPU tests: ``start-ollama.sh``, ``stop-ollama.sh`` and the static rules (ADR-0018/0019, D228)."""
+"""T3.1a CPU tests: ``start-ollama.sh``, ``stop-ollama.sh``, static rules (ADR-0018/0019, D228)."""
 
 import re
 import shutil
 import subprocess
+import time
 from pathlib import Path
 
 import pytest
@@ -33,12 +34,21 @@ def test_start_reuses_a_running_server_and_starts_nothing(world: ClusterWorld) -
     assert not world.stubs.calls("setsid")
 
 
+def _wait_calls(world: ClusterWorld, name: str) -> list[str]:
+    for _ in range(40):
+        calls = world.stubs.calls(name)
+        if calls:
+            return calls
+        time.sleep(0.05)
+    return []
+
+
 def test_start_launches_exactly_one_detached_owner_script(world: ClusterWorld) -> None:
     world.stubs.add("curl", REFUSED)
     world.stubs.add("setsid", default_rc=0)
     res = world.script("start-ollama.sh")
     assert res.rc == 0
-    calls = world.stubs.calls("setsid")
+    calls = _wait_calls(world, "setsid")  # the launch runs in the background
     assert calls == [f"setsid nohup {world.home}/start-ollama.sh"]
     assert world.log.exists()  # the output redirect to $OLLAMA_LOG
     forbidden = ("tmux", "ollama serve", "ollama runner")
@@ -166,6 +176,10 @@ def test_shellcheck_clean(stubs: Stubs) -> None:
     files = [*CLUSTER_DIR.glob("*.sh"), *GPU_DIR.glob("*.sh"), *GPU_DIR.glob("lib/*.sh")]
     files += [GPU_DIR / "pruefstand-cluster"]
     proc = subprocess.run(  # noqa: S603
-        [tool, "-x", *map(str, files)], capture_output=True, text=True, cwd=REPO, check=False
+        [tool, "-x", "-P", "SCRIPTDIR", *map(str, files)],
+        capture_output=True,
+        text=True,
+        cwd=REPO,
+        check=False,
     )
     assert proc.returncode == 0, proc.stdout

@@ -1,4 +1,4 @@
-"""T3.1a CPU tests: ``rerank-cpu`` request/response handling (TEI-compatible ``POST /rerank``, D217, DEV11-03).
+"""T3.1a CPU tests: ``rerank-cpu`` request/response handling (TEI ``POST /rerank``, D217).
 
 The scores come from the real ``BAAI/bge-reranker-v2-m3`` model, recorded once by
 ``infra/gpu/rerank/record_scores.py`` into ``fixtures/rerank_recorded.json`` (ADR-0008: no invented
@@ -30,7 +30,7 @@ FIXTURE = json.loads(
 
 
 class RecordedScorer:
-    """Replays the scores recorded from the real model; remembers the token limit it was asked for."""
+    """Replays the scores recorded from the real model; remembers the token limit asked for."""
 
     def __init__(self) -> None:
         self.table = {

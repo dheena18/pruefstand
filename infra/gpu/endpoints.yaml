@@ -1,0 +1,8 @@
+# service name -> where a client finds it (interfaces 1.5). base_url_env names a SETTING (.env / runner.env), never
+# a value: no host names, addresses or keys here. model_id = the catalogue id (ollama/<tag>). ADR-0018: the two
+# lane settings OLLAMA_GPU0_URL and OLLAMA_GPU1_URL name the SAME server on the VM; they stay two settings.
+endpoints:
+  generator: {base_url_env: OLLAMA_GPU0_URL, model_id: "ollama/qwen3.8:27b-q8_0", family: qwen, kind: chat}
+  embed: {base_url_env: OLLAMA_GPU0_URL, model_id: ollama/bge-m3, family: bge, kind: embed}
+  judge: {base_url_env: OLLAMA_GPU1_URL, model_id: "ollama/gemma3:12b", family: gemma, kind: chat}
+  rerank: {base_url_env: RERANK_URL, model_id: cpu/bge-reranker-v2-m3, family: bge, kind: rerank}

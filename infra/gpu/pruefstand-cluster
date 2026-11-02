@@ -1,0 +1,68 @@
+#!/usr/bin/env bash
+# pruefstand-cluster <op> [tag] [--bin-dev]: the ONE trusted way for the owner and agents to reach the cluster (T3.1a).
+#
+# Installed by infra/gpu/install-cluster-wrapper.sh to /usr/local/bin/pruefstand-cluster (root-owned) and called as
+#   sudo -n -u pruefstand /usr/local/bin/pruefstand-cluster <op> [tag] [--bin-dev]
+# so only user pruefstand (the sole holder of the cluster key) opens the ssh connection and the caller never gets
+# the key. Fixed ops, nothing else (exit 64): start-ollama | stop-ollama | status | pull <tag> | rm <tag> | show <tag>.
+# Tags match ^[a-z0-9._:/-]+$ and do not start with "-". No mode or GPU arguments (ADR-0018).
+# The mutating ops (start-ollama, stop-ollama, pull, rm) run only when the caller holds the GPU lock (A12-M5, D276):
+# PRUEFSTAND_LOCK_HELD=1 (kept by the sudoers env_keep line) AND the lock file really is held by someone else
+# (flock -n on it must fail with the conflict code), otherwise exit 2 "run under the GPU lock (pruefstand-lock ...)".
+# status and show need no lock. --bin-dev selects /data/dheena/pruefstand-bin-dev (A11-M11).
+# Self-contained on purpose: it is copied to a root-owned path and must not load anything from a checkout.
+# Exit: the remote command's, 2 not under the lock, 64 usage. PRUEFSTAND_LOCK_DIR is a test seam.
+set -euo pipefail
+
+bin="/data/dheena/pruefstand-bin"
+host="${CLUSTER_SSH_HOST:-cairo-s101lp}"
+host_re='^[A-Za-z0-9][A-Za-z0-9._-]*$'
+tag_re='^[a-z0-9._:/-]+$'
+[[ $host =~ $host_re ]] || {
+  echo "pruefstand-cluster: invalid CLUSTER_SSH_HOST" >&2
+  exit 64
+}
+
+args=()
+for arg in "$@"; do
+  if [ "$arg" = "--bin-dev" ]; then bin="$bin-dev"; else args+=("$arg"); fi
+done
+op="${args[0]:-}"
+tag="${args[1]:-}"
+case "$op" in
+  start-ollama | stop-ollama | status) [ "${#args[@]}" -eq 1 ] || op="" ;;
+  pull | rm | show) { [ "${#args[@]}" -eq 2 ] && [[ $tag =~ $tag_re ]] && [[ $tag != -* ]]; } || op="" ;;
+  *) op="" ;;
+esac
+[ -n "$op" ] || {
+  echo "usage: pruefstand-cluster start-ollama|stop-ollama|status|pull <tag>|rm <tag>|show <tag> [--bin-dev]" >&2
+  exit 64
+}
+
+case "$op" in
+  start-ollama | stop-ollama | pull | rm)
+    lock="${PRUEFSTAND_LOCK_DIR:-/var/lib/pruefstand}/gpu.lock"
+    msg="pruefstand-cluster: $op needs the GPU lock: run under the GPU lock (pruefstand-lock ...)"
+    [ "${PRUEFSTAND_LOCK_HELD:-}" = 1 ] || {
+      echo "$msg" >&2
+      exit 2
+    }
+    exec 8<"$lock" || {
+      echo "$msg (cannot open the lock file)" >&2
+      exit 2
+    }
+    rc=0
+    flock -n -E 99 8 || rc=$?
+    [ "$rc" -eq 99 ] || {
+      echo "$msg (the lock is not held)" >&2
+      exit 2
+    }
+    exec 8<&-
+    ;;
+esac
+
+case "$op" in
+  pull | rm | show) remote="bash $bin/ollama-op.sh $op $tag" ;;
+  *) remote="bash $bin/$op.sh" ;;
+esac
+exec ssh -o BatchMode=yes -o ConnectTimeout=15 "$host" "$remote"

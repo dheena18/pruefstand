@@ -1,4 +1,4 @@
-"""T3.1a CPU tests: ``status.sh`` (CSV ``check,status,detail``; ADR-0018 placement join, ADR-0019 disk)."""
+"""T3.1a CPU tests: ``status.sh`` (CSV ``check,status,detail``; placement join, disk, env)."""
 
 import json
 from pathlib import Path
@@ -8,7 +8,8 @@ from vm_testkit import Result
 
 TAG = "qwen3.8:27b-q8_0"
 LAYER = "2bb22714289826d7b9e0ba376c3ce47d08bce39abe598745857c44d88c09bdbf"
-DF_OK = "Filesystem 1024-blocks Used Available Capacity Mounted on\n/dev/sdb1 500000000 480000000 14000000 97% /data"
+DF_HEAD = "Filesystem 1024-blocks Used Available Capacity Mounted on\n"
+DF_OK = DF_HEAD + "/dev/sdb1 500000000 480000000 14000000 97% /data"
 DF_LOW = DF_OK.replace("14000000", "1048576")
 
 
