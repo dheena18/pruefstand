@@ -417,6 +417,15 @@ scripts are invoked as `ssh "$CLUSTER_SSH_HOST" bash /data/dheena/pruefstand-bin
 | Runner status | `systemctl status pruefstand-runner` on the VM; heartbeat on branch `heartbeat` of `pruefstand-dashboard-data`, refreshed **every 15 min** during long jobs and lock waits (Y5.1) |
 | Free disk | VM: `docker system prune --filter until=168h` (never volumes); run dirs rotated by `runs-prune`. Cluster: only models; keep ≥ 2 GB free on `/data` (swap rule, ADR-0019) |
 
+### Model remove / swap log (D451)
+
+Every model remove or swap done by the lead under the conditions in `docs/ops/lead-handoff.md` section 6 is logged here
+before the next one starts (cluster paths as `<models-dir>`, no login or home path).
+
+| Date | Operation | Tag | Digest | Free before | Free after | MAINTENANCE removed again | Note |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| _none yet_ | | | | | | | |
+
 ## 9. Storage: VM disk, data root and cluster disk (Z2, ADR-0019)
 
 | Variable | Value | Holds |
