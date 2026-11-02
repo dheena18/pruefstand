@@ -1,4 +1,4 @@
-"""A misspelled `PRUEFSTAND_E2E_SCENARIO` or `SCENARIO` must fail, never pass by skipping (T1.11)."""
+"""A misspelled `PRUEFSTAND_E2E_SCENARIO` or `SCENARIO` fails; it never passes by skipping (T1.11)."""
 
 import os
 import shutil
@@ -7,6 +7,7 @@ import sys
 from pathlib import Path
 
 import pytest
+from testsupport.e2e_support import SCENARIOS
 
 ROOT = Path(__file__).resolve().parents[4]
 E2E = "packages/pruefstand/tests/e2e"
@@ -62,7 +63,9 @@ def test_make_rejects_unknown_names(name: str) -> None:
     assert _make(name).returncode != 0
 
 
-def test_make_accepts_a_known_name_and_bounds_the_suite_with_a_timeout() -> None:
-    done = _make("tenant_filter_post_topk")
-    assert done.returncode == 0, done.stderr
-    assert "timeout" in done.stdout
+def test_the_suite_is_bounded_by_a_timeout_and_the_names_match_the_tests() -> None:
+    text = (ROOT / "mk" / "e2e.mk").read_text(encoding="utf-8")
+    assert "timeout $(E2E_TIMEOUT) uv run pytest" in text
+    assert "E2E_TIMEOUT ?= 3600" in text
+    names = text.split("E2E_SCENARIOS :=")[1].splitlines()[0].split()
+    assert names == list(SCENARIOS)

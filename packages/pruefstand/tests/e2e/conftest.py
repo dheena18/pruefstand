@@ -5,7 +5,14 @@ from collections.abc import Iterator
 from pathlib import Path
 
 import pytest
-from testsupport.e2e_support import call, good_url, healthy, run_dir, write_config
+from testsupport.e2e_support import (
+    SCENARIOS,
+    call,
+    good_url,
+    healthy,
+    run_dir,
+    write_config,
+)
 
 BASELINE_ENV = (
     "PRUEFSTAND_E2E_BASELINE_RUN"  # CI shares one baseline run directory per workflow (T1.12)
@@ -21,11 +28,16 @@ def _tier1_env(monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.delenv(name, raising=False)
 
 
-@pytest.fixture(autouse=True)
-def _only_the_requested_scenario(request: pytest.FixtureRequest) -> None:
+def pytest_collection_modifyitems(config: pytest.Config, items: list[pytest.Item]) -> None:
+    """Keep only the requested scenario; an unknown name is a usage error, never a green skip."""
     wanted = os.environ.get(SCENARIO_ENV)
-    if wanted and request.node.name != f"test_{wanted}":
-        pytest.skip(f"{SCENARIO_ENV}={wanted}")
+    if not wanted:
+        return
+    if wanted not in SCENARIOS:
+        known = ", ".join(SCENARIOS)
+        msg = f"{SCENARIO_ENV}={wanted!r} is not a scenario (one of: {known})"
+        raise pytest.UsageError(msg)
+    items[:] = [i for i in items if i.name == f"test_{wanted}"]
 
 
 @pytest.fixture(scope="session")

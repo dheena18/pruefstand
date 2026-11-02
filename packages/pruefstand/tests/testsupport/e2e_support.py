@@ -17,6 +17,13 @@ ROOT = Path(__file__).resolve().parents[4]
 CONFIGS = Path(__file__).resolve().parents[1] / "e2e" / "configs"
 DATASET = ROOT / "datasets" / "fixtures" / "slice_v1"
 GOOD_URL_ENV = "PRUEFSTAND_LIVE_GOOD_URL"
+SCENARIOS = (
+    "good",
+    "tenant_filter_post_topk",
+    "shared_public_unfiltered",
+    "system_prompt_guard_off",
+    "injection_guard_off",
+)
 _MAKE = shutil.which("make") or "make"
 _BASH = shutil.which("bash") or "bash"
 

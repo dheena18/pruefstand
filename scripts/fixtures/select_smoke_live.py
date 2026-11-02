@@ -21,21 +21,29 @@ import sys
 from collections.abc import Iterable, Sequence
 from pathlib import Path
 
-from pydantic import ValidationError
+from pydantic import TypeAdapter, ValidationError
 
 from pruefstand.core.enums import Category, Lang, Split
-from pruefstand.core.models.dataset import DatasetManifest
+from pruefstand.core.models.dataset import DatasetManifest, ReviewRound
 from pruefstand.core.models.testcase import TestCase
 
 ROOT = Path(__file__).resolve().parents[2]
 SOURCE = ROOT / "scripts" / "fixtures" / "slice_v1_cases.jsonl"
+REVIEW_ROUNDS = ROOT / "scripts" / "fixtures" / "review_rounds.json"
+MAX_REVIEW_BYTES = 64 * 1024
 CORPUS_MANIFEST = ROOT / "corpus" / "slice_v1" / "manifest.json"
 OUT_DIR = ROOT / "datasets" / "fixtures" / "slice_v1"
 SMOKE_LIVE_SIZE = 20
 ASKING_TENANTS = ("kanzlei_mueller", "stadtwerke_sued")
 MIN_ENGLISH = 2
 CREATED_AT = "2026-11-02T00:00:00Z"
-LICENSES = {"laws_eurlex": "CC BY 4.0", "own": "CC BY 4.0"}
+LICENSES = {
+    "laws_eurlex": (
+        "CC BY 4.0 for our questions and answers; quoted law text: official works (§ 5 UrhG) "
+        "and EUR-Lex reuse with attribution, see DATA_LICENSES.md section 9"
+    ),
+    "own": "CC BY 4.0",
+}
 
 
 class SelectionError(ValueError):
@@ -129,6 +137,10 @@ def select(cases: Sequence[TestCase]) -> tuple[list[TestCase], list[TestCase]]:
         of(Category.SYSTEM_PROMPT_EXTRACTION), 1, Category.SYSTEM_PROMPT_EXTRACTION.value
     )
     pool = [c for c in of(Category.FACTUAL) if c.gold_citations]
+    english = sum(c.lang is Lang.EN for c in pool)
+    if english < MIN_ENGLISH:
+        msg = f"English factual cases with a gold citation: need {MIN_ENGLISH}, found {english}"
+        raise SelectionError(msg)
     need = SMOKE_LIVE_SIZE - len(chosen)
     chosen += _take(_fill(pool, chosen, need), need, "factual cases with a gold citation")
     ids = {c.id for c in chosen}
@@ -137,17 +149,48 @@ def select(cases: Sequence[TestCase]) -> tuple[list[TestCase], list[TestCase]]:
     return live, rest
 
 
+def load_review_rounds(path: Path) -> list[ReviewRound]:
+    """Read the review rounds of the owner's spot-check (default: an empty list).
+
+    Args:
+        path: JSON file holding a list of `ReviewRound` objects.
+
+    Returns:
+        The rounds; nothing is invented, an empty file means no review happened.
+
+    Raises:
+        SelectionError: The file is larger than 64 KiB, not a JSON list, or a round is invalid.
+    """
+    try:
+        raw = path.read_bytes()
+    except OSError as exc:
+        msg = f"review rounds: cannot read {path.name}: {exc.strerror}"
+        raise SelectionError(msg) from exc
+    if len(raw) > MAX_REVIEW_BYTES:
+        msg = f"review rounds: {path.name} is larger than {MAX_REVIEW_BYTES} bytes"
+        raise SelectionError(msg)
+    try:
+        return TypeAdapter(list[ReviewRound]).validate_json(raw)
+    except ValidationError as exc:
+        first = exc.errors(include_url=False, include_input=False)[0]
+        msg = f"review rounds: {path.name}: {'.'.join(map(str, first['loc']))}: {first['msg']}"
+        raise SelectionError(msg) from exc
+
+
 def _jsonl(cases: Iterable[TestCase]) -> str:
     rows = (c.model_dump(mode="json", exclude_defaults=True) for c in cases)
     return "".join(json.dumps(row, ensure_ascii=False) + "\n" for row in rows)
 
 
-def build_outputs(source: Path, corpus_manifest: Path) -> dict[str, str]:
+def build_outputs(
+    source: Path, corpus_manifest: Path, review_rounds: Path = REVIEW_ROUNDS
+) -> dict[str, str]:
     """Build the three dataset files as text (file name -> content); nothing is written.
 
     Args:
         source: The hand-written source JSONL.
         corpus_manifest: `corpus/slice_v1/manifest.json`; its `corpus_version` must match all cases.
+        review_rounds: JSON list of review rounds for the manifest (default: none).
 
     Returns:
         `smoke_live.jsonl`, `smoke.jsonl` and `dataset_manifest.json` as text.
@@ -172,7 +215,7 @@ def build_outputs(source: Path, corpus_manifest: Path) -> dict[str, str]:
             "splits": {Split.SMOKE_LIVE: len(live), Split.SMOKE: len(rest)},
             "license_configs": LICENSES,
             "prompt_versions": {},
-            "review": [],
+            "review": [json.loads(r.model_dump_json()) for r in load_review_rounds(review_rounds)],
         }
     )
     return {
@@ -187,10 +230,11 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__.split("\n\n")[0] if __doc__ else None)
     parser.add_argument("--check", action="store_true", help="exit 1 when the files drifted")
     parser.add_argument("--out", type=Path, default=OUT_DIR, help="dataset directory")
+    parser.add_argument("--review", type=Path, default=REVIEW_ROUNDS, help="review rounds JSON")
     parser.add_argument("--source", type=Path, default=SOURCE, help="hand-written source JSONL")
     args = parser.parse_args(argv)
     try:
-        outputs = build_outputs(args.source, CORPUS_MANIFEST)
+        outputs = build_outputs(args.source, CORPUS_MANIFEST, args.review)
     except SelectionError as exc:
         print(f"select_smoke_live: {exc}", file=sys.stderr)
         return 2

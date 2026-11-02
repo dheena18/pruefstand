@@ -8,7 +8,7 @@
     "smoke": 20
   },
   "license_configs": {
-    "laws_eurlex": "CC BY 4.0",
+    "laws_eurlex": "CC BY 4.0 for our questions and answers; quoted law text: official works (\u00a7 5 UrhG) and EUR-Lex reuse with attribution, see DATA_LICENSES.md section 9",
     "own": "CC BY 4.0"
   },
   "prompt_versions": {},
