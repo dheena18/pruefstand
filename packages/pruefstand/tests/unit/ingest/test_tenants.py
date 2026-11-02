@@ -9,12 +9,13 @@ import pytest
 import yaml
 from testsupport.corpus_support import REPO_ROOT, build_raw_root
 
-from pruefstand.core.config import CorpusBuildConfig, TenantPlan
+from pruefstand.core.config import CorpusBuildConfig, TenantPlan, TenantRule
 from pruefstand.core.config_loader import load_model
 from pruefstand.core.enums import Lang
 from pruefstand.core.errors import ConfigError, DatasetError
 from pruefstand.core.ids import DocId, TenantId
 from pruefstand.core.models.corpus import Document
+from pruefstand.ingest import tenants as tenants_module
 from pruefstand.ingest.eurlex import EurLexLoader
 from pruefstand.ingest.gii_xml import GiiXmlLoader
 from pruefstand.ingest.oldp import OldpLoader
@@ -245,11 +246,22 @@ def test_assignment_time_is_linear_in_the_number_of_documents() -> None:
     assert large / max(small, 1e-6) < 12  # 4x the input; quadratic would be ~16x
 
 
-def test_rules_are_matched_by_dictionary_not_by_scanning_all_rules() -> None:
+def test_rules_are_matched_by_dictionary_not_by_scanning_all_rules(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    calls = {"n": 0}
+    real = tenants_module._matches
+
+    def spy(rule: TenantRule, doc: Document) -> bool:
+        calls["n"] += 1
+        return real(rule, doc)
+
+    monkeypatch.setattr(tenants_module, "_matches", spy)
     rules = [{"tenant": KANZLEI, "source": f"gii:law{i}"} for i in range(900)]
     plan = TenantPlan.model_validate({"tenants": [KANZLEI], "rules": rules})
     docs = [make_doc(f"d{i}", f"gii:law{i % 900}") for i in range(3_000)]
     assert len(list(assign_tenants(docs, plan))) == 3_000
+    assert calls["n"] == 3_000  # one candidate rule per document; a scan would be 2.7 million
 
 
 def make_doc(

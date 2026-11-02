@@ -238,7 +238,7 @@ def test_a_stale_staging_directory_is_replaced(chunks: list[Chunk], tmp_path: Pa
     assert not stale.exists()
 
 
-def test_writing_scales_linearly(chunks: list[Chunk], tmp_path: Path) -> None:
+def test_rendering_scales_linearly(chunks: list[Chunk]) -> None:
     def many(factor: int) -> list[Chunk]:
         return [
             clone(c, chunk_id=ChunkId(f"{c.chunk_id}#{i}"), doc_id=DocId(f"{c.doc_id}#{i}"))
@@ -246,14 +246,16 @@ def test_writing_scales_linearly(chunks: list[Chunk], tmp_path: Path) -> None:
             for c in chunks
         ]
 
-    def timed(items: list[Chunk], name: str) -> float:
-        start = time.perf_counter()
-        write(items, tmp_path / name)
-        return time.perf_counter() - start
+    def best_of_three(items: list[Chunk]) -> float:
+        times = []
+        for _ in range(3):
+            start = time.perf_counter()
+            render_corpus(items)
+            times.append(time.perf_counter() - start)
+        return min(times)
 
-    small, large = many(100), many(400)
-    ratio = timed(large, "large") / max(timed(small, "small"), 1e-6)
-    assert ratio < 12
+    small, large = best_of_three(many(100)), best_of_three(many(400))
+    assert large / max(small, 1e-6) < 12  # 4x the input; quadratic would be about 16x
 
 
 @settings(
