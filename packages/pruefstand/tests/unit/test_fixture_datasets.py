@@ -142,7 +142,7 @@ def test_cross_lingual_questions_cross_the_language_of_the_gold_text(
     for case in cases:
         gold = {lang[d] for d in case.gold_doc_ids}
         if case.category is Category.CROSS_LINGUAL:
-            assert gold == {"en" if case.lang.value == "de" else "de"}, case.id
+            assert gold == {"de", "en"}, case.id  # both parallel documents are correct retrievals
         elif case.category in ANSWERABLE:
             assert gold == {case.lang.value}, case.id
     pairs = Counter(c.lang.value for c in cases if c.category is Category.CROSS_LINGUAL)

@@ -139,3 +139,59 @@ def test_a_row_with_a_split_field_is_refused(tmp_path: Path) -> None:
     bad.write_text(json.dumps(row, ensure_ascii=False) + "\n", encoding="utf-8")
     with pytest.raises(sel.SelectionError, match="split"):
         sel.load_source(bad)
+
+
+def test_fewer_than_two_english_factual_cases_are_an_error(source: list[TestCase]) -> None:
+    kept = [c for c in source if not (c.category is Category.FACTUAL and c.lang.value == "en")]
+    english = [c for c in source if c.category is Category.FACTUAL and c.lang.value == "en"][:1]
+    with pytest.raises(sel.SelectionError, match="English"):
+        sel.select([*kept, *english])
+
+
+def _round() -> dict[str, object]:
+    return {
+        "round": 1,
+        "prompt_version": "hand",
+        "sampled": 40,
+        "bad": 0,
+        "error_rate": 0.0,
+        "reviewer": "owner",
+        "date": "2026-11-03",
+    }
+
+
+def test_the_default_review_list_is_empty_and_the_manifest_claims_no_review() -> None:
+    assert json.loads(sel.REVIEW_ROUNDS.read_text(encoding="utf-8")) == []
+    out = sel.build_outputs(SOURCE, sel.CORPUS_MANIFEST)
+    assert json.loads(out["dataset_manifest.json"])["review"] == []
+
+
+def test_review_rounds_from_the_source_file_enter_the_manifest(tmp_path: Path) -> None:
+    path = tmp_path / "rounds.json"
+    path.write_text(json.dumps([_round()]), encoding="utf-8")
+    out = sel.build_outputs(SOURCE, sel.CORPUS_MANIFEST, review_rounds=path)
+    review = json.loads(out["dataset_manifest.json"])["review"]
+    assert [r["reviewer"] for r in review] == ["owner"]
+    assert sel.main(["--check", "--review", str(path)]) == 1  # the committed manifest has none
+
+
+@pytest.mark.parametrize(
+    "text", ['{"round": 1}', '[{"round": 1}]', "not json", json.dumps([{**_round(), "x": 1}])]
+)
+def test_a_bad_review_file_is_refused(tmp_path: Path, text: str) -> None:
+    path = tmp_path / "rounds.json"
+    path.write_text(text, encoding="utf-8")
+    with pytest.raises(sel.SelectionError, match="review"):
+        sel.build_outputs(SOURCE, sel.CORPUS_MANIFEST, review_rounds=path)
+
+
+def test_an_oversized_review_file_is_refused(tmp_path: Path) -> None:
+    path = tmp_path / "rounds.json"
+    path.write_text("[" + " " * 100_000 + "]", encoding="utf-8")
+    with pytest.raises(sel.SelectionError, match="review"):
+        sel.build_outputs(SOURCE, sel.CORPUS_MANIFEST, review_rounds=path)
+
+
+def test_the_manifest_licence_text_does_not_over_claim() -> None:
+    out = json.loads(sel.build_outputs(SOURCE, sel.CORPUS_MANIFEST)["dataset_manifest.json"])
+    assert "UrhG" in out["license_configs"]["laws_eurlex"]
