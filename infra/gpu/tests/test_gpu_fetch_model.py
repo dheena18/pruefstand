@@ -30,6 +30,7 @@ def test_enough_free_space_pulls_once_and_accepts_the_pinned_digest(gpu: GpuWorl
     assert pulls[0].endswith("ollama-op.sh pull bge-m3 1157672605")  # the cluster re-checks size
     assert "/data/dheena/pruefstand-bin/ollama-op.sh" in pulls[0]
     assert not _remote(gpu, "ollama-op.sh rm")
+    assert "digest matches" in res.out  # Ollama listed it as bge-m3:latest
 
 
 def test_a_model_already_present_with_the_pinned_digest_is_not_pulled(gpu: GpuWorld) -> None:
@@ -188,3 +189,24 @@ def test_an_incomplete_catalogue_entry_is_refused_before_anything_runs(
     assert res.rc == 1
     assert not gpu.stubs.calls("ssh")
     assert not gpu.stubs.calls("curl")
+
+
+@pytest.mark.parametrize(
+    "body",
+    ["", "none", "{not json", '{"models": []}', '{"models": [{"name": "bge-m3:latest"}]}'],
+)
+def test_an_unreadable_digest_never_removes_the_model(gpu: GpuWorld, body: str) -> None:
+    gpu.set_tags([])
+    gpu.ssh(status_csv(free_kb=_need_kb("bge-m3")), pulled_raw=body)
+    res = gpu.script("fetch-model.sh", BGE)
+    assert res.rc == 1
+    assert "could not read" in res.out + res.err
+    assert not _remote(gpu, "ollama-op.sh rm")  # only a positive mismatch deletes
+    assert len(_remote(gpu, "ollama-op.sh pull bge-m3")) == 1
+
+
+def test_only_a_positive_digest_mismatch_removes_the_model(gpu: GpuWorld) -> None:
+    gpu.set_tags([])
+    gpu.ssh(status_csv(free_kb=_need_kb("bge-m3")), pulled={"bge-m3": "9" * 64})
+    assert gpu.script("fetch-model.sh", BGE).rc == 1
+    assert len(_remote(gpu, "ollama-op.sh rm bge-m3")) == 1

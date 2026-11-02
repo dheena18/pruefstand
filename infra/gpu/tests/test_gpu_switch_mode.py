@@ -150,3 +150,16 @@ def test_unload_all_unloads_every_resident_catalogue_model_and_keeps_the_server(
 
 def test_the_catalogue_digests_in_the_yaml_are_the_pins() -> None:
     assert {m["tag"] for m in CATALOGUE["models"]} >= set(DAY_TAGS)
+
+
+def test_a_resident_bge_m3_listed_as_latest_is_not_loaded_or_unloaded(gpu: GpuWorld) -> None:
+    out = gpu.script("switch-mode.sh", "day", "--dry-run").out
+    assert "bge-m3 already resident" in out
+    assert "unloading" not in out
+    assert _loads(out) == []
+
+
+def test_unload_all_unloads_bge_m3_by_its_catalogue_tag(gpu: GpuWorld) -> None:
+    res = gpu.script("unload-all.sh", "--dry-run")
+    assert '"model":"bge-m3","keep_alive":0' in res.out
+    assert "bge-m3:latest" not in res.out

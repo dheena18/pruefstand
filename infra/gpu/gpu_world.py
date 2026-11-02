@@ -27,11 +27,16 @@ GIB = 1024**3
 DF_HEAD = "Filesystem 1024-blocks Used Available Capacity Mounted on\n"
 
 
+def reported(tag: str) -> str:
+    """The name Ollama reports for a catalogue tag: a tag without ``:`` is listed as ``<tag>:latest``."""
+    return tag if ":" in tag else f"{tag}:latest"
+
+
 def ps_model(tag: str, *, digest: str | None = None, vram_ratio: float = 1.0) -> dict[str, Any]:
-    """One ``/api/ps`` model row (Ollama 0.32 field names) for a catalogue tag."""
+    """One ``/api/ps`` model row (Ollama 0.32 shape and names) for a catalogue tag."""
     size = ENTRIES[tag]["disk_bytes"] + 4 * GIB
     return {
-        "name": tag, "model": tag, "size": size, "digest": digest or ENTRIES[tag]["digest"],
+        "name": reported(tag), "model": reported(tag), "size": size, "digest": digest or ENTRIES[tag]["digest"],
         "details": {"family": ENTRIES[tag]["family"]}, "expires_at": "2026-11-03T10:00:00Z",
         "size_vram": int(size * vram_ratio), "context_length": ENTRIES[tag]["options"]["num_ctx"],
     }  # fmt: skip
@@ -50,6 +55,7 @@ def status_csv(
     rows = [
         "check,status,detail",
         "server,OK,pid=4242",
+        "start-script,OK,the start script of record exists",
         "listener,OK,127.0.0.1 pid=4242",
         "env,OK,matches cluster.env",
         f"disk-models,{disk_state},free_kb={free_kb} min_free_gb=2",
@@ -57,7 +63,7 @@ def status_csv(
         f"gpu:0,INFO,uuid=GPU-aaa used_mib={gpu_used[0]} total_mib=46068",
         f"gpu:1,INFO,uuid=GPU-bbb used_mib={gpu_used[1]} total_mib=46068",
         f"placement:{DAY_TAGS[0]},{'WARN' if spread else 'OK'},gpu={spread or '0'}",
-        f"placement:{DAY_TAGS[1]},OK,gpu=0",
+        f"placement:{reported(DAY_TAGS[1])},OK,gpu=0",
         f"placement:{DAY_TAGS[2]},OK,gpu=1",
         "bin-integrity,OK,sha256sum -c passed",
         f"bin-sums,INFO,sha256={sums}",
@@ -104,7 +110,13 @@ class GpuWorld:
 
     def set_tags(self, tags: Sequence[str], digests: dict[str, str] | None = None) -> None:
         """Body of ``GET /api/tags``."""
-        rows = [{"name": t, "digest": (digests or {}).get(t, ENTRIES[t]["digest"])} for t in tags]
+        rows = [
+            {
+                "name": reported(t), "model": reported(t), "size": ENTRIES[t]["disk_bytes"],
+                "digest": (digests or {}).get(t, ENTRIES[t]["digest"]),
+            }
+            for t in tags
+        ]  # fmt: skip
         self.tags_file.write_text(json.dumps({"models": rows}), encoding="utf-8")
 
     def set_ps(self, models: Sequence[dict[str, Any]]) -> None:
@@ -139,18 +151,23 @@ esac
         status_rc: int = 0,
         ops_rc: int = 0,
         pulled: dict[str, str] | None = None,
+        pulled_raw: str | None = None,
     ) -> None:
         """A canned ``ssh``: ``status.sh`` prints ``status``; other cluster scripts exit ``ops_rc``.
 
-        ``pulled`` (tag -> digest): a successful ``ollama-op.sh pull`` then replaces ``/api/tags``.
+        ``pulled`` (tag -> digest): a successful ``ollama-op.sh pull`` then replaces ``/api/tags``;
+        ``pulled_raw`` does the same with an arbitrary body (empty, not JSON, no digest).
         """
         status_file = self.root / "status.csv"
         status_file.write_text(status + "\n", encoding="utf-8")
         after = self.root / "tags-after-pull.json"
-        rows = [{"name": t, "digest": d} for t, d in (pulled or {}).items()]
-        after.write_text(json.dumps({"models": rows}), encoding="utf-8")
+        rows = [{"name": reported(t), "digest": d} for t, d in (pulled or {}).items()]
+        body = pulled_raw if pulled_raw is not None else json.dumps({"models": rows})
+        after.write_text(body, encoding="utf-8")
         on_pull = (
-            f"cp {shlex.quote(str(after))} {shlex.quote(str(self.tags_file))};" if pulled else ""
+            f"cp {shlex.quote(str(after))} {shlex.quote(str(self.tags_file))};"
+            if (pulled or pulled_raw is not None)
+            else ""
         )
         script = f"""#!/usr/bin/env bash
 echo "ssh $*" >> {shlex.quote(str(self.stubs.log))}
