@@ -1,0 +1,59 @@
+{
+  "additionalProperties": false,
+  "description": "``labels.json``: the en labels the PR comment, the HTML report and the dashboard share.\n\nBuilt by ``pruefstand.report.labels.labels_document()`` and copied to ``data/labels.json`` by\n``export-dashboard``, so the dashboard never re-types a label (ui-spec §10.4.3).\n\nAttributes:\n    metrics: Metric code to label (every ``KNOWN_METRICS`` name and ``evidence_recall``).\n    causes: Cause code to message (``CAUSE_MESSAGES``).\n    hard_fail_rules: Hard-fail rule code to label (R12 UI12-15, D273).\n    informational_reasons: Every ``informational_reason`` code of interfaces §9 to its label.",
+  "properties": {
+    "causes": {
+      "additionalProperties": {
+        "type": "string"
+      },
+      "propertyNames": {
+        "enum": [
+          "retrieval",
+          "generation",
+          "citation_format",
+          "language",
+          "refusal_policy",
+          "errors",
+          "mixed"
+        ]
+      },
+      "title": "Causes",
+      "type": "object"
+    },
+    "hard_fail_rules": {
+      "additionalProperties": {
+        "type": "string"
+      },
+      "title": "Hard Fail Rules",
+      "type": "object"
+    },
+    "informational_reasons": {
+      "additionalProperties": {
+        "type": "string"
+      },
+      "title": "Informational Reasons",
+      "type": "object"
+    },
+    "metrics": {
+      "additionalProperties": {
+        "type": "string"
+      },
+      "title": "Metrics",
+      "type": "object"
+    },
+    "schema_version": {
+      "const": "1",
+      "title": "Schema Version",
+      "type": "string"
+    }
+  },
+  "required": [
+    "schema_version",
+    "metrics",
+    "causes",
+    "hard_fail_rules",
+    "informational_reasons"
+  ],
+  "title": "LabelsDocument",
+  "type": "object"
+}

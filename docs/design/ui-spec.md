@@ -1390,6 +1390,7 @@ Rendering per block:
   - PR comment, block G outside `overall`: only non-PASS rows;
   - PR comment, block A (tier 2): only non-PASS rows on the `Absolute checks:` line; when every block-A
     row is PASS, the line is `Absolute checks: all PASS (<n>)`. Block C (tier 1) always shows every row.
+  - PR comment, block I: reason-less `absolute_checks` slice rows are omitted (shown on the notable line when `notable == true`; D387);
   Renderer tests count an omitted row as "accounted for" only under one of these rules.
 - `no_baseline == true`: no block is rendered (nothing was compared). Hard fails are rendered when
   present.
@@ -1452,7 +1453,7 @@ Top failing cases: law-0042, law-0107, xl-0013
 ```markdown
 <!-- pruefstand:pr-comment -->
 ## Prüfstand tier 1: ✅ PASS (0 blocking issues)
-Baseline: main@a1b2c3d · Candidate: pr-42@d4e5f6a · smoke_live · 20 cases · 14m 03s · 0 USD · 0.2 M tokens
+Baseline: main@a1b2c3d · Candidate: pr-42@d4e5f6a · smoke_live · 20 cases · 14m 03s · 0 USD · 200 k tokens
 > ℹ️ Tier 1 decides on hard fails and the error rate only. Language, citation, refusal and injection results are reported. Paired statistics need ≥ 30 clusters and run in tier 2 (`pruefstand/gate`).
 
 | Check | Value | Max | Status |

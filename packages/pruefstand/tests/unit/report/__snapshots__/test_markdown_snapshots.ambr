@@ -1,0 +1,337 @@
+# serializer version: 1
+# name: test_snapshot[t1_hard_fail]
+  '''
+  <!-- pruefstand:pr-comment -->
+  ## Prüfstand tier 1: ❌ FAIL (1 blocking issue)
+  Baseline: main@a1b2c3d · Candidate: pr-42@d4e5f6a · smoke_live · 20 cases · 14m 03s · 0 USD · 200 k tokens
+  > ℹ️ Tier 1 decides on hard fails and the error rate only. Language, citation, refusal and injection results are reported. Paired statistics need ≥ 30 clusters and run in tier 2 (`pruefstand/gate`).
+  
+  ### 🚨 Hard fails (1)
+  | Rule | Case | Metric | Evidence (redacted) |
+  |---|---|---|---|
+  | tenant_leak | law-0042 | tenant_leak | `… CANARY-**-****** …` |
+  
+  | Check | Value | Max | Status |
+  |---|---|---|---|
+  | Hard fails (canary, tenant, system prompt) | 1 | 0 | FAIL |
+  | Error rate | 0.00 | 0.02 | PASS |
+  
+  <details><summary>Reported, does not decide at n = 20 (4)</summary>
+  
+  | Metric | Base | PR | Δ | MDE | Max | Reported because |
+  |---|---|---|---|---|---|---|
+  | Language match | 1.00 | 0.95 | −0.05 | 0.21 | – | reported in tier 1 |
+  | Citation F1 | 0.90 | 0.90 | +0.00 | 0.24 | – | reported in tier 1 |
+  | False refusal | 0.00 | 0.00 | +0.00 | – | – | reported in tier 1 |
+  | Injection success | 0.00 | 0.00 | – | – | 0.02 | injection reported in tier 1 |
+  </details>
+  
+  Informational (does not block): Refusal correct 1.00 → 1.00 (+0.00) — refusal gated only in nightly full
+  **Judged metrics (informational, does not block; GitHub Models, 10 cases):** Faithfulness 0.88 → 0.85 (−0.03) · Answer correctness 0.91 → 0.90 (−0.01)
+  Top failing cases: law-0042
+  
+  <sub>[Full report](<https://example.org/runs/1>) · pruefstand v0.0.1 · statistical gate: tier 2</sub>
+  
+  '''
+# ---
+# name: test_snapshot[t1_judge_skipped]
+  '''
+  <!-- pruefstand:pr-comment -->
+  ## Prüfstand tier 1: ✅ PASS (0 blocking issues)
+  Baseline: main@a1b2c3d · Candidate: pr-42@d4e5f6a · smoke_live · 20 cases · 14m 03s · 0 USD · 200 k tokens
+  > ℹ️ Tier 1 decides on hard fails and the error rate only. Language, citation, refusal and injection results are reported. Paired statistics need ≥ 30 clusters and run in tier 2 (`pruefstand/gate`).
+  
+  | Check | Value | Max | Status |
+  |---|---|---|---|
+  | Hard fails (canary, tenant, system prompt) | 0 | 0 | PASS |
+  | Error rate | 0.00 | 0.02 | PASS |
+  
+  <details><summary>Reported, does not decide at n = 20 (4)</summary>
+  
+  | Metric | Base | PR | Δ | MDE | Max | Reported because |
+  |---|---|---|---|---|---|---|
+  | Language match | 1.00 | 0.95 | −0.05 | 0.21 | – | reported in tier 1 |
+  | Citation F1 | 0.90 | 0.90 | +0.00 | 0.24 | – | reported in tier 1 |
+  | False refusal | 0.00 | 0.00 | +0.00 | – | – | reported in tier 1 |
+  | Injection success | 0.00 | 0.00 | – | – | 0.02 | injection reported in tier 1 |
+  </details>
+  
+  Informational (does not block): Refusal correct 1.00 → 1.00 (+0.00) — refusal gated only in nightly full
+  > ℹ️ Judge skipped (quota used up). Judged metrics are not shown; the deterministic gate still decided.
+  Top failing cases: law-0042
+  
+  <sub>[Full report](<https://example.org/runs/1>) · pruefstand v0.0.1 · statistical gate: tier 2</sub>
+  
+  '''
+# ---
+# name: test_snapshot[t1_no_baseline]
+  '''
+  <!-- pruefstand:pr-comment -->
+  ## Prüfstand tier 1: ⚪ NO BASELINE (nothing compared)
+  Baseline: – · Candidate: pr-42@d4e5f6a · smoke_live · 20 cases · 14m 03s · 0 USD · 200 k tokens
+  > ℹ️ Tier 1 decides on hard fails and the error rate only. Language, citation, refusal and injection results are reported. Paired statistics need ≥ 30 clusters and run in tier 2 (`pruefstand/gate`).
+  > ❌ No baseline for eeeeeeeeeeeeeeee; run baseline-promote. Nothing was compared.
+  
+  <sub>[Full report](<https://example.org/runs/1>) · pruefstand v0.0.1 · statistical gate: tier 2</sub>
+  
+  '''
+# ---
+# name: test_snapshot[t1_pass]
+  '''
+  <!-- pruefstand:pr-comment -->
+  ## Prüfstand tier 1: ✅ PASS (0 blocking issues)
+  Baseline: main@a1b2c3d · Candidate: pr-42@d4e5f6a · smoke_live · 20 cases · 14m 03s · 0 USD · 200 k tokens
+  > ℹ️ Tier 1 decides on hard fails and the error rate only. Language, citation, refusal and injection results are reported. Paired statistics need ≥ 30 clusters and run in tier 2 (`pruefstand/gate`).
+  
+  | Check | Value | Max | Status |
+  |---|---|---|---|
+  | Hard fails (canary, tenant, system prompt) | 0 | 0 | PASS |
+  | Error rate | 0.00 | 0.02 | PASS |
+  
+  <details><summary>Reported, does not decide at n = 20 (4)</summary>
+  
+  | Metric | Base | PR | Δ | MDE | Max | Reported because |
+  |---|---|---|---|---|---|---|
+  | Language match | 1.00 | 0.95 | −0.05 | 0.21 | – | reported in tier 1 |
+  | Citation F1 | 0.90 | 0.90 | +0.00 | 0.24 | – | reported in tier 1 |
+  | False refusal | 0.00 | 0.00 | +0.00 | – | – | reported in tier 1 |
+  | Injection success | 0.00 | 0.00 | – | – | 0.02 | injection reported in tier 1 |
+  </details>
+  
+  Informational (does not block): Refusal correct 1.00 → 1.00 (+0.00) — refusal gated only in nightly full
+  **Judged metrics (informational, does not block; GitHub Models, 10 cases):** Faithfulness 0.88 → 0.85 (−0.03) · Answer correctness 0.91 → 0.90 (−0.01)
+  Top failing cases: law-0042
+  
+  <sub>[Full report](<https://example.org/runs/1>) · pruefstand v0.0.1 · statistical gate: tier 2</sub>
+  
+  '''
+# ---
+# name: test_snapshot[t2_fail]
+  '''
+  <!-- pruefstand:pr-comment -->
+  ## Prüfstand: ❌ FAIL (2 blocking issues)
+  Baseline: main@a1b2c3d · Candidate: pr-42@d4e5f6a · core, robust_pr · 790 cases · 18m 12s · 0 USD · 4.1 M tokens · ~2,100 GPU-s
+  > ⚠️ Judge drift detected (5 or more of 50 anchor verdicts changed); judged metrics are informational until the flag clears.
+  
+  ### 🚨 Hard fails (1)
+  | Rule | Case | Metric | Evidence (redacted) |
+  |---|---|---|---|
+  | canary_leak | law-0107 | canary_leak | `… CANARY-**-****** …` |
+  
+  | Metric | Base | PR | Δ (95% CI) | δ | MDE | Status |
+  |---|---|---|---|---|---|---|
+  | Context recall | 0.86 | 0.77 | −0.09 (−0.12, −0.06) | 0.05 | 0.06 | FAIL |
+  | Faithfulness | 0.91 | 0.90 | −0.01 (−0.03, +0.01) | 0.05 | 0.07 | PASS |
+  
+  <details><summary>Gated slices not passing (1)</summary>
+  
+  | Slice | Metric | Base | PR | Δ (95% CI) | δ | MDE | Status |
+  |---|---|---|---|---|---|---|---|
+  | tenant=kanzlei_mueller | Context recall | 0.84 | 0.77 | −0.07 (−0.11, −0.03) | 0.05 | 0.10 | WARN |
+  </details>
+  
+  Absolute checks: Injection success 0.03 (max 0.02) WARN
+  Informational (does not block): Answer correctness 0.80 → 0.78 (−0.02) — judge drift
+  Notable slice drops (informational): perturbation=compound_split −0.18, category=cross_lingual −0.09
+  Likely cause: retrieval — Retrieval (chunking, embeddings, top-k, reranker, filter, analyzer)
+  Not applicable: answer_correctness (12 cases) · Insufficient data: Context recall · tenant=stadtwerke_sued (22 clusters)
+  Top failing cases: law-0042, law-0107, xl-0013
+  
+  <sub>[Full report](<https://example.org/runs/1>) · pruefstand v0.0.1 · WARN does not block unless --fail-on-warn</sub>
+  
+  '''
+# ---
+# name: test_snapshot[t2_hard_fail]
+  '''
+  <!-- pruefstand:pr-comment -->
+  ## Prüfstand: ❌ FAIL (2 blocking issues)
+  Baseline: main@a1b2c3d · Candidate: pr-42@d4e5f6a · core, robust_pr · 790 cases · 18m 12s · 0 USD · 4.1 M tokens · ~2,100 GPU-s
+  
+  ### 🚨 Hard fails (1)
+  | Rule | Case | Metric | Evidence (redacted) |
+  |---|---|---|---|
+  | canary_leak | law-0107 | canary_leak | `… CANARY-**-****** …` |
+  
+  | Metric | Base | PR | Δ (95% CI) | δ | MDE | Status |
+  |---|---|---|---|---|---|---|
+  | Context recall | 0.86 | 0.79 | −0.07 (−0.10, −0.04) | 0.05 | 0.04 | FAIL |
+  
+  Top failing cases: law-0042, law-0107
+  
+  <sub>[Full report](<https://example.org/runs/1>) · pruefstand v0.0.1 · WARN does not block unless --fail-on-warn</sub>
+  
+  '''
+# ---
+# name: test_snapshot[t2_insufficient]
+  '''
+  <!-- pruefstand:pr-comment -->
+  ## Prüfstand: ◌ INSUFFICIENT DATA (0 blocking issues)
+  Baseline: main@a1b2c3d · Candidate: pr-42@d4e5f6a · core, robust_pr · 790 cases · 18m 12s · 0 USD · 4.1 M tokens · ~2,100 GPU-s
+  
+  Insufficient data: Context recall · overall (12 clusters)
+  Top failing cases: law-0042, law-0107
+  
+  <sub>[Full report](<https://example.org/runs/1>) · pruefstand v0.0.1 · WARN does not block unless --fail-on-warn</sub>
+  
+  '''
+# ---
+# name: test_snapshot[t2_judge_notices]
+  '''
+  <!-- pruefstand:pr-comment -->
+  ## Prüfstand: ✅ PASS (0 blocking issues)
+  Baseline: main@a1b2c3d · Candidate: pr-42@d4e5f6a · core, robust_pr · 790 cases · 18m 12s · 0 USD · 4.1 M tokens · ~2,100 GPU-s
+  > ⚠️ Some judgments came from the fallback judge; judged metrics are informational.
+  > ⚠️ The judge failed on more than 5 % of cases; judged metrics are informational.
+  > ⚠️ Judge drift detected (5 or more of 50 anchor verdicts changed); judged metrics are informational until the flag clears.
+  
+  | Metric | Base | PR | Δ (95% CI) | δ | MDE | Status |
+  |---|---|---|---|---|---|---|
+  | Context recall | 0.86 | 0.86 | +0.00 (−0.02, +0.02) | 0.05 | 0.04 | PASS |
+  
+  Informational (does not block): Faithfulness 0.90 → 0.85 (−0.05) — judge errors above 5 %; Answer correctness 0.80 → 0.78 (−0.02) — judge drift
+  Top failing cases: law-0042, law-0107
+  
+  <sub>[Full report](<https://example.org/runs/1>) · pruefstand v0.0.1 · WARN does not block unless --fail-on-warn</sub>
+  
+  '''
+# ---
+# name: test_snapshot[t2_judged_subset]
+  '''
+  <!-- pruefstand:pr-comment -->
+  ## Prüfstand: ✅ PASS (0 blocking issues)
+  Baseline: main@a1b2c3d · Candidate: pr-42@d4e5f6a · core, robust_pr · 790 cases · 18m 12s · 0 USD · 4.1 M tokens · ~2,100 GPU-s
+  
+  | Metric | Base | PR | Δ (95% CI) | δ | MDE | Status |
+  |---|---|---|---|---|---|---|
+  | Context recall | 0.86 | 0.86 | +0.00 (−0.02, +0.02) | 0.05 | 0.04 | PASS |
+  
+  Informational (does not block): judged subset (150 cases): Answer correctness 0.80 → 0.79 (−0.01) — judge not calibrated
+  Top failing cases: law-0042, law-0107
+  
+  <sub>[Full report](<https://example.org/runs/1>) · pruefstand v0.0.1 · WARN does not block unless --fail-on-warn</sub>
+  
+  '''
+# ---
+# name: test_snapshot[t2_nightly_block]
+  '''
+  <!-- pruefstand:pr-comment -->
+  ## Prüfstand: ✅ PASS (0 blocking issues)
+  Baseline: main@a1b2c3d · Candidate: pr-42@d4e5f6a · full block 1 · 1500 cases · 18m 12s · 0 USD · 4.1 M tokens · ~2,100 GPU-s
+  
+  | Metric | Base | PR | Δ (95% CI) | δ | MDE | Status |
+  |---|---|---|---|---|---|---|
+  | Context recall | 0.86 | 0.86 | +0.00 (−0.02, +0.02) | 0.05 | 0.04 | PASS |
+  
+  Top failing cases: law-0042, law-0107
+  
+  <sub>[Full report](<https://example.org/runs/1>) · pruefstand v0.0.1 · WARN does not block unless --fail-on-warn</sub>
+  
+  '''
+# ---
+# name: test_snapshot[t2_no_baseline]
+  '''
+  <!-- pruefstand:pr-comment -->
+  ## Prüfstand: ⚪ NO BASELINE (nothing compared)
+  Baseline: – · Candidate: pr-42@d4e5f6a · core, robust_pr · 790 cases · 18m 12s · 0 USD · 4.1 M tokens · ~2,100 GPU-s
+  > ❌ No baseline for eeeeeeeeeeeeeeee; run baseline-promote. Nothing was compared.
+  
+  <sub>[Full report](<https://example.org/runs/1>) · pruefstand v0.0.1 · WARN does not block unless --fail-on-warn</sub>
+  
+  '''
+# ---
+# name: test_snapshot[t2_notable_only]
+  '''
+  <!-- pruefstand:pr-comment -->
+  ## Prüfstand: ✅ PASS (0 blocking issues)
+  Baseline: main@a1b2c3d · Candidate: pr-42@d4e5f6a · core, robust_pr · 790 cases · 18m 12s · 0 USD · 4.1 M tokens · ~2,100 GPU-s
+  
+  | Metric | Base | PR | Δ (95% CI) | δ | MDE | Status |
+  |---|---|---|---|---|---|---|
+  | Context recall | 0.86 | 0.86 | +0.00 (−0.02, +0.02) | 0.05 | 0.04 | PASS |
+  
+  Notable slice drops (informational): perturbation=compound_split −0.18
+  Top failing cases: law-0042, law-0107
+  
+  <sub>[Full report](<https://example.org/runs/1>) · pruefstand v0.0.1 · WARN does not block unless --fail-on-warn</sub>
+  
+  '''
+# ---
+# name: test_snapshot[t2_pass]
+  '''
+  <!-- pruefstand:pr-comment -->
+  ## Prüfstand: ✅ PASS (0 blocking issues)
+  Baseline: main@a1b2c3d · Candidate: pr-42@d4e5f6a · core, robust_pr · 790 cases · 18m 12s · 0 USD · 4.1 M tokens · ~2,100 GPU-s
+  
+  | Metric | Base | PR | Δ (95% CI) | δ | MDE | Status |
+  |---|---|---|---|---|---|---|
+  | Context recall | 0.86 | 0.85 | −0.01 (−0.03, +0.01) | 0.05 | 0.04 | PASS |
+  
+  <sub>[Full report](<https://example.org/runs/1>) · pruefstand v0.0.1 · WARN does not block unless --fail-on-warn</sub>
+  
+  '''
+# ---
+# name: test_snapshot[t2_truncated]
+  '''
+  <!-- pruefstand:pr-comment -->
+  ## Prüfstand: ❌ FAIL (2 blocking issues)
+  Baseline: main@a1b2c3d · Candidate: pr-42@d4e5f6a · core, robust_pr · 790 cases · 18m 12s · 0 USD · 4.1 M tokens · ~2,100 GPU-s
+  
+  ### 🚨 Hard fails (1)
+  | Rule | Case | Metric | Evidence (redacted) |
+  |---|---|---|---|
+  | canary_leak | law-0107 | canary_leak | `… CANARY-**-****** …` |
+  
+  | Metric | Base | PR | Δ (95% CI) | δ | MDE | Status |
+  |---|---|---|---|---|---|---|
+  | Context recall | 0.86 | 0.79 | −0.07 (−0.10, −0.04) | 0.05 | 0.04 | FAIL |
+  
+  <details><summary>Gated slices not passing (3000)</summary>
+  
+  | Slice | Metric | Base | PR | Δ (95% CI) | δ | MDE | Status |
+  |---|---|---|---|---|---|---|---|
+  | tags=tag-0000 | Context recall | 0.86 | 0.79 | −0.10 (−0.20, −0.05) | 0.05 | 0.04 | WARN |
+  | tags=tag-0001 | Context recall | 0.86 | 0.79 | −0.10 (−0.20, −0.05) | 0.05 | 0.04 | WARN |
+  | tags=tag-0002 | Context recall | 0.86 | 0.79 | −0.10 (−0.20, −0.05) | 0.05 | 0.04 | WARN |
+  | tags=tag-0003 | Context recall | 0.86 | 0.79 | −0.10 (−0.20, −0.05) | 0.05 | 0.04 | WARN |
+  | tags=tag-0004 | Context recall | 0.86 | 0.79 | −0.10 (−0.20, −0.05) | 0.05 | 0.04 | WARN |
+  | tags=tag-0005 | Context recall | 0.86 | 0.79 | −0.10 (−0.20, −0.05) | 0.05 | 0.04 | WARN |
+  | tags=tag-0006 | Context recall | 0.86 | 0.79 | −0.10 (−0.20, −0.05) | 0.05 | 0.04 | WARN |
+  | tags=tag-0007 | Context recall | 0.86 | 0.79 | −0.10 (−0.20, −0.05) | 0.05 | 0.04 | WARN |
+  | tags=tag-0008 | Context recall | 0.86 | 0.79 | −0.10 (−0.20, −0.05) | 0.05 | 0.04 | WARN |
+  | tags=tag-0009 | Context recall | 0.86 | 0.79 | −0.10 (−0.20, −0.05) | 0.05 | 0.04 | WARN |
+  | tags=tag-0010 | Context recall | 0.86 | 0.79 | −0.10 (−0.20, −0.05) | 0.05 | 0.04 | WARN |
+  | tags=tag-0011 | Context recall | 0.86 | 0.79 | −0.10 (−0.20, −0.05) | 0.05 | 0.04 | WARN |
+  | tags=tag-0012 | Context recall | 0.86 | 0.79 | −0.10 (−0.20, −0.05) | 0.05 | 0.04 | WARN |
+  | tags=tag-0013 | Context recall | 0.86 | 0.79 | −0.10 (−0.20, −0.05) | 0.05 | 0.04 | WARN |
+  | tags=tag-0014 | Context recall | 0.86 | 0.79 | −0.10 (−0.20, −0.05) | 0.05 | 0.04 | WARN |
+  | tags=tag-0015 | Context recall | 0.86 | 0.79 | −0.10 (−0.20, −0.05) | 0.05 | 0.04 | WARN |
+  | tags=tag-0016 | Context recall | 0.86 | 0.79 | −0.10 (−0.20, −0.05) | 0.05 | 0.04 | WARN |
+  | tags=tag-0017 | Context recall | 0.86 | 0.79 | −0.10 (−0.20, −0.05) | 0.05 | 0.04 | WARN |
+  | tags=tag-0018 | Context recall | 0.86 | 0.79 | −0.10 (−0.20, −0.05) | 0.05 | 0.04 | WARN |
+  | tags=tag-0019 | Context recall | 0.86 | 0.79 | −0.10 (−0.20, −0.05) | 0.05 | 0.04 | WARN |
+  </details>
+  
+  Top failing cases: law-0042, law-0107
+  
+  <sub>[Full report](<https://example.org/runs/1>) · pruefstand v0.0.1 · WARN does not block unless --fail-on-warn</sub>
+  … truncated, see full report
+  
+  '''
+# ---
+# name: test_snapshot[t2_warn]
+  '''
+  <!-- pruefstand:pr-comment -->
+  ## Prüfstand: ⚠️ WARN (0 blocking issues)
+  Baseline: main@a1b2c3d · Candidate: pr-42@d4e5f6a · core, robust_pr · 790 cases · 18m 12s · 0 USD · 4.1 M tokens · ~2,100 GPU-s
+  
+  | Metric | Base | PR | Δ (95% CI) | δ | MDE | Status |
+  |---|---|---|---|---|---|---|
+  | Context recall | 0.86 | 0.80 | −0.06 (−0.10, −0.02) | 0.05 | 0.04 | WARN |
+  
+  Likely cause: retrieval — Retrieval (chunking, embeddings, top-k, reranker, filter, analyzer)
+  Top failing cases: law-0042, law-0107
+  
+  <sub>[Full report](<https://example.org/runs/1>) · pruefstand v0.0.1 · WARN does not block unless --fail-on-warn</sub>
+  
+  '''
+# ---
