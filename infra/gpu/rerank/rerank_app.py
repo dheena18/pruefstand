@@ -9,8 +9,8 @@ and an ``Authorization`` header is neither required nor read. Tier-2 callers sen
 passages, truncated to 256 tokens, batched (D222). Standard library HTTP server on purpose: the
 only extra dependency in the image is the model library. Query and passages are never logged.
 Env: RERANK_MODEL, RERANK_REVISION (HF commit, required), RERANK_WEIGHTS_SHA256 (sha256 of
-model.safetensors, checked after the load), RERANK_PORT (default 8201), HF_HUB_OFFLINE=1 once
-the weights are cached.
+model.safetensors, checked before the model loads), RERANK_PORT (default 8201), HF_HUB_OFFLINE=1
+once the weights are cached.
 """
 
 import hashlib

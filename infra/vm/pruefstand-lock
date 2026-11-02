@@ -3,7 +3,7 @@
 #
 # Installed to /usr/local/bin/pruefstand-lock by setup-users.sh. The owner, coding agents and the
 # executor's orchestrator all use the same file, so dev GPU work and gate jobs exclude each other.
-# The lock is held until <cmd> (and anything inheriting fd 9) exits. With PRUEFSTAND_LOCK_HELD=1 already set the
+# The lock is held until <cmd> (and anything inheriting the lock's file description) exits. With PRUEFSTAND_LOCK_HELD=1 already set the
 # command runs at once (nested call). GPU_LOCK_TIMEOUT_S must be numeric (exit 64 otherwise).
 #   exit 75 "gpu.lock busy"   no lock within ${GPU_LOCK_TIMEOUT_S:-7200} seconds
 #   exit 64                   no command given
@@ -38,14 +38,18 @@ if [ ! -e "$lock" ]; then
   exit 2
 fi
 
-# Read-only open is enough for flock(2) and never needs write access to the file.
+# Read-only open is enough for flock(2) and never needs write access to the file; it only checks that we may open it.
 if ! exec 9<"$lock"; then
   echo "pruefstand-lock: cannot open $lock; is $(id -un) in group pruefstand? (log out and in after setup-users.sh)" >&2
   exit 2
 fi
-if ! flock -w "$timeout_s" 9; then
-  echo "pruefstand-lock: gpu.lock busy (waited ${timeout_s}s)" >&2
-  exit 75
-fi
+exec 9<&-
+# flock(1) takes the lock and runs <cmd> as itself or as its child, so the process that holds the lock stays an
+# ANCESTOR of <cmd> until it exits (the pruefstand-cluster wrapper relies on that to tell our lock from someone else's).
 export PRUEFSTAND_LOCK_HELD=1
-exec -- "$@"
+rc=0
+flock -w "$timeout_s" -E 75 "$lock" "$@" || rc=$?
+if [ "$rc" -eq 75 ]; then
+  echo "pruefstand-lock: gpu.lock busy (waited ${timeout_s}s)" >&2
+fi
+exit "$rc"

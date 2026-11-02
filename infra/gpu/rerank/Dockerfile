@@ -17,6 +17,7 @@ COPY requirements.txt ./
 RUN uv venv /app/.venv --python /usr/local/bin/python \
     && uv pip install --python /app/.venv/bin/python \
         --require-hashes \
+        --index-strategy unsafe-best-match \
         --index-url https://pypi.org/simple \
         --extra-index-url https://download.pytorch.org/whl/cpu \
         -r requirements.txt

@@ -75,6 +75,11 @@ Run on the VM `pruefstand-exec` as the owner login user from a checkout of the m
 
 ## Trust and limits
 
+- The `git_verify.sh` checks of the installer and the deploy are a **guardrail** against accidental or unreviewed local
+  edits, not a security boundary: the owner account is in group `docker` (root-equivalent) and agents run as that
+  account. The make targets therefore export the exact fetched `main` (`git fetch <repo URL> main`, `git archive
+  FETCH_HEAD`), never the working tree.
+
 - The wrapper accepts only tags in its installed allow-list, takes the pull size from it (the cluster checks size + reserve),
   allows `rm` only while `MAINTENANCE` exists, and allows the mutating ops only when the GPU lock is held by one of its own
   ancestors (`/proc/locks` plus the parent chain through `sudo`): a lock held by the executor is no proof for an agent.
@@ -83,7 +88,7 @@ Run on the VM `pruefstand-exec` as the owner login user from a checkout of the m
 - `fetch-model.sh` cannot see a pull the owner runs by hand at the same time: one pull at a time is a rule.
 - `rerank-cpu` supply chain: every package in `rerank/requirements.txt` is pinned with hashes (`uv pip install
   --require-hashes`), the base images by digest, the weights by HF commit and by the sha256 of `model.safetensors`
-  (checked at load). The first start needs egress to huggingface.co to fetch the weights; afterwards set
+  (checked before the model loads). The first start needs egress to huggingface.co to fetch the weights; afterwards set
   `RERANK_OFFLINE=1` (`HF_HUB_OFFLINE`). The recorded image digest is the final pin of what runs.
 
 ## Tests

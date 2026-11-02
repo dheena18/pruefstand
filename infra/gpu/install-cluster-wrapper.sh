@@ -11,6 +11,10 @@
 # PRUEFSTAND_LOCK_HELD through sudo. Confused-deputy guards (M3): lib/git_verify.sh refuses an unreviewed working tree;
 # an existing file at one of the three targets that this installer did not create (no marker) is never overwritten
 # unless --replace is given, and then a diff is printed first. The installer prints the commit it installed.
+# These checks are a GUARDRAIL against accidental or unreviewed local edits, not a security boundary: the owner account
+# is in group docker (root-equivalent) and agents run as that account, so a hostile agent could bypass any check that
+# lives in the owner's tree. The real protection is that the owner installs from a checkout agents did not touch, which
+# the make target guarantees by exporting the fetched main instead of the working tree.
 # --print-sudoers prints the sudoers file and changes nothing. DESTDIR (a test seam) installs below that directory
 # without root. Exit: 0 ok, 1 refused (tree, foreign file, visudo), 2 not run with sudo, 64 usage.
 set -euo pipefail

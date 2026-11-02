@@ -12,7 +12,7 @@
 # `rm` runs only while the file MAINTENANCE exists (ADR-0019 swap rule; exit 3 otherwise).
 # The mutating ops (start-ollama, stop-ollama, pull, rm) run only when the GPU lock is held by one of this process's
 # ANCESTORS (A12-M5, M1): PRUEFSTAND_LOCK_HELD=1 (kept by the sudoers env_keep line) AND /proc/locks shows a
-# flock on the lock file taken by a process we descend from (pruefstand-lock -> make -> sudo -> this wrapper). A
+# flock on the lock file (device and inode) taken by a process we descend from (pruefstand-lock -> make -> sudo -> this wrapper). A
 # lock held by someone else (the executor during a gate run) is no proof: exit 2 "run under the GPU lock".
 # status and show need no lock. --bin-dev selects /data/dheena/pruefstand-bin-dev (A11-M11).
 # Self-contained on purpose: it is copied to a root-owned path and must not load anything from a checkout.
@@ -61,11 +61,15 @@ fi
 
 # Is the GPU lock held by one of our ancestors? (pids of flock holders on the lock file's inode, then the PPid chain.)
 lock_held_by_ancestor() {
-  local lock="$lock_dir/gpu.lock" inode p line rest h
+  local lock="$lock_dir/gpu.lock" inode dev major minor key p line rest h
   local -a holders=()
   if ! [ -r "$lock" ]; then return 1; fi
   inode="$(stat -c %i "$lock")" || return 1
-  mapfile -t holders < <(awk -v ino="$inode" '$2 == "FLOCK" { split($6, a, ":"); if (a[3] == ino) print $5 }' /proc/locks)
+  dev=$((16#$(stat -c %D "$lock")))
+  major=$(((dev >> 8 & 0xfff) | (dev >> 32 & ~0xfff)))
+  minor=$(((dev & 0xff) | (dev >> 12 & ~0xff)))
+  key="$(printf '%02x:%02x:%s' "$major" "$minor" "$inode")"
+  mapfile -t holders < <(awk -v k="$key" '$2 == "FLOCK" && $6 == k { print $5 }' /proc/locks)
   p=$$
   while [ "$p" -gt 1 ]; do
     for h in "${holders[@]}"; do
