@@ -181,10 +181,10 @@ SKIP_LOAD = "CHECK model-load PASS SKIP: opt-in MEASURE_LOAD=1\n"
 MEASURED_LOAD = "CHECK model-load PASS cold load 4.5 min (270 s) from <models-dir>\n"
 
 
-@pytest.mark.parametrize("measured_first", [False, True], ids=["skip-first", "measured-first"])
-def test_measured_model_load_beats_skip_in_either_order(measured_first: bool) -> None:
+@pytest.mark.parametrize("order", ["skip-first", "measured-first"])
+def test_measured_model_load_beats_skip_in_either_order(order: str) -> None:
     base = _probe().replace("CHECK model-load", "# x")
-    pair = MEASURED_LOAD + SKIP_LOAD if measured_first else SKIP_LOAD + MEASURED_LOAD
+    pair = MEASURED_LOAD + SKIP_LOAD if order == "measured-first" else SKIP_LOAD + MEASURED_LOAD
     out = summarise(base + pair)
     assert "cold load not measured" not in out
     assert "cold load 4.5 min" in out

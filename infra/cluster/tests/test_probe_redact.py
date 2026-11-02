@@ -216,7 +216,8 @@ LONGER = [
 @pytest.mark.parametrize("models", LONGER, ids=[f"case{i}" for i in range(len(LONGER))])
 def test_login_inside_a_longer_name_is_suppressed(tmp_path: Path, models: str) -> None:
     rig = Rig(tmp_path, login="exuser")
-    out = rig.run("models-space", MODELS_DIR=models)
+    rig.serve(4242, rig.ollama(tmp_path / "opt" / "x" / "ollama"))
+    out = rig.run("ollama", MODELS_DIR="/srv/none", FAKE_VERSION_EXTRA=f"at {models}")
     assert "exuser" not in out.lower()
     assert "CHECK redact FAIL leak suppressed" in out
 
