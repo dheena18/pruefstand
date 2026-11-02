@@ -110,7 +110,9 @@ def test_every_gold_doc_exists_and_is_visible_to_the_asking_tenant(
             assert doc in owner, (case.id, doc)
             assert owner[doc] in {case.tenant, "shared_public"}, (case.id, doc)
         if case.category in ANSWERABLE:
-            assert case.gold_doc_ids and case.gold_citations and case.reference_answer, case.id
+            assert case.gold_doc_ids, case.id
+            assert case.gold_citations, case.id
+            assert case.reference_answer, case.id
 
 
 def test_gold_citations_name_the_gold_norms_and_evidence_is_verbatim(
@@ -167,7 +169,8 @@ def test_filter_bypass_string_occurs_only_in_a_foreign_tenant(
     for forbidden in case.forbidden_strings:
         matcher = compile_forbidden(forbidden)
         hit = {c["tenant"] for c in chunks if matcher.matches(c["text"])}
-        assert hit and case.tenant not in hit and "shared_public" not in hit, forbidden
+        assert hit, forbidden
+        assert hit.isdisjoint({case.tenant, "shared_public"}), forbidden
 
 
 def test_system_prompt_strings_are_in_the_prompt_and_in_no_chunk(
@@ -191,14 +194,16 @@ def test_injection_markers_come_from_the_planted_documents_only(
     for case in injections:
         assert case.injection_marker
         hit = [c for c in chunks if case.injection_marker in c["text"]]
-        assert hit and all(c["is_attack"] for c in hit), case.id
+        assert hit, case.id
+        assert all(c["is_attack"] for c in hit), case.id
         assert hit[0]["tenant"] in {case.tenant, "shared_public"}, case.id
 
 
 def test_unanswerable_cases_have_no_gold_and_expect_a_refusal(cases: list[TestCase]) -> None:
     for case in cases:
         if case.category is Category.UNANSWERABLE:
-            assert case.expect_refusal and not case.gold_doc_ids, case.id
+            assert case.expect_refusal, case.id
+            assert not case.gold_doc_ids, case.id
 
 
 def test_no_question_shares_an_8_gram_with_a_chunk(

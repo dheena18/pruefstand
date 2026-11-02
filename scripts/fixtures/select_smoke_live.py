@@ -125,7 +125,9 @@ def select(cases: Sequence[TestCase]) -> tuple[list[TestCase], list[TestCase]]:
         chosen += _take(of(Category.LEAK_PROBE, tenant), 1, f"leak_probe for tenant {tenant}")
     chosen += _take(of(Category.UNANSWERABLE), 2, Category.UNANSWERABLE.value)
     chosen += _take(of(Category.INJECTION), 2, Category.INJECTION.value)
-    chosen += _take(of(Category.SYSTEM_PROMPT_EXTRACTION), 1, Category.SYSTEM_PROMPT_EXTRACTION.value)
+    chosen += _take(
+        of(Category.SYSTEM_PROMPT_EXTRACTION), 1, Category.SYSTEM_PROMPT_EXTRACTION.value
+    )
     pool = [c for c in of(Category.FACTUAL) if c.gold_citations]
     need = SMOKE_LIVE_SIZE - len(chosen)
     chosen += _take(_fill(pool, chosen, need), need, "factual cases with a gold citation")
@@ -145,13 +147,14 @@ def build_outputs(source: Path, corpus_manifest: Path) -> dict[str, str]:
 
     Args:
         source: The hand-written source JSONL.
-        corpus_manifest: `corpus/slice_v1/manifest.json` (its `corpus_version` must match every case).
+        corpus_manifest: `corpus/slice_v1/manifest.json`; its `corpus_version` must match all cases.
 
     Returns:
         `smoke_live.jsonl`, `smoke.jsonl` and `dataset_manifest.json` as text.
 
     Raises:
-        SelectionError: The source is malformed, a case names another corpus version, or a quota fails.
+        SelectionError: The source is malformed, a case names another corpus version or a quota
+            cannot be met.
     """
     corpus_version = json.loads(corpus_manifest.read_text(encoding="utf-8"))["corpus_version"]
     cases = load_source(source)
@@ -199,7 +202,10 @@ def main(argv: Sequence[str] | None = None) -> int:
             or (args.out / name).read_text(encoding="utf-8") != text
         ]
         for name in drifted:
-            print(f"select_smoke_live: {args.out / name} differs from a fresh selection", file=sys.stderr)
+            print(
+                f"select_smoke_live: {args.out / name} differs from a fresh selection",
+                file=sys.stderr,
+            )
         return 1 if drifted else 0
     args.out.mkdir(parents=True, exist_ok=True)
     for name, text in outputs.items():

@@ -1,7 +1,8 @@
-"""The real CLI against the real rag-demo: the gate passes the good config and catches each bug switch.
+"""The real CLI against the real rag-demo: the gate passes `good` and catches each bug switch.
 
-Needs the `live` stack with the indexed slice (`make e2e-live` starts it under stack.lock). Assertions
-are on gate outcomes and directions, never on answer text (real models are not byte-deterministic).
+Needs the `live` stack with the indexed slice (`make e2e-live` starts it under stack.lock).
+Assertions are on gate outcomes and directions, never on answer text (real models are not
+byte-deterministic).
 `PRUEFSTAND_E2E_SCENARIO=<name>` runs one scenario (CI: one matrix job per scenario, T1.12).
 """
 
@@ -42,7 +43,8 @@ class Played:
             for r in self.gate["absolute_checks"]
             if r["metric"] == metric and r["dimension"] == "overall"
         ]
-        return row
+        found: dict[str, Any] = row
+        return found
 
 
 def _case_ids(category: str) -> set[str]:
@@ -98,8 +100,10 @@ def test_good(
     assert played.exit_code == 0
     assert played.gate["status"] == "pass"
     assert played.gate["hard_fails"] == []
-    assert played.gate["decisions"], "no paired rows: the gate compared nothing"
-    for row in played.gate["decisions"]:
+    assert played.gate["decisions"] == [], "tier 1 gates no paired row"
+    paired = played.gate["notable_slices"]  # every paired row that does not gate
+    assert paired, "no paired rows: the gate compared nothing"
+    for row in paired:
         assert row["gated"] is False, row["metric"]
         assert row["informational_reason"] == REASON_PAIRED, (row["metric"], row["dimension"])
     injection = played.absolute("injection_success")
