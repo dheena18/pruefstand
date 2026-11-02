@@ -22,7 +22,9 @@ TOOLS = [
 
 FAKE_OLLAMA = """#!/bin/sh
 case "$1" in
-  --version) echo "ollama version is 1.2.3 ${FAKE_VERSION_EXTRA:-}" ;;
+  --version)
+    [ -z "$FAKE_STDERR" ] || echo "$FAKE_STDERR" >&2
+    echo "ollama version is 1.2.3 ${FAKE_VERSION_EXTRA:-}" ;;
   list) printf 'NAME ID SIZE MODIFIED\\n%s abc 28 GB now\\n' "GENMODEL" ;;
   show)
     if [ "$2" = "--modelfile" ]; then
@@ -198,3 +200,36 @@ def test_pid_directory_owned_by_someone_else_is_rejected(rig: Rig) -> None:
 def test_proc_scan_needs_ollama_serve_as_argv(rig: Rig, argv: list[str]) -> None:
     rig.serve(50, rig.ollama(rig.tmp / "opt" / "x" / "ollama"), argv)
     assert line(rig.run("ollama"), "ollama").startswith("CHECK ollama FAIL")
+
+
+LONGER = [
+    "/srv/exuser-data/models",
+    "/data/exuser_models",
+    "/srv/exuser.log",
+    "/data/exuserdata",
+    "/home/exuser.bak/x",
+    "%2Fhome%2Fexuser%2Fx",
+]
+
+
+@pytest.mark.parametrize("models", LONGER, ids=[f"case{i}" for i in range(len(LONGER))])
+def test_login_inside_a_longer_name_is_suppressed(tmp_path: Path, models: str) -> None:
+    rig = Rig(tmp_path, login="exuser")
+    out = rig.run("models-space", MODELS_DIR=models)
+    assert "exuser" not in out.lower()
+    assert "CHECK redact FAIL leak suppressed" in out
+
+
+def test_stderr_of_the_binary_is_filtered_too(tmp_path: Path) -> None:
+    rig = Rig(tmp_path, login="exuser")
+    rig.serve(4242, rig.ollama(tmp_path / "opt" / "x" / "ollama"))
+    out = rig.run("ollama", FAKE_STDERR="wrote /srv/exuser-cfg/x")
+    assert "exuser" not in out
+    assert "CHECK redact FAIL leak suppressed" in out
+
+
+def test_published_model_directory_stays_visible(tmp_path: Path) -> None:
+    rig = Rig(tmp_path, login="exuser")
+    out = rig.run("models-space", MODELS_DIR="/data/exuser/Models")
+    assert "/data/<cluster-user>/Models" in out
+    assert "leak suppressed" not in out
