@@ -1,0 +1,22 @@
+# recorded 2026-11-02 by scripts/live/record_target.py from the real rag-demo
+request:
+  method: GET
+  path: /v1/info
+response:
+  body:
+    app_version: 0.1.0
+    config_hash: a2dab24fb28d7613
+    corpus_version: slice-2026-10-31.51fd4b94
+    git_sha: unknown
+    image_digest: null
+    models:
+      embedding: intfloat/multilingual-e5-small
+      generator: qwen2.5-0.5b-instruct-q4_k_m
+      generator_family: qwen
+    serving:
+      engine: llama.cpp
+      engine_version: b12019
+      gpu: cpu:Intel Core Processor (Haswell, no TSX, IBRS)
+      model_sha256: 74a4da8c9fdbcd15bd1f6d01d621410d31c6fc00986f5eb687824e7b93d7a9db
+      quantization: Q4_K_M
+  status: 200
