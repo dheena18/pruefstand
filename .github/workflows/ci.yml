@@ -163,6 +163,20 @@ jobs:
           enable-cache: true
       - name: Install
         run: make install
+      # T1.13 S9: the Testcontainers TEI / llama.cpp tests need the pinned model files (ci-cd.md section 4).
+      # Restore only; the cache is written by the push-to-main runs of live-e2e.yml. On a miss, fetch.
+      - name: Restore model files
+        id: models
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/.cache/pruefstand/models
+          key: models-${{ hashFiles('infra/models/*.yaml') }}
+      - name: Fetch model files
+        if: steps.models.outputs.cache-hit != 'true'
+        run: |
+          for manifest in infra/models/*.yaml; do
+            uv run python scripts/models/fetch.py --manifest "$manifest"
+          done
       - name: test-integration
         run: make test-integration
 

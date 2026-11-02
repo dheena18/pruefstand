@@ -25,6 +25,8 @@ from pruefstand.core.protocols import TargetAdapter
 
 CONTRACT_DIR = Path(__file__).resolve().parent
 EXAMPLES_DIR = CONTRACT_DIR / "examples"
+# Hand-written copies of the OpenAPI examples (examples/ holds rag-demo recordings since T1.13).
+OPENAPI_EXAMPLES_DIR = CONTRACT_DIR / "examples_openapi"
 OPENAPI_PATH = CONTRACT_DIR.parents[3] / "schemas" / "target-api-v1.openapi.yaml"
 
 
@@ -101,3 +103,8 @@ async def check_adapter_contract(
             _assert_ranks(retrieved.chunks)
     await adapter.aclose()
     await adapter.aclose()
+
+
+def load_openapi_example(name: str) -> Any:
+    """Load a hand-written example that equals the OpenAPI example (null and empty-chunk cases)."""
+    return json.loads((OPENAPI_EXAMPLES_DIR / name).read_text(encoding="utf-8"))
