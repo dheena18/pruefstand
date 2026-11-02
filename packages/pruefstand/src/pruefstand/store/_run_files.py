@@ -6,14 +6,14 @@ import json
 import os
 import stat
 from pathlib import Path
-from typing import BinaryIO, get_args
+from typing import BinaryIO
 
 import polars as pl
-from pydantic import BaseModel, ValidationError
 
 from pruefstand.core.errors import StoreError, StoreIntegrityError
 from pruefstand.core.models.run import RunManifest, RunResults, ScoredCase
 from pruefstand.core.models.target import CaseRecord
+from pruefstand.store._safe_error import safe_error
 
 MAX_FILE_BYTES = 128 * 1024 * 1024
 """Largest run file ``read_results`` accepts; a bigger file is refused before it is read."""
@@ -102,49 +102,6 @@ def write_files(root: Path, results: RunResults, llm_calls: pl.DataFrame | None)
     (root / "run.json").write_text(manifest_text(manifest), encoding="utf-8")
 
 
-def _known_field_names() -> frozenset[str]:
-    """Names of every model field a run file can mention (never a key taken from file content)."""
-    names: set[str] = set()
-    todo: list[type[BaseModel]] = [RunManifest, CaseRecord, ScoredCase]
-    while todo:
-        model = todo.pop()
-        for name, info in model.model_fields.items():
-            names.add(name)
-            for ann in (info.annotation, *get_args(info.annotation)):
-                inner = get_args(ann) or (ann,)
-                todo.extend(
-                    t
-                    for t in (ann, *inner)
-                    if isinstance(t, type) and issubclass(t, BaseModel) and t not in todo
-                )
-    return frozenset(names)
-
-
-_FIELDS = _known_field_names()
-
-
-def safe_error(exc: BaseException) -> str:
-    """Describe ``exc`` without any text taken from file content.
-
-    Pydantic ``input`` values are dropped, and a ``loc`` part that is not a model field name
-    (an extra key, a dict key) is replaced by ``<key>``; list indices are kept.
-    """
-    if isinstance(exc, ValidationError):
-        items = exc.errors(include_url=False, include_context=False, include_input=False)
-        return "; ".join(
-            f"{'.'.join(_loc_part(p) for p in e['loc'])}: {e['type']}" for e in items[:5]
-        )
-    if isinstance(exc, UnicodeDecodeError):
-        return f"invalid UTF-8 at byte {exc.start}"
-    return type(exc).__name__
-
-
-def _loc_part(part: object) -> str:
-    if isinstance(part, int):
-        return str(part)
-    return part if isinstance(part, str) and part in _FIELDS else "<key>"
-
-
 def _regular_stat(path: Path, limit: int) -> os.stat_result:
     try:
         info = os.lstat(path)
@@ -183,6 +140,10 @@ def _open_verified(path: Path, limit: int) -> BinaryIO:
     ):
         handle.close()
         msg = f"{path.name} in {path.parent} changed while being opened"
+        raise StoreError(msg)
+    if opened.st_nlink > 1:
+        handle.close()
+        msg = f"{path.name} in {path.parent} is a hard link; run files must be plain files"
         raise StoreError(msg)
     return handle
 
@@ -260,41 +221,80 @@ def read_results(root: Path) -> RunResults:
     if root.name != manifest.run_id:
         msg = f"directory name {root.name!r} does not match the run_id in run.json"
         raise StoreError(msg)
-    expected = manifest.artifact_sha256
-    missing = [name for name in CHECKED_FILES if name not in expected]
-    if missing:
-        msg = f"run.json in {root} has no artifact_sha256 for {missing}"
-        raise StoreIntegrityError(msg)
+    expected = require_hashes(manifest, str(root))
     if sha256_file(root / "results.parquet", MAX_PARQUET_BYTES) != expected["results.parquet"]:
         msg = f"checksum mismatch for results.parquet in {root}"
         raise StoreIntegrityError(msg)
-    records = tuple(_read_lines(root / "responses.jsonl", CaseRecord, expected["responses.jsonl"]))
-    values = tuple(_read_lines(root / "scored.jsonl", ScoredCase, expected["scored.jsonl"]))
+    responses = _read_hashed(root / "responses.jsonl", expected["responses.jsonl"])
+    scored = _read_hashed(root / "scored.jsonl", expected["scored.jsonl"])
+    return parse_results(manifest, responses, scored, str(root))
+
+
+def require_hashes(manifest: RunManifest, where: str) -> dict[str, str]:
+    """Return ``manifest.artifact_sha256`` after checking that it names the three data files.
+
+    Raises:
+        StoreIntegrityError: A data file has no recorded hash.
+    """
+    expected = manifest.artifact_sha256
+    missing = [name for name in CHECKED_FILES if name not in expected]
+    if missing:
+        msg = f"run.json in {where} has no artifact_sha256 for {missing}"
+        raise StoreIntegrityError(msg)
+    return expected
+
+
+def parse_results(manifest: RunManifest, responses: bytes, scored: bytes, where: str) -> RunResults:
+    """Parse the two JSONL byte strings of a run whose hashes already matched.
+
+    Case ids must be unique and equal in both files, and a complete run must have exactly
+    ``n_cases`` of them. Callers hash and parse the *same* bytes (no re-open by name).
+
+    Args:
+        manifest: The parsed ``run.json``.
+        responses: Content of ``responses.jsonl``.
+        scored: Content of ``scored.jsonl``.
+        where: Label for messages (a directory); never text from the files.
+
+    Raises:
+        StoreError: A line is invalid or the files disagree.
+    """
+    records = tuple(parse_lines(responses, CaseRecord, f"responses.jsonl in {where}"))
+    values = tuple(parse_lines(scored, ScoredCase, f"scored.jsonl in {where}"))
     ids = [s.case.id for s in values]
     if [r.case_id for r in records] != ids:
-        msg = f"responses.jsonl and scored.jsonl disagree in {root}"
+        msg = f"responses.jsonl and scored.jsonl disagree in {where}"
         raise StoreError(msg)
     if len(set(ids)) != len(ids):
-        msg = f"duplicate case ids in {root}"
+        msg = f"duplicate case ids in {where}"
         raise StoreError(msg)
     if manifest.complete and len(values) != manifest.n_cases:
-        msg = f"complete run has {len(values)} cases but n_cases={manifest.n_cases} in {root}"
+        msg = f"complete run has {len(values)} cases but n_cases={manifest.n_cases} in {where}"
         raise StoreError(msg)
     if len(values) > manifest.n_cases:
-        msg = f"run has more cases ({len(values)}) than n_cases={manifest.n_cases} in {root}"
+        msg = f"run has more cases ({len(values)}) than n_cases={manifest.n_cases} in {where}"
         raise StoreError(msg)
     return RunResults(manifest=manifest, records=records, values=values)
 
 
-def _read_lines[M: (CaseRecord, ScoredCase)](path: Path, model: type[M], sha256: str) -> list[M]:
+def _read_hashed(path: Path, sha256: str) -> bytes:
     data = read_bounded(path, MAX_FILE_BYTES)
     if hashlib.sha256(data).hexdigest() != sha256:
         msg = f"checksum mismatch for {path.name} in {path.parent}"
         raise StoreIntegrityError(msg)
+    return data
+
+
+def parse_lines[M: (CaseRecord, ScoredCase)](data: bytes, model: type[M], label: str) -> list[M]:
+    """Parse newline-separated JSON documents from bytes.
+
+    Raises:
+        StoreError: A line is not a valid ``model``; the message never contains file text.
+    """
     try:
         # BytesIO iterates on b"\n" only (str.splitlines() also cuts at U+2028, U+0085, ...) and
         # pydantic validates the UTF-8 of each line, so no full-text copy is made.
         return [model.model_validate_json(line) for line in io.BytesIO(data) if line.strip()]
     except ValueError as exc:
-        msg = f"cannot read {path.name} in {path.parent}: {safe_error(exc)}"
+        msg = f"cannot read {label}: {safe_error(exc)}"
         raise StoreError(msg) from exc

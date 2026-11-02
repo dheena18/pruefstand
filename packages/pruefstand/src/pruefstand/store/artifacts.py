@@ -32,9 +32,9 @@ from pruefstand.store._run_files import (
     manifest_text,
     read_bounded,
     read_results,
-    safe_error,
     write_files,
 )
+from pruefstand.store._safe_error import safe_error
 
 COUNT_KEYS = frozenset({"model_reloads", "upstream_errors"})
 """The only counters ``add_counts`` accepts (written by the executor, R12 N6.4)."""

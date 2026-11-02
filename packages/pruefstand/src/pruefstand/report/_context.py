@@ -158,6 +158,11 @@ class Builder:
             out.append(f"> ⚠️ {lb.NOTICE_UNSUPPORTED}")
         if c.judge_mode == "skipped" and not self.tier1:
             out.append(f"> {ICON_INFO} {lb.NOTICE_JUDGE_SKIPPED}")
+        from_base = c.counts.get("cached_from_base", 0)
+        if from_base > 0:
+            out.append(
+                f"> ⚠️ {from_base} of {c.n_cases} answers served from cache (baseline overlay)."
+            )
         if c.judge_fallback:
             out.append(f"> ⚠️ {lb.NOTICE_JUDGE_FALLBACK}")
         if c.judge_degraded:

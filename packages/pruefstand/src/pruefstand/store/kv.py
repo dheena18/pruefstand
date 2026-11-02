@@ -11,6 +11,7 @@ from types import TracebackType
 from typing import Literal, Self
 
 from pruefstand.core.errors import StoreError
+from pruefstand.core.protocols import KVCache
 
 _FILE = "cache.sqlite3"
 _BUSY_TIMEOUT_S = 2.0
@@ -19,6 +20,8 @@ MAX_KEY_CHARS = 512
 MAX_VALUE_BYTES = 16 * 1024 * 1024
 """Largest value ``set`` stores; a bigger row found on read is treated as a miss."""
 _NAMESPACES = frozenset({"target", "llm"})
+CacheMode = Literal["shared", "overlay"]
+"""``shared``: one writable cache (main, nightly). ``overlay``: PR jobs (cache trust domains)."""
 
 
 class DiskKVCache:
@@ -162,3 +165,91 @@ def _check_key(key: object) -> None:
     if len(key) > MAX_KEY_CHARS:
         msg = f"cache key of {len(key)} characters is longer than the {MAX_KEY_CHARS} limit"
         raise StoreError(msg)
+
+
+class LayeredKVCache:
+    """Reads the ``overlay`` first, then the ``base``; writes go to the ``overlay`` only.
+
+    PR jobs use main's shared cache as a read-only ``base`` and a per-job directory as the
+    ``overlay``, so a PR can never poison the shared cache (ADR-0006).
+
+    Args:
+        base: The shared cache; never written through this object.
+        overlay: The writable per-job cache.
+    """
+
+    def __init__(self, base: KVCache, overlay: KVCache) -> None:
+        self._base = base
+        self._overlay = overlay
+
+    def get(self, key: str) -> bytes | None:
+        """Return the overlay value, else the base value, else None.
+
+        Raises:
+            StoreError: A layer is closed or unreadable.
+        """
+        hit = self._overlay.get(key)
+        return hit if hit is not None else self._base.get(key)
+
+    def set(self, key: str, value: bytes) -> None:
+        """Store ``value`` in the overlay (the base stays byte for byte unchanged).
+
+        Raises:
+            StoreError: The overlay is closed or the write failed.
+        """
+        self._overlay.set(key, value)
+
+    def close(self) -> None:
+        """Close both layers that can be closed; calling it twice is fine."""
+        for layer in (self._overlay, self._base):
+            closer = getattr(layer, "close", None)
+            if callable(closer):
+                closer()
+
+    def __enter__(self) -> Self:
+        return self
+
+    def __exit__(
+        self,
+        exc_type: type[BaseException] | None,
+        exc: BaseException | None,
+        tb: TracebackType | None,
+    ) -> None:
+        self.close()
+
+
+def build_cache(
+    mode: str,
+    shared_dir: Path,
+    overlay_dir: Path,
+    namespace: Literal["target", "llm"] = "target",
+) -> DiskKVCache | LayeredKVCache:
+    """Open the cache of a job for its trust domain.
+
+    ``shared`` returns the writable shared cache (main and nightly jobs). ``overlay`` returns
+    ``LayeredKVCache(read-only shared, writable overlay)`` (PR jobs); a shared cache that does not
+    exist yet is an empty base and is not created.
+
+    Args:
+        mode: ``shared`` or ``overlay``.
+        shared_dir: Root of the shared cache.
+        overlay_dir: Root of the per-job overlay (used in ``overlay`` mode only).
+        namespace: ``target`` (runner) or ``llm`` (``LLMClient``).
+
+    Returns:
+        A cache; close it (it is a context manager) when the job ends.
+
+    Raises:
+        StoreError: Unknown ``mode``, or a cache file cannot be opened.
+    """
+    if mode == "shared":
+        return DiskKVCache(shared_dir, namespace)
+    if mode != "overlay":
+        msg = f"unknown cache mode {mode!r}; use 'shared' or 'overlay'"
+        raise StoreError(msg)
+    base = DiskKVCache(shared_dir, namespace, read_only=True)
+    try:
+        return LayeredKVCache(base, DiskKVCache(overlay_dir, namespace))
+    except StoreError:
+        base.close()
+        raise

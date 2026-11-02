@@ -26,8 +26,8 @@ so the repo never shrinks (R9-11).
   is **`$PRUEFSTAND_DATA_ROOT/baselines`** (= `/mnt/pruefstand/baselines`), falling back to
   `$PRUEFSTAND_HOME/baselines` (local disk) when `PRUEFSTAND_DATA_ROOT` is unset (laptops, tests). The
   cluster never reads or writes baselines (it holds only Ollama). Layout: `<eval_fingerprint>/<ref>/{run.json,
-  results.parquet, responses.jsonl.zst, manifest.json}` (the current baseline; `responses.jsonl.zst`
-  only here, never in history) plus `<eval_fingerprint>/history/<run_id>/{run.json, results.parquet,
+  results.parquet, responses.jsonl.zst, scored.jsonl.zst, manifest.json}` (the current baseline; the two
+  `.zst` files only here, never in history; `scored.jsonl.zst` is the lossless source of `RunResults.values`, T6.1 D441) plus `<eval_fingerprint>/history/<run_id>/{run.json, results.parquet,
   manifest.json}` per promotion (**last 20 kept** per fingerprint). `ref` ∈ {`main`, `nightly-b<k>`, `release-b<k>`} (round 12 N1.4; round 13 D305: the release anchor is block-wise).
   `manifest.json` lists the sha256 of every file; it is checked on every read (integrity, not
   authenticity). Data root rules (`gpu-cluster.md` §9): single writer (`baseline-promote.yml`), each run dir
@@ -79,6 +79,16 @@ so the repo never shrinks (R9-11).
 | Baseline files on the cluster disk (round-9 design) | The cluster's local disk is 93–98 % full and holds no state of ours (round 10); the executor moved to the VM |
 | Baseline files on a NAS share (round-10 design) | The VM cannot reach its TrueNAS host over NFS without a bridge; the VM's own 500 GB zvol is large enough and is snapshotted by TrueNAS (ADR-0019) |
 | Ad-hoc main run in the PR job when no baseline exists (round-7 design) | +20 min per job, and one documented variant let a gated PR pass without comparison |
+
+### T6.1 implementation notes (D441-D445)
+- Reads hash and parse the same in-memory bytes: `manifest.json` (pinned by `index.json` for the git store) pins the stored files, `run.json`
+  pins the uncompressed data files, zstd frames are inflated with a hard cap, `results.parquet` is hashed and never parsed; fingerprints,
+  refs and run ids are checked against a strict charset and symlinks are refused at every level.
+- Promotion stages `<ref>.<hex>.partial`, swaps it in keeping `<ref>.<hex>.old`, renames `history/<run_id>`, pushes the index (3 attempts)
+  and then forgets the `.old` copy; any failure rolls the data root back. A `.old` directory without its ref is an error, never "no baseline".
+- Retention (`prune_baselines`, D445): the newest 20 `history/` entries per fingerprint plus the history entry of every current baseline;
+  fingerprints unused for 90 days lose everything except `release-b<k>`; the index is reconciled with the disk in one commit.
+- `index.json` is read with `git clone --depth 1 --filter=blob:none --single-branch` (the branch holds one small file).
 
 ## Consequences
 - Positive: the baseline index is versioned, private and auditable through git history; the repo stays

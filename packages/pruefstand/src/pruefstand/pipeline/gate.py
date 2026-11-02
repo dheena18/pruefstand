@@ -1,5 +1,6 @@
 """``run_gate``: two stored runs in, ``gate.json`` out (T1.10 S3, S4b)."""
 
+import re
 from pathlib import Path
 
 import numpy as np
@@ -8,14 +9,18 @@ from pruefstand.core.config import GatePolicy, PruefstandConfig
 from pruefstand.core.config.gate import JUDGED_METRICS
 from pruefstand.core.enums import GateStatus, Split
 from pruefstand.core.errors import GateInputError
+from pruefstand.core.hashing import stable_hash
 from pruefstand.core.logging import get_logger
 from pruefstand.core.models.gate import GateReport
 from pruefstand.core.models.run import RunManifest, RunResults
+from pruefstand.core.protocols import BaselineStore
 from pruefstand.gate.hard_fail import find_hard_fails
 from pruefstand.gate.policy import evaluate_gate
 from pruefstand.metrics.registry import MetricRegistry
 from pruefstand.report.json_report import write_gate_json
 from pruefstand.store.artifacts import ArtifactStore
+from pruefstand.store.baseline_index import validate_ref
+from pruefstand.store.factory import build_baseline_store
 
 _log = get_logger(__name__)
 _TRUNCATED_SHARE = 0.05
@@ -116,13 +121,51 @@ def _without_baseline(candidate: RunResults, policy: GatePolicy) -> GateReport:
     )
 
 
+def _decide(cand: RunResults, base: RunResults | None, cfg: PruefstandConfig) -> GateReport:
+    """The report for two verified runs, or for a candidate without baseline."""
+    if stable_hash(cfg) != cand.manifest.config_hash:
+        _log.warning(
+            "gate_config_hash_differs",
+            run_id=cand.manifest.run_id,
+            note="the gate policy of this config is not the one the run was made with",
+        )
+    from_base = cand.manifest.counts.get("cached_from_base", 0)
+    if from_base > 0 and from_base >= cand.manifest.n_cases:
+        msg = (
+            f"all {from_base} answers of the candidate came from the baseline cache: "
+            "the candidate never ran, so there is nothing to gate"
+        )
+        raise GateInputError(msg)
+    if base is None:
+        return _without_baseline(cand, cfg.gate)
+    report = evaluate_gate(
+        base,
+        cand,
+        cfg.gate,
+        np.random.default_rng(cfg.seed),
+        directions=MetricRegistry.default().directions(),
+        informational=informational_mapping(base.manifest, cand.manifest, cfg.gate),
+    )
+    if from_base > 0 and report.status is GateStatus.PASS:
+        _log.warning("gate_answers_from_base_cache", count=from_base)
+        return report.model_copy(update={"status": GateStatus.WARN})
+    return report
+
+
+def _finish(report: GateReport, candidate: Path) -> GateReport:
+    write_gate_json(report, candidate / GATE_FILE)
+    _log.info("gate_decided", status=report.status.value, no_baseline=report.no_baseline)
+    return report
+
+
 def run_gate(candidate: Path, baseline: Path | None, cfg: PruefstandConfig) -> GateReport:
     """Compare a candidate run with a baseline run and write ``gate.json`` into the candidate.
 
     The directions of the metrics come from ``MetricRegistry.default().directions()``, the
     randomness from ``numpy.random.default_rng(cfg.seed)``, so equal inputs give an equal report.
     Without a baseline the report says ``no_baseline`` (``INSUFFICIENT_DATA``, or ``FAIL`` when the
-    candidate has a hard fail).
+    candidate has a hard fail). A config whose hash differs from the one in ``run.json`` is
+    logged as a warning (the policy may not be the one the run was made with).
 
     Args:
         candidate: Candidate run directory.
@@ -138,18 +181,54 @@ def run_gate(candidate: Path, baseline: Path | None, cfg: PruefstandConfig) -> G
             metric direction, ...).
     """
     cand = _read(candidate)
-    if baseline is None:
-        report = _without_baseline(cand, cfg.gate)
-    else:
-        base = _read(baseline)
-        report = evaluate_gate(
-            base,
-            cand,
-            cfg.gate,
-            np.random.default_rng(cfg.seed),
-            directions=MetricRegistry.default().directions(),
-            informational=informational_mapping(base.manifest, cand.manifest, cfg.gate),
+    base = None if baseline is None else _read(baseline)
+    return _finish(_decide(cand, base, cfg), candidate)
+
+
+_REF_BLOCK = re.compile(r"(?:nightly|release)-b([0-2])")
+
+
+def gate_from_store(
+    candidate: Path, cfg: PruefstandConfig, *, ref: str = "main", store: BaselineStore | None = None
+) -> GateReport:
+    """Gate ``candidate`` against the baseline of its fingerprint and ``ref`` in the store.
+
+    PR runs use ``main``; the nightly gate ``nightly-b<k>`` and the drift job ``release-b<k>``
+    with ``k`` the candidate's block. Without a baseline the report says ``no_baseline`` and the
+    command still succeeds (the executor turns it into a failure on a gated PR, D103). The
+    baseline must come from the same stack as the candidate.
+
+    Args:
+        candidate: Candidate run directory.
+        cfg: Configuration (gate policy, seed, ``baseline_store``).
+        ref: One of the baseline refs.
+        store: The baseline store; default ``build_baseline_store(cfg.baseline_store)``.
+
+    Returns:
+        The report that was written into the candidate directory.
+
+    Raises:
+        StoreError: Unknown ref, an invalid candidate or an invalid baseline in the store.
+        GateInputError: ``ref`` names another block than the candidate's, the baseline is of
+            another stack, or the runs cannot be compared.
+    """
+    validate_ref(ref)
+    cand = _read(candidate)
+    match = _REF_BLOCK.fullmatch(ref)
+    if match and cand.manifest.block != int(match.group(1)):
+        msg = (
+            f"--ref {ref} needs a candidate with block {match.group(1)}; "
+            f"run {cand.manifest.run_id} has block {cand.manifest.block}"
         )
-    write_gate_json(report, candidate / GATE_FILE)
-    _log.info("gate_decided", status=report.status.value, no_baseline=report.no_baseline)
-    return report
+        raise GateInputError(msg)
+    found = (store or build_baseline_store(cfg.baseline_store)).get(
+        cand.manifest.eval_fingerprint, ref
+    )
+    base = None if found is None else found.results
+    if base is not None and base.manifest.stack != cand.manifest.stack:
+        msg = (
+            f"the baseline ran on stack {base.manifest.stack!r}, the candidate on "
+            f"{cand.manifest.stack!r}: tier 1 and tier 2 results are never compared"
+        )
+        raise GateInputError(msg)
+    return _finish(_decide(cand, base, cfg), candidate)

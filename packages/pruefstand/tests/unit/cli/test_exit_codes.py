@@ -87,14 +87,6 @@ def test_baseline_and_from_store_together_are_a_usage_error(
     assert CliRunner().invoke(app, [*args, "--from-store"]).exit_code == 2
 
 
-def test_from_store_is_not_implemented_yet(tmp_path: Path, gate_config: Path) -> None:
-    cand = stored(tmp_path, "20261102T220001-bbbbbb")
-    args = ["gate", "--config", str(gate_config), "--candidate", str(cand), "--from-store"]
-    result = CliRunner().invoke(app, args)
-    assert result.exit_code == 2
-    assert "T6.1" in result.output
-
-
 @pytest.mark.parametrize(
     ("error", "code"),
     [
@@ -167,7 +159,6 @@ def test_a_missing_option_is_a_usage_error() -> None:
     ("args", "needle"),
     [
         (["build-dataset", "--config", "d.yaml"], "T4.7a"),
-        (["baseline", "promote", "--run", "runs/x", "--ref", "main"], "T6.1"),
     ],
 )
 def test_stub_commands_exit_two(args: list[str], needle: str) -> None:

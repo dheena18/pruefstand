@@ -924,7 +924,8 @@ class LocalDirBaselineStore(BaselineStore); class GitBranchBaselineStore(Baselin
 #   via PRUEFSTAND_HELDOUT_DIR; none found -> StoreError
     # GitBranchBaselineStore (R9 X2.7, supersedes the D145 layout; ADR-0019: in the data root on the VM disk): the run FILES live under
     # BaselineStoreConfig.data_root (default $PRUEFSTAND_DATA_ROOT/baselines, else $PRUEFSTAND_HOME/baselines): <data_root>/<eval_fingerprint>/<ref>/ (current
-    # baseline: run.json, results.parquet, responses.jsonl.zst, manifest.json with sha256 per file) plus one
+    # baseline: run.json, results.parquet, responses.jsonl.zst, scored.jsonl.zst (T6.1, D441: the lossless ScoredCase lines;
+    # results.parquet has no TestCase body), manifest.json with sha256 per file) plus one
     # <data_root>/<eval_fingerprint>/history/<run_id>/ per promotion (run.json, results.parquet, manifest.json; last 20
     # kept per fingerprint, D110), and in the age-encrypted weekly backup (X2.6). Branch `baselines` of the PRIVATE
     # executor repo keeps ONLY baselines/index.json (per (fp, ref): ordered run ids + manifest sha256, newest = current),
@@ -944,11 +945,18 @@ class LocalDirBaselineStore(BaselineStore); class GitBranchBaselineStore(Baselin
     # its poll (no dispatch input; R9 X2.10; R12: a block-k nightly is promoted to ref nightly-b<k>; R13 D321: the release run of all
     # of full to refs release-b0, release-b1, release-b2, one projection each), plus its monthly `baseline-prune` step.
 def build_baseline_store(cfg: BaselineStoreConfig) -> BaselineStore
+    # store/factory.py (T6.1): no git call and no file access at construction; resolve_data_root(cfg, env=None) -> Path implements the
+    # data_root default (D209). GitBranchBaselineStore(repo, data_root, *, branch="baselines", remote=None, token_env="PRUEFSTAND_BASELINES_TOKEN",
+    # clock=None, require_sentinel=False); LocalDirBaselineStore(path, *, clock=None); both have prune(*, keep, unused_days, now) -> list[str]
+    # (D443, D445). put() refuses incomplete/flagged runs (BaselineRefused(StoreError), CLI exit 1) and runs whose block does not fit the ref
 def prune_baselines(store_root: Path, *, keep: int = 20, unused_days: int = 90, now: datetime) -> list[str]
     # store/retention.py (T6.1, D110): keeps the last `keep` history/<run_id>/ entries per fingerprint, deletes
     # fingerprints with no promotion for `unused_days` (release baselines kept); returns the deleted paths
 def push_dashboard_data(src: Path, repo: str, *, token_env: str = "DASHBOARD_DATA_PAT",
-                        extra: Mapping[str, bytes] | None = None) -> str
+                        extra: Mapping[str, bytes] | None = None, remote: str | None = None) -> str
+    # T6.1 (D449): `remote` (optional) replaces https://github.com/<repo>.git by a git URL or local path (tests use a bare repo; the 1 GB size
+    # check is skipped then); `src` is the flat export directory of write_public_export/seal_export: top-level files -> runs/<run_id>/,
+    # its cases/ subdirectory -> cases/<run_id>/
     # store/dashboard_repo.py (T6.1, D108): clone of the PUBLIC dheena18/pruefstand-dashboard-data, writes `extra`
     # files, commits, pushes to `main`; returns the pushed commit sha.
     # R13 P5.1 (D300, owner T6.1; supersedes "replaces runs/<run_id>/"): every push REWRITES THE WHOLE PUBLISHED TREE
@@ -960,7 +968,8 @@ def push_dashboard_data(src: Path, repo: str, *, token_env: str = "DASHBOARD_DAT
     # Before pushing it reads the repo size (`gh api repos/<owner>/pruefstand-dashboard-data --jq .size`) and fails
     # with StoreError above 1 GB (UI13-12; runbook: squash to an orphan commit, older data_sha rollbacks expire).
     # Token only via GIT_ASKPASS env (never argv/URL/log); refuses a src not produced by sanitise_run or containing "CANARY-"
-def push_heartbeat(repo: str, payload: Mapping[str, str], *, token_env: str = "DASHBOARD_DATA_PAT") -> str
+def push_heartbeat(repo: str, payload: Mapping[str, str], *, token_env: str = "DASHBOARD_DATA_PAT",
+                   remote: str | None = None) -> str   # T6.1 (D449): `remote` as above; <= 64 snake_case fields, string values <= 1000 chars
     # store/dashboard_repo.py (T6.1, R9 R9-21): writes heartbeat.json as a single force-pushed commit on branch
     # `heartbeat` of the dashboard-data repo (executor-health.yml reads it there); the caller (T6.2a) pushes every
     # 15 min while a job runs or waits on the lock (R11 D225) and at job end; never touches `main`; returns the commit sha.
@@ -1534,6 +1543,14 @@ async def run_eval(cfg: PruefstandConfig, *, tier: Literal["pr", "nightly", "ben
     #   (T6.2b); the T6.3 / T6.2b refusal-policy cause-switch row `--stratum refusal`.
     # R13 P3.4 (D295): judged_subset=True also skips GENERATION of core answerable cases outside the subset (§8 Runner)
 def run_gate(candidate: Path, baseline: Path | None, cfg: PruefstandConfig) -> GateReport
+def gate_from_store(candidate: Path, cfg: PruefstandConfig, *, ref: str = "main", store: BaselineStore | None = None) -> GateReport
+    # T6.1 (D447): what `gate --from-store [--ref]` calls; unknown ref -> StoreError, nightly-b<k>/release-b<k> for a candidate of another
+    # block or a baseline of another stack -> GateInputError; no baseline -> no_baseline report (exit 0). run_gate logs
+    # gate_config_hash_differs when stable_hash(cfg) != run.json config_hash
+    # T6.1 (D446, review of PR 41): RunManifest.counts["cached_from_base"] = answers a PR run got from main's target cache (overlay mode with
+    # PRUEFSTAND_TRUSTED_TARGET_ID set; absent otherwise). run_gate / gate_from_store: all answers from the base cache -> GateInputError (exit 3,
+    # the candidate never ran); some -> a PASS is downgraded to WARN; FAIL, INSUFFICIENT_DATA and hard fails are unchanged. The PR comment
+    # shows "N of M answers served from cache (baseline overlay)"
     # R13 (D305, supersedes the R12 N1.4 cross-block exception): the drift job compares the block-k candidate with
     # `release-b<k>` under the same eval_fingerprint, so every fingerprint mismatch -> GateInputError, no exception.
     # R13 (UI13-14): scripts/dashboard/derive.py --no-baseline calls run_gate(candidate, None, cfg) with
