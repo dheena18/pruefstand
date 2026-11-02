@@ -26,6 +26,7 @@ from pruefstand.metrics.registry import MetricRegistry
 from pruefstand.pipeline.cache import (
     cache_mode,
     identity_is_opaque,
+    reads_base,
     target_cache,
     trusted_target_id,
 )
@@ -204,14 +205,16 @@ async def _execute(
         if not usable:
             _log.warning("target_cache_off", note="the target reports no usable identity")
         trusted = trusted_target_id(os.environ)
-        with target_cache(os.environ, enabled=usable, use_base=trusted is not None) as cache:
+        with target_cache(
+            os.environ, enabled=usable, use_base=reads_base(usable=usable, trusted=trusted)
+        ) as cache:
             results = await _runner(plan, adapter, judges, cache).run(
                 plan.cases,
                 target_fingerprint=_target_fingerprint(plan, info),
                 seed=plan.cfg.seed,
                 judged_subset=plan.judged_subset,
             )
-        results = _mark_base_hits(results, base_read=usable and trusted is not None)
+        results = _mark_base_hits(results, base_read=reads_base(usable=usable, trusted=trusted))
     finally:
         await adapter.aclose()
     return results, info

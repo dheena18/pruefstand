@@ -193,14 +193,24 @@ def test_placeholder_identities_are_opaque_after_strip_and_lower(
 def test_a_real_sha_or_digest_is_not_opaque() -> None:
     real = "sha256:" + "ab" * 32
     info = TargetInfo(
-        app_version="1", git_sha="dev", image_digest=real, config_hash="c", corpus_version="v", models={}
+        app_version="1",
+        git_sha="dev",
+        image_digest=real,
+        config_hash="c",
+        corpus_version="v",
+        models={},
     )
     assert not identity_is_opaque(info)
 
 
 @pytest.mark.parametrize(
     ("usable", "trusted", "expected"),
-    [(True, "sha256:x", True), (True, None, False), (False, "sha256:x", False), (False, None, False)],
+    [
+        (True, "sha256:x", True),
+        (True, None, False),
+        (False, "sha256:x", False),
+        (False, None, False),
+    ],
 )
 def test_main_s_cache_is_read_only_for_a_usable_identity_with_a_trusted_id(
     usable: object, trusted: str | None, expected: object

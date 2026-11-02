@@ -1547,6 +1547,10 @@ def gate_from_store(candidate: Path, cfg: PruefstandConfig, *, ref: str = "main"
     # T6.1 (D447): what `gate --from-store [--ref]` calls; unknown ref -> StoreError, nightly-b<k>/release-b<k> for a candidate of another
     # block or a baseline of another stack -> GateInputError; no baseline -> no_baseline report (exit 0). run_gate logs
     # gate_config_hash_differs when stable_hash(cfg) != run.json config_hash
+    # T6.1 (D446, review of PR 41): RunManifest.counts["cached_from_base"] = answers a PR run got from main's target cache (overlay mode with
+    # PRUEFSTAND_TRUSTED_TARGET_ID set; absent otherwise). run_gate / gate_from_store: all answers from the base cache -> GateInputError (exit 3,
+    # the candidate never ran); some -> a PASS is downgraded to WARN; FAIL, INSUFFICIENT_DATA and hard fails are unchanged. The PR comment
+    # shows "N of M answers served from cache (baseline overlay)"
     # R13 (D305, supersedes the R12 N1.4 cross-block exception): the drift job compares the block-k candidate with
     # `release-b<k>` under the same eval_fingerprint, so every fingerprint mismatch -> GateInputError, no exception.
     # R13 (UI13-14): scripts/dashboard/derive.py --no-baseline calls run_gate(candidate, None, cfg) with

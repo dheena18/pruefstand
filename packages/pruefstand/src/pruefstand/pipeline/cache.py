@@ -47,14 +47,29 @@ def trusted_target_id(env: Mapping[str, str]) -> str | None:
     return value
 
 
+_PLACEHOLDERS = frozenset({"", "unknown", "none", "empty", "dev", "latest"})
+
+
+def _placeholder(value: str | None) -> bool:
+    """A missing value, a known placeholder, or all-zero hex (``0000000``, ``sha256:00..``)."""
+    text = (value or "").strip().lower().removeprefix("sha256:")
+    return text in _PLACEHOLDERS or re.fullmatch(r"0+", text) is not None
+
+
 def identity_is_opaque(info: TargetInfo | None) -> bool:
     """True when the target reports no usable identity.
 
-    That is: no ``/v1/info``, or git sha ``unknown``/empty and no image digest. Every build without
-    the build arguments would share one fingerprint, so its answers are neither read from nor
-    written to any cache.
+    That is: no ``/v1/info``, or a git sha and an image digest that are both placeholders
+    (compared after ``strip().lower()``: empty, ``unknown``, ``none``, ``empty``, ``dev``,
+    ``latest``, all-zero hex). Every build without the build arguments would share one
+    fingerprint, so its answers are neither read from nor written to any cache.
     """
-    return info is None or (info.git_sha in UNKNOWN_SHA and not info.image_digest)
+    return info is None or (_placeholder(info.git_sha) and _placeholder(info.image_digest))
+
+
+def reads_base(*, usable: bool, trusted: str | None) -> bool:
+    """Whether a PR job may read main's cache: a usable identity that the executor vouches for."""
+    return usable and trusted is not None
 
 
 def cache_mode(env: Mapping[str, str]) -> CacheMode:
