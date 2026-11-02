@@ -31,6 +31,7 @@ _log = get_logger(__name__)
 _DATE = re.compile(r"[0-9]{4}-[0-9]{2}-[0-9]{2}")
 _PINNED_PREFIXES = ("gii:", "eurlex:", "oldp")
 _SHOWN_PROBLEMS = 10
+_PUBLIC_TENANT = "shared_public"  # visible to every tenant: no private or attack documents
 
 
 def _extra_documents(cfg: CorpusBuildConfig) -> list[Document]:
@@ -58,6 +59,9 @@ def _checked_extras(cfg: CorpusBuildConfig, public_ids: set[str]) -> list[Docume
     for doc in extras:
         if doc.tenant not in declared:
             msg = f"{doc.doc_id}: tenant {doc.tenant!r} is not one of the plan's tenants"
+            raise ConfigError(msg)
+        if doc.tenant == _PUBLIC_TENANT:
+            msg = f"{doc.doc_id}: an extra document must not join {_PUBLIC_TENANT}"
             raise ConfigError(msg)
         if doc.source.startswith(_PINNED_PREFIXES):
             msg = f"{doc.doc_id}: an extra document must not claim the pinned source {doc.source!r}"
@@ -121,6 +125,12 @@ def _resolve(path: Path, base: Path) -> Path:
     return path if path.is_absolute() else base / path
 
 
+def _check_limit(chunks: list[Chunk], cfg: CorpusBuildConfig) -> None:
+    if len(chunks) > cfg.max_chunks:
+        msg = f"more than max_chunks={cfg.max_chunks} chunks; raise the limit in corpus.yaml"
+        raise DatasetError(msg)
+
+
 def _collect(cfg: CorpusBuildConfig, sources: _Sources) -> tuple[list[Chunk], set[str], set[str]]:
     """Load, assign and chunk; return the chunks, the public doc ids and the sources seen."""
     ids: set[str] = set()
@@ -135,9 +145,7 @@ def _collect(cfg: CorpusBuildConfig, sources: _Sources) -> tuple[list[Chunk], se
     chunks: list[Chunk] = []
     for chunk in chunk_documents(tracked(), cfg.max_tokens):
         chunks.append(chunk)
-        if len(chunks) > cfg.max_chunks:
-            msg = f"more than max_chunks={cfg.max_chunks} chunks; raise the limit in corpus.yaml"
-            raise DatasetError(msg)
+        _check_limit(chunks, cfg)
     return chunks, ids, names
 
 
@@ -171,7 +179,9 @@ def build_corpus(config_path: Path, out: Path, date_tag: str) -> CorpusManifest:
         msg = f"{len(problems)} loader problem(s), at most {cfg.max_problems} allowed: {shown}"
         raise DatasetError(msg)
     extras = _checked_extras(cfg, public_ids)
-    chunks.extend(chunk_documents(extras, cfg.max_tokens))
+    for chunk in chunk_documents(extras, cfg.max_tokens):
+        chunks.append(chunk)
+        _check_limit(chunks, cfg)
     empty = sorted(set(cfg.plan.tenants) - {c.tenant for c in chunks})
     if empty:
         msg = f"tenant(s) without any chunk: {', '.join(empty)}"

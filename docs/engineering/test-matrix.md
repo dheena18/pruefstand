@@ -346,11 +346,11 @@ owning module's unit test dir (`pt/unit/<module>/`, `rd/unit/…`).
 | `assign_tenants` | `ingest.tenants` | T2.5 | `test_tenants.py` | KSchG/VVG/GDPR EN/BGB/OLDP labour; unmatched (names doc_id) and default; two rules; loader-set tenant; same `doc_id` twice; lazy; linear time | covered |
 | `write_corpus` | `ingest.writer` | T2.5 | `test_writer.py`, `test_ingest_fixtures.py` | byte-identical; order-independent (incl. Hypothesis permutations); counts + sha256; wrong/malformed `corpus_version`; immutable version; symlinked out dir; staging cleanup | covered |
 | `serialise_chunk`, `render_corpus`, `provisional_manifest` | `ingest.writer` | T2.5 | `test_writer.py` | U+2028/2029/0085 escaped; lone surrogate; duplicate `chunk_id`; `doc_id` in two tenants; unsafe tenant id; empty licence; memerag source | covered |
-| `verify_corpus`, `read_manifest` | `ingest.corpus_verify` | T2.5 | `test_corpus_verify.py` | changed byte; extra/missing file; symlinked file; chunk in the wrong tenant file; oversized manifest | covered |
+| `verify_corpus`, `read_manifest` | `ingest.corpus_verify` | T2.5 | `test_corpus_verify.py` | changed byte; extra/missing file; symlinked file; oversized manifest; and, each on a forged corpus with re-hashed files, recomputed counts and version and renamed directory, one test with the exact message per check: chunk in the wrong tenant file, repeated `chunk_id`, document in two tenants, line count, `sha256` keys vs tenants, `corpus_version` vs content | covered |
 | `validate_tenant_id` | `core.config.build` | T2.5 | `test_build_config.py` | ten unsafe ids rejected, doctest | covered |
 | `load_model` | `core.config_loader` | T2.5 | `test_build_config.py`, `test_config_loader.py` | corpus.yaml loads; unknown key, alias and symlink refused | covered |
 | `load_pins`, `pin_for` | `ingest.pins` | T2.5 | `test_ingest_fixtures.py` | manifest pins equal `data/sources.yaml`; unpinned source → exit 2 | covered |
-| `build_corpus`, `chunk_documents`, `_extra_documents` | `pipeline.ingest`, `pipeline.ingest_chunks` | T2.5 | `test_ingest_fixtures.py` | 4 tenant files, byte-identical reruns, DE/EN twins, missing law → exit 3, chunk limit, extra docs keep isolation | covered |
+| `build_corpus`, `chunk_documents`, `_extra_documents` | `pipeline.ingest`, `pipeline.ingest_chunks` | T2.5 | `test_ingest_fixtures.py`, `test_ingest_extras.py` | 4 tenant files, byte-identical reruns, DE/EN twins, missing law → exit 3, chunk limit incl. extras, extra docs keep isolation (pinned sources and `shared_public` refused) | covered |
 | `scripts/validate_corpus.py` | `scripts` | T2.5 | `scripts/tests/test_validate_corpus.py` | `OK n=<N>`; schema violation names file:line; changed file fails sha256 | covered |
 
 ## perturb (§12)

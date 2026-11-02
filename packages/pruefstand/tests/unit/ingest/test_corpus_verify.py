@@ -12,6 +12,7 @@ from pruefstand.core.config import CorpusBuildConfig
 from pruefstand.core.config_loader import load_model
 from pruefstand.core.errors import DatasetError
 from pruefstand.core.fingerprint import corpus_version
+from pruefstand.core.ids import TenantId
 from pruefstand.core.models.corpus import Chunk, CorpusManifest
 from pruefstand.ingest.chunkers.paragraph import ParagraphChunker
 from pruefstand.ingest.corpus_verify import verify_corpus
@@ -76,7 +77,7 @@ def forge(
 ) -> Path:
     """Rewrite a corpus consistently: files, sha256, counts and version recomputed, dir renamed."""
     manifest = CorpusManifest.model_validate_json((src / "manifest.json").read_bytes())
-    lines = {
+    lines: dict[str, list[str]] = {
         t: (src / f"{t}.chunks.jsonl").read_text("utf-8").splitlines() for t in manifest.tenants
     }
     edit(lines)
@@ -136,7 +137,11 @@ def _copy_into_shared(lines: dict[str, list[str]], **changes: str) -> dict[str, 
 
 def test_verify_detects_a_repeated_chunk_id(written: Path, tmp_path: Path) -> None:
     info: dict[str, str] = {}
-    directory = forge(written, tmp_path / "f", lambda lines: info.update(_copy_into_shared(lines)))
+    directory = forge(
+        written,
+        tmp_path / "f",
+        lambda lines: info.update(_copy_into_shared(lines, doc_id="other-doc")),
+    )
     where = f"shared_public.chunks.jsonl:{info['n']}"
     expected = f"{where}: chunk {info['chunk']} or document {info['doc']} repeats"
     assert check(directory) == expected
@@ -157,7 +162,7 @@ def test_verify_detects_a_document_in_two_tenants(written: Path, tmp_path: Path)
 
 def test_verify_detects_a_wrong_line_count(written: Path, tmp_path: Path) -> None:
     honest = CorpusManifest.model_validate_json((written / "manifest.json").read_bytes())
-    n = honest.tenants["kanzlei_mueller"]
+    n = honest.tenants[TenantId("kanzlei_mueller")]
     directory = forge(
         written,
         tmp_path / "f",
