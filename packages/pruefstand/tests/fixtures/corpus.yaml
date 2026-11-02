@@ -1,0 +1,22 @@
+# Tenant plan over the T2.2-T2.4 fixtures (tests only). The tests copy this file, replace
+# `raw_root` with a tree built from the fixtures (testsupport/corpus_support.py) and keep the rest.
+# Paths are relative to this file.
+version: 1
+raw_root: ../../../../data/raw
+sources_file: ../../../../data/sources.yaml
+loaders: [gii, eurlex, oldp]
+plan:
+  tenants: [kanzlei_mueller, versicherung_nord, stadtwerke_sued, shared_public]
+  default_tenant: null
+  rules:
+    - {tenant: kanzlei_mueller, source: "gii:kschg"}
+    - {tenant: kanzlei_mueller, source: "gii:arbzg"}
+    - {tenant: kanzlei_mueller, source: "eurlex:32003L0088"}
+    - {tenant: kanzlei_mueller, source: "oldp:decisions", metadata: {jurisdiction: Arbeitsgericht}}
+    - {tenant: versicherung_nord, source: "gii:kwg"}
+    - {tenant: versicherung_nord, source: "oldp:decisions", metadata: {tenant_domain: insurance}}
+    - {tenant: stadtwerke_sued, source: "eurlex:32016R0679"}
+    - {tenant: shared_public, source: "gii:bgb"}
+    - {tenant: shared_public, source: "gii:egbgb"}
+    - {tenant: shared_public, source: "gii:aktg"}
+    - {tenant: shared_public, source: "oldp:decisions", metadata: {tenant_domain: other}}
