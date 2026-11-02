@@ -92,8 +92,10 @@ The owner lets the lead remove and swap Ollama models without asking, under ALL 
    the operation under `pruefstand-lock`, and ALWAYS remove `MAINTENANCE` afterwards, also when the operation fails
    (use a trap / `finally`); that one file is the only thing under `/var/lib/pruefstand` the lead may write;
 5. never remove the model the current mode is using without switching modes first (`make gpu-up` / `gpu-night-up`);
+   and **never remove the generator `qwen3.8:27b-q8_0` (`GENERATOR_TAG`), not even to free space**: if freeing space would
+   need it, ask the owner;
 6. log every remove or swap (tag, digest, free space before and after) in `docs/engineering/gpu-cluster.md` section 8
    ("Model remove / swap log"), with the cluster paths shown as `<models-dir>`.
 
 Exit 17 of `fetch-model.sh` ("not enough disk") is no longer a stop: the lead may free space by removing catalogue models
-that the current task does not need. Ask the owner only when that is not enough. Task agents never run any of this.
+that the current task does not need (never the generator). Ask the owner only when that is not enough. Task agents never run any of this.

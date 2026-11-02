@@ -26,7 +26,8 @@ work around it.
    **Exception (D451, owner decision 2026-11-02): the lead agent may create and remove that one file, and remove or swap
    catalogue models, under the conditions in `docs/ops/lead-handoff.md` section 6** (only models listed in
    `infra/gpu/models.yaml`, only through the wrapper / `make gpu-pull` / `gpu-rm`, under `pruefstand-lock`, only while no
-   gate or nightly runs, always removing `MAINTENANCE` again, every change logged in `docs/engineering/gpu-cluster.md` §8).
+   gate or nightly runs, always removing `MAINTENANCE` again, every change logged in `docs/engineering/gpu-cluster.md` §8;
+   never the generator `qwen3.8:27b-q8_0`, not even to free space).
    Task agents never do this; nothing else under `/var/lib/pruefstand/**` changes.
 9. GitHub from the VM (R12 N4.4, D257): `gh`/git on the VM authenticate with the owner's **fine-grained token limited
    to the public repo** (contents + pull requests + workflows write; Workflows is required to push `.github/workflows/**`, D284; no administration, no access to `pruefstand-gate` or
