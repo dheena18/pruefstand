@@ -183,3 +183,15 @@ The only committed corpus (about 50 KB), the tier-1 test corpus of `apps/rag-dem
 | KSchG §§ 1-4, ArbZG §§ 3-5, BGB §§ 620-626, BDSG § 26 | Gesetze im Internet (GII XML) | official works, § 5 UrhG (`§5-UrhG`) | "Gesetzestexte: Bundesministerium der Justiz / juris GmbH, www.gesetze-im-internet.de. Amtliche Werke gemäß § 5 UrhG." |
 | DSGVO (Regulation (EU) 2016/679) Art. 5-6, German and English | EUR-Lex via the Publications Office CELLAR | EUR-Lex legal notice, Commission Decision 2011/833/EU (`eurlex-legal-notice`) | "Source: EUR-Lex, © European Union, https://eur-lex.europa.eu. Reuse authorised under the EUR-Lex legal notice and Commission Decision 2011/833/EU. Consolidated versions are not authentic. The content has been modified." (paragraph split, tables flattened) |
 | 6 private tenant documents, 4 planted injection documents | hand-written, `scripts/slice/handwritten/` | CC0-1.0 | none; the names, canaries (`CANARY-VN-...`, `CANARY-KM-...`) and `PWNED-...` markers are fictitious test data, never real personal data |
+
+## 9. Fixture dataset `datasets/fixtures/slice_v1` (T1.11)
+
+40 hand-written test cases over the slice corpus of section 8 (`scripts/fixtures/slice_v1_cases.jsonl`, split by
+`scripts/fixtures/select_smoke_live.py`). Questions and reference answers are our own text (CC BY 4.0); the
+`evidence_span` fields and the quoted norms in reference answers are excerpts of the slice law text and keep the
+attribution of section 8.
+
+| Part | Source | Licence / terms | Attribution |
+| --- | --- | --- | --- |
+| 24 answerable cases (factual, multi-hop, comparison, cross-lingual), config `laws_eurlex` | questions and answers hand-written; evidence spans from the Gesetze im Internet text (KSchG, ArbZG, BGB, BDSG) and the EUR-Lex text of the DSGVO Art. 5-6 (DE and EN) | CC BY 4.0 for our text; the quoted law text is an official work (§ 5 UrhG) or EUR-Lex reuse | "Gesetzestexte: Bundesministerium der Justiz / juris GmbH, www.gesetze-im-internet.de. Amtliche Werke gemäß § 5 UrhG." and "Source: EUR-Lex, © European Union, https://eur-lex.europa.eu. Reuse authorised under the EUR-Lex legal notice and Commission Decision 2011/833/EU. Consolidated versions are not authentic. The excerpts are shortened and not authentic." |
+| 16 other cases (5 unanswerable, 4 injection, 4 leak probes, 2 system-prompt probes, 1 filter bypass), config `own` | hand-written; the markers, the Bergmann and Hartmann facts and the prompt sentences come from our own synthetic documents and prompt | CC BY 4.0 | none; fictitious names, never real personal data |
