@@ -8,6 +8,7 @@ from testsupport.pipeline_support import mini_config
 from testsupport.store_support import gate_run, release_run, write_gate_run
 
 from pruefstand.core.config import BaselineStoreConfig, GatePolicy, MetricPolicy
+from pruefstand.core.enums import GateStatus
 from pruefstand.core.errors import GateInputError, StoreError
 from pruefstand.core.models.run import RunArtifacts
 from pruefstand.pipeline.gate import gate_from_store, run_gate
@@ -124,3 +125,35 @@ def test_run_gate_warns_when_the_config_differs_from_the_run(tmp_path: Path) -> 
     with capture_logs() as logs:
         run_gate(candidate, base, cfg(tmp_path))
     assert any(entry["event"] == "gate_config_hash_differs" for entry in logs)
+
+
+def _cached_candidate(tmp_path: Path, from_base: int) -> Path:
+    counts = {"ok": 120, "cached": from_base, "cached_from_base": from_base}
+    return write_gate_run(tmp_path / "runs", CAND_ID, fp=FP1, counts=counts)
+
+
+def test_a_candidate_answered_entirely_from_the_baseline_cache_is_refused(tmp_path: Path) -> None:
+    store_of(tmp_path).put(gate_run(tmp_path / "b", BASE_ID, fp=FP1), "main")
+    candidate = _cached_candidate(tmp_path, 120)
+    with pytest.raises(GateInputError, match="never ran"):
+        gate_from_store(candidate, cfg(tmp_path))
+    assert not (candidate / "gate.json").exists()
+
+
+def test_the_all_cached_guard_fires_at_exactly_n_cases_and_not_below(tmp_path: Path) -> None:
+    store_of(tmp_path).put(gate_run(tmp_path / "b", BASE_ID, fp=FP1), "main")
+    candidate = _cached_candidate(tmp_path, 119)
+    report = gate_from_store(candidate, cfg(tmp_path))
+    assert report.status is GateStatus.WARN  # a pass is downgraded, never silent
+
+
+def test_a_candidate_without_cached_answers_passes_normally(tmp_path: Path) -> None:
+    store_of(tmp_path).put(gate_run(tmp_path / "b", BASE_ID, fp=FP1), "main")
+    candidate = write_gate_run(tmp_path / "runs", CAND_ID, fp=FP1)
+    assert gate_from_store(candidate, cfg(tmp_path)).status is GateStatus.PASS
+
+
+def test_an_all_cached_candidate_is_refused_without_a_baseline_too(tmp_path: Path) -> None:
+    candidate = _cached_candidate(tmp_path, 120)
+    with pytest.raises(GateInputError, match="never ran"):
+        gate_from_store(candidate, cfg(tmp_path))

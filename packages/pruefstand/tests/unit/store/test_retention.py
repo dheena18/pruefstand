@@ -64,12 +64,21 @@ def test_a_fingerprint_unused_for_ninety_one_days_is_removed_and_eighty_nine_is_
     tmp_path: Path,
 ) -> None:
     root = tmp_path / "b"
-    fill(root, 2, fp="a" * 16, start=NOW - timedelta(days=91))
-    fill(root, 2, fp="b" * 16, start=NOW - timedelta(days=89))
+    old = LocalDirBaselineStore(root, clock=clock_at(NOW - timedelta(days=91)))
+    young = LocalDirBaselineStore(root, clock=clock_at(NOW - timedelta(days=89)))
+    old.put(run_of(tmp_path, 1, block=0, eval_fingerprint="a" * 16), "nightly-b0")
+    young.put(run_of(tmp_path, 2, block=0, eval_fingerprint="b" * 16), "nightly-b0")
     removed = prune_baselines(root, keep=20, unused_days=90, now=NOW)
     assert removed == ["a" * 16]
     assert not (root / ("a" * 16)).exists()
-    assert (root / ("b" * 16) / "main").is_dir()
+    assert (root / ("b" * 16) / "nightly-b0").is_dir()
+
+
+def test_a_quiet_main_baseline_older_than_ninety_days_is_kept(tmp_path: Path) -> None:
+    root = tmp_path / "b"
+    fill(root, 2, start=NOW - timedelta(days=200))
+    assert prune_baselines(root, keep=20, unused_days=90, now=NOW) == []
+    assert LocalDirBaselineStore(root).get(FP, "main") is not None
 
 
 def test_a_release_anchor_older_than_ninety_days_is_kept(tmp_path: Path) -> None:

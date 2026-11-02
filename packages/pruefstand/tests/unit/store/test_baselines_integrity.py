@@ -168,7 +168,7 @@ def test_a_symlinked_baseline_directory_is_refused(tmp_path: Path) -> None:
     real = tmp_path / "elsewhere"
     Path(current(tmp_path)).rename(real)
     current(tmp_path).symlink_to(real, target_is_directory=True)
-    with pytest.raises(StoreError, match="symlink"):
+    with pytest.raises(StoreError, match="refusing to follow"):
         store.get(FP, "main")
 
 
@@ -178,9 +178,9 @@ def test_a_symlinked_fingerprint_directory_is_refused(tmp_path: Path) -> None:
     real = tmp_path / "elsewhere"
     Path(tmp_path / "baselines" / FP).rename(real)
     (tmp_path / "baselines" / FP).symlink_to(real, target_is_directory=True)
-    with pytest.raises(StoreError, match="symlink"):
+    with pytest.raises(StoreError, match="refusing to follow"):
         store.get(FP, "main")
-    with pytest.raises(StoreError, match="symlink"):
+    with pytest.raises(StoreError, match="refusing to follow"):
         store.put(run_of(tmp_path, 2), "main")
 
 
@@ -191,7 +191,7 @@ def test_a_symlinked_file_is_refused(tmp_path: Path) -> None:
     victim.write_bytes((current(tmp_path) / "run.json").read_bytes())
     (current(tmp_path) / "run.json").unlink()
     (current(tmp_path) / "run.json").symlink_to(victim)
-    with pytest.raises(StoreError, match="symlink"):
+    with pytest.raises(StoreError, match="is a symlink"):
         store.get(FP, "main")
 
 
@@ -246,3 +246,17 @@ def test_an_explicit_data_root_wins(tmp_path: Path, monkeypatch: pytest.MonkeyPa
     monkeypatch.setenv("PRUEFSTAND_DATA_ROOT", str(tmp_path / "ignored"))
     cfg = BaselineStoreConfig(type="git_branch", repo="o/r", data_root=tmp_path / "mine")
     assert resolve_data_root(cfg) == tmp_path / "mine"
+
+
+def test_a_hard_linked_file_is_refused(tmp_path: Path) -> None:
+    store = store_at(tmp_path)
+    store.put(run_of(tmp_path), "main")
+    (tmp_path / "second-name").hardlink_to(current(tmp_path) / "run.json")
+    with pytest.raises(StoreError, match="hard link"):
+        store.get(FP, "main")
+
+
+@pytest.mark.parametrize("fp", ["ABCDEF0123456789", "0123456789abcde", "0123456789abcdef0", "ef-test"])
+def test_only_sixteen_lowercase_hex_characters_are_a_fingerprint(tmp_path: Path, fp: str) -> None:
+    with pytest.raises(StoreError, match="fingerprint"):
+        store_at(tmp_path).get(fp, "main")

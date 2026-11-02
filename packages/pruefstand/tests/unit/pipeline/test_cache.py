@@ -5,7 +5,13 @@ from pathlib import Path
 import pytest
 
 from pruefstand.core.errors import ConfigError
-from pruefstand.pipeline.cache import cache_mode, target_cache
+from pruefstand.core.models.target import TargetInfo
+from pruefstand.pipeline.cache import (
+    cache_mode,
+    identity_is_opaque,
+    target_cache,
+    trusted_target_id,
+)
 from pruefstand.store.kv import DiskKVCache, LayeredKVCache
 
 
@@ -107,3 +113,50 @@ def test_an_unreadable_shared_cache_in_overlay_mode_still_gives_a_working_overla
         assert cache is not None
         cache.set("k", b"v")
         assert cache.get("k") == b"v"
+
+
+def test_the_trusted_target_id_is_optional_and_validated() -> None:
+    assert trusted_target_id({}) is None
+    assert trusted_target_id({"PRUEFSTAND_TRUSTED_TARGET_ID": "sha256:" + "a" * 64}) is not None
+    for bad in ("bad id", "x;y", "-x", "a" * 201):
+        with pytest.raises(ConfigError, match="TRUSTED_TARGET_ID"):
+            trusted_target_id({"PRUEFSTAND_TRUSTED_TARGET_ID": bad})
+
+
+@pytest.mark.parametrize(
+    ("git_sha", "digest", "opaque"),
+    [
+        ("unknown", None, True),
+        ("", None, True),
+        ("unknown", "sha256:" + "a" * 64, False),
+        ("abc123", None, False),
+    ],
+)
+def test_an_identity_without_sha_and_digest_is_opaque(
+    git_sha: str, digest: str | None, opaque: bool
+) -> None:
+    info = TargetInfo(
+        app_version="1",
+        git_sha=git_sha,
+        image_digest=digest,
+        config_hash="c",
+        corpus_version="v",
+        models={},
+    )
+    assert identity_is_opaque(info) is opaque
+    assert identity_is_opaque(None) is True
+
+
+def test_a_disabled_cache_is_none_and_touches_nothing(tmp_path: Path) -> None:
+    with target_cache(env_of(tmp_path, "shared"), enabled=False) as cache:
+        assert cache is None
+    assert not (tmp_path / "shared").exists()
+
+
+def test_without_use_base_main_s_cache_is_not_read(tmp_path: Path) -> None:
+    seed(tmp_path)
+    with target_cache(env_of(tmp_path), use_base=False) as cache:
+        assert cache is not None
+        assert cache.get("k") is None
+        cache.set("pr", b"1")
+        assert cache.get("pr") == b"1"

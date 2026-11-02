@@ -84,20 +84,23 @@ def test_equal_timestamps_are_ordered_by_run_id(tmp_path: Path) -> None:
     assert [r["run_id"] for r in rows] == [rid(2), rid(1)]
 
 
-def test_a_run_directory_without_a_valid_run_json_is_dropped(tmp_path: Path) -> None:
+def test_a_run_directory_without_a_valid_run_json_is_skipped_not_deleted(tmp_path: Path) -> None:
     add_run(tmp_path, 1)
     broken = tmp_path / "runs" / "broken"
     broken.mkdir()
     (broken / "run.json").write_text("{not json", encoding="utf-8")
     rows = rewrite_tree(tmp_path)
     assert [r["run_id"] for r in rows] == [rid(1)]
-    assert not broken.exists()
+    assert (broken / "run.json").is_file()  # kept for a human; pruned by count and age only
 
 
-def test_a_directory_name_that_differs_from_the_run_id_is_dropped(tmp_path: Path) -> None:
+def test_a_directory_name_that_differs_from_the_run_id_is_skipped_not_deleted(
+    tmp_path: Path,
+) -> None:
     add_run(tmp_path, 1)
     (tmp_path / "runs" / rid(1)).rename(tmp_path / "runs" / rid(2))
     assert rewrite_tree(tmp_path) == []
+    assert (tmp_path / "runs" / rid(2) / "run.json").is_file()
 
 
 def test_orphan_case_directories_are_removed(tmp_path: Path) -> None:
