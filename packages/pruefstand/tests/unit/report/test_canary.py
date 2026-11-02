@@ -34,6 +34,8 @@ SPLIT = [
     "CANARY-VN-7f3\u115fa9c",
     "CANARY\uffa0VN-7f3a9c",
     "CAN\u1160ARY-VN-7f3a9c",
+    "CANARY-V\u0345-7f3a9c",
+    "CANARY-\u1fb3-7f3a9c",
 ]
 FIRST = "CANARY-VN-7f3a9c"
 SECOND = "CANARY-KM-0d1e2f"
@@ -99,7 +101,7 @@ FILL = st.sampled_from(["", "-", " ", ".", "\u200b", "\u3164", "\u115f", "\uffa0
     lead=st.sampled_from(["C", "\u0421", "c"]),
     a1=st.sampled_from(["A", "\u0410", "a", "\u03b1"]),
     hex_=st.from_regex(r"[0-9a-f]{6}", fullmatch=True),
-    kind=st.sampled_from(["VN", "km", "Xy"]),
+    kind=st.sampled_from(["VN", "km", "Xy", "V\u0345", "\u1fb3"]),
 )
 def test_parity_with_the_detector(
     fills: list[str], lead: str, a1: str, hex_: str, kind: str
