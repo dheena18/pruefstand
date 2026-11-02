@@ -2,6 +2,7 @@
 
 import time
 import unicodedata
+from collections.abc import Callable
 
 import numpy as np
 from hypothesis import given
@@ -49,7 +50,9 @@ def test_deterministic_perturbations_are_idempotent_or_stable(text: str) -> None
 @given(german, st.integers(0, 1000))
 def test_typos_change_at_most_one_word_and_keep_digits(text: str, seed: int) -> None:
     out = get_perturbation("typos").apply(text, np.random.default_rng(seed)).text
-    assert [c for c in out if c.isdigit() or c in "§€%"] == [c for c in text if c.isdigit() or c in "§€%"]
+    assert [c for c in out if c.isdigit() or c in "§€%"] == [
+        c for c in text if c.isdigit() or c in "§€%"
+    ]
     before, after = text.split(" "), out.split(" ")
     assert len(before) == len(after)
     assert sum(a != b for a, b in zip(before, after, strict=True)) <= 1
@@ -59,7 +62,9 @@ def test_typos_change_at_most_one_word_and_keep_digits(text: str, seed: int) -> 
 def test_same_seed_same_result(text: str, seed: int) -> None:
     for name in perturbation_names():
         p = get_perturbation(name)
-        assert p.apply(text, np.random.default_rng(seed)) == p.apply(text, np.random.default_rng(seed))
+        assert p.apply(text, np.random.default_rng(seed)) == p.apply(
+            text, np.random.default_rng(seed)
+        )
 
 
 def _seconds(name: str, text: str) -> float:
@@ -72,7 +77,7 @@ def _seconds(name: str, text: str) -> float:
     return best
 
 
-ADVERSARIAL = {
+ADVERSARIAL: dict[str, Callable[[int], str]] = {
     "umlaut_translit": lambda n: "äöü" * n,
     "eszett": lambda n: "ß" * n,
     "numbers": lambda n: "1" + ".111" * n + "x",

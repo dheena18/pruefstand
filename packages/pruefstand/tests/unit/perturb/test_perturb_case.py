@@ -45,14 +45,29 @@ def test_ids_and_gold_fields() -> None:
     assert out.perturbation == "dates"
     assert out.split is Split.CORE
     assert out.question == "Gilt die Frist ab 3. Oktober 2026?"
-    gold = {"reference_answer", "gold_doc_ids", "gold_citations", "evidence_span", "category",
-            "difficulty", "tenant", "lang", "tags", "expect_refusal", "source", "corpus_version"}
+    gold = {
+        "reference_answer",
+        "gold_doc_ids",
+        "gold_citations",
+        "evidence_span",
+        "category",
+        "difficulty",
+        "tenant",
+        "lang",
+        "tags",
+        "expect_refusal",
+        "source",
+        "corpus_version",
+    }
     for name in gold:
         assert getattr(out, name) == getattr(case, name), name
 
 
 def test_unchanged_returns_none() -> None:
-    assert perturb_case(base_case("Wie lang ist die Frist?"), Dates(), np.random.default_rng(0)) is None
+    assert (
+        perturb_case(base_case("Wie lang ist die Frist?"), Dates(), np.random.default_rng(0))
+        is None
+    )
 
 
 def test_original_is_not_mutated() -> None:

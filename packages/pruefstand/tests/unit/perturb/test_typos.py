@@ -5,7 +5,7 @@ import re
 import numpy as np
 import pytest
 
-from pruefstand.perturb.typos import Typos
+from pruefstand.perturb.typos import QWERTZ_NEIGHBOURS, Typos
 
 P = Typos()
 QUESTION = "Was ist die Kündigungsfrist?"
@@ -58,7 +58,8 @@ def test_rng_is_the_only_source_of_randomness() -> None:
     rng = np.random.default_rng(5)
     first = P.apply(QUESTION, rng)
     second = P.apply(QUESTION, rng)
-    assert first.changed and second.changed
+    assert first.changed
+    assert second.changed
 
 
 @pytest.mark.parametrize(
@@ -87,8 +88,6 @@ def test_protected_tokens_survive_next_to_a_typo() -> None:
 
 
 def test_substitution_uses_neighbouring_keys() -> None:
-    from pruefstand.perturb.typos import QWERTZ_NEIGHBOURS
-
     assert "w" in QWERTZ_NEIGHBOURS["q"]
     assert "z" in QWERTZ_NEIGHBOURS["t"]
     assert "y" in QWERTZ_NEIGHBOURS["x"]
@@ -97,3 +96,10 @@ def test_substitution_uses_neighbouring_keys() -> None:
 
 def test_metadata() -> None:
     assert (P.name, P.uses_llm) == ("typos", False)
+
+
+def test_overlong_letter_run_is_not_a_word() -> None:
+    text = "a" * 100_000
+    result = P.apply(text, np.random.default_rng(0))
+    assert not result.changed
+    assert result.text == text

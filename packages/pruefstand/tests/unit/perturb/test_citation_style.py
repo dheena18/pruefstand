@@ -17,13 +17,22 @@ RNG = np.random.default_rng(0)
         ("§ 1 KSchG", "Paragraph 1 des Kündigungsschutzgesetzes"),
         ("Art. 6 DSGVO", "Artikel 6 der Datenschutz-Grundverordnung"),
         ("§ 622 Abs. 2 BGB", "Paragraph 622 Absatz 2 des Bürgerlichen Gesetzbuchs"),
-        ("Art. 6 Abs. 1 lit. a DSGVO", "Artikel 6 Absatz 1 Buchstabe a der Datenschutz-Grundverordnung"),
-        ("§ 3 Abs. 1 S. 2 Nr. 4 BGB", "Paragraph 3 Absatz 1 Satz 2 Nummer 4 des Bürgerlichen Gesetzbuchs"),
+        (
+            "Art. 6 Abs. 1 lit. a DSGVO",
+            "Artikel 6 Absatz 1 Buchstabe a der Datenschutz-Grundverordnung",
+        ),
+        (
+            "§ 3 Abs. 1 S. 2 Nr. 4 BGB",
+            "Paragraph 3 Absatz 1 Satz 2 Nummer 4 des Bürgerlichen Gesetzbuchs",
+        ),
         ("Gilt § 622 des BGB?", "Gilt Paragraph 622 des Bürgerlichen Gesetzbuchs?"),
         ("Art. 5 GG", "Artikel 5 des Grundgesetzes"),
         ("Art. 5 GDPR", "Artikel 5 der Datenschutz-Grundverordnung"),
-        ("Gilt § 622 BGB, wenn § 1 KSchG greift?",
-         "Gilt Paragraph 622 des Bürgerlichen Gesetzbuchs, wenn Paragraph 1 des Kündigungsschutzgesetzes greift?"),
+        (
+            "Gilt § 622 BGB, wenn § 1 KSchG greift?",
+            "Gilt Paragraph 622 des Bürgerlichen Gesetzbuchs, "
+            "wenn Paragraph 1 des Kündigungsschutzgesetzes greift?",
+        ),
         ("§ 7 SGB IV", "Paragraph 7 des Vierten Buches Sozialgesetzbuch"),
     ],
 )

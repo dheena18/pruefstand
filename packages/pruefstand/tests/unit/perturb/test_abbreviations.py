@@ -13,8 +13,14 @@ RNG = np.random.default_rng(0)
     ("text", "expected"),
     [
         ("Abs. 2 Nr. 1 i.V.m. § 623", "Absatz 2 Nummer 1 in Verbindung mit § 623"),
-        ("Gilt das ggf. auch, z. B. bei Kündigung?", "Gilt das gegebenenfalls auch, zum Beispiel bei Kündigung?"),
-        ("Das gilt z.B. für Azubis bzw. Praktikanten", "Das gilt zum Beispiel für Azubis beziehungsweise Praktikanten"),
+        (
+            "Gilt das ggf. auch, z. B. bei Kündigung?",
+            "Gilt das gegebenenfalls auch, zum Beispiel bei Kündigung?",
+        ),
+        (
+            "Das gilt z.B. für Azubis bzw. Praktikanten",
+            "Das gilt zum Beispiel für Azubis beziehungsweise Praktikanten",
+        ),
         ("§ 622 i. V. m. § 623 BGB", "§ 622 in Verbindung mit § 623 BGB"),
         ("§ 622 Abs. 2 BGB", "§ 622 Absatz 2 BGB"),
     ],

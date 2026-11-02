@@ -6,7 +6,15 @@ from pruefstand.core.errors import ConfigError
 from pruefstand.core.protocols import Perturbation
 from pruefstand.perturb.registry import get_perturbation, perturbation_names
 
-NAMES = ("umlaut_translit", "eszett", "numbers", "dates", "citation_style", "abbreviations", "typos")
+NAMES = (
+    "umlaut_translit",
+    "eszett",
+    "numbers",
+    "dates",
+    "citation_style",
+    "abbreviations",
+    "typos",
+)
 
 
 def test_names_are_stable_and_ordered() -> None:

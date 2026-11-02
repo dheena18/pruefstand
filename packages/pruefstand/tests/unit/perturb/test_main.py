@@ -20,7 +20,13 @@ def test_all_prints_one_line_per_perturbation(capsys: pytest.CaptureFixture[str]
     assert main([Q, "--name", "all", "--seed", "1"]) == 0
     lines = capsys.readouterr().out.splitlines()
     assert [ln.split("\t")[0] for ln in lines] == [
-        "umlaut_translit", "eszett", "numbers", "dates", "citation_style", "abbreviations", "typos"
+        "umlaut_translit",
+        "eszett",
+        "numbers",
+        "dates",
+        "citation_style",
+        "abbreviations",
+        "typos",
     ]
     by_name = {ln.split("\t")[0]: ln.split("\t") for ln in lines}
     assert by_name["umlaut_translit"][1] == "changed"
@@ -36,8 +42,11 @@ def test_unknown_name_exits_nonzero(capsys: pytest.CaptureFixture[str]) -> None:
     assert "nope" in capsys.readouterr().err
 
 
-def test_runs_as_module(monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
+def test_runs_as_module(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
     monkeypatch.setattr(sys, "argv", ["pruefstand.perturb", Q, "--name", "eszett"])
+    monkeypatch.delitem(sys.modules, "pruefstand.perturb.__main__")
     with pytest.raises(SystemExit) as exit_info:
         runpy.run_module("pruefstand.perturb", run_name="__main__")
     assert exit_info.value.code == 0
