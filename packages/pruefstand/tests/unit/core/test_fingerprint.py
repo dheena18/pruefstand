@@ -1,3 +1,4 @@
+import inspect
 import re
 from datetime import UTC, datetime
 from typing import Any
@@ -182,3 +183,21 @@ def test_unknown_stratum_is_an_error() -> None:
 
 def test_duplicate_splits_do_not_change_the_fingerprint() -> None:
     assert efp(splits=[Split.CORE, Split.CORE, Split.ROBUST_PR]) == efp()
+
+
+def test_a_new_engine_version_changes_the_target_fingerprint() -> None:
+    old = make_info(serving={"engine": "ollama", "engine_version": "0.9.0"})
+    new = make_info(serving={"engine": "ollama", "engine_version": "0.9.1"})
+    assert tfp(old) != tfp(new)
+
+
+def test_runtime_counters_cannot_enter_the_target_fingerprint() -> None:
+    """``/v1/health.stats`` is not part of ``/v1/info`` (X3.13): a counter key is refused."""
+    with pytest.raises(ValueError, match="stats"):
+        TargetInfo.model_validate({**make_info().model_dump(), "stats": {"model_reloads": 3}})
+    assert tfp(make_info()) == tfp(make_info())
+
+
+def test_judge_flags_are_not_inputs_of_the_eval_fingerprint() -> None:
+    params = inspect.signature(eval_fingerprint).parameters
+    assert not {"judge_drift", "judge_degraded", "judge_fallback"} & set(params)
