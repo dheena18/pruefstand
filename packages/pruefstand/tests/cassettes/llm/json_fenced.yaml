@@ -1,4 +1,4 @@
-# recorded: 2026-11-01, model: openai_compatible_local/qwen2.5-0.5b-instruct, sha256: 74a4da8c9fdbcd15bd1f6d01d621410d31c6fc00986f5eb687824e7b93d7a9db
+# recorded: 2026-11-02, model: openai_compatible_local/qwen2.5-0.5b-instruct, sha256: 74a4da8c9fdbcd15bd1f6d01d621410d31c6fc00986f5eb687824e7b93d7a9db
 interactions:
 - request:
     body: "{\"messages\":[{\"role\":\"system\",\"content\":\"Du bewertest deutsche
@@ -13,14 +13,14 @@ interactions:
       content-type:
       - application/json
     method: POST
-    uri: http://localhost:18080/v1/chat/completions
+    uri: http://localhost:8080/v1/chat/completions
   response:
     body:
       string: "{\"choices\":[{\"finish_reason\":\"stop\",\"index\":0,\"message\":{\"role\":\"assistant\",\"content\":\"```json\\n{\\n
-        \ \\\"reason\\\": \\\"K\xFCndigung\\\",\\n  \\\"score\\\": 2\\n}\\n```\"}}],\"created\":1793507443,\"model\":\"/models/qwen2.5-0.5b-instruct-q4_k_m.gguf\",\"system_fingerprint\":\"b12019-1052f7e1d\",\"object\":\"chat.completion\",\"usage\":{\"completion_tokens\":23,\"prompt_tokens\":115,\"total_tokens\":138,\"prompt_tokens_details\":{\"cached_tokens\":4}},\"id\":\"chatcmpl-iXJWxCBn8x1xcB8G2oTj7olRnKlk4BjV\",\"timings\":{\"cache_n\":4,\"prompt_n\":111,\"prompt_ms\":737.697,\"prompt_per_token_ms\":6.645918918918919,\"prompt_per_second\":150.46828169289017,\"predicted_n\":23,\"predicted_ms\":630.191,\"predicted_per_token_ms\":28.645045454545457,\"predicted_per_second\":34.91005107975201}}"
+        \ \\\"reason\\\": \\\"K\xFCndigung\\\",\\n  \\\"score\\\": 2\\n}\\n```\"}}],\"created\":1793619377,\"model\":\"/models/qwen2.5-0.5b-instruct-q4_k_m.gguf\",\"system_fingerprint\":\"b12019-1052f7e1d\",\"object\":\"chat.completion\",\"usage\":{\"completion_tokens\":23,\"prompt_tokens\":115,\"total_tokens\":138,\"prompt_tokens_details\":{\"cached_tokens\":4}},\"id\":\"chatcmpl-6b47O3oVzU8Biv3Oua7e72kTW36yRvuo\",\"timings\":{\"cache_n\":4,\"prompt_n\":111,\"prompt_ms\":695.069,\"prompt_per_token_ms\":6.261882882882882,\"prompt_per_second\":159.6963754677593,\"predicted_n\":23,\"predicted_ms\":387.444,\"predicted_per_token_ms\":17.61109090909091,\"predicted_per_second\":56.782399520963025}}"
     headers:
       content-length:
-      - '725'
+      - '724'
       content-type:
       - application/json; charset=utf-8
     status:

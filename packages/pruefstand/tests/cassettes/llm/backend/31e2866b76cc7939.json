@@ -1,5 +1,5 @@
 {
-  "recorded_at": "2026-11-01T04:30:45+00:00",
+  "recorded_at": "2026-11-02T11:36:18+00:00",
   "model_id": "openai_compatible_local/qwen2.5-0.5b-instruct",
   "model_version": null,
   "request": {
@@ -30,7 +30,7 @@
       "completion_tokens": 23
     },
     "cost_usd": 0.0,
-    "latency_ms": 584.1076650031027,
+    "latency_ms": 409.09239900000216,
     "cached": false,
     "provider": "openai_compatible_local",
     "fallback": false,
