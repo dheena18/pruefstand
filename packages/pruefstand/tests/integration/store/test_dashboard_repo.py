@@ -250,6 +250,9 @@ PAYLOAD = {
     "maintenance": "false",
     "drift_no_release_baseline": "true",
     "last_nightly_status": "skipped: preflight data root",
+    "last_nightly_at": "2026-11-01T22:04:00+00:00",
+    "tunnel_ok_false_since": "",
+    "ollama_gpu0_ok_false_since": "2026-11-02T20:00:00+00:00",
 }
 
 

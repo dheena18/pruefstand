@@ -85,6 +85,17 @@ def test_without_a_token_there_is_no_askpass(monkeypatch: pytest.MonkeyPatch) ->
     assert seen[0]["GIT_TERMINAL_PROMPT"] == "0"
 
 
+def test_no_other_secret_of_the_environment_reaches_git(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("PRUEFSTAND_GH_MODELS_TOKEN", SECRET)
+    monkeypatch.setenv("GITHUB_TOKEN", SECRET)
+    monkeypatch.setenv("SOME_PAT", "tok-" + "z" * 30)
+    with Git("SOME_PAT") as git:
+        env = git.environment()
+    assert SECRET not in "".join(env.values())
+    assert env["GIT_ASKPASS"]
+    assert "PATH" in env
+
+
 def test_user_and_system_git_config_are_not_read() -> None:
     with Git() as git:
         env = git.environment()

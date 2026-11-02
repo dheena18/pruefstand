@@ -24,6 +24,13 @@ case "$1" in
   *) printf '%s\\n' "$PRUEFSTAND_ASKPASS_TOKEN" ;;
 esac
 """
+_PASS = frozenset(
+    {
+        *("PATH", "HOME", "LANG", "LC_ALL", "TMPDIR", "SSL_CERT_FILE", "SSL_CERT_DIR"),
+        *("CURL_CA_BUNDLE", "HTTP_PROXY", "HTTPS_PROXY", "NO_PROXY", "ALL_PROXY"),
+        *("http_proxy", "https_proxy", "no_proxy", "all_proxy"),
+    }
+)
 _TOKEN_VAR = "PRUEFSTAND_ASKPASS_TOKEN"  # noqa: S105  (the NAME of a variable, not a secret)
 _IDENTITY = (
     "-c",
@@ -89,10 +96,8 @@ class Git:
     def __enter__(self) -> Self:
         self._dir = Path(tempfile.mkdtemp(prefix="pruefstand-git-"))
         self._dir.chmod(stat.S_IRWXU)
-        env = {k: v for k, v in os.environ.items() if not k.startswith("GIT_")}
+        env = {k: v for k, v in os.environ.items() if k in _PASS}  # no other secret reaches git
         token = os.environ.get(self._token_env, "") if self._token_env else ""
-        for name in ("GITHUB_TOKEN", "GH_TOKEN", self._token_env or ""):
-            env.pop(name, None)
         env.update(
             {
                 "GIT_TERMINAL_PROMPT": "0",

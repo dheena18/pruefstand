@@ -311,6 +311,8 @@ data root $PRUEFSTAND_DATA_ROOT/baselines/ (= /mnt/pruefstand/baselines, plain d
   <eval_fingerprint>/<ref>/run.json                            ref = main | nightly-b0..b2 | release-b0..b2 (current baseline; R12 N1.4, R13 D305 block-wise release anchor)
   <eval_fingerprint>/<ref>/results.parquet
   <eval_fingerprint>/<ref>/responses.jsonl.zst                 only in <ref>/, never in history/
+  <eval_fingerprint>/<ref>/scored.jsonl.zst                    only in <ref>/ (T6.1, D441): the lossless ScoredCase lines (full TestCase bodies:
+                                                               as sensitive as responses.jsonl.zst, never exported)
   <eval_fingerprint>/<ref>/manifest.json                       sha256 per file, checked on read (no signatures, ADR-0004)
   <eval_fingerprint>/history/<run_id>/                         run.json, results.parquet, manifest.json (last 20 kept)
 private repo pruefstand-gate, branch baselines (protected, no force-push; INDEX ONLY, X2.7):

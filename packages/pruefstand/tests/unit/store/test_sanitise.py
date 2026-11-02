@@ -161,6 +161,10 @@ def test_infra_error_is_reduced_to_its_kind(tmp_path: Path) -> None:
     assert "some-host" not in manifest.model_dump_json()
 
 
+def test_no_infra_error_stays_none(tmp_path: Path) -> None:
+    assert sanitise_run(planted_run(tmp_path), reg()).results.manifest.infra_error is None
+
+
 def test_the_manifest_hashes_are_dropped(tmp_path: Path) -> None:
     run = planted_run(tmp_path, artifact_sha256={"results.parquet": "a" * 64})
     assert sanitise_run(run, reg()).results.manifest.artifact_sha256 == {}
