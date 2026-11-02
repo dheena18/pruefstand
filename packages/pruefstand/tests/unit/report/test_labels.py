@@ -5,11 +5,11 @@ from pathlib import Path
 from typing import get_args
 
 import pytest
-from pruefstand.core.models.dashboard import LabelsDocument
-from pruefstand.report.labels import labels_document, metric_label, reason_label
 
 from pruefstand.core.config import KNOWN_METRICS
+from pruefstand.core.models.dashboard import LabelsDocument
 from pruefstand.core.models.gate import CAUSE_MESSAGES, CauseCode
+from pruefstand.report.labels import labels_document, metric_label, reason_label
 
 EN_METRICS = {
     "context_recall": "Context recall",

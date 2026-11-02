@@ -3,6 +3,9 @@
 import time
 
 import pytest
+from testsupport.report_builders import manifest
+
+from pruefstand.core.models.run import CostSummary
 from pruefstand.report.format import (
     fmt_delta,
     fmt_duration,
@@ -17,9 +20,6 @@ from pruefstand.report.format import (
     ref_label,
     safe_url,
 )
-from testsupport.report_builders import manifest
-
-from pruefstand.core.models.run import CostSummary
 
 ZWSP = "\u200b"
 

@@ -3,10 +3,10 @@
 import json
 from pathlib import Path
 
-from pruefstand.report.json_report import write_gate_json
 from testsupport.report_builders import decision, gate_report, no_baseline_report
 
 from pruefstand.core.models.gate import GateReport
+from pruefstand.report.json_report import write_gate_json
 
 
 def test_keys_sorted_indent_utf8_trailing_newline(tmp_path: Path) -> None:

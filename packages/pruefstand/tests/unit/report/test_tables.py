@@ -1,10 +1,10 @@
 """``assign_table`` / ``assign_block``: one table per SliceDecision (ui-spec §11.1, X5.4)."""
 
 import pytest
-from pruefstand.report.tables import Block, Table, assign_block, assign_table, reason_code
 from testsupport.report_builders import PASS, WARN, decision
 
 from pruefstand.core.enums import GateStatus
+from pruefstand.report.tables import Block, Table, assign_block, assign_table, reason_code
 
 REASONS = [
     "applicable_clusters<30",
