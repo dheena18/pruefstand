@@ -1,7 +1,5 @@
 """Row and item formatters of the PR comment (ui-spec §10.2, §12). Pure; no layout decisions."""
 
-import re
-
 from pruefstand.core.enums import GateStatus
 from pruefstand.core.models.gate import HardFailFinding, SliceDecision
 from pruefstand.report.format import (
@@ -24,8 +22,6 @@ STATUS_WORDS = {
     GateStatus.INSUFFICIENT_DATA: "INSUFFICIENT",
     GateStatus.UNSUPPORTED_CONFIG: "UNSUPPORTED",
 }
-_CANARY = re.compile(r"(?i)CANARY[-_ ]?[A-Za-z0-9*]{1,16}[-_ ][A-Za-z0-9*]{1,40}")
-CANARY_MASK = "CANARY-**-******"
 EVIDENCE_LIMIT = 120
 
 
@@ -129,14 +125,9 @@ def insufficient_item(d: SliceDecision) -> str:
     return f"{label_md(d.metric)} · {where}{count}"
 
 
-def mask_canaries(text: str) -> str:
-    """Mask anything that looks like a canary token (defence in depth; the gate masks first)."""
-    return _CANARY.sub(CANARY_MASK, text[:1000])
-
-
 def hard_fail_row(finding: HardFailFinding) -> str:
     """Return a hard-fail row: Rule | Case | Metric | Evidence (redacted)."""
     metric = md_escape(finding.metric)
     rule = metric if finding.rule == "hard_fail" else f"{metric} (unverifiable)"
-    evidence = md_code(mask_canaries(finding.evidence), limit=EVIDENCE_LIMIT)
+    evidence = md_code(finding.evidence, limit=EVIDENCE_LIMIT)
     return row(rule, md_escape(finding.case_id), metric, evidence)

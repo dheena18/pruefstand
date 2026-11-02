@@ -37,7 +37,7 @@ def test_helpers_mask_every_spelling(raw: str) -> None:
 def test_hard_fail_row_slice_value_and_case_id_are_masked(raw: str) -> None:
     finding = hard_fail().model_copy(update={"evidence": f"... {raw} ..."})
     row = decision(dimension="tags", value=raw, status="warn")  # type: ignore[arg-type]
-    report = gate_report(hard_fails=(finding,), decisions=(row,), top_failing_cases=(raw,))  # type: ignore[arg-type]
+    report = gate_report(hard_fails=(finding,), decisions=(row,), top_failing_cases=(raw,))
     assert not HEX.search(render(report))
 
 

@@ -7,6 +7,7 @@ linear in the input size (single passes, bounded character classes) and cap thei
 
 import math
 import re
+import unicodedata
 from urllib.parse import urlsplit
 
 from pruefstand.core.models.run import CostSummary, RunManifest
@@ -24,7 +25,12 @@ _HTML = {"<": "&lt;", ">": "&gt;", "&": "&amp;"}
 _HTML_RE = re.compile(r"[<>&]")
 _AUTOLINK = re.compile(r"(?i)(://|www\.)")
 _REF = re.compile(r"#(?=\d)")
-_URL_BAD = re.compile(r"[\s<>\"\\\x00-\x1f\x7f]")
+_GHREF = re.compile(r"(?i)(gh)(?=-\d)")
+_CANARY = re.compile(r"canary[a-z]{2}[0-9a-f]{6,}")
+_INVISIBLE = frozenset({"Cf", "Mn", "Me", "Cc"})
+CANARY_MASK = "CANARY-**-******"
+MAX_INPUT = 8000
+_URL_BAD = re.compile(r"[\s<>\"\\\x00-\x1f\x7f-\x9f\u200b-\u200f\u2028-\u202e\u2060-\u2069\ufeff]")
 
 
 def fmt_num(value: float | None) -> str:
@@ -86,9 +92,56 @@ def fmt_gpu(seconds: float) -> str:
     return f"~{round(seconds):,} GPU-s" if math.isfinite(seconds) and seconds > 0 else "~0 GPU-s"
 
 
+def _token_end(text: str, index: list[int], first_hex: int, end: int) -> int:
+    """Return where the hex run of a token ends: after six digits it stops at a white-space gap."""
+    for k in range(first_hex + 6, end):
+        if any(c.isspace() for c in text[index[k - 1] + 1 : index[k]]):
+            return k
+    return end
+
+
+def mask_canaries(text: str) -> str:
+    """Replace every canary token in ``text`` by ``CANARY-**-******``, whatever hides it.
+
+    The text is folded the way a detector does (NFKC, case folded, format and combining
+    characters dropped, only letters and digits kept) and searched for ``canary`` + two letters +
+    at least six hex digits with any separators between them. Each hit is cut out of the
+    *original* text (first to last character of the token). Input beyond 8 000 characters is
+    ignored. Linear in the input size.
+
+    Example:
+        >>> mask_canaries("x CAN\u200bARY-VN-7f3a9c y")
+        'x CANARY-**-****** y'
+    """
+    text = text[:MAX_INPUT]
+    chars: list[str] = []
+    index: list[int] = []
+    for i, ch in enumerate(text):
+        if unicodedata.category(ch) in _INVISIBLE:
+            continue
+        for folded in unicodedata.normalize("NFKC", ch).casefold():
+            if folded.isalnum():
+                chars.append(folded)
+                index.append(i)
+    out: list[str] = []
+    pos = 0
+    for match in _CANARY.finditer("".join(chars)):
+        last = _token_end(text, index, match.start() + len("canary") + 2, match.end())
+        start, end = index[match.start()], index[last - 1] + 1
+        out.append(text[pos:start])
+        out.append(CANARY_MASK)
+        pos = end
+    out.append(text[pos:])
+    return "".join(out)
+
+
 def _clean(text: str, limit: int) -> str:
-    """Drop control and bidi characters, fold white space to single spaces, cap the length."""
-    folded = _SPACE.sub(" ", _CONTROL.sub("", text[: limit * 4])).strip()
+    """Mask canaries, drop control and bidi characters, fold white space, cap the length.
+
+    Masking runs **first**, on the text as it came in, so removing invisible characters
+    afterwards cannot join the pieces of a token.
+    """
+    folded = _SPACE.sub(" ", _CONTROL.sub("", mask_canaries(text))).strip()
     return folded if len(folded) <= limit else folded[:limit].rstrip() + "…"
 
 
@@ -115,7 +168,7 @@ def md_escape(text: str, *, limit: int = MAX_TEXT) -> str:
     out = _HTML_RE.sub(lambda m: _HTML[m.group()], out)
     out = out.replace("@", "@" + ZWSP)
     out = _AUTOLINK.sub(lambda m: m.group()[:1] + ZWSP + m.group()[1:], out)
-    return _REF.sub("#" + ZWSP, out)
+    return _GHREF.sub(lambda m: m.group() + ZWSP, _REF.sub("#" + ZWSP, out))
 
 
 def md_code(text: str | None, *, limit: int = MAX_TEXT) -> str:
@@ -134,6 +187,7 @@ def md_code(text: str | None, *, limit: int = MAX_TEXT) -> str:
     )
     body = _AUTOLINK.sub(lambda m: m.group()[:1] + ZWSP + m.group()[1:], body)
     body = _REF.sub("#" + ZWSP, body.replace("@", "@" + ZWSP))
+    body = _GHREF.sub(lambda m: m.group() + ZWSP, body)
     return f"`{body}`" if body else DASH
 
 

@@ -6,7 +6,7 @@ from pruefstand.core.models.gate import CAUSE_MESSAGES
 from pruefstand.report import _rows as r
 from pruefstand.report import labels as lb
 from pruefstand.report._context import Builder
-from pruefstand.report.format import md_escape
+from pruefstand.report.format import fmt_num, md_escape
 from pruefstand.report.labels import ICON_INFO
 from pruefstand.report.tables import Block
 
@@ -26,7 +26,7 @@ def absolute_line(b: Builder) -> str | None:
 
 def informational_lines(b: Builder) -> list[str]:
     """Return the "Informational (does not block)" line and the judge-truncation line."""
-    rows = b.blocks[Block.I]
+    rows = [d for d in b.blocks[Block.I] if d.informational_reason is not None]
     plain = [d for d in rows if d.metric not in JUDGED_METRICS or b.tier1]
     items = [r.info_item(d) for d in plain]
     if not b.tier1:
@@ -66,6 +66,8 @@ def judged_line(b: Builder) -> str | None:
 def notable_line(b: Builder) -> str | None:
     """Return the notable-slice line (``notable == True`` rows only)."""
     items = [r.notable_item(d) for d in b.blocks[Block.N] if d.notable]
+    loud = [d for d in b.blocks[Block.I] if d.informational_reason is None and d.notable]
+    items += [f"{r.metric_with_slice(d)} {fmt_num(d.candidate_mean)}" for d in loud]
     return b.joined("Notable slice drops (informational):", items)
 
 

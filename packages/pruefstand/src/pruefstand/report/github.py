@@ -9,6 +9,7 @@ never logged, never part of an exception message and not shown by ``repr``.
 import re
 import time
 from typing import Any, Final, Literal, cast
+from urllib.parse import urlsplit
 
 import httpx
 
@@ -36,7 +37,7 @@ _BACKOFF_S: Final = (0.5, 1.0, 2.0)
 
 
 def _sleep(seconds: float) -> None:
-    time.sleep(seconds)
+    time.sleep(seconds)  # patched in tests
 
 
 class PublishError(PruefstandError):
@@ -72,16 +73,33 @@ def status_for(
     return "success", f"{status.name}: {summary}"
 
 
+def _check_api_url(api_url: str, enterprise_host: str | None) -> None:
+    """Pin the API host so the token can only be sent to GitHub (or the opted-in host)."""
+    parts = urlsplit(api_url)
+    allowed = {"api.github.com", (enterprise_host or "").lower()} - {""}
+    if (
+        parts.scheme != "https"
+        or parts.netloc.lower() != (parts.hostname or "")
+        or parts.hostname not in allowed
+        or (parts.query or parts.fragment)
+    ):
+        msg = "api_url must be https://api.github.com (or the explicit enterprise_host)"
+        raise ValueError(msg)
+
+
 class GitHubPublisher:
     """Edits the PR comment it owns and sets commit statuses.
 
     Args:
         token: Installation, ``GITHUB_TOKEN`` or fine-grained token. Never logged or echoed.
         repo: ``owner/name``.
-        api_url: API base, ``https://api.github.com`` by default.
-        bot_login: Login of the account the token acts as (an App's ``<slug>[bot]``). When
-            unset, ``GET /user`` decides, and a 403 there (installation tokens) means
-            ``github-actions[bot]``.
+        api_url: API base. Only ``https://api.github.com`` is accepted (no user info, no port),
+            or ``https://<enterprise_host>[/path]`` when ``enterprise_host`` names that host.
+        bot_login: Login of the account the token acts as. When unset, ``GET /user`` decides;
+            it answers 403 for a GitHub App installation token, and the login then falls back to
+            ``github-actions[bot]``. The executor (an App) must pass its own
+            ``bot_login="pruefstand-bot[bot]"``, otherwise its comment is never found again.
+        enterprise_host: Explicit opt-in for a GitHub Enterprise Server host name.
 
     Raises:
         ValueError: ``token``, ``repo`` or ``api_url`` is malformed.
@@ -94,6 +112,7 @@ class GitHubPublisher:
         api_url: str = "https://api.github.com",
         *,
         bot_login: str | None = None,
+        enterprise_host: str | None = None,
     ) -> None:
         if not _TOKEN.fullmatch(token):
             msg = "invalid token (empty, or contains white space or control characters)"
@@ -101,9 +120,7 @@ class GitHubPublisher:
         if not _REPO.fullmatch(repo) or ".." in repo:
             msg = "repo must be '<owner>/<name>'"
             raise ValueError(msg)
-        if not api_url.startswith("https://"):
-            msg = "api_url must start with https://"
-            raise ValueError(msg)
+        _check_api_url(api_url, enterprise_host)
         self._repo = repo
         self._login = bot_login
         self._client = httpx.Client(
@@ -121,27 +138,35 @@ class GitHubPublisher:
     def __repr__(self) -> str:
         return f"GitHubPublisher(repo={self._repo!r})"
 
-    def _request(self, method: str, path: str, **kwargs: Any) -> httpx.Response:  # noqa: ANN401
-        """Send a request; retry 5xx and transport errors up to ``RETRIES`` times."""
-        for attempt in range(RETRIES + 1):
+    def _request(
+        self,
+        method: str,
+        path: str,
+        *,
+        retry: bool = True,
+        **kwargs: Any,  # noqa: ANN401
+    ) -> httpx.Response:
+        """Send a request; retry 5xx and transport errors up to ``RETRIES`` times if ``retry``."""
+        last = RETRIES if retry else 0
+        for attempt in range(last + 1):
             try:
                 response = self._client.request(method, path, **kwargs)
             except httpx.TransportError as exc:
-                if attempt == RETRIES:
+                if attempt == last:
                     msg = f"GitHub API {method} {path}: {type(exc).__name__}"
                     raise PublishError(msg) from None
             else:
                 if response.status_code < 500:
                     return response
-                if attempt == RETRIES:
+                if attempt == last:
                     msg = f"GitHub API {method} {path}: HTTP {response.status_code}"
                     raise PublishError(msg)
             _sleep(_BACKOFF_S[min(attempt, len(_BACKOFF_S) - 1)])
         raise AssertionError  # pragma: no cover
 
-    def _ok(self, method: str, path: str, **kwargs: Any) -> Any:  # noqa: ANN401
+    def _ok(self, method: str, path: str, *, retry: bool = True, **kwargs: Any) -> Any:  # noqa: ANN401
         """Return the JSON body of a 2xx answer, or raise ``PublishError`` (status code only)."""
-        response = self._request(method, path, **kwargs)
+        response = self._request(method, path, retry=retry, **kwargs)
         if not response.is_success:
             msg = f"GitHub API {method} {path}: HTTP {response.status_code}"
             raise PublishError(msg)
@@ -173,6 +198,7 @@ class GitHubPublisher:
                     return int(item["id"])
             if len(items) < PAGE_SIZE:
                 return None
+        log.warning("comment_search_page_cap", pages=MAX_PAGES, pr=pr_number)
         return None
 
     def upsert_pr_comment(self, pr_number: int, body: str, marker: str) -> int:
@@ -206,7 +232,10 @@ class GitHubPublisher:
             )
         else:
             data = self._ok(
-                "POST", f"/repos/{self._repo}/issues/{pr_number}/comments", json={"body": body}
+                "POST",
+                f"/repos/{self._repo}/issues/{pr_number}/comments",
+                retry=False,  # a 5xx may hide a created comment; a retry would post it twice
+                json={"body": body},
             )
         return int(data["id"])
 
