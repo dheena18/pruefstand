@@ -6,17 +6,24 @@
 # (on the VM as `sudo -u pruefstand ssh ...`). Nothing is written on the cluster (the model disk is
 # nearly full, ADR-0019): no installs, no pulls, no server start or restart, no keep_alive change.
 # The probe is READ-ONLY except one OPT-IN step: with MEASURE_LOAD=1 `model-load` sends one empty
-# /api/generate that loads the generator (HTTP status, `error` field and /api/ps are checked, then the
-# model is unloaded again with keep_alive 0); it runs only when /api/ps lists NO model, and
-# only as an owner step under `pruefstand-lock` with MAINTENANCE set (nothing else may use the GPUs).
-# Default: SKIP. PROBE_CHECKS="id id" limits the run to those checks (tests).
+# /api/generate (keep_alive 5m) that loads the generator; it checks the HTTP status, an `error` field and
+# /api/ps. Once that request has been sent the model is ALWAYS unloaded again (keep_alive 0, HTTP status
+# and /api/ps checked); if that cannot be confirmed the check says "unload by hand". It runs only when
+# /api/ps lists NO model, and only as an owner step under `pruefstand-lock` with MAINTENANCE set (nothing
+# else may use the GPUs). Default: SKIP. PROBE_CHECKS="id id" limits the run to those checks (tests).
 # Every check prints `CHECK <id> <PASS|FAIL|WARN> <detail>` on one line and never aborts the script.
 # All code is inside functions and `main` runs with stdin from /dev/null, so no command can swallow
 # the rest of the piped script. Env: MODELS_DIR (default /data/dheena/Models), GEN_MODEL, OLLAMA_URL,
 # LOAD_TIMEOUT_S (default 900), PROBE_PROC_ROOT (default /proc, a test seam).
 # A non-interactive ssh has a minimal PATH, so the Ollama binary is taken from the process that serves
-# :11434 (fallback `command -v ollama`). Output shows it as `<ollama-bin>` and the home directory as
-# `<home>`, so saved evidence never contains the binary path or the account name.
+# :11434 (fallback `command -v ollama`); a pid counts only if we own it and its executable is a regular
+# executable file named `ollama`.
+# Confidentiality: every output line is filtered. Scrubbed: the binary path (`<ollama-bin>`), its install
+# prefix (`<ollama-prefix>`), $HOME, its resolved path and the passwd home directory (`<home>`), each only
+# on a path-segment boundary, and the login (`id -un`, $USER, $LOGNAME; case-insensitive) as a path segment
+# or before `@` (`<cluster-user>`). The last filter FAILS CLOSED: a line that still contains one of
+# these, or the login as a whole word, is replaced by `CHECK redact FAIL leak suppressed`. Other
+# user-specific text (host names, addresses) is not scrubbed; do not add such checks.
 set -euo pipefail
 
 MODELS_DIR="${MODELS_DIR:-/data/dheena/Models}"
@@ -24,16 +31,98 @@ GEN_MODEL="${GEN_MODEL:-qwen3.8:27b-q8_0}"
 OLLAMA_URL="${OLLAMA_URL:-http://127.0.0.1:11434}"
 PROC_ROOT="${PROBE_PROC_ROOT:-/proc}"
 OLLAMA_BIN=""
+SERVE_PID=""
+RP_N=()
+RP_R=()
+LOGINS=()
 
-redact() { # text -> text without the Ollama binary path and the home directory
-  local s="$1" real
-  if [ -n "$OLLAMA_BIN" ]; then s="${s//"$OLLAMA_BIN"/<ollama-bin>}"; fi
-  if [ -n "${HOME:-}" ] && [ "$HOME" != / ]; then
-    real="$(readlink -f "$HOME" 2>/dev/null || true)"
-    s="${s//"$HOME"/<home>}"
-    if [ -n "$real" ] && [ "$real" != / ]; then s="${s//"$real"/<home>}"; fi
+seg_replace() { # text needle replacement -> REPLY; replaces only where a path segment ends
+  local s="$1" n="$2" r="$3" out="" rest c
+  while [ -n "$n" ] && [[ "$s" == *"$n"* ]]; do
+    out+="${s%%"$n"*}"
+    rest="${s#*"$n"}"
+    c="${rest:0:1}"
+    if [[ -z "$c" || ! "$c" =~ [A-Za-z0-9._-] ]]; then out+="$r"; else out+="$n"; fi
+    s="$rest"
+  done
+  REPLY="$out$s"
+}
+
+login_pattern() { # login -> regex-escaped login
+  printf '%s' "$1" | sed 's/[][\.*^$/#|()+?{}]/\\&/g'
+}
+
+login_replace() { # text login -> REPLY; the login as a path segment or before `@`, any case
+  local t="$1" prev="" esc
+  esc="$(login_pattern "$2")"
+  while [ "$t" != "$prev" ]; do
+    prev="$t"
+    t="$(sed -E "s#/${esc}(/|[^A-Za-z0-9._/-]|\$)#/<cluster-user>\1#I; s#(^|[^A-Za-z0-9._-])${esc}@#\1<cluster-user>@#I" <<<"$t")"
+  done
+  REPLY="$t"
+}
+
+add_redact() { # path replacement; system directories are never redacted
+  local n="${1%/}"
+  case "$n" in "" | / | /usr | /usr/local | /opt | /bin | /usr/bin | /home) return 0 ;; esac
+  RP_N+=("$n")
+  RP_R+=("$2")
+}
+
+add_login() { # login; empty and duplicate values are ignored
+  local l
+  [ -n "$1" ] || return 0
+  for l in ${LOGINS[@]+"${LOGINS[@]}"}; do if [ "$l" = "$1" ]; then return 0; fi; done
+  LOGINS+=("$1")
+}
+
+init_redact() { # builds the scrub lists from the binary path, HOME, passwd and the login
+  local bin_dir h pw
+  if [ -n "$OLLAMA_BIN" ]; then
+    add_redact "$OLLAMA_BIN" "<ollama-bin>"
+    bin_dir="${OLLAMA_BIN%/*}"
+    if [ "${bin_dir##*/}" = bin ]; then add_redact "${bin_dir%/*}" "<ollama-prefix>"; else add_redact "$bin_dir" "<ollama-prefix>"; fi
   fi
-  printf '%s' "$s"
+  pw="$(getent passwd "$(id -un 2>/dev/null || true)" 2>/dev/null | cut -d: -f6 || true)"
+  for h in "${HOME:-}" "$pw"; do
+    [ -n "$h" ] || continue
+    add_redact "$h" "<home>"
+    add_redact "$(readlink -f "$h" 2>/dev/null || true)" "<home>"
+  done
+  add_login "$(id -un 2>/dev/null || true)"
+  add_login "${USER:-}"
+  add_login "${LOGNAME:-}"
+}
+
+redact() { # text -> text with the paths and the login scrubbed
+  local t="$1" i l
+  for ((i = 0; i < ${#RP_N[@]}; i++)); do
+    seg_replace "$t" "${RP_N[$i]}" "${RP_R[$i]}"
+    t="$REPLY"
+  done
+  for l in ${LOGINS[@]+"${LOGINS[@]}"}; do
+    login_replace "$t" "$l"
+    t="$REPLY"
+  done
+  printf '%s' "$t"
+}
+
+leaks() { # text -> 0 when the text still holds a scrubbed value or the login as a whole word
+  local l esc
+  [ "$(redact "$1")" = "$1" ] || return 0
+  for l in ${LOGINS[@]+"${LOGINS[@]}"}; do
+    esc="$(login_pattern "$l")"
+    if grep -qiE "(^|[^A-Za-z0-9._-])${esc}([^A-Za-z0-9._-]|\$)" <<<"$1"; then return 0; fi
+  done
+  return 1
+}
+
+final_filter() { # stdin -> stdout; fails closed per line
+  local line r
+  while IFS= read -r line || [ -n "$line" ]; do
+    r="$(redact "$line")"
+    if leaks "$r"; then echo "CHECK redact FAIL leak suppressed"; else printf '%s\n' "$r"; fi
+  done
 }
 
 emit() { # id status detail [max-length]
@@ -93,23 +182,34 @@ listening_pids() { # pids that listen on :11434, from ss, lsof or fuser (whichev
   if have fuser; then fuser 11434/tcp 2>/dev/null | tr -s ' ' '\n' | grep -E '^[0-9]+$' || true; fi
 }
 
-scan_serve_pids() { # own `ollama serve` processes found by scanning the proc tree
-  local d args
+scan_serve_pids() { # own processes whose argv is `.../ollama serve ...`, found in the proc tree
+  local d a0 a1
   for d in "$PROC_ROOT"/[0-9]*; do
     [ -O "$d/cmdline" ] || continue
-    args="$(tr '\0' ' ' <"$d/cmdline" 2>/dev/null || true)"
-    case "$args" in *ollama\ serve*) basename "$d" ;; esac
+    a0=""
+    a1=""
+    { IFS= read -r -d '' a0 && IFS= read -r -d '' a1; } <"$d/cmdline" 2>/dev/null || true
+    if [ "${a0##*/}" = ollama ] && [ "$a1" = serve ]; then basename "$d"; fi
   done
 }
 
-find_ollama_bin() { # path of the serving process's executable, else `command -v ollama`
+find_ollama_bin() { # sets OLLAMA_BIN and SERVE_PID: serving process first, then `command -v ollama`
   local pid exe
+  OLLAMA_BIN=""
+  SERVE_PID=""
   for pid in $(listening_pids) $(scan_serve_pids); do
+    [ -O "$PROC_ROOT/$pid" ] || continue
     exe="$(readlink -f "$PROC_ROOT/$pid/exe" 2>/dev/null || true)"
     exe="${exe% (deleted)}"
-    if [ -n "$exe" ] && [ -x "$exe" ]; then printf '%s\n' "$exe"; return 0; fi
+    if [ -f "$exe" ] && [ -x "$exe" ] && [ "${exe##*/}" = ollama ]; then
+      OLLAMA_BIN="$exe"
+      SERVE_PID="$pid"
+      return 0
+    fi
   done
-  command -v ollama 2>/dev/null
+  exe="$(command -v ollama 2>/dev/null || true)"
+  if [ -f "$exe" ] && [ -x "$exe" ]; then OLLAMA_BIN="$exe"; return 0; fi
+  return 1
 }
 
 check_ollama() {
@@ -146,9 +246,10 @@ check_ollama_list() {
 
 check_ollama_store() {
   local pid env_dump want var got diffs="" shown="" dir
-  pid="$(pgrep -u "$(id -u)" -f 'ollama serve' | head -1 || true)"
+  pid="$SERVE_PID"
+  if [ -z "$pid" ]; then pid="$(scan_serve_pids | head -1 || true)"; fi
   if [ -z "$pid" ]; then emit ollama-store WARN "no own 'ollama serve' process found (system service or not running)"; return 0; fi
-  env_dump="$(tr '\0' '\n' <"/proc/$pid/environ" 2>/dev/null | grep -E '^(OLLAMA_|CUDA_VISIBLE_DEVICES)' || true)"
+  env_dump="$(tr '\0' '\n' <"$PROC_ROOT/$pid/environ" 2>/dev/null | grep -E '^(OLLAMA_|CUDA_VISIBLE_DEVICES)' || true)"
   for want in "OLLAMA_MODELS=$MODELS_DIR" OLLAMA_MAX_LOADED_MODELS=3 OLLAMA_NUM_PARALLEL=4 OLLAMA_KEEP_ALIVE=24h \
     OLLAMA_KV_CACHE_TYPE=q8_0 CUDA_VISIBLE_DEVICES=0,1; do
     var="${want%%=*}"
@@ -231,13 +332,66 @@ check_models_space() {
   else emit models-space PASS "$msg"; fi
 }
 
+generate_body() { # keep_alive JSON value
+  printf '{"model":"%s","prompt":"","keep_alive":%s,"stream":false}' "$GEN_MODEL" "$1"
+}
+
+post_generate() { # keep_alive-json timeout-seconds -> RESP_RC RESP_CODE RESP_BODY
+  local resp
+  RESP_RC=0
+  resp="$(curl -sS -m "$2" -w $'\n%{http_code}' "$OLLAMA_URL/api/generate" -d "$(generate_body "$1")" 2>&1)" || RESP_RC=$?
+  RESP_CODE="${resp##*$'\n'}"
+  RESP_BODY="${resp%$'\n'*}"
+  if [ "$RESP_RC" -ne 0 ]; then RESP_BODY="${resp%$'\n'000}"; fi
+}
+
+unload_model() { # 0 only when the unload was accepted and /api/ps no longer lists the model
+  local i ps
+  post_generate 0 60
+  if [ "$RESP_RC" -ne 0 ] || ! [[ "$RESP_CODE" =~ ^2[0-9][0-9]$ ]] || grep -q '"error"' <<<"$RESP_BODY"; then return 1; fi
+  for i in 1 2 3 4 5; do
+    ps="$(curl -fsS -m 10 "$OLLAMA_URL/api/ps" 2>/dev/null || true)"
+    grep -q '"models"' <<<"$ps" || return 1
+    grep -qF "\"$GEN_MODEL\"" <<<"$ps" || return 0
+    sleep 1
+  done
+  return 1
+}
+
+load_verdict() { # RESP_* of the load request -> VERDICT_OK (0/1) and VERDICT_MSG
+  local ps_out err
+  VERDICT_OK=0
+  VERDICT_MSG=""
+  err="$(sed -n 's/.*"error" *: *"\([^"]*\)".*/\1/p' <<<"$RESP_BODY" | head -1)"
+  if [ "$RESP_RC" -ne 0 ]; then
+    VERDICT_MSG="load request failed (curl exit $RESP_RC): ${RESP_BODY//$'\n'/ }"
+  elif ! [[ "$RESP_CODE" =~ ^2[0-9][0-9]$ ]]; then
+    VERDICT_MSG="load request answered HTTP ${RESP_CODE:-?}: ${err:-$RESP_BODY}"
+  elif grep -q '"error"' <<<"$RESP_BODY"; then
+    VERDICT_MSG="load request returned an error: ${err:-$RESP_BODY}"
+  else
+    ps_out="$(curl -fsS -m 10 "$OLLAMA_URL/api/ps" 2>/dev/null || true)"
+    if ! grep -q '"models"' <<<"$ps_out"; then
+      VERDICT_MSG="load request answered HTTP $RESP_CODE but /api/ps could not be read to confirm the load"
+    elif ! grep -qF "\"$GEN_MODEL\"" <<<"$ps_out"; then
+      VERDICT_MSG="load request answered HTTP $RESP_CODE but $GEN_MODEL is not listed as loaded by /api/ps"
+    else
+      VERDICT_OK=1
+    fi
+  fi
+}
+
 check_model_load() {
   if [ "${MEASURE_LOAD:-0}" != 1 ]; then
     emit model-load PASS "SKIP: cold load not measured; opt-in MEASURE_LOAD=1, an owner step under pruefstand-lock and MAINTENANCE"
     return 0
   fi
   have curl || { emit model-load WARN "curl missing, not measuring"; return 0; }
-  local ps_out t0 t1 secs resp rc=0 code body err note=""
+  if ! [[ "$GEN_MODEL" =~ ^[A-Za-z0-9._:/@-]+$ ]]; then
+    emit model-load FAIL "GEN_MODEL has characters outside [A-Za-z0-9._:/@-], not measuring"
+    return 0
+  fi
+  local ps_out t0 t1 secs msg note=""
   ps_out="$(curl -fsS -m 10 "$OLLAMA_URL/api/ps" 2>/dev/null || true)"
   if ! grep -q '"models"' <<<"$ps_out"; then
     emit model-load WARN "cannot read a valid /api/ps answer, not measuring"
@@ -248,37 +402,15 @@ check_model_load() {
     return 0
   fi
   t0="$(date +%s%N)"
-  resp="$(curl -sS -m "${LOAD_TIMEOUT_S:-900}" -w $'\n%{http_code}' "$OLLAMA_URL/api/generate" \
-    -d "{\"model\":\"$GEN_MODEL\",\"prompt\":\"\",\"keep_alive\":\"5m\",\"stream\":false}" 2>&1)" || rc=$?
+  post_generate '"5m"' "${LOAD_TIMEOUT_S:-900}"
   t1="$(date +%s%N)"
-  if [ "$rc" -ne 0 ]; then
-    emit model-load FAIL "load request failed (curl exit $rc): ${resp//$'\n'/ }" 300
-    return 0
-  fi
-  code="${resp##*$'\n'}"
-  body="${resp%$'\n'*}"
-  err="$(sed -n 's/.*"error" *: *"\([^"]*\)".*/\1/p' <<<"$body" | head -1)"
-  if ! [[ "$code" =~ ^2[0-9][0-9]$ ]]; then
-    emit model-load FAIL "load request answered HTTP ${code:-?}: ${err:-$body}" 300
-    return 0
-  fi
-  if grep -q '"error"' <<<"$body"; then
-    emit model-load FAIL "load request returned an error: ${err:-$body}" 300
-    return 0
-  fi
-  ps_out="$(curl -fsS -m 10 "$OLLAMA_URL/api/ps" 2>/dev/null || true)"
-  if ! grep -qF "\"$GEN_MODEL\"" <<<"$ps_out"; then
-    emit model-load FAIL "load request answered HTTP $code but $GEN_MODEL is not listed as loaded by /api/ps" 300
-    return 0
-  fi
-  curl -sS -m 60 -o /dev/null "$OLLAMA_URL/api/generate" \
-    -d "{\"model\":\"$GEN_MODEL\",\"prompt\":\"\",\"keep_alive\":0,\"stream\":false}" 2>/dev/null || note="; unloading afterwards failed, unload by hand"
+  load_verdict
+  local verdict_ok="$VERDICT_OK" verdict_msg="${VERDICT_MSG:0:250}"
+  unload_model || note="; unload not confirmed, unload by hand (keep_alive 0 on $GEN_MODEL)"
+  if [ "$verdict_ok" -ne 1 ]; then emit model-load FAIL "$verdict_msg$note" 500; return 0; fi
   secs=$(((t1 - t0) / 1000000000))
-  if [ "$secs" -gt 300 ] || [ -n "$note" ]; then
-    emit model-load WARN "cold load $((secs / 60)).$(((secs % 60) * 10 / 60)) min ($secs s) from $MODELS_DIR$note"
-  else
-    emit model-load PASS "cold load $((secs / 60)).$(((secs % 60) * 10 / 60)) min ($secs s) from $MODELS_DIR"
-  fi
+  msg="cold load $((secs / 60)).$(((secs % 60) * 10 / 60)) min ($secs s) from $MODELS_DIR$note"
+  if [ "$secs" -gt 300 ] || [ -n "$note" ]; then emit model-load WARN "$msg" 500; else emit model-load PASS "$msg" 500; fi
 }
 
 check_local_disk() {
@@ -316,9 +448,7 @@ run_check() { "$1" || emit "${1#check_}" WARN "check function failed unexpectedl
 
 main() {
   OLLAMA_LIST=""
-  OLLAMA_BIN="$(find_ollama_bin || true)"
-  redact "# probe $(date -u +%FT%TZ) MODELS_DIR=$MODELS_DIR GEN_MODEL=$GEN_MODEL"
-  echo
+  echo "# probe $(date -u +%FT%TZ) MODELS_DIR=$MODELS_DIR GEN_MODEL=$GEN_MODEL"
   local c name wanted="${PROBE_CHECKS:-}"
   for c in check_os check_gpu check_gpu_procs check_ollama check_ollama_list check_ollama_store \
     check_ollama_provenance check_port check_logind check_tmux check_models_space check_model_load \
@@ -329,4 +459,6 @@ main() {
   done
 }
 
-main </dev/null
+find_ollama_bin || true
+init_redact
+main </dev/null | final_filter

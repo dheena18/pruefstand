@@ -110,7 +110,7 @@ def test_unreadable_ps_after_the_load_still_sends_the_unload(
     assert out.startswith("CHECK model-load FAIL")
     assert "/api/ps" in out
     assert "POST keep_alive=0" in h.seen
-    assert "unload by hand" in out
+    assert not h.loaded
 
 
 def test_unload_answered_500_is_not_reported_as_pass(
