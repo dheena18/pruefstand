@@ -35,7 +35,7 @@ SPLIT = [
     "CANARY\uffa0VN-7f3a9c",
     "CAN\u1160ARY-VN-7f3a9c",
 ]
-TOKEN = "CANARY-VN-7f3a9c"
+FIRST = "CANARY-VN-7f3a9c"
 SECOND = "CANARY-KM-0d1e2f"
 HEX = re.compile(r"7f.?3a9c|3a9c|7f3a|0d1e2f|0d1e", re.IGNORECASE)
 
@@ -79,14 +79,14 @@ def test_masking_is_linear() -> None:
 
 @pytest.mark.parametrize("joiner", [" ", ", ", "\n", "", "12", "\u200b", " und "])
 def test_adjacent_tokens_are_all_masked(joiner: str) -> None:
-    text = f"Leak: {TOKEN}{joiner}{SECOND}"
+    text = f"Leak: {FIRST}{joiner}{SECOND}"
     for out in (md_code(text), md_escape(text)):
         assert not HEX.search(out), out
         assert out.count("CANARY-") >= 2
 
 
 def test_adjacent_tokens_in_the_rendered_comment() -> None:
-    finding = hard_fail().model_copy(update={"evidence": f"{TOKEN} {SECOND}{TOKEN}"})
+    finding = hard_fail().model_copy(update={"evidence": f"{FIRST} {SECOND}{FIRST}"})
     assert not HEX.search(render(gate_report(hard_fails=(finding,))))
 
 

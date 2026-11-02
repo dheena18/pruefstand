@@ -57,7 +57,8 @@ def assign_table(decision: SliceDecision, source: Source) -> Table:
         ``GATED`` for ``gated`` rows without a reason (incl. ``INSUFFICIENT_DATA``),
         ``INFORMATIONAL`` for any row with a reason, ``NOTABLE`` for a ``notable_slices`` row
         matching neither. A row that matches none is a gate bug and is returned as
-        ``INFORMATIONAL`` (its reason reads ``–``, see ``reason_code``), never dropped.
+        ``INFORMATIONAL`` (its reason reads ``–``, see ``reason_code``), never dropped
+        here; the PR comment omits such rows from its Informational line (D387).
 
     Example:
         >>> from pruefstand.core.enums import GateStatus

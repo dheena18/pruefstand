@@ -11,6 +11,7 @@ import unicodedata
 from urllib.parse import urlsplit
 
 from pruefstand.core.models.run import CostSummary, RunManifest
+from pruefstand.metrics.deterministic.folding import CONFUSABLES, IGNORABLE
 
 DASH = "–"
 ZWSP = "\u200b"
@@ -26,7 +27,7 @@ _HTML_RE = re.compile(r"[<>&]")
 _AUTOLINK = re.compile(r"(?i)(://|www\.)")
 _REF = re.compile(r"#(?=\d)")
 _GHREF = re.compile(r"(?i)(gh)(?=-\d)")
-_CANARY = re.compile(r"canary[a-z]{2}[0-9a-f]{6,}")
+_CANARY = re.compile(r"canary[a-z]{2}(?:(?!canary)[0-9a-f]){6,}")
 _INVISIBLE = frozenset({"Cf", "Mn", "Me", "Cc"})
 CANARY_MASK = "CANARY-**-******"
 MAX_INPUT = 8000
@@ -103,11 +104,11 @@ def _token_end(text: str, index: list[int], first_hex: int, end: int) -> int:
 def mask_canaries(text: str) -> str:
     """Replace every canary token in ``text`` by ``CANARY-**-******``, whatever hides it.
 
-    The text is folded the way a detector does (NFKC, case folded, format and combining
-    characters dropped, only letters and digits kept) and searched for ``canary`` + two letters +
-    at least six hex digits with any separators between them. Each hit is cut out of the
-    *original* text (first to last character of the token). Input beyond 8 000 characters is
-    ignored. Linear in the input size.
+    The text is folded the way the detector does (NFKD, ignorable and combining characters
+    dropped, case folded, look-alike letters mapped, only letters and digits kept) and searched for
+    ``canary`` + two letters + at least six hex digits with any separators between them. Each
+    hit is cut out of the *original* text (first to last character of the token). Input beyond
+    8 000 characters is ignored. Linear in the input size.
 
     Example:
         >>> mask_canaries("x CAN\u200bARY-VN-7f3a9c y")
@@ -119,10 +120,13 @@ def mask_canaries(text: str) -> str:
     for i, ch in enumerate(text):
         if unicodedata.category(ch) in _INVISIBLE:
             continue
-        for folded in unicodedata.normalize("NFKC", ch).casefold():
-            if folded.isalnum():
-                chars.append(folded)
-                index.append(i)
+        for part in unicodedata.normalize("NFKD", ch):
+            if IGNORABLE.match(part) or unicodedata.category(part) == "Mn":
+                continue
+            for folded in part.casefold().translate(CONFUSABLES):
+                if folded.isalnum():
+                    chars.append(folded)
+                    index.append(i)
     out: list[str] = []
     pos = 0
     for match in _CANARY.finditer("".join(chars)):

@@ -1199,7 +1199,10 @@ def write_gate_json(report: GateReport, path: Path) -> None
 def build_evidence_record(report: GateReport, base: RunManifest | None, cand: RunManifest, reviewer: str | None) -> EvidenceRecord
 class GitHubPublisher:
     def __init__(self, token: str, repo: str, api_url: str = "https://api.github.com",
-                 *, bot_login: str | None = None) -> None   # only edits comments authored by bot_login / the token's user
+                 *, bot_login: str | None = None, enterprise_host: str | None = None) -> None
+    # only edits comments authored by bot_login / the token's user; api_url must be https://api.github.com
+    # (no user info, port, query) or https://<enterprise_host> (explicit opt-in, T1.9 D386); the executor passes
+    # bot_login="pruefstand-bot[bot]" (T6.2a)
     def upsert_pr_comment(self, pr_number: int, body: str, marker: str) -> int       # edits own comment if present
     def set_check(self, sha: str, status: GateStatus, summary: str, *, no_baseline: bool = False,
                   infra_error: bool = False) -> None
