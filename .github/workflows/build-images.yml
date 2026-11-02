@@ -191,8 +191,9 @@ jobs:
           "$RUNNER_TEMP/lint/bin/pip" install --quiet --no-deps "pyyaml==6.0.3"
           "$RUNNER_TEMP/lint/bin/python" scripts/check_compose.py
 
-  build:
-    # Aggregator = the required check "build-images / build" (T0.2 pattern).
+  images-gate:
+    name: images-gate
+    # Aggregator = the required check `images-gate` (T0.2 pattern).
     needs: [changes, hadolint, build-image, trivy, compose-config, compose-lint]
     if: always()
     runs-on: ubuntu-24.04

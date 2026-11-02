@@ -1,7 +1,7 @@
 name: docs
 
 # Documentation site and the single GitHub Pages writer (docs/engineering/ci-cd.md section 1, T0.4, D243).
-# Required check: `docs / build` (the aggregate job). Build jobs run on pull_request and push to main;
+# Required check: `docs-gate` (the aggregate job). Build jobs run on pull_request and push to main;
 # `deploy` runs only on workflow_run of a successful `deploy` workflow (N5.2). No workflow_dispatch.
 on:
   pull_request:
@@ -115,9 +115,9 @@ jobs:
           make diagrams
           test -s site/architecture/generated/module-deps.svg
 
-  build:
-    name: build
-    # The required check `docs / build`: success only when every build job succeeded. `pydeps` runs on
+  docs-gate:
+    name: docs-gate
+    # The required check `docs-gate`: success only when every build job succeeded. `pydeps` runs on
     # main only and is not part of the aggregate; on workflow_run the build jobs are skipped, so this is too.
     if: github.event_name != 'workflow_run' && always()
     needs: [docs-build, mermaid-render, lychee]
