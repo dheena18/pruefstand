@@ -180,3 +180,34 @@ def test_status_writes_nothing_on_the_cluster(world: ClusterWorld) -> None:
     before = sorted(p for p in Path(world.root).rglob("*") if p.is_file())
     world.script("status.sh")
     assert sorted(p for p in Path(world.root).rglob("*") if p.is_file()) == before
+
+
+def test_the_start_script_of_record_is_reported_ok_when_it_exists(world: ClusterWorld) -> None:
+    _healthy(world)
+    row = _csv(world.script("status.sh"))["start-script"]
+    assert row[0] == "OK"
+    assert str(world.home) not in row[1]
+
+
+def test_a_missing_start_script_is_a_warning(world: ClusterWorld) -> None:
+    _healthy(world)
+    (world.home / "start-ollama.sh").unlink()
+    res = world.script("status.sh")
+    row = _csv(res)["start-script"]
+    assert res.rc == 0
+    assert row[0] == "WARN"
+    assert "~/start-ollama.sh" in row[1]
+    assert str(world.home) not in row[1]
+
+
+def test_a_start_script_that_is_not_executable_is_a_warning(world: ClusterWorld) -> None:
+    _healthy(world)
+    (world.home / "start-ollama.sh").chmod(0o644)
+    assert _csv(world.script("status.sh"))["start-script"][0] == "WARN"
+
+
+def test_a_dangling_link_as_start_script_is_a_warning(world: ClusterWorld) -> None:
+    _healthy(world)
+    (world.home / "start-ollama.sh").unlink()
+    (world.home / "start-ollama.sh").symlink_to(world.home / "nowhere.sh")
+    assert _csv(world.script("status.sh"))["start-script"][0] == "WARN"

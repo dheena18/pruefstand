@@ -342,7 +342,7 @@ cluster scripts (infra/cluster/, copied over SSH to /data/dheena/pruefstand-bin/
                                    cluster: takes the binary from the process that serves :11434, tag regex
                                    ^[a-z0-9._:/-]+$, `rm` of the generator tag -> exit 64, `pull` with less than
                                    MODELS_MIN_FREE_GB free on the models disk -> exit 17 (D413)
-                                   status.sh also prints `bin-integrity` (sha256sum -c SHA256SUMS) and `bin-sums`
+                                   status.sh also prints a `start-script` row (OK, or WARN when the start script of record `~/start-ollama.sh` is missing, a dangling link or not executable; health.sh passes it through as a WARN, exit 0), `bin-integrity` (sha256sum -c SHA256SUMS) and `bin-sums`
                                    (sha256 of SHA256SUMS), what health.sh exit 14 compares (D415)
 
 VM scripts (infra/gpu/; never take the lock; exit 2 unless PRUEFSTAND_LOCK_HELD=1; D151)

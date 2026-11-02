@@ -55,9 +55,13 @@ Run on the VM `pruefstand-exec` as the owner login user from a checkout of the m
 1. **Install the wrapper** (sudo): `make gpu-install-wrapper` (runs `git fetch`, exports `origin/main` with `git archive` and
    runs the installer from that copy, so an edited working tree can never borrow sudo; it also writes the allow-list
    `/usr/local/lib/pruefstand-cluster.allow` from `models.yaml`, checks the sudoers file with `visudo -c`, refuses to overwrite a
-   file it did not create unless `INSTALL_ARGS=--replace`, and prints the commit it installed). Check: `sudo -n -u pruefstand /usr/local/bin/pruefstand-cluster status` prints a CSV.
+   file it did not create unless `INSTALL_ARGS=--replace`, and prints the commit it installed). (Re-running it after a change of the wrapper or the allow-list needs `INSTALL_ARGS=--replace`.)
 2. **Deploy the cluster scripts** (needs sudo; no lock): `make gpu-deploy-bin` (also from the exported `origin/main`), then
-   `make gpu-deploy-bin DEPLOY_ARGS=--check` (exit 0 = deployed set equals this checkout).
+   `make gpu-deploy-bin DEPLOY_ARGS=--check` (exit 0 = deployed set equals this checkout). Only now the check
+   `sudo -n -u pruefstand /usr/local/bin/pruefstand-cluster status` prints a CSV; before the deploy it fails with
+   "status.sh: No such file or directory".
+   **The start script of record must exist on the cluster** as `~/start-ollama.sh` (a link is fine) and set every value of
+   `cluster.env`; `status.sh` and `health.sh` show a WARN row `start-script` while it is missing.
 3. **S2b [GPU][HUMAN] pull the ADR-0019 set** (each pull is refused with exit 17 if the disk is too full):
    `sudo -n -u pruefstand /usr/local/bin/pruefstand-cluster status | grep disk-models` (before), then
    `make gpu-pull ID=ollama/bge-m3` and `make gpu-pull ID=ollama/gemma3:12b`, then the status line again (after).

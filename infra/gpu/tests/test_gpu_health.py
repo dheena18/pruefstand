@@ -192,3 +192,30 @@ def test_the_csv_never_contains_a_real_path_or_the_tunnel_host(gpu: GpuWorld) ->
     _healthy(gpu)
     res = gpu.script("health.sh")
     assert not re.search(r"/home/|/data/dheena/Models", res.out)
+
+
+def test_models_reported_with_latest_pass_the_digest_and_placement_checks(gpu: GpuWorld) -> None:
+    """bge-m3 is listed as bge-m3:latest by /api/ps and in status.sh (first real run)."""
+    _healthy(gpu)
+    assert '"name": "bge-m3:latest"' in gpu.ps_file.read_text()
+    res = gpu.script("health.sh")
+    assert res.rc == 0, res.out
+    rows = _csv(res)
+    assert rows["resident:bge-m3"][0] == "OK"
+    assert rows["placement:bge-m3"] == ("OK", "gpu=0")
+
+
+def test_another_tag_of_the_same_model_is_not_the_catalogue_model(gpu: GpuWorld) -> None:
+    other = {**ps_model("bge-m3"), "name": "bge-m3:other", "model": "bge-m3:other"}
+    gpu.set_ps([ps_model("qwen3.8:27b-q8_0"), other, ps_model("gemma3:12b")])
+    res = gpu.script("health.sh")
+    assert res.rc == 11
+    assert _csv(res)["resident:bge-m3"][0] == "FAIL"
+    assert _csv(res)["extra:bge-m3:other"][0] == "WARN"
+
+
+def test_a_missing_start_script_is_a_warning_row_and_does_not_fail(gpu: GpuWorld) -> None:
+    gpu.ssh(status_csv(sums=gpu.expected_sums(), extra=["start-script,WARN,missing"]))
+    res = gpu.script("health.sh")
+    assert res.rc == 0
+    assert _csv(res)["start-script"][0] == "WARN"
