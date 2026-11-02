@@ -48,3 +48,23 @@ def test_unchanged(text: str) -> None:
 
 def test_metadata() -> None:
     assert (P.name, P.uses_llm) == ("numbers", False)
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "zwischen 1.000 und 5.000 €",
+        "1.000-2.000 €",
+        "zwischen 2,5 und 3,5 %",
+        "1.000 € und 1.000 Mitarbeiter",
+        "Abs. 2,3 und 13,7 %",
+        "13,375 %",
+        "§622",
+        "1.1.1.2025",
+    ],
+)
+def test_half_converted_text_is_left_unchanged(text: str) -> None:
+    """If any number would stay in German format, the whole text stays (no mixed readings)."""
+    result = P.apply(text, RNG)
+    assert not result.changed
+    assert result.text == text

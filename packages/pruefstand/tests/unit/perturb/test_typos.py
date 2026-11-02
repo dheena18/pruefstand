@@ -103,3 +103,53 @@ def test_overlong_letter_run_is_not_a_word() -> None:
     result = P.apply(text, np.random.default_rng(0))
     assert not result.changed
     assert result.text == text
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "Siehe https://www.gesetze-im-internet.de/bgb",
+        "Schreiben Sie an kontakt@beispielfirma.de",
+        "Siehe www.beispielfirma.de",
+        "Siehe gesetze-im-internet.de",
+        "Das Token CANARY-XX-abcdef erscheint",
+        "Das Token canary_token-0123abcdef erscheint",
+    ],
+)
+def test_urls_emails_and_canaries_are_never_edited(text: str) -> None:
+    for seed in range(40):
+        assert not P.apply(text, np.random.default_rng(seed)).changed
+
+
+def test_words_next_to_a_url_are_still_eligible() -> None:
+    text = "Kündigungsfrist siehe https://www.gesetze-im-internet.de/bgb"
+    out = {P.apply(text, np.random.default_rng(s)).text for s in range(30)}
+    assert all(o.endswith("https://www.gesetze-im-internet.de/bgb") for o in out)
+    assert all(o != text for o in out)
+
+
+def test_every_eligible_word_gets_picked() -> None:
+    text = "Kündigungsfrist Probezeit Arbeitnehmer Vergütung"
+    hit = set()
+    for seed in range(120):
+        out = P.apply(text, np.random.default_rng(seed)).text.split(" ")
+        hit |= {i for i, (a, b) in enumerate(zip(text.split(" "), out, strict=True)) if a != b}
+    assert hit == {0, 1, 2, 3}
+
+
+def test_first_letter_is_never_edited() -> None:
+    text = "Kündigungsfrist Probezeit Arbeitnehmer Vergütung"
+    for seed in range(200):
+        out = P.apply(text, np.random.default_rng(seed)).text.split(" ")
+        assert [w[0] for w in out] == [w[0] for w in text.split(" ")]
+
+
+def test_all_three_edit_kinds_occur() -> None:
+    kinds = {P.apply(QUESTION, np.random.default_rng(s)).notes.split(":")[0] for s in range(60)}
+    assert kinds == {"deletion", "transposition", "substitution"}
+
+
+def test_written_out_law_name_in_lowercase_is_skipped() -> None:
+    for text in ("gewerbeordnung", "Gewerbeordnung", "Kündigungsschutzgesetz"):
+        for seed in range(30):
+            assert not P.apply(text, np.random.default_rng(seed)).changed

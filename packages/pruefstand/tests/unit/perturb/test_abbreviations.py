@@ -47,3 +47,23 @@ def test_unchanged(text: str) -> None:
 
 def test_metadata() -> None:
     assert (P.name, P.uses_llm) == ("abbreviations", False)
+
+
+@pytest.mark.parametrize(
+    ("text", "expected"),
+    [
+        ("i.V.m.§ 1", "in Verbindung mit § 1"),
+        ("Abs.2", "Absatz 2"),
+        ("ggf.(siehe oben)", "gegebenenfalls (siehe oben)"),
+        ("bzw. Abs.", "beziehungsweise Absatz"),
+        ("Das gilt ggf.", "Das gilt gegebenenfalls"),
+        ("z. B.,", "zum Beispiel,"),
+    ],
+)
+def test_spacing_after_expansion(text: str, expected: str) -> None:
+    assert P.apply(text, RNG).text == expected
+
+
+def test_capitalised_z_b_is_not_expanded() -> None:
+    """Known limit (D394): only the lower-case spelling is expanded."""
+    assert not P.apply("Z. B. Azubis", RNG).changed

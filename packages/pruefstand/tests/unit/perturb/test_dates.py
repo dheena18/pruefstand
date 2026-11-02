@@ -45,3 +45,27 @@ def test_unchanged(text: str) -> None:
 
 def test_metadata() -> None:
     assert (P.name, P.uses_llm) == ("dates", False)
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "Az. 03.10.2026",
+        "§ 03.10.2026",
+        "Frist 03.10.2026-15 Tage",
+        "1.1.0001",
+        "Am 01.01.1899",
+        "Am 01.01.2101",
+        "Nr03.10.2026",
+        "A1.1.2025",
+        "x1.1.2025",
+    ],
+)
+def test_reference_like_and_out_of_range_dates_are_unchanged(text: str) -> None:
+    result = P.apply(text, RNG)
+    assert not result.changed
+    assert result.text == text
+
+
+def test_year_range_bounds_are_inclusive() -> None:
+    assert P.apply("1.1.1900 und 31.12.2100", RNG).text == "1. Januar 1900 und 31. Dezember 2100"

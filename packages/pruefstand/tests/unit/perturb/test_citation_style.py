@@ -78,3 +78,21 @@ def test_genitive_phrases_start_with_an_article() -> None:
 
 def test_metadata() -> None:
     assert (P.name, P.uses_llm) == ("citation_style", False)
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "Ist das DSGVO-konform?",
+        "Eine BGB-Gesellschaft nach § 705 BGB-Gesellschaft",
+        "Art. 6 DSGVO-VO",
+    ],
+)
+def test_law_followed_by_hyphen_is_unchanged(text: str) -> None:
+    result = P.apply(text, RNG)
+    assert not result.changed
+    assert result.text == text
+
+
+def test_cyberresilienz_phrase() -> None:
+    assert genitive_phrase("CRA") == "der Cyberresilienz-Verordnung"
