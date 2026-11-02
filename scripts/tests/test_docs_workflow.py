@@ -45,7 +45,7 @@ def test_name_and_jobs() -> None:
         "pydeps",
         "site",
         "deploy",
-        "build",
+        "docs-gate",
     }
     assert DOC["permissions"] == {}
 
@@ -209,13 +209,13 @@ def test_site_job_uploads_the_pages_artifact() -> None:
 
 
 def test_aggregate_needs_every_build_job_to_succeed() -> None:
-    build = JOBS["build"]
+    build = JOBS["docs-gate"]
     assert build["if"] == "github.event_name != 'workflow_run' && always()"
     assert set(build["needs"]) == {"docs-build", "mermaid-render", "lychee"}
     script = str(build["steps"][0]["run"])
     assert "jq -e" in script
     assert '.value.result == "success"' in script
-    assert "skipped" not in script  # no build job may be skipped on the paths where `build` runs
+    assert "skipped" not in script  # no build job may be skipped where docs-gate runs
 
 
 def test_build_jobs_skip_on_workflow_run_and_pydeps_runs_on_main_only() -> None:
