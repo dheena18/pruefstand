@@ -127,8 +127,8 @@ def test_passwd_home_is_scrubbed(rig: Rig) -> None:
 def test_uppercase_login_is_scrubbed_whatever_its_case(rig: Rig) -> None:
     models = rig.tmp / "data" / "loginx" / "Models"
     out = rig.run("models-space", MODELS_DIR=str(models))
-    assert "loginx" not in out.lower().replace("<cluster-user>", "")
-    assert "/<cluster-user>/Models" in out
+    assert "loginx" not in out.lower()
+    assert "<models-dir>" in out
 
 
 def test_short_login_does_not_mangle_other_words(tmp_path: Path) -> None:
@@ -136,7 +136,8 @@ def test_short_login_does_not_mangle_other_words(tmp_path: Path) -> None:
     rig.home = tmp_path / "home" / "ab"
     rig.home.mkdir(parents=True)
     models = tmp_path / "home" / "abc" / "label" / "ab" / "m"
-    out = rig.run("models-space", MODELS_DIR=str(models))
+    rig.serve(4242, rig.ollama(tmp_path / "opt" / "x" / "ollama"))
+    out = rig.run("ollama", MODELS_DIR="/srv/none", FAKE_VERSION_EXTRA=f"at {models}")
     assert "home/abc/label/<cluster-user>/m" in out
     assert "<home>c" not in out
 
@@ -215,7 +216,8 @@ LONGER = [
 @pytest.mark.parametrize("models", LONGER, ids=[f"case{i}" for i in range(len(LONGER))])
 def test_login_inside_a_longer_name_is_suppressed(tmp_path: Path, models: str) -> None:
     rig = Rig(tmp_path, login="exuser")
-    out = rig.run("models-space", MODELS_DIR=models)
+    rig.serve(4242, rig.ollama(tmp_path / "opt" / "x" / "ollama"))
+    out = rig.run("ollama", MODELS_DIR="/srv/none", FAKE_VERSION_EXTRA=f"at {models}")
     assert "exuser" not in out.lower()
     assert "CHECK redact FAIL leak suppressed" in out
 
@@ -228,8 +230,63 @@ def test_stderr_of_the_binary_is_filtered_too(tmp_path: Path) -> None:
     assert "CHECK redact FAIL leak suppressed" in out
 
 
-def test_published_model_directory_stays_visible(tmp_path: Path) -> None:
+def test_default_style_model_directory_is_replaced(tmp_path: Path) -> None:
     rig = Rig(tmp_path, login="exuser")
     out = rig.run("models-space", MODELS_DIR="/data/exuser/Models")
-    assert "/data/<cluster-user>/Models" in out
+    assert "/data/exuser/Models" not in out
+    assert "<models-dir>" in out
     assert "leak suppressed" not in out
+
+
+def test_custom_model_directory_is_replaced(tmp_path: Path) -> None:
+    rig = Rig(tmp_path, login="exuser")
+    models = tmp_path / "store" / "m"
+    models.mkdir(parents=True)
+    out = rig.run("models-space", MODELS_DIR=str(models))
+    assert str(models) not in out
+    assert "free on <models-dir> (" in line(out, "models-space")
+
+
+def test_header_line_shows_the_placeholder(tmp_path: Path) -> None:
+    rig = Rig(tmp_path, login="exuser")
+    out = rig.run("gpu", MODELS_DIR="/data/exuser/Models")
+    header = out.splitlines()[0]
+    assert header.startswith("# probe ")
+    assert "MODELS_DIR=<models-dir> " in header
+    assert "exuser" not in out
+
+
+def test_path_under_the_model_directory_stays_readable(rig: Rig) -> None:
+    rig.serve(4242, rig.ollama(rig.tmp / "opt" / "x" / "ollama"))
+    extra = "blobs /data/exuser/Models/blobs"
+    out = rig.run("ollama", MODELS_DIR="/data/exuser/Models", FAKE_VERSION_EXTRA=extra)
+    assert "<models-dir>/blobs" in out
+    assert "/data/exuser" not in out
+
+
+def test_model_directory_prefix_name_is_not_cut_inside_a_segment(rig: Rig) -> None:
+    rig.serve(4242, rig.ollama(rig.tmp / "opt" / "x" / "ollama"))
+    extra = "x /srv/mods2/blobs /srv/mods"
+    out = rig.run("ollama", MODELS_DIR="/srv/mods", FAKE_VERSION_EXTRA=extra)
+    assert "/srv/mods2/blobs" in out
+    assert "<models-dir>" in out
+
+
+def test_ollama_store_line_shows_the_placeholder(tmp_path: Path) -> None:
+    rig = Rig(tmp_path, login="exuser")
+    rig.serve(4242, rig.ollama(tmp_path / "opt" / "x" / "ollama"))
+    env = b"OLLAMA_MODELS=/data/exuser/Models\0OLLAMA_NUM_PARALLEL=4\0"
+    (rig.proc / "4242" / "environ").write_bytes(env)
+    out = rig.run("ollama-store", MODELS_DIR="/data/exuser/Models")
+    assert "/data/exuser/Models" not in out
+    assert "OLLAMA_MODELS=<models-dir>" in line(out, "ollama-store")
+    assert "leak suppressed" not in out
+
+
+def test_login_in_another_form_is_still_suppressed_with_a_model_directory(tmp_path: Path) -> None:
+    rig = Rig(tmp_path, login="exuser")
+    rig.serve(4242, rig.ollama(tmp_path / "opt" / "x" / "ollama"))
+    extra = "by /srv/exuser-cfg/x"
+    out = rig.run("ollama", MODELS_DIR="/data/exuser/Models", FAKE_VERSION_EXTRA=extra)
+    assert "exuser" not in out
+    assert "CHECK redact FAIL leak suppressed" in out
