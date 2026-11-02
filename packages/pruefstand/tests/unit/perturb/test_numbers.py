@@ -68,3 +68,17 @@ def test_half_converted_text_is_left_unchanged(text: str) -> None:
     result = P.apply(text, RNG)
     assert not result.changed
     assert result.text == text
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "zwischen ca.1.000 € und 5.000,50 €",
+        "ca.2,5 % bis 3,5 %",
+        "§1,5 % und 2,5 %",
+    ],
+)
+def test_glued_german_numbers_count_as_leftovers(text: str) -> None:
+    result = P.apply(text, RNG)
+    assert not result.changed
+    assert result.text == text

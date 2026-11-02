@@ -67,3 +67,13 @@ def test_spacing_after_expansion(text: str, expected: str) -> None:
 def test_capitalised_z_b_is_not_expanded() -> None:
     """Known limit (D394): only the lower-case spelling is expanded."""
     assert not P.apply("Z. B. Azubis", RNG).changed
+
+
+@pytest.mark.parametrize(
+    ("text", "expected"),
+    [("Abs.Nr.", "Absatz Nummer"), ("bzw.ggf.", "beziehungsweise gegebenenfalls")],
+)
+def test_glued_abbreviations_are_fully_expanded_and_stable(text: str, expected: str) -> None:
+    once = P.apply(text, RNG).text
+    assert once == expected
+    assert not P.apply(once, RNG).changed

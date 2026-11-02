@@ -153,3 +153,12 @@ def test_written_out_law_name_in_lowercase_is_skipped() -> None:
     for text in ("gewerbeordnung", "Gewerbeordnung", "Kündigungsschutzgesetz"):
         for seed in range(30):
             assert not P.apply(text, np.random.default_rng(seed)).changed
+
+
+@pytest.mark.parametrize(
+    "text",
+    ["Datei ftp://server/datei", "Token canary-vn-abcdef da", "Die DSGVO-Novelle ist da"],
+)
+def test_each_protection_rule_on_its_own(text: str) -> None:
+    for seed in range(40):
+        assert not P.apply(text, np.random.default_rng(seed)).changed
