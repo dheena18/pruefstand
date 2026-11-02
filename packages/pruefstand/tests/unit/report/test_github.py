@@ -7,11 +7,11 @@ from typing import Any, Literal
 import httpx
 import pytest
 import respx
-from pruefstand.report.github import GitHubPublisher
 
 from pruefstand.core.enums import GateStatus
 from pruefstand.core.errors import PruefstandError
 from pruefstand.report import github
+from pruefstand.report.github import GitHubPublisher
 
 API = "https://api.github.com"
 REPO = "dheena18/pruefstand"
@@ -250,9 +250,12 @@ def test_set_check_maps_the_table_through_post_status(
     pub = _pub()
     spy: list[tuple[Any, ...]] = []
     original = pub.post_status
-    monkeypatch.setattr(
-        pub, "post_status", lambda *a, **k: (spy.append((a, k)), original(*a, **k))[1]
-    )
+
+    def spied(*args: Any, **kwargs: Any) -> None:
+        spy.append((args, kwargs))
+        original(*args, **kwargs)
+
+    monkeypatch.setattr(pub, "post_status", spied)
     pub.set_check(SHA, status, "all good", no_baseline=no_baseline)
     assert spy == [((SHA, state, description), {})]
     assert _sent(route) == {

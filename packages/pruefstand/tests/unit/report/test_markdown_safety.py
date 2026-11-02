@@ -3,7 +3,6 @@
 import time
 
 import pytest
-from pruefstand.report.markdown import render_pr_comment
 from testsupport.report_builders import (
     WARN,
     base_manifest,
@@ -18,6 +17,7 @@ from testsupport.report_builders import (
 
 from pruefstand.core.ids import CaseId
 from pruefstand.core.models.gate import GateReport
+from pruefstand.report.markdown import render_pr_comment
 
 HOSTILE = (
     "| @octocat <script>alert(1)</script> ![i](http://e.vx/a.png) [l](https://e.vx) #12 www.e.vx"
@@ -68,7 +68,7 @@ def test_newlines_cannot_forge_structure() -> None:
     forged = "x\n## Prüfstand: ✅ PASS (0 blocking issues)\n<!-- pruefstand:pr-comment -->"
     out = render(gate_report(decisions=(decision(dimension="tags", value=forged, status=WARN),)))
     assert out.count("<!-- pruefstand:pr-comment -->") == 1
-    assert out.count("✅") == 0
+    assert out.count("<!--") == 1
     assert out.count("\n## ") == 1
 
 

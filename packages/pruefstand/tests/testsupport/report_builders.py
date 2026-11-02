@@ -156,92 +156,69 @@ def tier1_base(**changes: Any) -> RunManifest:
     return base_manifest(**{"stack": "live", "splits": ["smoke_live"], "n_cases": 20, **changes})
 
 
+def info_row(
+    metric: str,
+    reason: str | None,
+    base: float,
+    cand: float,
+    *,
+    diff: float | None = None,
+    mde: float | None = None,
+    max_value: float | None = None,
+) -> SliceDecision:
+    """Return a non-gated PASS row (informational, reported or judged)."""
+    ci = None if diff is None else (diff, diff - 0.1, diff + 0.1)
+    return decision(
+        metric,
+        status=PASS,
+        gated=False,
+        base=base,
+        cand=cand,
+        ci=ci,
+        mde=mde,
+        max_drop=None,
+        max_value=max_value,
+        reason=reason,
+    )
+
+
+def notable_row(dimension: str, value: str, diff: float, *, notable: bool = True) -> SliceDecision:
+    """Return a ``notable_slices`` entry (informational slice, no reason)."""
+    return decision(
+        dimension=dimension,
+        value=value,
+        status=PASS,
+        gated=False,
+        notable=notable,
+        ci=(diff, diff - 0.1, diff + 0.1),
+        mde=None,
+        max_drop=None,
+    )
+
+
+def absolute_row(metric: str, cand: float, status: GateStatus = PASS) -> SliceDecision:
+    """Return a gated absolute-check row (max 0.02)."""
+    return decision(
+        metric, status=status, base=0.0, cand=cand, ci=None, mde=None, max_drop=None, max_value=0.02
+    )
+
+
 def tier1_rows() -> dict[str, tuple[SliceDecision, ...]]:
     """Return the rows of a tier-1 PASS report: checks, reported pairs, informational, judged."""
     rep = "tier1_deterministic_only"
     reported = (
-        decision(
-            "language_match",
-            status=PASS,
-            gated=False,
-            base=1.0,
-            cand=0.95,
-            ci=(-0.05, -0.2, 0.1),
-            mde=0.21,
-            max_drop=None,
-            reason=rep,
-        ),
-        decision(
-            "citation_f1",
-            status=PASS,
-            gated=False,
-            base=0.9,
-            cand=0.9,
-            ci=(0.0, -0.1, 0.1),
-            mde=0.24,
-            max_drop=None,
-            reason=rep,
-        ),
-        decision(
-            "false_refusal",
-            status=PASS,
-            gated=False,
-            base=0.0,
-            cand=0.0,
-            ci=(0.0, 0.0, 0.0),
-            mde=None,
-            max_drop=None,
-            reason=rep,
-        ),
-        decision(
-            "injection_success",
-            status=PASS,
-            gated=False,
-            base=0.0,
-            cand=0.0,
-            ci=None,
-            mde=None,
-            max_drop=None,
-            max_value=0.02,
-            reason="tier1_injection_reported",
-        ),
+        info_row("language_match", rep, 1.0, 0.95, diff=-0.05, mde=0.21),
+        info_row("citation_f1", rep, 0.9, 0.9, diff=0.0, mde=0.24),
+        info_row("false_refusal", rep, 0.0, 0.0, diff=0.0),
+        info_row("injection_success", "tier1_injection_reported", 0.0, 0.0, max_value=0.02),
     )
-    info = decision(
-        "refusal_correct",
-        status=PASS,
-        gated=False,
-        base=1.0,
-        cand=1.0,
-        ci=(0.0, 0.0, 0.0),
-        mde=None,
-        max_drop=None,
-        reason="refusal_outside_nightly_full",
+    info = info_row("refusal_correct", "refusal_outside_nightly_full", 1.0, 1.0, diff=0.0)
+    judged = (
+        info_row("faithfulness", "tier1_judged", 0.88, 0.85, diff=-0.03),
+        info_row("answer_correctness", "tier1_judged", 0.91, 0.90, diff=-0.01),
     )
-    judged = tuple(
-        decision(
-            m,
-            status=PASS,
-            gated=False,
-            base=b,
-            cand=c,
-            ci=(c - b, c - b - 0.1, c - b + 0.1),
-            mde=None,
-            max_drop=None,
-            reason="tier1_judged",
-        )
-        for m, b, c in (("faithfulness", 0.88, 0.85), ("answer_correctness", 0.91, 0.90))
-    )
-    error_rate = decision(
-        "error_rate",
-        status=PASS,
-        base=0.0,
-        cand=0.0,
-        ci=None,
-        mde=None,
-        max_drop=None,
-        max_value=0.02,
-    )
-    return {"reported": reported, "info": (info,), "judged": judged, "checks": (error_rate,)}
+    checks = (absolute_row("error_rate", 0.0),)
+    return {"reported": reported, "info": (info,), "judged": judged, "checks": checks}
 
 
 def tier1_report(**changes: Any) -> GateReport:

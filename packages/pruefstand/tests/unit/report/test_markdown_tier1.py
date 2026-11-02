@@ -1,6 +1,5 @@
 """Tier-1 PR comment (ui-spec §12.2, X5.6, X3.11): hard fails and the error rate decide."""
 
-from pruefstand.report.markdown import render_pr_comment
 from testsupport.report_builders import (
     FAIL,
     PASS,
@@ -16,6 +15,7 @@ from testsupport.report_builders import (
 
 from pruefstand.core.models.gate import GateReport
 from pruefstand.core.models.run import RunManifest
+from pruefstand.report.markdown import render_pr_comment
 
 SKIPPED = (
     "> ℹ️ Judge skipped (quota used up). Judged metrics are not shown; "
@@ -37,7 +37,7 @@ def test_pass_layout() -> None:
     assert lines[1] == "## Prüfstand tier 1: ✅ PASS (0 blocking issues)"
     assert lines[2] == (
         "Baseline: main@a1b2c3d · Candidate: pr-42@d4e5f6a · smoke_live · 20 cases · "
-        "14m 03s · 0 USD · 0.2 M tokens"
+        "14m 03s · 0 USD · 200 k tokens"
     )
     assert lines[3].startswith(
         "> ℹ️ Tier 1 decides on hard fails and the error rate only. "

@@ -1,7 +1,6 @@
 """Snapshots (syrupy) of the S5 scenarios; layout and copy per ui-spec §12."""
 
 import pytest
-from pruefstand.report.markdown import render_pr_comment
 from syrupy.assertion import SnapshotAssertion
 from testsupport.report_builders import (
     FAIL,
@@ -9,12 +8,15 @@ from testsupport.report_builders import (
     PASS,
     WARN,
     Scenario,
+    absolute_row,
     base_manifest,
     decision,
     gate_report,
     hard_fail,
+    info_row,
     manifest,
     no_baseline_report,
+    notable_row,
     tier1_base,
     tier1_manifest,
     tier1_report,
@@ -22,20 +24,11 @@ from testsupport.report_builders import (
 
 from pruefstand.core.ids import CaseId
 from pruefstand.core.models.gate import SliceDecision
+from pruefstand.report.markdown import render_pr_comment
 
 
 def _info(metric: str, reason: str, base: float, cand: float) -> SliceDecision:
-    return decision(
-        metric,
-        status=PASS,
-        gated=False,
-        base=base,
-        cand=cand,
-        ci=(cand - base, cand - base - 0.1, cand - base + 0.1),
-        mde=None,
-        max_drop=None,
-        reason=reason,
-    )
+    return info_row(metric, reason, base, cand, diff=cand - base)
 
 
 def _pass() -> Scenario:
@@ -71,44 +64,16 @@ def _fail() -> Scenario:
             ci=(-0.07, -0.11, -0.03),
             mde=0.10,
         ),
-    )
-    absolute = decision(
-        "injection_success",
-        status=WARN,
-        base=0.0,
-        cand=0.03,
-        ci=None,
-        mde=None,
-        max_drop=None,
-        max_value=0.02,
+        decision(dimension="tenant", value="stadtwerke_sued", status=INSUFFICIENT, n_clusters=22),
     )
     notable = (
-        decision(
-            dimension="perturbation",
-            value="compound_split",
-            status=PASS,
-            gated=False,
-            notable=True,
-            ci=(-0.18, -0.3, -0.05),
-            mde=None,
-            max_drop=None,
-        ),
-        decision(
-            dimension="category",
-            value="cross_lingual",
-            status=PASS,
-            gated=False,
-            notable=True,
-            ci=(-0.09, -0.2, 0.0),
-            mde=None,
-            max_drop=None,
-        ),
+        notable_row("perturbation", "compound_split", -0.18),
+        notable_row("category", "cross_lingual", -0.09),
         _info("answer_correctness", "judge_drift", 0.80, 0.78),
     )
-    thin = decision(dimension="tenant", value="stadtwerke_sued", status=INSUFFICIENT, n_clusters=22)
     report = gate_report(
-        decisions=(*rows, thin),
-        absolute_checks=(absolute,),
+        decisions=rows,
+        absolute_checks=(absolute_row("injection_success", 0.03, WARN),),
         notable_slices=notable,
         likely_cause="retrieval",
         not_applicable_counts={"answer_correctness": 12},
