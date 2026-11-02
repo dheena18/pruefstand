@@ -2,7 +2,7 @@ import json
 from pathlib import Path
 
 import respx
-from contract.adapter_contract import load_example
+from contract.adapter_contract import load_openapi_example
 from testsupport.run_builders import make_cases
 from testsupport.runner_support import (
     SpyPool,
@@ -23,7 +23,7 @@ from pruefstand.store.artifacts import ArtifactStore
 async def test_budget_exceeded_stops_the_run_and_keeps_finished_cases(
     router: respx.MockRouter, adapter: HttpTargetAdapter
 ) -> None:
-    router.post("/v1/query").respond(200, json=load_example("query_ok.json"))
+    router.post("/v1/query").respond(200, json=load_openapi_example("query_ok.json"))
     budget = Budget(max_usd=0.045, max_tokens=None)
 
     async def charge(task: JudgeTask) -> None:
@@ -52,7 +52,7 @@ async def test_budget_exceeded_stops_the_run_and_keeps_finished_cases(
 async def test_budget_exceeded_from_a_judged_metric_is_not_swallowed(
     router: respx.MockRouter, adapter: HttpTargetAdapter
 ) -> None:
-    router.post("/v1/query").respond(200, json=load_example("query_ok.json"))
+    router.post("/v1/query").respond(200, json=load_openapi_example("query_ok.json"))
 
     async def explode(task: JudgeTask) -> None:
         msg = "token budget exceeded"
@@ -70,7 +70,7 @@ async def test_budget_exceeded_from_a_judged_metric_is_not_swallowed(
 async def test_mark_aborted_rewrites_only_run_json(
     router: respx.MockRouter, adapter: HttpTargetAdapter, tmp_path: Path
 ) -> None:
-    router.post("/v1/query").respond(200, json=load_example("query_ok.json"))
+    router.post("/v1/query").respond(200, json=load_openapi_example("query_ok.json"))
     results = await run_cases(make_runner(adapter), make_cases(3))
     assert results.manifest.complete is True
     store = ArtifactStore(tmp_path)

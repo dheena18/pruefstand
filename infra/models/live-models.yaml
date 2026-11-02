@@ -1,0 +1,29 @@
+# Pinned CPU models of the tier-1 `live` profile (T1.13 S7, decisions D374-D376).
+# `scripts/models/fetch.py --manifest infra/models/live-models.yaml` downloads the generator GGUF to
+# ~/.cache/pruefstand/models and verifies its SHA-256. The embedding model is served by the TEI container
+# (compose service `embed`, same revision), which downloads it on first start; its weights hash is pinned here
+# and checked by the integration fixture. Weights are never committed. Verified 2026-11-01 against the
+# Hugging Face model cards (license field).
+generator_family: qwen
+models:
+  # Emergency fallback of the prompt (Qwen2.5-0.5B): the 1.5B and 1.7B candidates fail the p95 <= 15 s criterion
+  # on the 4-thread CPU (scripts/models/candidates/live-candidates.yaml, measurements in decisions.md D375).
+  - id: qwen2.5-0.5b-instruct-q4_k_m
+    repo: Qwen/Qwen2.5-0.5B-Instruct-GGUF
+    revision: 9217f5db79a29953eb74d5343926648285ec7e67
+    file: qwen2.5-0.5b-instruct-q4_k_m.gguf
+    url: https://huggingface.co/Qwen/Qwen2.5-0.5B-Instruct-GGUF/resolve/9217f5db79a29953eb74d5343926648285ec7e67/qwen2.5-0.5b-instruct-q4_k_m.gguf
+    sha256: 74a4da8c9fdbcd15bd1f6d01d621410d31c6fc00986f5eb687824e7b93d7a9db
+    size_bytes: 491400032
+    license: Apache-2.0
+embeddings:
+  - id: multilingual-e5-small
+    repo: intfloat/multilingual-e5-small
+    revision: 614241f622f53c4eeff9890bdc4f31cfecc418b3
+    weights_file: onnx/model.onnx
+    weights_sha256: ca456c06b3a9505ddfd9131408916dd79290368331e7d76bb621f1cba6bc8665
+    license: MIT
+    query_prefix: "query: "
+    doc_prefix: "passage: "
+    max_input_tokens: 512
+    dim: 384

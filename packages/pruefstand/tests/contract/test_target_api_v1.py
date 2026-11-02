@@ -15,6 +15,7 @@ from contract.adapter_contract import (
     check_adapter_contract,
     load_example,
     load_openapi,
+    load_openapi_example,
 )
 from jsonschema import Draft202012Validator
 from pydantic import BaseModel
@@ -37,7 +38,7 @@ EXAMPLE_COMPONENT = {
     "query_refused.json": "QueryResponse",
     "query_no_chunks.json": "QueryResponse",
     "query_chunks_no_tenant.json": "QueryResponse",
-    "query_other_tenant.json": "QueryResponse",
+    "query_other_tenant.json": "QueryResponse",  # T1.13: recorded from tenant_filter_post_topk
     "retrieve_ok.json": "RetrieveResponse",
     "info.json": "InfoResponse",
     "health.json": "HealthResponse",
@@ -97,8 +98,12 @@ def test_openapi_examples_equal_the_example_files() -> None:
         "InfoResponse": "info.json",
         "HealthResponse": "health.json",
     }
+    meta = load_example("_meta.json")
     for component, name in first_examples.items():
-        assert schemas[component]["examples"][0] == load_example(name), name
+        if meta[name]["source"] == "openapi-example":
+            assert schemas[component]["examples"][0] == load_example(name), name
+        else:  # T1.13: examples/ holds a recording; the hand-written copy keeps the comparison
+            assert schemas[component]["examples"][0] == load_openapi_example(name), name
 
 
 def test_openapi_has_no_secret_in_it() -> None:
