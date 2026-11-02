@@ -87,7 +87,7 @@ PHASE 3 — Review and merge (in the wave's merge order)
    (`gh api repos/dheena18/pruefstand/commits/<head sha>/statuses` and `…/check-runs`), confirm that
    `pruefstand/gate` was created by `pruefstand-bot[bot]` and that every required check run comes from its
    expected workflow file (`ci.yml` → `ci / check`, `security.yml` → `security / scan`, `ui.yml` → `ui / check`,
-   `docs.yml` → `docs / build`, `build-images.yml` → `build-images / build`, `live-e2e.yml` →
+   `docs.yml` → `docs-gate`, `build-images.yml` → `images-gate`, `live-e2e.yml` →
    `live-e2e / gate`, `action-selftest.yml` → `action-selftest / selftest`); a green check from any other
    workflow is a stop-and-report. This task's own test-matrix rows are `covered` (rows of other owners may
    stay `planned`, which never blocks a merge; P4.1). Then show me the PR summary with the source check and
