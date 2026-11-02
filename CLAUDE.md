@@ -23,6 +23,11 @@ work around it.
 8. On the VM, never read, write or delete anything under `/var/lib/pruefstand/**` or `/home/pruefstand/**` (the
    executor's lock, state, key and secrets; R11 D213). GPU work goes through `pruefstand-lock <cmd>`; never edit
    or remove `/var/lib/pruefstand/MAINTENANCE` by hand unless your prompt is a model-swap task that says so (ADR-0019).
+   **Exception (D451, owner decision 2026-11-02): the lead agent may create and remove that one file, and remove or swap
+   catalogue models, under the conditions in `docs/ops/lead-handoff.md` section 6** (only models listed in
+   `infra/gpu/models.yaml`, only through the wrapper / `make gpu-pull` / `gpu-rm`, under `pruefstand-lock`, only while no
+   gate or nightly runs, always removing `MAINTENANCE` again, every change logged in `docs/engineering/gpu-cluster.md` §8).
+   Task agents never do this; nothing else under `/var/lib/pruefstand/**` changes.
 9. GitHub from the VM (R12 N4.4, D257): `gh`/git on the VM authenticate with the owner's **fine-grained token limited
    to the public repo** (contents + pull requests + workflows write; Workflows is required to push `.github/workflows/**`, D284; no administration, no access to `pruefstand-gate` or
    `pruefstand-dashboard-data`), never `gh auth login --web`. What this token can do is exactly (R13 P1.3, D289):
