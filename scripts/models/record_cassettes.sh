@@ -108,3 +108,7 @@ unset LIVE_LLM_GGUF  # the compose default is the pinned live generator
 make --no-print-directory stack-run PROFILES="core live dev" \
   CMD="bash scripts/models/record_cassettes.sh --rag-demo-inner"
 git --no-pager diff --stat -- apps/rag-demo/tests/cassettes packages/pruefstand/tests/contract/examples || true
+
+# T1.10: third stage, the CLI target cassettes (good rag-demo + two bug instances; make cassettes-target).
+make --no-print-directory cassettes-target
+git --no-pager diff --stat -- packages/pruefstand/tests/cassettes/target || true
