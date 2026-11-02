@@ -1,0 +1,8 @@
+{
+  "answer": "Dazu liegen mir in den verfügbaren Dokumenten keine Informationen vor.",
+  "citations": [],
+  "chunks": [],
+  "refused": true,
+  "model": "qwen3-1.7b-q4_k_m",
+  "usage": {"prompt_tokens": 180, "completion_tokens": 14}
+}

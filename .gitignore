@@ -37,3 +37,6 @@ _pages/
 
 # T1.6: mutmut working copy
 mutants/
+
+# T1.13: the slice corpus is the only committed corpus
+!corpus/slice_v1/

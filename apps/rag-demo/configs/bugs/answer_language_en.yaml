@@ -1,0 +1,29 @@
+# BUG CONFIG answer_language_en: rag.yaml with exactly one switch changed.
+# Tier-1 CPU profile of the reference RAG app (round-8 W1.2, D95): top_k 4, chunks cut to 256 tokens in
+# the prompt, max_tokens 256, no reranker, Qwen3 thinking off. Every bug switch is at its correct value;
+# configs/bugs/*.yaml differ from this file in exactly one line. The model pins live in
+# infra/models/live-models.yaml (a unit test keeps both in step).
+generator:
+  model: qwen2.5-0.5b-instruct-q4_k_m
+  family: qwen
+  enable_thinking: false
+  api_key_env: PRUEFSTAND_CANDIDATE_API_KEY
+  temperature: 0.0
+  seed: 0
+embed:
+  model: intfloat/multilingual-e5-small
+  query_prefix: "query: "
+  doc_prefix: "passage: "
+  max_input_tokens: 512
+  dim: 384
+  api_key_env: PRUEFSTAND_CANDIDATE_API_KEY
+top_k: 4
+chunk_prompt_tokens: 256
+max_tokens: 256
+reranker: "off"
+tenant_filter: inside
+shared_public_merge: filtered
+prompt_file: prompts/answer_de_v1.txt
+answer_language: en
+injection_guard: "on"
+system_prompt_guard: "on"

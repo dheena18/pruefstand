@@ -4,7 +4,19 @@ version = "0.0.1"
 description = "Reference German RAG app: the system under test of Prüfstand (never imports pruefstand)"
 requires-python = ">=3.12,<3.14"
 license = "MIT"
-dependencies = []
+dependencies = [
+  "fastapi",
+  "uvicorn",
+  "httpx",
+  "pydantic>=2.7",
+  "pydantic-settings",
+  "pyyaml",
+  "numpy",
+]
+
+[project.optional-dependencies]
+# The slice indexer validates corpus rows against schemas/chunk.schema.json (not needed to serve).
+index = ["jsonschema"]
 
 [build-system]
 requires = ["hatchling"]

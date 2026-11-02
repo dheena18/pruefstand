@@ -2,7 +2,7 @@ from typing import Any
 
 import httpx
 import respx
-from contract.adapter_contract import load_example
+from contract.adapter_contract import load_openapi_example
 from testsupport.run_builders import make_case
 from testsupport.runner_support import (
     DictCache,
@@ -32,8 +32,10 @@ def mixed_cases() -> list[Any]:
 async def test_robust_pr_cases_use_retrieve_only(
     router: respx.MockRouter, adapter: HttpTargetAdapter
 ) -> None:
-    retrieve = router.post("/v1/retrieve").respond(200, json=load_example("retrieve_ok.json"))
-    query = router.post("/v1/query").respond(200, json=load_example("query_ok.json"))
+    retrieve = router.post("/v1/retrieve").respond(
+        200, json=load_openapi_example("retrieve_ok.json")
+    )
+    query = router.post("/v1/query").respond(200, json=load_openapi_example("query_ok.json"))
     results = await run_cases(make_runner(adapter), mixed_cases())
     assert retrieve.call_count == 3
     assert query.call_count == 2
@@ -57,7 +59,7 @@ async def test_retrieve_404_falls_back_to_query(
     router: respx.MockRouter, adapter: HttpTargetAdapter
 ) -> None:
     router.post("/v1/retrieve").respond(404)
-    query = router.post("/v1/query").respond(200, json=load_example("query_ok.json"))
+    query = router.post("/v1/query").respond(200, json=load_openapi_example("query_ok.json"))
     results = await run_cases(make_runner(adapter), mixed_cases())
     assert query.call_count == 5
     assert all(r.mode == "answer" for r in results.records)
@@ -69,8 +71,10 @@ async def test_retrieve_404_falls_back_to_query(
 async def test_cache_entry_of_the_other_mode_is_a_miss(
     router: respx.MockRouter, adapter: HttpTargetAdapter
 ) -> None:
-    router.post("/v1/query").respond(200, json=load_example("query_ok.json"))
-    retrieve = router.post("/v1/retrieve").respond(200, json=load_example("retrieve_ok.json"))
+    router.post("/v1/query").respond(200, json=load_openapi_example("query_ok.json"))
+    retrieve = router.post("/v1/retrieve").respond(
+        200, json=load_openapi_example("retrieve_ok.json")
+    )
     cache = DictCache()
     await run_cases(make_runner(adapter, cache=cache), [make_case(0)])  # answer-mode entry
     results = await run_cases(make_runner(adapter, cache=cache), [make_case(0, split="robust_pr")])
@@ -85,8 +89,10 @@ async def test_cache_entry_of_the_other_mode_is_a_miss(
 async def test_judged_subset_limits_judging_and_generation(
     router: respx.MockRouter, adapter: HttpTargetAdapter
 ) -> None:
-    retrieve = router.post("/v1/retrieve").respond(200, json=load_example("retrieve_ok.json"))
-    query = router.post("/v1/query").respond(200, json=load_example("query_ok.json"))
+    retrieve = router.post("/v1/retrieve").respond(
+        200, json=load_openapi_example("retrieve_ok.json")
+    )
+    query = router.post("/v1/query").respond(200, json=load_openapi_example("query_ok.json"))
     in_subset = [make_case(i, judged_subset=True, question=f"Frage {i}?") for i in range(4)]
     outside = [make_case(i, question=f"Frage {i}?") for i in range(4, 8)]
     injection = [
@@ -121,7 +127,7 @@ async def test_judged_subset_limits_judging_and_generation(
 async def test_without_the_flag_every_case_is_generated_and_judged(
     router: respx.MockRouter, adapter: HttpTargetAdapter
 ) -> None:
-    router.post("/v1/query").respond(200, json=load_example("query_ok.json"))
+    router.post("/v1/query").respond(200, json=load_openapi_example("query_ok.json"))
     cases = [make_case(i, judged_subset=i < 4, question=f"Frage {i}?") for i in range(10)]
     pool = SpyPool()
     runner = make_runner(adapter, metrics=registry_with_judged(), judges=pool)
@@ -136,7 +142,7 @@ async def test_hard_fail_case_skips_the_judges_and_keeps_deterministic_values(
 ) -> None:
     def respond(request: httpx.Request) -> httpx.Response:
         name = "query_other_tenant.json" if index_of(request) == 2 else "query_ok.json"
-        return httpx.Response(200, json=load_example(name))
+        return httpx.Response(200, json=load_openapi_example(name))
 
     router.post("/v1/query").mock(side_effect=respond)
     pool = SpyPool()
@@ -166,7 +172,7 @@ async def test_failed_request_costs_no_judge_call(
 async def test_judged_metrics_are_not_applicable_without_judges(
     router: respx.MockRouter, adapter: HttpTargetAdapter
 ) -> None:
-    router.post("/v1/query").respond(200, json=load_example("query_ok.json"))
+    router.post("/v1/query").respond(200, json=load_openapi_example("query_ok.json"))
     runner = make_runner(adapter, metrics=registry_with_judged(), judges=None)
     results = await run_cases(runner, [make_case(0)])
     value = values_of(results, 0)["faithfulness"]
@@ -178,7 +184,7 @@ async def test_judged_metrics_are_not_applicable_without_judges(
 async def test_hard_fail_metric_that_errors_also_keeps_the_judges_away(
     router: respx.MockRouter, adapter: HttpTargetAdapter
 ) -> None:
-    router.post("/v1/query").respond(200, json=load_example("query_ok.json"))
+    router.post("/v1/query").respond(200, json=load_openapi_example("query_ok.json"))
     pool = SpyPool()
     # a 2-character marker makes injection_success an error value (bad dataset input)
     bad = make_case(0, category="injection", injection_marker="ab", question="Frage 0?")
