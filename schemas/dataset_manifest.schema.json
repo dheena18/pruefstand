@@ -1,0 +1,146 @@
+{
+  "$defs": {
+    "ReviewRound": {
+      "additionalProperties": false,
+      "description": "One human review round over a sample of generated cases.",
+      "properties": {
+        "bad": {
+          "title": "Bad",
+          "type": "integer"
+        },
+        "date": {
+          "format": "date",
+          "title": "Date",
+          "type": "string"
+        },
+        "error_rate": {
+          "title": "Error Rate",
+          "type": "number"
+        },
+        "prompt_version": {
+          "title": "Prompt Version",
+          "type": "string"
+        },
+        "reviewer": {
+          "title": "Reviewer",
+          "type": "string"
+        },
+        "round": {
+          "title": "Round",
+          "type": "integer"
+        },
+        "sampled": {
+          "title": "Sampled",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "round",
+        "prompt_version",
+        "sampled",
+        "bad",
+        "error_rate",
+        "reviewer",
+        "date"
+      ],
+      "title": "ReviewRound",
+      "type": "object"
+    },
+    "Split": {
+      "description": "Dataset split (sizes and selection rules: interfaces §2 and §14).",
+      "enum": [
+        "smoke",
+        "smoke_live",
+        "core",
+        "robust_pr",
+        "full",
+        "human_labels",
+        "rq1"
+      ],
+      "title": "Split",
+      "type": "string"
+    }
+  },
+  "additionalProperties": false,
+  "description": "``dataset_manifest.json`` of ``datasets/<name>/<version>/`` (interfaces §1.3, §14).\n\n``blocks`` holds the case counts per nightly block of ``full`` (keys ``\"refusal\"``, ``\"0\"``,\n``\"1\"``, ``\"2\"``, R12 N1.1); ``judged_subset`` is the number of ``core`` cases flagged for the\njudged subset (150); ``assignment_seed`` is the seed ``assign_splits`` used for both.",
+  "properties": {
+    "assignment_seed": {
+      "default": 0,
+      "title": "Assignment Seed",
+      "type": "integer"
+    },
+    "blocks": {
+      "additionalProperties": {
+        "type": "integer"
+      },
+      "default": {},
+      "title": "Blocks",
+      "type": "object"
+    },
+    "corpus_version": {
+      "title": "Corpus Version",
+      "type": "string"
+    },
+    "created_at": {
+      "format": "date-time",
+      "title": "Created At",
+      "type": "string"
+    },
+    "judged_subset": {
+      "default": 0,
+      "title": "Judged Subset",
+      "type": "integer"
+    },
+    "license_configs": {
+      "additionalProperties": {
+        "type": "string"
+      },
+      "title": "License Configs",
+      "type": "object"
+    },
+    "name": {
+      "title": "Name",
+      "type": "string"
+    },
+    "prompt_versions": {
+      "additionalProperties": {
+        "type": "string"
+      },
+      "title": "Prompt Versions",
+      "type": "object"
+    },
+    "review": {
+      "items": {
+        "$ref": "#/$defs/ReviewRound"
+      },
+      "title": "Review",
+      "type": "array"
+    },
+    "splits": {
+      "additionalProperties": {
+        "type": "integer"
+      },
+      "propertyNames": {
+        "$ref": "#/$defs/Split"
+      },
+      "title": "Splits",
+      "type": "object"
+    },
+    "version": {
+      "title": "Version",
+      "type": "string"
+    }
+  },
+  "required": [
+    "name",
+    "version",
+    "created_at",
+    "corpus_version",
+    "splits",
+    "license_configs",
+    "prompt_versions",
+    "review"
+  ],
+  "title": "DatasetManifest",
+  "type": "object"
+}

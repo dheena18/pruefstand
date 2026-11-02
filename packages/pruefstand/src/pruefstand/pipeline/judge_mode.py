@@ -4,6 +4,7 @@
 no CPU judge in any tier.
 """
 
+import re
 from collections.abc import Mapping
 from typing import Literal
 
@@ -15,7 +16,12 @@ Stack = Literal["live", "a40"]
 JudgeMode = Literal["github", "local", "skipped"]
 _STACKS: tuple[Stack, ...] = ("live", "a40")
 _MODES: tuple[JudgeMode, ...] = ("github", "local", "skipped")
-_SHOWN = 24
+_SHOWABLE = re.compile(r"[a-z0-9_-]{1,12}")
+
+
+def _shown(value: str) -> str:
+    """Echo a bad value only when it looks like a word, never a long or odd string (a secret)."""
+    return repr(value) if _SHOWABLE.fullmatch(value) else "<unrecognised>"
 
 
 def resolve_stack(env: Mapping[str, str]) -> Stack:
@@ -40,7 +46,7 @@ def resolve_stack(env: Mapping[str, str]) -> Stack:
     for stack in _STACKS:
         if value == stack:
             return stack
-    msg = f"PRUEFSTAND_STACK={value[:_SHOWN]!r}: must be one of {', '.join(_STACKS)}"
+    msg = f"PRUEFSTAND_STACK={_shown(value)}: must be one of {', '.join(_STACKS)}"
     raise ConfigError(msg)
 
 
@@ -74,7 +80,7 @@ def requested_judge_mode(
         for mode in _MODES:
             if value == mode:
                 return mode
-        msg = f"PRUEFSTAND_JUDGE_MODE={value[:_SHOWN]!r}: must be one of {', '.join(_MODES)}"
+        msg = f"PRUEFSTAND_JUDGE_MODE={_shown(value)}: must be one of {', '.join(_MODES)}"
         raise ConfigError(msg)
     if stack == "a40":
         return "local"

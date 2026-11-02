@@ -14,8 +14,8 @@ from pruefstand.cli import app
 pytestmark = pytest.mark.live
 
 # On the VM the stack runs with PORT_OFFSET: scripts/live/two_targets.sh prints the two URLs.
-GOOD = os.environ.get("PRUEFSTAND_LIVE_GOOD_URL", GOOD_URL)
-BAD = os.environ.get("PRUEFSTAND_LIVE_BUG_URL", BUG_URL)
+GOOD = os.environ.get("PRUEFSTAND_LIVE_GOOD_URL") or GOOD_URL
+BAD = os.environ.get("PRUEFSTAND_LIVE_BUG_URL") or BUG_URL
 
 
 def _reachable(url: str) -> bool:

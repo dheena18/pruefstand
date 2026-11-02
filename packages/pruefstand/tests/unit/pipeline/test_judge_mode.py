@@ -17,7 +17,7 @@ from pruefstand.core.models.judge import JudgeTask
 from pruefstand.core.models.run import RunResults
 from pruefstand.metrics.registry import MetricRegistry
 from pruefstand.pipeline import run as run_module
-from pruefstand.pipeline.judge_mode import final_judge_mode, requested_judge_mode
+from pruefstand.pipeline.judge_mode import final_judge_mode, requested_judge_mode, resolve_stack
 from pruefstand.pipeline.run import run_eval
 from pruefstand.runner.runner import Runner
 
@@ -44,6 +44,18 @@ def test_cpu_is_not_a_judge_mode() -> None:
         requested_judge_mode(
             stack="live", env={"PRUEFSTAND_JUDGE_MODE": "cpu"}, has_models_token=True
         )
+
+
+def test_an_odd_value_is_never_echoed() -> None:
+    odd = "sk-" + "a1" * 12
+    with pytest.raises(ConfigError) as mode:
+        requested_judge_mode(
+            stack="live", env={"PRUEFSTAND_JUDGE_MODE": odd}, has_models_token=True
+        )
+    with pytest.raises(ConfigError) as stack:
+        resolve_stack({"PRUEFSTAND_STACK": odd})
+    assert odd not in str(mode.value)
+    assert odd not in str(stack.value)
 
 
 def test_a_judge_mode_that_never_judged_is_skipped() -> None:

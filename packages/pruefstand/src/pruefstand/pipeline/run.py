@@ -176,6 +176,25 @@ def _runner(plan: _Plan, adapter: TargetAdapter, judges: JudgePoolLike | None) -
     )
 
 
+async def _execute(
+    plan: _Plan, judges: JudgePoolLike | None, out: Path
+) -> tuple[RunResults, TargetInfo | None]:
+    """Ask the target for its info, check the corpus, then run the selected cases."""
+    adapter = build_adapter(plan.cfg.target)
+    try:
+        info = await adapter.info()
+        _abort_on_corpus_mismatch(plan, info, out)
+        results = await _runner(plan, adapter, judges).run(
+            plan.cases,
+            target_fingerprint=_target_fingerprint(plan, info),
+            seed=plan.cfg.seed,
+            judged_subset=plan.judged_subset,
+        )
+    finally:
+        await adapter.aclose()
+    return results, info
+
+
 async def run_eval(
     cfg: PruefstandConfig,
     *,
@@ -216,19 +235,7 @@ async def run_eval(
     """
     plan = _plan(cfg, tier, block=block, judged_subset=judged_subset, stratum=stratum)
     judges = None if plan.mode == "skipped" else build_judge_pool(cfg, plan.mode)
-    adapter = build_adapter(cfg.target)
-    try:
-        info = await adapter.info()
-        _abort_on_corpus_mismatch(plan, info, out)
-        runner = _runner(plan, adapter, judges)
-        results = await runner.run(
-            plan.cases,
-            target_fingerprint=_target_fingerprint(plan, info),
-            seed=cfg.seed,
-            judged_subset=judged_subset,
-        )
-    finally:
-        await adapter.aclose()
+    results, info = await _execute(plan, judges, out)
     mode = final_judge_mode(plan.mode, judged_cases=results.manifest.judged_cases)
     manifest = _complete(results.manifest, plan, info, mode)
     done = results.model_copy(update={"manifest": manifest})

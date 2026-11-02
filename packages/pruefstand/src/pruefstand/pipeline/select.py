@@ -152,5 +152,5 @@ def resolve_block(spec: str | None, env: Mapping[str, str] | None = None) -> int
         return block
     if spec in {"0", "1", "2"}:
         return int(spec)
-    msg = f"--block must be auto, 0, 1 or 2, got {spec[:20]!r}"
+    msg = "--block must be auto, 0, 1 or 2"
     raise ConfigError(msg)
