@@ -7,7 +7,7 @@ target:
   url: http://localhost:8000      # rag-demo, compose profile `live`
   auth_env: null                  # name of an env var holding a bearer token, never the token
   timeout_s: 60
-dataset: datasets/fixtures/slice_v1   # created in T1.11
+dataset: datasets/fixtures/slice_v1   # 40 hand-written cases, 20 in smoke_live (T1.11, docs/engineering/fixtures.md)
 splits: [smoke_live]
 generator_family: qwen            # llama.cpp generator, thinking off (D95)
 judge:

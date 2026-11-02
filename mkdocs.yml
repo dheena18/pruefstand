@@ -108,6 +108,7 @@ nav:
       - Coding standards: engineering/coding-standards.md
       - Testing strategy: engineering/testing-strategy.md
       - Test matrix: engineering/test-matrix.md
+      - Fixtures: engineering/fixtures.md
       - Statistics notes: engineering/statistics-notes.md
       - CI/CD: engineering/ci-cd.md
       - Docker: engineering/docker.md
