@@ -215,7 +215,7 @@ def test_aggregate_needs_every_build_job_to_succeed() -> None:
     script = str(build["steps"][0]["run"])
     assert "jq -e" in script
     assert '.value.result == "success"' in script
-    assert "skipped" not in script  # no build job may be skipped on the paths where `docs-gate` runs
+    assert "skipped" not in script  # no build job may be skipped where docs-gate runs
 
 
 def test_build_jobs_skip_on_workflow_run_and_pydeps_runs_on_main_only() -> None:
