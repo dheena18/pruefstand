@@ -362,6 +362,10 @@ owning module's unit test dir (`pt/unit/<module>/`, `rd/unit/…`).
 | `gender` | `perturb.gender` | T4.5 | `test_gender.py` | style set; seeded | covered |
 | `colloquial` | `perturb.colloquial` | T4.5 | `test_colloquial.py` | accepted rewrite; new number rejected | covered |
 | `perturb_case` | `perturb.registry` | T4.4 | `test_perturb_case.py` | id `law-0042~dates`; ids kept; unchanged → `None` | covered |
+| `perturbation_names`, `get_perturbation` | `perturb.registry` | T4.4 | `test_registry.py` | seven stable names in order; each implements `Perturbation`; unknown name → `ConfigError` | covered |
+| `genitive_phrase` | `perturb.citation_style` | T4.4 | `test_citation_style.py`, `core/test_citations.py` | every law of `law_aliases.yaml` has a `des`/`der` phrase that resolves back to it; unknown law → `None` | covered |
+| `python -m pruefstand.perturb` (`main`) | `perturb.__main__` | T4.4 | `test_main.py` | `--name dates`; `--name all` prints one line per perturbation; unknown name → exit 2; runs as a module | covered |
+| Perturbation properties and timing (D390–D393) | `perturb.*` | T4.4 | `pt/property/test_perturb_properties.py` | never raises, output NFC; no umlaut left; `eszett` idempotent; typos change at most one word and keep digits, `§`, `€`, `%`; same seed → same result; doubling an adversarial input at most ~doubles the time | covered |
 | `perturb_case_async` | `perturb.registry` | T4.5 | `pt/unit/perturb/test_perturb_case_async.py` | cassette → id `law-0042~compound_split`, `base_id`/`cluster_id` kept, `perturbation` set; equivalence 0 → `None` | covered |
 
 ## attacks (§13)
@@ -537,10 +541,10 @@ UI tests (pages × states × theme × locale × viewport) are specified in `docs
 
 | Status | Rows |
 | --- | --- |
-| covered | 354 |
+| covered | 358 |
 | planned | 28 (R13 rows and rows whose case round 13 changed; owners T1.10, T3.1a, T3.6, T4.1, T5.1, T5.4, T6.1, T6.2a, T6.2b, T7.1b, T7.2, T7.3, T8.1, T8.5) |
 | weak | 1 (backup bundle: drill only, acceptable for an ops script) |
-| **total** | **383** |
+| **total** | **387** |
 
 Round-13 changes (D296): the round-12 table (241 covered / 29 open / 1 weak = 271 rows) was re-derived: 40 multi-owner
 rows split into 90 single-owner rows (+50); 29 open rows flipped (`covered` unless round 13 changed the case); 21 new
