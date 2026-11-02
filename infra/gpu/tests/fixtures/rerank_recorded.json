@@ -1,0 +1,39 @@
+{
+  "model": "BAAI/bge-reranker-v2-m3",
+  "revision": "953dc6f6f85a1b2dbfca4c34a2796e7dde08d41e",
+  "max_tokens": 256,
+  "cases": [
+    {
+      "query": "Wie lang ist die Kündigungsfrist für Arbeitnehmer?",
+      "texts": [
+        "Das Arbeitsverhältnis eines Arbeiters oder eines Angestellten (Arbeitnehmers) kann mit einer Frist von vier Wochen zum Fünfzehnten oder zum Ende eines Kalendermonats gekündigt werden. (§ 622 Abs. 1 BGB)",
+        "Die Kündigung ist spätestens am dritten Werktag eines Kalendermonats zum Ablauf des übernächsten Monats zulässig. (§ 573c Abs. 1 BGB, Wohnraummiete)",
+        "Die regelmäßige Verjährungsfrist beträgt drei Jahre. (§ 195 BGB)",
+        "Der Arbeitnehmer hat bei Beendigung eines Arbeitsverhältnisses Anspruch auf ein schriftliches Zeugnis. (§ 109 Abs. 1 GewO)"
+      ],
+      "relevant": 0,
+      "scores": [
+        0.9645436406135559,
+        0.033321067690849304,
+        0.02257283590734005,
+        0.00015766355500090867
+      ]
+    },
+    {
+      "query": "Nach wie vielen Jahren verjähren Ansprüche regelmäßig?",
+      "texts": [
+        "Das Arbeitsverhältnis eines Arbeiters oder eines Angestellten (Arbeitnehmers) kann mit einer Frist von vier Wochen zum Fünfzehnten oder zum Ende eines Kalendermonats gekündigt werden. (§ 622 Abs. 1 BGB)",
+        "Die Kündigung ist spätestens am dritten Werktag eines Kalendermonats zum Ablauf des übernächsten Monats zulässig. (§ 573c Abs. 1 BGB, Wohnraummiete)",
+        "Die regelmäßige Verjährungsfrist beträgt drei Jahre. (§ 195 BGB)",
+        "Der Arbeitnehmer hat bei Beendigung eines Arbeitsverhältnisses Anspruch auf ein schriftliches Zeugnis. (§ 109 Abs. 1 GewO)"
+      ],
+      "relevant": 2,
+      "scores": [
+        0.0003234858450014144,
+        4.108752909814939e-05,
+        0.8586735725402832,
+        4.762775279232301e-05
+      ]
+    }
+  ]
+}

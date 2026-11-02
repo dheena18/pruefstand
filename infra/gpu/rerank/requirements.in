@@ -1,0 +1,13 @@
+# Direct pins of rerank-cpu; requirements.txt is compiled from this file with hashes for every package:
+#   uv pip compile requirements.in --generate-hashes --python-version 3.12 --python-platform x86_64-manylinux_2_28 \
+#     --index-strategy unsafe-best-match --index-url https://pypi.org/simple --extra-index-url https://download.pytorch.org/whl/cpu -o requirements.txt
+# torch+cpu exists only on the PyTorch CPU index (no CUDA wheels in the image).
+torch==2.15.0+cpu
+sentence-transformers==6.2.0
+# huggingface-hub 2.x pulls httpx2/httpcore2 < 2.10 (GHSA-7mj9-2mp8-4m2p, no patched release on PyPI yet): stay on 1.x
+huggingface-hub<2
+# setuptools below 84.1.0 has open advisories (PYSEC-2025-49, PYSEC-2026-3447, GHSA-xmj3-9gf7-h52w)
+setuptools>=84.1.0
+# the PyTorch CPU index mirrors old copies of common packages: set floors so the PyPI releases with the fixes win
+certifi>=2026.10.18
+idna>=3.15

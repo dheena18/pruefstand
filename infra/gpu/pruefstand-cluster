@@ -1,0 +1,103 @@
+#!/usr/bin/env bash
+# installed-by: infra/gpu/install-cluster-wrapper.sh
+# pruefstand-cluster <op> [tag] [--bin-dev]: the ONE trusted way for the owner and agents to reach the cluster (T3.1a).
+#
+# Installed by infra/gpu/install-cluster-wrapper.sh to /usr/local/bin/pruefstand-cluster (root-owned) and called as
+#   sudo -n -u pruefstand /usr/local/bin/pruefstand-cluster <op> [tag] [--bin-dev]
+# so only user pruefstand (the sole holder of the cluster key) opens the ssh connection and the caller never gets
+# the key. Fixed ops, nothing else (exit 64): start-ollama | stop-ollama | status | pull <tag> | rm <tag> | show <tag>.
+# A tag matches ^[a-z0-9._:/-]+$, does not start with "-", has no ".." AND is listed in the allow-list the installer
+# generated from models.yaml (/usr/local/lib/pruefstand-cluster.allow: "tag<TAB>bytes", root-owned). `pull` takes the
+# size from that list, so the cluster checks model size + reserve against the free space (ollama-op.sh, exit 17).
+# `rm` runs only while the file MAINTENANCE exists (ADR-0019 swap rule; exit 3 otherwise).
+# The mutating ops (start-ollama, stop-ollama, pull, rm) run only when the GPU lock is held by one of this process's
+# ANCESTORS (A12-M5, M1): PRUEFSTAND_LOCK_HELD=1 (kept by the sudoers env_keep line) AND /proc/locks shows a
+# flock on the lock file (device and inode) taken by a process we descend from (pruefstand-lock -> make -> sudo -> this wrapper). A
+# lock held by someone else (the executor during a gate run) is no proof: exit 2 "run under the GPU lock".
+# status and show need no lock. --bin-dev selects /data/dheena/pruefstand-bin-dev (A11-M11).
+# Self-contained on purpose: it is copied to a root-owned path and must not load anything from a checkout.
+# Exit: the remote command's, 2 not under the lock, 3 rm without MAINTENANCE, 64 usage / unknown tag.
+# PRUEFSTAND_LOCK_DIR and PRUEFSTAND_CLUSTER_ALLOW are test seams (sudo drops the environment).
+set -euo pipefail
+
+bin="/data/dheena/pruefstand-bin"
+host="${CLUSTER_SSH_HOST:-cairo-s101lp}"
+lock_dir="${PRUEFSTAND_LOCK_DIR:-/var/lib/pruefstand}"
+allow="${PRUEFSTAND_CLUSTER_ALLOW:-/usr/local/lib/pruefstand-cluster.allow}"
+host_re='^[A-Za-z0-9][A-Za-z0-9._-]*$'
+tag_re='^[a-z0-9._:/-]+$'
+usage="usage: pruefstand-cluster start-ollama|stop-ollama|status|pull <tag>|rm <tag>|show <tag> [--bin-dev]"
+
+fail() { # message exit-code
+  echo "pruefstand-cluster: $1" >&2
+  exit "$2"
+}
+
+if ! [[ $host =~ $host_re ]]; then fail "invalid CLUSTER_SSH_HOST" 64; fi
+dev=0
+args=()
+for arg in "$@"; do
+  if [ "$arg" = "--bin-dev" ]; then dev=1; else args+=("$arg"); fi
+done
+if [ "$dev" -eq 1 ]; then bin="$bin-dev"; fi
+op="${args[0]:-}"
+tag="${args[1]:-}"
+case "$op" in
+  start-ollama | stop-ollama | status)
+    if [ "${#args[@]}" -ne 1 ]; then fail "$usage" 64; fi
+    ;;
+  pull | rm | show)
+    if [ "${#args[@]}" -ne 2 ]; then fail "$usage" 64; fi
+    if ! [[ $tag =~ $tag_re ]] || [[ $tag == -* ]] || [[ $tag == *..* ]]; then fail "invalid model tag" 64; fi
+    ;;
+  *) fail "$usage" 64 ;;
+esac
+
+bytes=""
+if [ "$op" = pull ] || [ "$op" = rm ] || [ "$op" = show ]; then
+  bytes="$(awk -F'\t' -v t="$tag" '$1 == t { if ($2 ~ /^[0-9]+$/) { print $2; exit } }' "$allow" 2>/dev/null || true)"
+  if [ -z "$bytes" ]; then fail "$tag is not in the installed allow-list" 64; fi
+fi
+
+# Is the GPU lock held by one of our ancestors? (pids of flock holders on the lock file's inode, then the PPid chain.)
+lock_held_by_ancestor() {
+  local lock="$lock_dir/gpu.lock" inode dev major minor key p line rest h
+  local -a holders=()
+  if ! [ -r "$lock" ]; then return 1; fi
+  inode="$(stat -c %i "$lock")" || return 1
+  dev=$((16#$(stat -c %D "$lock")))
+  major=$(((dev >> 8 & 0xfff) | (dev >> 32 & ~0xfff)))
+  minor=$(((dev & 0xff) | (dev >> 12 & ~0xff)))
+  key="$(printf '%02x:%02x:%s' "$major" "$minor" "$inode")"
+  mapfile -t holders < <(awk -v k="$key" '$2 == "FLOCK" && $6 == k { print $5 }' /proc/locks)
+  p=$$
+  while [ "$p" -gt 1 ]; do
+    for h in "${holders[@]}"; do
+      if [ "$h" = "$p" ]; then return 0; fi
+    done
+    read -r line <"/proc/$p/stat" || return 1
+    rest="${line##*) }"
+    read -r _ p _ <<<"$rest"
+  done
+  return 1
+}
+
+case "$op" in
+  start-ollama | stop-ollama | pull | rm)
+    msg="$op needs the GPU lock: run under the GPU lock (pruefstand-lock ...)"
+    if [ "${PRUEFSTAND_LOCK_HELD:-}" != 1 ]; then fail "$msg" 2; fi
+    if ! lock_held_by_ancestor; then
+      fail "$msg (the lock is free or not held by this command's ancestors)" 2
+    fi
+    ;;
+esac
+if [ "$op" = rm ] && ! [ -e "$lock_dir/MAINTENANCE" ]; then
+  fail "set MAINTENANCE for a model swap (see docs/engineering/gpu-cluster.md section 8)" 3
+fi
+
+case "$op" in
+  pull) remote="bash $bin/ollama-op.sh pull $tag $bytes" ;;
+  rm | show) remote="bash $bin/ollama-op.sh $op $tag" ;;
+  *) remote="bash $bin/$op.sh" ;;
+esac
+exec ssh -o BatchMode=yes -o ConnectTimeout=15 "$host" "$remote"
