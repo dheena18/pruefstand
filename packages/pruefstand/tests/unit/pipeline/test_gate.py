@@ -249,3 +249,27 @@ def test_gate_json_is_valid_json_with_sorted_keys(tmp_path: Path) -> None:
     run_gate(cand, base, mini_config(gate=GATE_POLICY))
     data = json.loads((cand / "gate.json").read_text(encoding="utf-8"))
     assert list(data) == sorted(data)
+
+
+@pytest.mark.parametrize("how", ["aborted", "budget_exceeded", "corpus_mismatch"])
+def test_an_incomplete_candidate_without_a_baseline_is_a_gate_input_error(
+    tmp_path: Path, how: str
+) -> None:
+    cases, values = fixture_f0()
+    values = {m: v for m, v in values.items() if m != "faithfulness"}
+    run = make_run(
+        "20261102T220001-bbbbbb",
+        cases,
+        values,
+        records=[make_record(c) for c in cases],
+        complete=False,
+        counts={"corpus_mismatch": 1} if how == "corpus_mismatch" else None,
+    )
+    if how == "budget_exceeded":
+        manifest = run.manifest.model_copy(update={"stop_reason": "budget_exceeded"})
+        run = run.model_copy(update={"manifest": manifest})
+    root = tmp_path / "runs"
+    cand = ArtifactStore(root).write_run(RunArtifacts(results=run, root=root / run.manifest.run_id))
+    with pytest.raises(GateInputError, match="complete"):
+        run_gate(cand, None, mini_config(gate=GATE_POLICY))
+    assert not (cand / "gate.json").exists()

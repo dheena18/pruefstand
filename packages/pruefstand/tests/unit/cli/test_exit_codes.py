@@ -6,6 +6,7 @@ from typing import Any
 import pytest
 from testsupport.builders import fixture_f0, make_record, make_run
 from testsupport.pipeline_support import config_file, mini_config
+from testsupport.run_builders import make_results
 from typer.testing import CliRunner
 
 from pruefstand.cli import app
@@ -175,3 +176,31 @@ def test_stub_commands_exit_two(args: list[str], needle: str) -> None:
     assert result.exit_code == 2
     assert "not implemented yet" in result.output
     assert needle in result.output
+
+
+def test_a_run_that_stops_early_prints_its_directory_and_exits_three(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    results = make_results(2)
+    manifest = results.manifest.model_copy(
+        update={"complete": False, "stop_reason": "budget_exceeded"}
+    )
+
+    async def stopped(*args: object, **kwargs: object) -> object:
+        return results.model_copy(update={"manifest": manifest})
+
+    monkeypatch.setattr(cli_run, "run_eval", stopped)
+    cfg = config_file(tmp_path / "c.yaml", mini_config())
+    args = ["run", "--config", str(cfg), "--tier", "pr", "--out", str(tmp_path / "r")]
+    result = CliRunner().invoke(app, args)
+    assert result.exit_code == 3
+    assert result.stdout.strip() == str(tmp_path / "r" / manifest.run_id)
+    assert "budget_exceeded" in result.output
+
+
+def test_a_run_compared_with_itself_is_a_usage_error(tmp_path: Path, gate_config: Path) -> None:
+    cand = stored(tmp_path, "20261102T220001-bbbbbb")
+    args = ["gate", "--config", str(gate_config), "--candidate", str(cand), "--baseline", str(cand)]
+    result = CliRunner().invoke(app, args)
+    assert result.exit_code == 2
+    assert "itself" in result.output

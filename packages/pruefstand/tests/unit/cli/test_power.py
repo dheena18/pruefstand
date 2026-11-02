@@ -58,3 +58,11 @@ def test_invalid_numbers_are_a_usage_error(bad: list[str]) -> None:
     assert result.exit_code == 2
     assert result.stdout == ""
     assert "Traceback" not in result.output
+
+
+def test_an_absurdly_large_n_is_a_usage_error() -> None:
+    args = ["power", "--sigma", "0.25", "--n", "1" + "0" * 400, "--delta", "0.03"]
+    result = CliRunner().invoke(app, args)
+    assert result.exit_code == 2
+    assert result.stdout == ""
+    assert "Traceback" not in result.output
