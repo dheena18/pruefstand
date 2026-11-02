@@ -16,7 +16,16 @@ import httpx
 import pytest
 import yaml
 
-pytestmark = pytest.mark.gpu
+# The tests talk to the real Ollama server through the VM tunnel, so they run only inside the GPU
+# lock (`pruefstand-lock make test-gpu` exports PRUEFSTAND_LOCK_HELD=1); a bare `pytest <path>`
+# skips them.
+pytestmark = [
+    pytest.mark.gpu,
+    pytest.mark.skipif(
+        os.environ.get("PRUEFSTAND_LOCK_HELD") != "1",
+        reason="run under the GPU lock: pruefstand-lock make test-gpu (make test-gpu-locked)",
+    ),
+]
 
 REPO = Path(__file__).resolve().parents[4]
 CATALOGUE = yaml.safe_load((REPO / "infra" / "gpu" / "models.yaml").read_text(encoding="utf-8"))
