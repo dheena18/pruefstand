@@ -117,5 +117,7 @@ The owner checked the real machines on 2026-10-31 and decided to "manage with wh
   to `gemma3:4b` vs `gemma3:12b`; the 70B arm is gone.
 - The disk stays nearly full: every extra model is a swap under `MAINTENANCE`, and an unexpected
   `ollama pull` by another user can fill it (preflight digest check and the `/data` free-space WARN).
+- T3.1a implementation (D413): `fetch-model.sh` reads the free space of the models disk from `status.sh` right before every pull and
+  stops with exit 17 when it is below model size + the 2 GB reserve, asking the owner to free space; it never starts the pull then.
 - Follow-ups: T3.1b pins `gemma3:12b` and measures VRAM/time; T4.2 pins the GitHub Models datagen model;
   the NAS dataset `/mnt/SDD/SSD/Ollama` held Ollama's identity key; moved out of the share on 2026-11-01 (setup log §7).
