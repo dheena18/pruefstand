@@ -123,11 +123,13 @@ def test_rerank_cpu_orders_the_relevant_passage_first() -> None:
 def test_ps_shows_only_the_day_models_with_the_pins_fully_in_vram() -> None:
     with _client(GPU0) as client:
         models = client.get("/api/ps").json()["models"]
-    assert {m["name"] for m in models} == {GEN, EMBED, JUDGE}
-    for m in models:
-        assert m["digest"] == ENTRIES[m["name"]]["digest"], m["name"]
-        assert m["size_vram"] == m["size"], m["name"]
-    assert next(m for m in models if m["name"] == GEN)["digest"] == GEN_DIGEST
+    # Ollama reports a tag without a variant as "<tag>:latest"; the catalogue says "bge-m3".
+    named = {m["name"].removesuffix(":latest"): m for m in models}
+    assert set(named) == {GEN, EMBED, JUDGE}
+    for name, m in named.items():
+        assert m["digest"] == ENTRIES[name]["digest"], name
+        assert m["size_vram"] == m["size"], name
+    assert named[GEN]["digest"] == GEN_DIGEST
 
 
 def test_status_places_the_generator_and_the_judge_on_different_cards() -> None:

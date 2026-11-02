@@ -266,6 +266,23 @@ falls back to an official Qwen3 tag (planning values, KV at `q8_0` for 8192 × 4
 must make room on the 14 GB-free disk. Measured numbers per card and mode, the first-load time of each model and
 `kv_bytes_per_token` are filled in from S8 (owner run of `make gpu-up`); until then `models.yaml` holds planning values.
 
+**Measured 2026-11-02 (T3.1a, S2b/S8; `nvidia-smi` via `status.sh`, `/api/ps`; day set loaded, `OLLAMA_NUM_PARALLEL` and
+`num_ctx` as in `models.yaml`).** Day and night load the same set (ADR-0019), so there is one row per card:
+
+| Card | Resident models | Used MiB | Free MiB | `/api/ps` size (bytes) |
+| --- | --- | --- | --- | --- |
+| GPU 0 | `qwen3.8:27b-q8_0` | 28 135 | 17 933 | 28 209 116 609 (all in VRAM) |
+| GPU 1 | `bge-m3` + `gemma3:12b` | 13 356 | 32 712 | 632 542 985 + 10 156 549 078 (all in VRAM) |
+
+Both cards stay far below the 44 GB limit, so no `num_ctx` or `OLLAMA_NUM_PARALLEL` change is needed. Timings (one server,
+models on the cluster disk): day set loaded with the generator already resident, `bge-m3` and `gemma3:12b` loading
+(`make gpu-up`): 20 s; `make gpu-night-up` with everything resident: 2.5 s, nothing reloaded; `make gpu-repair` after
+`stop-ollama` (server start by the start script of record, then generator, `bge-m3`, judge): 25 s in total. Placement
+came out as in the table (generator alone on GPU 0, embeddings and judge on GPU 1; `health.sh` reports it). The restart
+cleared the `env:OLLAMA_NOPRUNE` warning (`env,OK,matches cluster.env`), exactly one server pid and listener, day set
+resident. `kv_bytes_per_token` is **not** measured yet (the VRAM above includes KV, but the weights/KV split needs the
+server log at load): T3.1b measures it; `models.yaml` keeps planning values until then.
+
 `OLLAMA_MAX_LOADED_MODELS=3` holds generator + embeddings + the one judge. Ollama places the models; the generator
 (≈ 35 GB with KV) and the judge together exceed one card, so they land on different cards, and `health.sh`
 reports the placement. If a measured total exceeds 44 GB on the generator card, lower `num_ctx` before lowering
@@ -424,7 +441,7 @@ before the next one starts (cluster paths as `<models-dir>`, no login or home pa
 
 | Date | Operation | Tag | Digest | Free before | Free after | MAINTENANCE removed again | Note |
 | --- | --- | --- | --- | --- | --- | --- | --- |
-| _none yet_ | | | | | | | |
+| 2026-11-02 | pull (no remove) | `gemma3:12b` | `b92b218582c5...` (matches catalogue) | 12.7 GB | 4.5 GB | not needed (pull only) | S2b; `fetch-model.sh` digest check passed |
 
 ## 9. Storage: VM disk, data root and cluster disk (Z2, ADR-0019)
 
