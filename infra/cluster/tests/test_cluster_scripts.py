@@ -185,10 +185,28 @@ def test_shellcheck_clean(stubs: Stubs) -> None:
     assert proc.returncode == 0, proc.stdout
 
 
+def _logical_lines(path: Path) -> list[str]:
+    """Code lines with backslash continuations joined."""
+    joined: list[str] = []
+    carry = ""
+    for line in _code_lines(path):
+        if line.endswith("\\"):
+            carry += line[:-1] + " "
+        else:
+            joined.append(carry + line)
+            carry = ""
+    return joined
+
+
 def test_no_script_uses_the_a_and_b_or_c_pattern() -> None:
     """Newer shellcheck versions report SC2015 for ``A && B || C``; use if/then instead."""
-    for path in [*CLUSTER_DIR.glob("*.sh"), *GPU_DIR.glob("*.sh"), *GPU_DIR.glob("lib/*.sh")]:
-        for number, line in enumerate(_code_lines(path), 1):
-            assert not re.search(r"&&.*\|\|", line), f"{path.name}:{number}: {line.strip()}"
-    wrapper = _code_lines(GPU_DIR / "pruefstand-cluster")
-    assert not [ln for ln in wrapper if re.search(r"&&.*\|\|", ln)]
+    scripts = [*CLUSTER_DIR.glob("*.sh"), *GPU_DIR.glob("*.sh"), *GPU_DIR.glob("lib/*.sh")]
+    for path in [*scripts, GPU_DIR / "pruefstand-cluster"]:
+        for line in _logical_lines(path):
+            assert not re.search(r"&&.*\|\|", line), f"{path.name}: {line.strip()}"
+
+
+def test_the_a_and_b_or_c_check_sees_continuation_lines(tmp_path: Path) -> None:
+    script = tmp_path / "x.sh"
+    script.write_text("true && \\\n  true || false\n")
+    assert any(re.search(r"&&.*\|\|", line) for line in _logical_lines(script))

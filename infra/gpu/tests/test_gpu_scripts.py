@@ -134,8 +134,9 @@ def test_make_gpu_targets_take_the_lock_and_run_health_under_it() -> None:
     assert "pruefstand-lock" not in dry("gpu-deploy-bin")  # deploy needs no lock
     for target in ("gpu-deploy-bin", "gpu-install-wrapper"):
         text = dry(target)
-        assert "git archive origin/main infra/gpu infra/cluster" in text  # never the working tree
+        assert "git archive FETCH_HEAD infra/gpu infra/cluster" in text  # never the working tree
         assert "cp -r" not in text
+        assert "git fetch -q https://github.com/dheena18/pruefstand main" in text
     assert "install-cluster-wrapper.sh" in dry("gpu-install-wrapper")
     assert "fetch-model.sh ollama/bge-m3" in dry("gpu-pull", "ID=ollama/bge-m3")
     assert "fetch-model.sh --rm ollama/gemma3:12b" in dry("gpu-rm", "ID=ollama/gemma3:12b")
