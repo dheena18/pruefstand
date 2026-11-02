@@ -3,7 +3,8 @@
 Edit types (D392): deletion, adjacent transposition, substitution by a neighbouring key of the
 QWERTZ layout. Each is edit distance 1 (Damerau-Levenshtein). The first letter is never edited.
 Numbers, ``§`` and every word that resolves to a law name or contains a capital after its first
-letter (``KSchG``, ``GmbHG``, ``DSGVO``) are never touched; neither are runs over 40 letters.
+letter (``KSchG``, ``GmbHG``, ``DSGVO``) are never touched; neither are runs over 40 letters
+or words inside URLs, e-mail addresses, domains and canary-like tokens (D394).
 """
 
 import re
@@ -17,6 +18,11 @@ from pruefstand.perturb._common import finish, nfc
 _ROWS = ("qwertzuiop", "asdfghjkl", "yxcvbnm")
 _MAX_LETTERS = 40  # longer runs are not words; also keeps the work per edit constant (D392)
 _WORD = re.compile(r"(?<![\d_])[^\W\d_]{6,}(?![\d_])")
+_TOKEN = re.compile(r"\S+")
+# URLs, e-mail addresses, domains and canary-like tokens (CANARY-XX-abcdef) are never edited
+_PROTECTED = re.compile(
+    r"@|://|www\.|[A-Za-z0-9-]\.[A-Za-z]{2,}|[A-Z]{2,}[-_]|[-_][0-9a-fA-F]{6,}(?!\w)"
+)
 
 
 def _neighbours() -> dict[str, tuple[str, ...]]:
@@ -57,6 +63,18 @@ def _options(word: str) -> dict[str, list[str]]:
     return {kind: found for kind, found in options.items() if found}
 
 
+def _candidates(source: str) -> list[tuple[int, int]]:
+    """Return the spans of the editable words (outside protected whitespace-delimited tokens)."""
+    spans: list[tuple[int, int]] = []
+    for token in _TOKEN.finditer(source):
+        if _PROTECTED.search(token.group(0)):
+            continue
+        for m in _WORD.finditer(token.group(0)):
+            if _eligible(m.group(0)):
+                spans.append((token.start() + m.start(), token.start() + m.end()))
+    return spans
+
+
 class Typos:
     """Insert one keyboard typo into a long word."""
 
@@ -79,14 +97,14 @@ class Typos:
             True
         """
         source = nfc(text)
-        words = [m for m in _WORD.finditer(source) if _eligible(m.group(0))]
+        words = _candidates(source)
         if not words:
             return finish(source, source)
-        chosen = words[int(rng.integers(len(words)))]
-        word = chosen.group(0)
+        start, end = words[int(rng.integers(len(words)))]
+        word = source[start:end]
         options = _options(word)
         kind = sorted(options)[int(rng.integers(len(options)))]
         variants = options[kind]
         edited = variants[int(rng.integers(len(variants)))]
-        out = source[: chosen.start()] + edited + source[chosen.end() :]
+        out = source[:start] + edited + source[end:]
         return finish(source, out, notes=f"{kind}: {word} -> {edited}")

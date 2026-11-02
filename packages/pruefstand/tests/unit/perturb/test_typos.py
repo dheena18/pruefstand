@@ -109,11 +109,11 @@ def test_overlong_letter_run_is_not_a_word() -> None:
     "text",
     [
         "Siehe https://www.gesetze-im-internet.de/bgb",
-        "Schreiben Sie an kontakt@beispielfirma.de",
+        "Mail an kontakt@beispielfirma.de",
         "Siehe www.beispielfirma.de",
         "Siehe gesetze-im-internet.de",
-        "Das Token CANARY-XX-abcdef erscheint",
-        "Das Token canary_token-0123abcdef erscheint",
+        "Das Token CANARY-XX-abcdef ist da",
+        "Das Token canary_token-0123abcdef ist da",
     ],
 )
 def test_urls_emails_and_canaries_are_never_edited(text: str) -> None:

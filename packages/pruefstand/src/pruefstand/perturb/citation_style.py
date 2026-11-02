@@ -78,6 +78,8 @@ def _rewrite(text: str) -> str:
         found = match_law(text, pos)
         if found is None or (head.group("head") == "§" and not is_national(found[0])):
             continue
+        if text[found[1] : found[1] + 1] == "-":  # DSGVO-konform, BGB-Gesellschaft
+            continue
         genitive = genitive_phrase(found[0])
         if genitive is None:
             continue

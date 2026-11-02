@@ -22,7 +22,8 @@ def _expand(m: re.Match[str]) -> str:
     found = m.group(0)
     word = _FULL[found.replace(" ", "").replace(".", "") if found[0] in "iz" else found]
     following = m.string[m.end() : m.end() + 1]
-    return word + " " if following.isalnum() else word
+    needs_space = bool(following) and (following.isalnum() or following in "§(€")
+    return word + " " if needs_space else word
 
 
 class Abbreviations:

@@ -12,11 +12,17 @@ _MONTHS = (
     "Januar", "Februar", "März", "April", "Mai", "Juni",
     "Juli", "August", "September", "Oktober", "November", "Dezember",
 )  # fmt: skip
-_DATE = re.compile(r"(?<![\w.,/-])(\d{1,2})\.(\d{1,2})\.(\d{4})(?!\w|\.\d)")
+_DATE = re.compile(r"(?<![\w.,/-])(\d{1,2})\.(\d{1,2})\.(\d{4})(?!\w|\.\d|-\d)")
+_REFERENCE_BEFORE = re.compile(r"(?:§|Az\.|Aktenzeichen|Nr\.)\s*$")
+_MIN_YEAR, _MAX_YEAR = 1900, 2100
 
 
 def _spell(m: re.Match[str]) -> str:
     day, month, year = (int(g) for g in m.groups())
+    if not _MIN_YEAR <= year <= _MAX_YEAR:
+        return m.group(0)
+    if _REFERENCE_BEFORE.search(m.string, max(0, m.start() - 14), m.start()):
+        return m.group(0)
     try:
         date(year, month, day)
     except ValueError:

@@ -4,7 +4,9 @@ Rules (D390): ``1.000,50 €`` becomes ``1000.50 EUR``, ``13,7 %`` becomes ``13.
 A number is rewritten only when the reading is unambiguous: a thousands-grouped number
 with a decimal part, with two or more groups, or with a unit next to it (``%``, ``€``,
 ``EUR``, ``Euro``, ``Prozent``); a plain decimal comma only with such a unit. Everything
-else (``Abs. 2,3``, ``Nr. 1,2``, ``§ 622``, integers below 1000, dates) stays as it is.
+else (``§ 622``, integers below 1000, dates) stays as it is. If any German-format number would
+remain after the rewrite (``zwischen 1.000 und 5.000 €``, ``Abs. 2,3 und 13,7 %``), the whole text
+is left unchanged: a half-converted sentence reads differently (D394).
 """
 
 import re
@@ -62,6 +64,8 @@ class Numbers:
         del rng  # deterministic rule
         source = nfc(text)
         out = _NUMBER.sub(_convert, source)
+        if any(m.group("dec") or "." in m.group("int") for m in _NUMBER.finditer(out)):
+            return finish(source, source)  # a German-format number would stay: mixed readings
         out = _EURO_AFTER_DIGIT.sub(" EUR", out)
         out = _EURO_BEFORE_DIGIT.sub("EUR ", out)
         return finish(source, out.replace("€", "EUR"))
