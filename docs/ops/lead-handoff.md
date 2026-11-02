@@ -76,4 +76,26 @@ to D400; take the next free number when adding a row and renumber on collision.
   `packages/pruefstand/tests/unit/adapters/test_http_untrusted.py` (timing, seen on CI), `test_citation_forms.py::
   test_runs_in_linear_time`, `metrics/test_review2_hardening.py::...budget_is_shared...`, the ingest linear-time tests.
 - Do not `pkill -f` a pattern that also matches your own ssh command line.
-- Cluster/GPU work only through `pruefstand-lock` (owner-run; agents have no sudo); never edit `MAINTENANCE`.
+- Cluster/GPU work only through `pruefstand-lock` and the wrapper `/usr/local/bin/pruefstand-cluster` (group `pruefstand`,
+  NOPASSWD for that one command; no other sudo, no direct `sudo -u pruefstand ssh`). Task agents never touch the cluster;
+  the lead runs the real operations (section 6). `MAINTENANCE` handling: see section 6 (D451).
+
+## 6. Model remove / swap authority (owner decision, D451)
+
+The owner lets the lead remove and swap Ollama models without asking, under ALL of these conditions:
+
+1. only after the `:latest` / digest fix is merged and deployed (`make gpu-deploy-bin` done by the owner);
+2. only models listed in `infra/gpu/models.yaml`. Anything else on the cluster `/data` (files, other models) belongs to the
+   owner: never touch it;
+3. only through the wrapper (`make gpu-pull`, `make gpu-rm`, i.e. wrapper `pull` / `rm`); never `ollama rm`, never `rm` by hand;
+4. only while no gate or nightly is running. Create `/var/lib/pruefstand/MAINTENANCE` yourself for the remove or swap, run
+   the operation under `pruefstand-lock`, and ALWAYS remove `MAINTENANCE` afterwards, also when the operation fails
+   (use a trap / `finally`); that one file is the only thing under `/var/lib/pruefstand` the lead may write;
+5. never remove the model the current mode is using without switching modes first (`make gpu-up` / `gpu-night-up`);
+   and **never remove the generator `qwen3.8:27b-q8_0` (`GENERATOR_TAG`), not even to free space**: if freeing space would
+   need it, ask the owner;
+6. log every remove or swap (tag, digest, free space before and after) in `docs/engineering/gpu-cluster.md` section 8
+   ("Model remove / swap log"), with the cluster paths shown as `<models-dir>`.
+
+Exit 17 of `fetch-model.sh` ("not enough disk") is no longer a stop: the lead may free space by removing catalogue models
+that the current task does not need (never the generator). Ask the owner only when that is not enough. Task agents never run any of this.
