@@ -1,0 +1,17 @@
+# probe 2026-11-02T15:44:07Z MODELS_DIR=/data/dheena/Models GEN_MODEL=qwen3.8:27b-q8_0
+CHECK os PASS Ubuntu 24.04.5 LTS, kernel 6.8.0-147-generic
+CHECK gpu PASS 2 x A40, memory used 0 MiB/0 MiB, driver 615.71.10, total 46068 MiB each
+CHECK gpu-procs PASS no compute process visible (none, or owned by other users)
+CHECK ollama PASS <ollama-bin>: ollama version is 0.32.13 
+CHECK ollama-list PASS qwen3.8:27b-q8_0 [arch=qwen35 params=27.3B ctx=262144 quant=Q8_0 licence=Apache License ]; 
+CHECK ollama-store PASS OLLAMA_MODELS=/data/dheena/Models OLLAMA_MAX_LOADED_MODELS=3 OLLAMA_NUM_PARALLEL=4 OLLAMA_KEEP_ALIVE=24h OLLAMA_KV_CACHE_TYPE=q8_0 CUDA_VISIBLE_DEVICES=0,1 OLLAMA_HOST=set pid=100261
+CHECK ollama-provenance PASS registry has qwen3.8:27b-q8_0 (HTTP 200); FROM blob sha256-2bb227142898...
+CHECK port-11434 PASS held by the cluster user's own ollama serve (pid 100261 ); the server we reuse (ADR-0018)
+CHECK logind PASS Linger=no KillUserProcesses=no
+CHECK tmux PASS tmux present (not used for serving, Y5.4)
+CHECK models-space PASS 14.1 GB free on /data/dheena/Models (models 28G); need 11.2 GB incl. 2.0 GB reserve, pending pulls: bge-m3 gemma3:12b 
+CHECK model-load PASS SKIP: cold load not measured; opt-in MEASURE_LOAD=1, an owner step under pruefstand-lock and MAINTENANCE
+CHECK local-disk PASS / avail 5.4G of 98G; /data avail 14G of 503G; 
+CHECK net PASS registry.ollama.ai /v2/ HTTP 404, gemma3:12b manifest HTTP 200; huggingface.co HTTP 200
+CHECK docker PASS docker/podman/apptainer absent (assumed, Z1)
+CHECK vllm PASS vllm absent (assumed, Z1)

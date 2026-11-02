@@ -1,0 +1,8 @@
+# tunnel_check 2026-11-02T15:46:14Z base=http://127.0.0.1:11434
+CHECK fwd PASS existing tunnel (http://127.0.0.1:11434)
+CHECK api-tags PASS 200, qwen3.8:27b-q8_0 digest 8f5fb6b71ea0 matches setup log 3
+CHECK api-chat-nothink PASS German answer, no thinking: Hallo!
+CHECK api-ctx PASS prompt_eval_count=7417 with num_ctx=8192 (native API applies num_ctx)
+CHECK api-openai PASS usage.prompt_tokens=7415 on /v1 (no num_ctx option there; tier 2 uses /api/* only, Y3.1)
+CHECK api-embed WARN bge-m3 not pulled yet (T3.1b)
+CHECK detached-survives-logout PASS setsid nohup sleep (pid 182308) alive 5 s after logout; killed again
