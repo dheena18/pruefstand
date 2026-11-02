@@ -199,7 +199,7 @@ simulated **because the ground truth (true Δ) must be known**; this is not a st
   **Tier-1 layouts** are rendered from **real** tier-1 artefacts committed under `tests/fixtures/runs/`
   (refreshed by `scripts/refresh_run_fixtures.py`; allowed by the raw-data guard's allowlist
   `tests/**/fixtures/**`). **Tier-2 layouts** (statistical WARN/FAIL, judged rows, MDE column) cannot
-  come from tier-1 runs; they are built with `testsupport.builders` (as in T1.9) and replaced by real
+  come from tier-1 runs; they are built with `testsupport.report_builders` (manifests from `testsupport.run_builders`, `GateReport` constructed directly; T1.9) and replaced by real
   tier-2 artefacts once T6.x produces them.
 - Update with `pytest --snapshot-update`, only in a PR that explains the change.
 

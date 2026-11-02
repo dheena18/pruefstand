@@ -1,0 +1,42 @@
+{% macro table(t) %}
+{% if t.details %}
+<details><summary>{{ t.summary }}</summary>
+
+{% endif %}
+{% for line in t.lines %}
+{{ line }}
+{% endfor %}
+{% if t.details %}
+</details>
+{% endif %}
+{% endmacro %}
+{{ marker }}
+{{ title }}
+{{ refs }}
+{% for line in notices %}
+{{ line }}
+{% endfor %}
+{% if hard_fails %}
+
+### 🚨 Hard fails ({{ hard_fails.count }})
+{{ table(hard_fails.table) }}
+{% endif %}
+{% if checks %}
+
+{{ table(checks) }}
+{% endif %}
+{% for t in tables %}
+
+{{ table(t) }}
+{% endfor %}
+{% if lines %}
+
+{% for line in lines %}
+{{ line }}
+{% endfor %}
+{% endif %}
+
+{{ footer }}
+{% if truncated %}
+… truncated, see full report
+{% endif %}

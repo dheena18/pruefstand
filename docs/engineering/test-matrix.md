@@ -300,10 +300,10 @@ owning module's unit test dir (`pt/unit/<module>/`, `rd/unit/…`).
 
 | Symbol | Module | Task | Test file | Test cases (short) | Status |
 | --- | --- | --- | --- | --- | --- |
-| `render_pr_comment` | `report.markdown` | T1.9 | `test_markdown.py`, `test_format.py` | marker; header; δ column; MDE; notable line; redaction; escaping; 60 000 truncation; snapshots; notices for `judge_mode=skipped`, fallback, degraded, drift; "Not applicable" line; **R9:** one-table rule (a tier-1 decision with `refusal_outside_nightly_full` lands on the informational line); no-baseline title ⚪ "NO BASELINE"; judge-truncated case ids listed | covered |
+| `render_pr_comment` | `report.markdown` | T1.9 | `test_markdown.py`, `test_markdown_tier1.py`, `test_markdown_notices.py`, `test_markdown_accounting.py`, `test_markdown_safety.py`, `test_markdown_snapshots.py`, `test_format.py` | marker; header; δ column; MDE; notable line; redaction; escaping; 60 000 truncation; snapshots; notices for `judge_mode=skipped`, fallback, degraded, drift; "Not applicable" line; **R9:** one-table rule (a tier-1 decision with `refusal_outside_nightly_full` lands on the informational line); no-baseline title ⚪ "NO BASELINE"; judge-truncated case ids listed | covered |
 | `write_gate_json` | `report.json_report` | T1.9 | `test_json_report.py` | sorted keys; 2-space indent; trailing newline; `GateReport.model_validate_json` round trip equal | covered |
 | `GitHubPublisher.upsert_pr_comment` | `report.github` | T1.9 | `test_github.py` | POST; PATCH on page 2; 403 `/user`; foreign comment; 502 retry; 401 without token | covered |
-| `GitHubPublisher.set_check(..., infra_error=True)` (**R11** D226; **R12** D264, D274; **R13** D288) | `report.github` | T1.9 | `test_github.py` | `infra_error=True` with any status → state `error`, description `"executor infra error: <summary>"`; never `failure`; `infra_error=True` + `no_baseline=True` → `error`; summary `"tunnel_lost: x; re-dispatch to retry"` kept verbatim (≤ 140 chars) | planned |
+| `GitHubPublisher.set_check(..., infra_error=True)` (**R11** D226; **R12** D264, D274; **R13** D288) | `report.github` | T1.9 | `test_github.py` | `infra_error=True` with any status → state `error`, description `"executor infra error: <summary>"`; never `failure`; `infra_error=True` + `no_baseline=True` → `error`; summary `"tunnel_lost: x; re-dispatch to retry"` kept verbatim (≤ 140 chars) | covered |
 | Renderers with `base=None` (**R11** D238; T1.9 part) | `report.markdown` | T1.9 | `test_markdown.py` | `render_pr_comment(report_no_baseline, None, cand, …)` → ⚪ NO BASELINE title, baseline ref "–", snapshot | covered |
 | Renderers with `base=None` (T6.4 part) | `report.html`, `report.evidence` | T6.4 | `test_html.py`, `test_evidence.py` | `render_html(report, None, cand)` → ⚪ state, no diff table; output contains exactly one `<meta http-equiv="Content-Security-Policy">` whose `sha256-` hash matches its inline script (D235); `build_evidence_record(report, None, cand, None)` validates | covered |
 | Judge fallback informational (**R11** D224; T5.2b part) | `pipeline` (informational map) | T5.2b | `test_informational.py` | candidate `judge_fallback=True` vs gemma-judged baseline → every judged decision `gated=False`, reason `judge_fallback`; deterministic metrics still gate; `judge_fallback=False` on both → judged metrics gate | covered |
@@ -311,9 +311,12 @@ owning module's unit test dir (`pt/unit/<module>/`, `rd/unit/…`).
 | Judge fallback informational (T6.2b part: promotion) | `pg/scripts/` | T6.2b | `test_promote.py` | a `judge_fallback` run is not promotable as a judged baseline | covered |
 | Promotion and phase order for flagged judges (**R13** AI13-08, D309, D321) | `pg/scripts/` | T6.2b | `test_promote.py`, `test_nightly.py` | `judge_fallback`, `judge_drift`, `judge_degraded`, a `judge_truncated`-informational judged metric or `infra_error` → not promoted (no deterministic-only promotion); phase order `switch-mode night` → `judge-drift` → `nightly-gate` | planned |
 | `GitHubPublisher.set_check` (R9 X4.6 signature) | `report.github` | T1.9 | `test_github.py` | parametrised PASS / WARN / INSUFFICIENT_DATA / UNSUPPORTED_CONFIG → `success`, status word in description; FAIL → `failure`; `INSUFFICIENT_DATA` / `PASS` with `no_baseline=True` → `failure` "no baseline for …"; description ≤ 140 chars | covered |
-| `GitHubPublisher.post_status` (**R13** P4.2, D297) | `report.github` | T1.9 | `test_github.py` | `post_status(sha, "pending", "executor busy (GPU lock held)")` → POST with context `pruefstand/gate`; `context="pruefstand/nightly"` honoured; 200-char description → 140; `set_check(PASS, …)` calls `post_status` once with `success` and `"PASS: …"` | planned |
+| `GitHubPublisher.post_status` (**R13** P4.2, D297) | `report.github` | T1.9 | `test_github.py` | `post_status(sha, "pending", "executor busy (GPU lock held)")` → POST with context `pruefstand/gate`; `context="pruefstand/nightly"` honoured; 200-char description → 140; `set_check(PASS, …)` calls `post_status` once with `success` and `"PASS: …"` | covered |
 | `post_status` call sites (**R13** P4.2, D297) | `pg/orchestrator/` | T6.2a | `pg/tests/test_health.py`, `test_report.py` | preflight failure → `post_status(..., "error", "executor unhealthy: data root unavailable")` (ADR-0019); lock wait → `pending` "executor busy (GPU lock held)"; the executor never posts "not gated" | planned |
 | `labels_document` (→ `LabelsDocument`, R9) | `report.labels` | T1.9 | `test_labels.py` | see `LabelsDocument` row | covered |
+| `assign_table`, `assign_block`, `reason_code` (ui-spec §11.1, R9 X5.4) | `report.tables` | T1.9 | `test_tables.py`, `test_markdown_accounting.py` | gated → GATED (incl. INSUFFICIENT_DATA); any reason → INFORMATIONAL; notable entry → NOTABLE; unmatched → INFORMATIONAL with `–`; blocks R / J / I / C / A / G / N per tier; every decision exactly once in the comment | covered |
+| `fmt_*`, `ref_label`, `md_escape`, `md_code`, `safe_url` (PR-comment formats, D381) | `report.format` | T1.9 | `test_format.py`, `test_canary.py` | `−0.07 (−0.10, −0.04)`; `18m 12s`; `4.1 M`; `0 USD`; refs; `@` / `#12` / `://` / `www.` / HTML / newlines neutralised; length cap; code span cannot be closed; unsafe URLs rejected; escape time linear (4x input <= 8x time) | covered |
+| `GitHubPublisher` input validation and secrecy (D380) | `report.github` | T1.9 | `test_github.py` | bad token / repo / sha / marker / body rejected before any request; token not in `repr` or in errors; 5xx gives up after 3 retries | covered |
 | `render_html` | `report.html` | T6.4 | `test_html.py` | snapshots; XSS; no remote loads; „Kündigung“; < 2 MB; sanitised input; footer = licence line | covered |
 | `build_evidence_record` | `report.evidence` | T6.4 | `test_evidence.py` | schema; hashes; thresholds; wording; `reviewer=None` | covered |
 | `render_evidence_pdf` (optional) | `report.evidence_pdf` | T10.2 | `test_evidence_pdf.py` | `%PDF`; pages; text; deterministic bytes | covered |
@@ -538,10 +541,10 @@ UI tests (pages × states × theme × locale × viewport) are specified in `docs
 
 | Status | Rows |
 | --- | --- |
-| covered | 353 |
-| planned | 30 (R13 rows and rows whose case round 13 changed; owners T1.9, T1.10, T3.1a, T3.6, T4.1, T5.1, T5.4, T6.1, T6.2a, T6.2b, T7.1b, T7.2, T7.3, T8.1, T8.5) |
+| covered | 358 |
+| planned | 28 (R13 rows and rows whose case round 13 changed; owners T1.10, T3.1a, T3.6, T4.1, T5.1, T5.4, T6.1, T6.2a, T6.2b, T7.1b, T7.2, T7.3, T8.1, T8.5) |
 | weak | 1 (backup bundle: drill only, acceptable for an ops script) |
-| **total** | **384** |
+| **total** | **387** |
 
 Round-13 changes (D296): the round-12 table (241 covered / 29 open / 1 weak = 271 rows) was re-derived: 40 multi-owner
 rows split into 90 single-owner rows (+50); 29 open rows flipped (`covered` unless round 13 changed the case); 21 new

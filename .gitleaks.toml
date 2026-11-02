@@ -33,3 +33,13 @@ paths = [
 regexes = [
   '''CANARY-(KM|VN)-[0-9a-f]{6}''',
 ]
+
+[[allowlists]]
+description = "T1.9 report canary-masking tests: a synthetic canary token assigned to a variable named TOKEN in an early commit (CLAUDE.md section 9: canary tokens are test data, not credentials)"
+condition = "AND"
+paths = [
+  '''packages/pruefstand/tests/unit/report/test_canary\.py''',
+]
+regexes = [
+  '''CANARY-VN-7f3a9c''',
+]
