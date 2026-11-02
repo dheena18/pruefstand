@@ -338,6 +338,12 @@ cluster scripts (infra/cluster/, copied over SSH to /data/dheena/pruefstand-bin/
                                    R12 (A12-M3, D276): before acting on a pid stop-ollama.sh and status.sh check
                                    that /proc/<pid>/cmdline is `ollama serve` and that :11434 is listening
                                    (no pid file since ADR-0019)
+  ollama-op.sh pull|rm|show <tag>  (T3.1a, D414) the only way the wrapper and the VM scripts run `ollama` on the
+                                   cluster: takes the binary from the process that serves :11434, tag regex
+                                   ^[a-z0-9._:/-]+$, `rm` of the generator tag -> exit 64, `pull` with less than
+                                   MODELS_MIN_FREE_GB free on the models disk -> exit 17 (D413)
+                                   status.sh also prints `bin-integrity` (sha256sum -c SHA256SUMS) and `bin-sums`
+                                   (sha256 of SHA256SUMS), what health.sh exit 14 compares (D415)
 
 VM scripts (infra/gpu/; never take the lock; exit 2 unless PRUEFSTAND_LOCK_HELD=1; D151)
   MAINTENANCE rule (ADR-0019, replaces D230): the owner (or a task whose prompt says so) sets
@@ -364,8 +370,17 @@ VM scripts (infra/gpu/; never take the lock; exit 2 unless PRUEFSTAND_LOCK_HELD=
                                      (same rule as the generator swap)
   fetch-model.sh <models.yaml id>    ollama pull <tag> via the one server into /data/dheena/Models, then
                                      manifest-digest check; mismatch -> ollama rm <tag>, exit 1 (D207); refuses
-                                     (exit 1) if /data would keep < 2 GB free; --rm <id> removes a non-generator
+                                     (exit 17, D413) if /data would keep < 2 GB free; --rm <id> removes a non-generator
                                      model, only while MAINTENANCE exists (swap rule, ADR-0019)
+                                     T3.1a (D413, owner's disk rule): the free space of the models disk is read from
+                                     status.sh right before the pull; below model size + 2 GB reserve it stops with
+                                     exit 17 and asks the owner, never pulling; a model already present with the
+                                     pinned digest is not pulled again. Other exits: 2 not under the lock, 3 --rm
+                                     without MAINTENANCE, 64 usage / unknown id / --rm of the generator
+  unload-all.sh [--dry-run]          (T3.1a, D414) unload every resident catalogue model, the server keeps running
+                                     (make gpu-down); under the lock like the other VM scripts
+  health.sh [--repair] [--mode day|night]  (D416) exit priority 16, 11, 12, 14, 13, 15, 10; a mode model that is not
+                                     resident and a second `ollama serve` are exit 11
 deploy-cluster-bin.sh [--check]      (infra/gpu/; needs no lock) infra/cluster/*.sh + cluster.env -> over SSH to
                                      /data/dheena/pruefstand-bin/ on the cluster (*.partial + mv) + SHA256SUMS
                                      (ADR-0019)
@@ -414,6 +429,8 @@ catalogue (infra/gpu/models.yaml, validated by infra/gpu/catalogue_schema.py)
              Ollama capabilities include `thinking`, e.g. the generator qwen3.8:27b-q8_0, D95),
              option_bounds {temperature: [min, max], top_p: [min, max], num_predict: [1, max]} (R12 D252; chat
              entries; default bounds temperature [0, 1], top_p [0, 1], num_predict [1, catalogue num_predict]),
+             T3.1a additions (D412): ollama_family, capabilities, standard (true = the day/night set), disk_bytes,
+             keep_alive, kv_bytes_per_token, swa_window, revision (cpu entries: HF commit instead of digest);
              license, provisional; embed entries also query_prefix, doc_prefix, max_input_tokens (= their num_ctx,
              AI12-08); R13 (AI13-05, D307): chat entries also tokenizer {source, sha256} (HF repo file, or extracted
              from the GGUF vocab with the `gguf` reader where the HF file is licence-gated); rag-demo bakes the
