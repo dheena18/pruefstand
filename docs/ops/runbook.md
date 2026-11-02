@@ -21,6 +21,9 @@ command of yours that needs the cluster goes through the sudo wrapper** (T3.1a, 
 `pruefstand`, which calls the scripts as `ssh "$CLUSTER_SSH_HOST" bash /data/dheena/pruefstand-bin/<script>.sh`
 (the wrapper does exactly that for you). On the cluster only the models (`/data/dheena/Models`), these scripts and
 `/data/dheena/ollama.log` are stored (ADR-0019); the server is started by your `~/start-ollama.sh` (setup log §7).
+**Owner step:** the start script of record must exist at `~/start-ollama.sh` on the cluster (a link to your real script is
+fine) and must set every value of `cluster.env`; `status.sh` and `health.sh` report a missing or non-executable one as a
+WARN row `start-script`.
 
 | Variable (VM `.env`) | Value |
 | --- | --- |

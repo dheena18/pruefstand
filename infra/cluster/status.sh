@@ -84,6 +84,14 @@ check_disk() {
   emit disk-models "$st" "free_kb=$free_kb min_free_gb=$MODELS_MIN_FREE_GB"
 }
 
+check_start_script() {
+  if [ -f "$OLLAMA_START_SCRIPT" ] && [ -x "$OLLAMA_START_SCRIPT" ]; then
+    emit start-script OK "the start script of record exists"
+  else
+    emit start-script WARN 'the start script ~/start-ollama.sh is missing or not executable: create it (a link is fine) so that it sets every value of cluster.env'
+  fi
+}
+
 check_gpus() {
   local out line idx uuid used total
   if ! out="$(nvidia-smi --query-gpu=index,uuid,memory.used,memory.total --format=csv,noheader,nounits 2>/dev/null)"; then
@@ -174,6 +182,7 @@ trap 'rm -f "$ENV_TMP"' EXIT
 check_server
 check_env
 check_disk
+check_start_script
 if tags="$(curl -sf --max-time 10 "$API/api/tags" 2>/dev/null)"; then
   emit api-tags OK "models=$(grep -o '"name":' <<<"$tags" | wc -l | tr -d ' ')"
 else

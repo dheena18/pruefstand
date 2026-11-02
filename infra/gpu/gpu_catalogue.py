@@ -132,10 +132,32 @@ def unload_body(tag: str, *, embed: bool = False) -> str:
     return dumps({**body, "input": ["."]} if embed else body)
 
 
+def normalise(tag: str) -> str:
+    """Ollama lists a model pulled without a tag as ``<name>:latest``: compare on that form.
+
+    >>> normalise("bge-m3"), normalise("gemma3:12b")
+    ('bge-m3:latest', 'gemma3:12b')
+    """
+    return tag if ":" in tag else f"{tag}:latest"
+
+
+def catalogue_tag(reported: str) -> str:
+    """The catalogue tag for a name Ollama reports (``bge-m3:latest`` -> ``bge-m3``), else unchanged.
+
+    A different tag of the same model (``bge-m3:other``) is not the catalogue model and stays as reported.
+    """
+    for entry in ollama_entries():
+        if normalise(entry["tag"]) == normalise(reported):
+            return str(entry["tag"])
+    return reported
+
+
 def tag_digest(tags_json: str, tag: str) -> str:
     """The digest ``/api/tags`` reports for ``tag`` (empty when the tag is not listed)."""
+    wanted = normalise(tag)
     for model in json.loads(tags_json).get("models", []):
-        if model.get("name") == tag or model.get("model") == tag:
+        names = [str(model.get(key)) for key in ("name", "model") if model.get(key)]
+        if any(normalise(name) == wanted for name in names):
             return str(model.get("digest", ""))
     return ""
 
@@ -144,7 +166,7 @@ def ps_rows(ps_json: str) -> list[tuple[str, str, str, str, str]]:
     """``(name, digest, context_length|-, size, size_vram)`` of every resident model."""
     return [
         (
-            str(m.get("name", "")),
+            catalogue_tag(str(m.get("name", ""))),
             str(m.get("digest", "")),
             str(m.get("context_length", "-")),
             str(m.get("size", 0)),
