@@ -7,8 +7,9 @@
 # nearly full, ADR-0019): no installs, no pulls, no server start or restart, no keep_alive change.
 # The probe is READ-ONLY except one OPT-IN step: with MEASURE_LOAD=1 `model-load` sends one empty
 # /api/generate (keep_alive 5m) that loads the generator; it checks the HTTP status, an `error` field and
-# /api/ps. Once that request has been sent the model is ALWAYS unloaded again (keep_alive 0, HTTP status
-# and /api/ps checked); if that cannot be confirmed the check says "unload by hand". It runs only when
+# /api/ps. Once that request has been sent the probe unloads the model again (keep_alive 0, HTTP status
+# and /api/ps checked); if that cannot be confirmed the check says "unload by hand". If the probe is
+# killed between load and unload, keep_alive 5m bounds how long the model stays loaded. It runs only when
 # /api/ps lists NO model, and only as an owner step under `pruefstand-lock` with MAINTENANCE set (nothing
 # else may use the GPUs). Default: SKIP. PROBE_CHECKS="id id" limits the run to those checks (tests).
 # Every check prints `CHECK <id> <PASS|FAIL|WARN> <detail>` on one line and never aborts the script.
@@ -22,8 +23,10 @@
 # prefix (`<ollama-prefix>`), $HOME, its resolved path and the passwd home directory (`<home>`), each only
 # on a path-segment boundary, and the login (`id -un`, $USER, $LOGNAME; case-insensitive) as a path segment
 # or before `@` (`<cluster-user>`). The last filter FAILS CLOSED: a line that still contains one of
-# these, or the login as a whole word, is replaced by `CHECK redact FAIL leak suppressed`. Other
-# user-specific text (host names, addresses) is not scrubbed; do not add such checks.
+# these (also percent-encoded), or the login as a case-insensitive substring (as a whole word when
+# the login is shorter than 4 characters), is replaced by `CHECK redact FAIL leak suppressed`. stderr
+# of every command goes through the same filter. Other user-specific text (host names, addresses)
+# is not scrubbed; do not add such checks.
 set -euo pipefail
 
 MODELS_DIR="${MODELS_DIR:-/data/dheena/Models}"
@@ -107,12 +110,19 @@ redact() { # text -> text with the paths and the login scrubbed
   printf '%s' "$t"
 }
 
-leaks() { # text -> 0 when the text still holds a scrubbed value or the login as a whole word
-  local l esc
+leaks() { # text -> 0 when the (already scrubbed) text still holds a scrubbed value or the login
+  local l esc n
   [ "$(redact "$1")" = "$1" ] || return 0
+  for n in ${RP_N[@]+"${RP_N[@]}"}; do
+    if grep -qiF -- "${n//\//%2F}" <<<"$1"; then return 0; fi
+  done
   for l in ${LOGINS[@]+"${LOGINS[@]}"}; do
-    esc="$(login_pattern "$l")"
-    if grep -qiE "(^|[^A-Za-z0-9._-])${esc}([^A-Za-z0-9._-]|\$)" <<<"$1"; then return 0; fi
+    if [ "${#l}" -ge 4 ]; then
+      if grep -qiF -- "$l" <<<"$1"; then return 0; fi
+    else
+      esc="$(login_pattern "$l")"
+      if grep -qiE "(^|[^A-Za-z0-9._-])${esc}([^A-Za-z0-9._-]|\$)" <<<"$1"; then return 0; fi
+    fi
   done
   return 1
 }
@@ -461,4 +471,4 @@ main() {
 
 find_ollama_bin || true
 init_redact
-main </dev/null | final_filter
+main </dev/null 2>&1 | final_filter
