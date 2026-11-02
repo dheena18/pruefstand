@@ -1,0 +1,129 @@
+# Model catalogue of the ONE Ollama server (T3.1a; docs/engineering/gpu-cluster.md section 2, interfaces 1.5).
+# Validated by catalogue_schema.py (test_catalogue.py). Every value is PROVISIONAL until T3.1b pins it.
+# id = ollama/<tag> for engine ollama (configs and endpoints.yaml use the id; the bare tag appears only in
+# Ollama API bodies). digest = sha256 of the registry manifest (the pin; tags are mutable). disk_bytes = manifest
+# config + layers (the number /api/tags reports as size). `standard: true` = the day/night set; the other
+# entries are swap candidates (swap rule, ADR-0019). options feed every preload (switch-mode.sh, health.sh
+# --repair) and every trusted request, num_ctx fixed per model. kv_bytes_per_token are planning values at
+# OLLAMA_KV_CACHE_TYPE=q8_0 (verify with the load log in S8). Digests, sizes and tokenizer hashes were read from
+# registry.ollama.ai and huggingface.co on 2026-11-02.
+models:
+  - id: ollama/qwen3.8:27b-q8_0
+    engine: ollama
+    tag: qwen3.8:27b-q8_0
+    digest: 8f5fb6b71ea00052cbe8545738c55ce61112c4e571cb60ca4dad00b131766039
+    quantization: Q8_0
+    family: qwen
+    ollama_family: qwen35
+    role: generator
+    server: gpu0
+    standard: true
+    think: false
+    capabilities: [completion, tools, thinking, vision]
+    license: Apache-2.0
+    provisional: true
+    disk_bytes: 29978242050
+    keep_alive: 24h
+    kv_bytes_per_token: 131072
+    options: {num_ctx: 8192, num_predict: 512, temperature: 0.0, seed: 42, top_p: 1.0}
+    option_bounds: {temperature: [0.0, 1.0], top_p: [0.0, 1.0], num_predict: [1, 512]}
+    tokenizer:
+      source: hf:Qwen/Qwen3.8-27B/tokenizer.json
+      sha256: 0997f410c57a1f4e53b09e4be8f4a172d90edd9564368fb0847030937229b9f3
+  - id: ollama/bge-m3
+    engine: ollama
+    tag: bge-m3
+    digest: 7907646426070047a77226ac3e684fbbe8410524f7b4a74d02837e43f2146bab
+    quantization: F16
+    family: bge
+    ollama_family: bert
+    role: embed
+    server: gpu0
+    standard: true
+    capabilities: [embedding]
+    license: MIT
+    provisional: true
+    disk_bytes: 1157672605
+    keep_alive: 24h
+    kv_bytes_per_token: 98304
+    query_prefix: ""
+    doc_prefix: ""
+    max_input_tokens: 1024
+    options: {num_ctx: 1024, num_predict: 1, temperature: 0.0, seed: 0, top_p: 1.0}
+  - id: ollama/gemma3:12b
+    engine: ollama
+    tag: gemma3:12b
+    digest: b92b218582c521ba287f38f1d6057dcd3c6cbff036f13cac97b5d861f5e58ec3
+    quantization: Q4_K_M
+    family: gemma
+    ollama_family: gemma3
+    role: judge
+    server: gpu1
+    standard: true
+    capabilities: [completion, vision]
+    license: Gemma
+    provisional: true
+    disk_bytes: 8164039732
+    keep_alive: 24h
+    kv_bytes_per_token: 196608
+    swa_window: 1024
+    options: {num_ctx: 12288, num_predict: 384, temperature: 0.0, seed: 42, top_p: 1.0}
+    option_bounds: {temperature: [0.0, 1.0], top_p: [0.0, 1.0], num_predict: [1, 384]}
+    tokenizer:
+      source: hf:unsloth/gemma-3-12b-it/tokenizer.json
+      sha256: 4667f2089529e8e7657cfb6d1c19910ae71ff5f28aa7ab2ff2763330affad795
+  # Swap candidates (not part of day/night): M11 smaller same-family generator, RQ1/M3 e5 embedding.
+  - id: ollama/qwen3:4b
+    engine: ollama
+    tag: qwen3:4b
+    digest: 359d7dd4bcdab3d86b87d73ac27966f4dbb9f5efdfcc75d34a8764a09474fae7
+    quantization: Q4_K_M
+    family: qwen
+    ollama_family: qwen3
+    role: generator
+    server: gpu0
+    standard: false
+    think: false
+    capabilities: [completion, tools, thinking]
+    license: Apache-2.0
+    provisional: true
+    disk_bytes: 2497293931
+    keep_alive: 24h
+    kv_bytes_per_token: 73728
+    options: {num_ctx: 8192, num_predict: 512, temperature: 0.0, seed: 42, top_p: 1.0}
+    option_bounds: {temperature: [0.0, 1.0], top_p: [0.0, 1.0], num_predict: [1, 512]}
+    tokenizer:
+      source: hf:Qwen/Qwen3-4B/tokenizer.json
+      sha256: aeb13307a71acd8fe81861d94ad54ab689df773318809eed3cbe794b4492dae4
+  - id: ollama/jeffh/intfloat-multilingual-e5-large-instruct:f16
+    engine: ollama
+    tag: jeffh/intfloat-multilingual-e5-large-instruct:f16
+    digest: 9bc40a9c9e63705747701aa962b4e852db6ae8a7f47d21f81bc7974d44ce83b9
+    quantization: F16
+    family: e5
+    ollama_family: bert
+    role: embed
+    server: gpu0
+    standard: false
+    capabilities: [embedding]
+    license: MIT
+    provisional: true
+    disk_bytes: 1126216421
+    keep_alive: 24h
+    kv_bytes_per_token: 98304
+    query_prefix: "query: "
+    doc_prefix: "passage: "
+    max_input_tokens: 512
+    options: {num_ctx: 512, num_predict: 1, temperature: 0.0, seed: 0, top_p: 1.0}
+  - id: cpu/bge-reranker-v2-m3
+    engine: cpu
+    tag: BAAI/bge-reranker-v2-m3
+    revision: 953dc6f6f85a1b2dbfca4c34a2796e7dde08d41e
+    quantization: fp32
+    family: bge
+    role: rerank
+    server: vm
+    standard: true
+    license: Apache-2.0
+    provisional: true
+    max_input_tokens: 256

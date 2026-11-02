@@ -1,6 +1,6 @@
 # Prüfstand compose stack (T0.3; docs/engineering/docker.md section 3 is the port table).
 # Profiles: core (Qdrant) | live (CPU stack of tier 1: Qdrant + llama.cpp + TEI embeddings + rag-demo) |
-# dev (reserved: rag-demo from source with reload). gpu (T3.1a) and demo (T8.5) are added by those tasks in their own hunks.
+# dev (reserved: rag-demo from source with reload). gpu (T3.1a: rerank-cpu from infra/gpu/compose.gpu.yml plus Qdrant) and demo (T8.5) are added by those tasks in their own hunks.
 # Start it with `make up PROFILES="core live"` (mk/docker.mk exports the host ports = default + PORT_OFFSET,
 # D214); a raw `docker compose` needs `make ports-env` first. Every host port binds 127.0.0.1 only and is a
 # variable (scripts/check_compose.py). No secrets here: only ${VAR} references.
@@ -15,18 +15,22 @@ x-service-defaults: &service-defaults
       max-size: 10m
       max-file: "3"
 
+# VM services of profile gpu (T3.1a): rerank-cpu
+include:
+  - infra/gpu/compose.gpu.yml
+
 services:
   qdrant:
     <<: *service-defaults
     # Qdrant v1.20.0 (decisions.md "Pinned versions"); update tag and digest together.
     image: qdrant/qdrant:v1.20.0@sha256:9bfc89f9914fc14876a88c05270685921a55b8877b254a98bcc1cc2f0a424cd2
-    # Add `gpu` here in T3.1a (own hunk): profiles: [core, live, gpu]
-    profiles: [core, live]
+    profiles: [core, live, gpu]
     ports:
       - "127.0.0.1:${QDRANT_HTTP_PORT:-6333}:6333"
       - "127.0.0.1:${QDRANT_GRPC_PORT:-6334}:6334"
     volumes:
-      - qdrant_data:/qdrant/storage
+      # mk/gpu.mk sets QDRANT_STORAGE=$PRUEFSTAND_HOME/qdrant for the gpu profile (R9-32)
+      - ${QDRANT_STORAGE:-qdrant_data}:/qdrant/storage
     mem_limit: 2g
     healthcheck:
       # The image has neither curl nor wget: plain HTTP over bash's /dev/tcp, checked inside the container.
