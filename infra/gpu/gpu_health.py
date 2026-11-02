@@ -51,7 +51,8 @@ def residency(
             codes.add(DIGEST)
         else:
             rows.append((f"resident:{tag}", "OK", f"digest {digest[:12]}"))
-        card = status.get(f"placement:{tag}", ("", "gpu=unknown"))[1]
+        row = status.get(f"placement:{tag}") or status.get(f"placement:{cat.normalise(tag)}")
+        card = row[1] if row else "gpu=unknown"
         if vram < size:
             rows.append(
                 (
@@ -114,7 +115,7 @@ def cluster_rows(
     codes: set[int] = set()
     for check, (state, detail) in sorted(status.items()):
         if (
-            check == "disk-models"
+            check in {"disk-models", "start-script"}
             or check.startswith("env")
             or (check.startswith("gpu-proc:") and state == "WARN")
         ):

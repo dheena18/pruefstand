@@ -3,7 +3,8 @@
 #
 # usage: status.sh            (no arguments; writes nothing on the cluster)
 # status: OK | INFO | WARN | FAIL; exit 1 when any row is FAIL (the CSV is complete anyway), else 0.
-# Rows: server, second-server (FAIL when two `ollama serve` run), listener, env / env:<KEY> (WARN per key that
+# Rows: server, second-server (FAIL when two `ollama serve` run), listener, start-script (WARN when the start script of
+# record `~/start-ollama.sh` is missing, a dangling link or not executable), env / env:<KEY> (WARN per key that
 # differs from cluster.env), disk-models (WARN below MODELS_MIN_FREE_GB), api-tags, ps:<tag> (size, size_vram,
 # digest), gpu:<index>, gpu-proc:<pid> (WARN for a pid that is not ours), placement:<tag> (the card(s) of every
 # resident model: the model's blob in its manifest, matched to the runner process whose command line names that
@@ -82,6 +83,14 @@ check_disk() {
   if ! [[ $free_kb =~ ^[0-9]+$ ]]; then free_kb=0; fi
   if [ "$free_kb" -lt "$min_kb" ]; then st=WARN; fi
   emit disk-models "$st" "free_kb=$free_kb min_free_gb=$MODELS_MIN_FREE_GB"
+}
+
+check_start_script() {
+  if [ -f "$OLLAMA_START_SCRIPT" ] && [ -x "$OLLAMA_START_SCRIPT" ]; then
+    emit start-script OK "the start script of record exists"
+  else
+    emit start-script WARN 'the start script ~/start-ollama.sh is missing or not executable: create it (a link is fine) so that it sets every value of cluster.env'
+  fi
 }
 
 check_gpus() {
@@ -174,6 +183,7 @@ trap 'rm -f "$ENV_TMP"' EXIT
 check_server
 check_env
 check_disk
+check_start_script
 if tags="$(curl -sf --max-time 10 "$API/api/tags" 2>/dev/null)"; then
   emit api-tags OK "models=$(grep -o '"name":' <<<"$tags" | wc -l | tr -d ' ')"
 else

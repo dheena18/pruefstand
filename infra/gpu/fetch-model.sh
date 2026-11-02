@@ -73,9 +73,14 @@ if [ "$DRY" -eq 1 ] && [ -z "$actual" ]; then
   say "would verify the digest of $tag after the pull"
   exit 0
 fi
+if [ -z "$actual" ]; then
+  # no digest at all (not listed, empty or unparsable /api/tags): never delete on a guess
+  warn "could not read the digest of $tag from /api/tags after the pull; not removing it, check by hand"
+  exit 1
+fi
 if [ "$actual" != "$digest" ]; then
-  warn "$tag has digest '${actual:-none}', the catalogue pins $digest: removing it"
-  [ -z "$actual" ] || cluster_mut rm "$tag"
+  warn "$tag has digest $actual, the catalogue pins $digest: removing it"
+  cluster_mut rm "$tag"
   exit 1
 fi
 say "$tag pulled; digest matches the catalogue"
