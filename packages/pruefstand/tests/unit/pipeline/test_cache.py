@@ -9,6 +9,7 @@ from pruefstand.core.models.target import TargetInfo
 from pruefstand.pipeline.cache import (
     cache_mode,
     identity_is_opaque,
+    reads_base,
     target_cache,
     trusted_target_id,
 )
@@ -160,3 +161,48 @@ def test_without_use_base_main_s_cache_is_not_read(tmp_path: Path) -> None:
         assert cache.get("k") is None
         cache.set("pr", b"1")
         assert cache.get("pr") == b"1"
+
+
+@pytest.mark.parametrize(
+    ("git_sha", "digest"),
+    [
+        (" Unknown ", None),
+        ("NONE", None),
+        ("empty", None),
+        ("Dev", None),
+        ("LATEST", None),
+        ("0000000", None),
+        ("unknown", "sha256:" + "0" * 64),
+        ("unknown", "  "),
+    ],
+)
+def test_placeholder_identities_are_opaque_after_strip_and_lower(
+    git_sha: str, digest: str | None
+) -> None:
+    info = TargetInfo(
+        app_version="1",
+        git_sha=git_sha,
+        image_digest=digest,
+        config_hash="c",
+        corpus_version="v",
+        models={},
+    )
+    assert identity_is_opaque(info)
+
+
+def test_a_real_sha_or_digest_is_not_opaque() -> None:
+    real = "sha256:" + "ab" * 32
+    info = TargetInfo(
+        app_version="1", git_sha="dev", image_digest=real, config_hash="c", corpus_version="v", models={}
+    )
+    assert not identity_is_opaque(info)
+
+
+@pytest.mark.parametrize(
+    ("usable", "trusted", "expected"),
+    [(True, "sha256:x", True), (True, None, False), (False, "sha256:x", False), (False, None, False)],
+)
+def test_main_s_cache_is_read_only_for_a_usable_identity_with_a_trusted_id(
+    usable: object, trusted: str | None, expected: object
+) -> None:
+    assert reads_base(usable=bool(usable), trusted=trusted) == expected

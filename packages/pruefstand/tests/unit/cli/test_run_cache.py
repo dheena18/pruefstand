@@ -177,3 +177,17 @@ def test_an_invalid_cache_mode_is_a_usage_error(
     result = do_run(cli, good_config, tmp_path / "runs")
     assert result.exit_code == 2
     assert "PRUEFSTAND_CACHE_MODE" in result.output
+
+
+def test_a_main_rerun_in_shared_mode_with_the_trusted_id_is_not_counted_as_base_hits(
+    cli: CliRunner,
+    good: TargetCassette,
+    good_config: Path,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("PRUEFSTAND_TRUSTED_TARGET_ID", TRUSTED)
+    shared_run(cli, good_config, tmp_path, monkeypatch)
+    second = shared_run(cli, good_config, tmp_path, monkeypatch)
+    assert second["counts"]["cached"] == second["n_cases"]  # a full cache rerun on main
+    assert "cached_from_base" not in second["counts"]  # its own cache, not a base overlay
