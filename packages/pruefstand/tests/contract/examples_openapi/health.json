@@ -1,0 +1,4 @@
+{
+  "status": "ok",
+  "stats": {"think_stripped": 0, "truncated_chunks": 0, "requests": 3, "prompt_overflow": 0}
+}

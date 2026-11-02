@@ -1,15 +1,19 @@
 {
   "app_version": "0.1.0",
-  "git_sha": "0000000000000000000000000000000000000000",
+  "git_sha": "49e599734553dc0bc3b07a345542bf84d3b83722",
   "image_digest": null,
-  "config_hash": "sha256:example",
-  "corpus_version": "example-2026-01",
-  "models": {"generator": "qwen3-1.7b-q4_k_m", "embedding": "bge-m3"},
+  "config_hash": "0a50544d5591edd6",
+  "corpus_version": "slice-2026-10-31.51fd4b94",
+  "models": {
+    "generator": "qwen2.5-0.5b-instruct-q4_k_m",
+    "generator_family": "qwen",
+    "embedding": "intfloat/multilingual-e5-small"
+  },
   "serving": {
     "engine": "llama.cpp",
-    "engine_version": "b4000",
+    "engine_version": "b12019",
     "quantization": "Q4_K_M",
-    "gpu": "cpu:example",
-    "model_sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+    "gpu": "cpu:Intel Core Processor (Haswell, no TSX, IBRS)",
+    "model_sha256": "74a4da8c9fdbcd15bd1f6d01d621410d31c6fc00986f5eb687824e7b93d7a9db"
   }
 }

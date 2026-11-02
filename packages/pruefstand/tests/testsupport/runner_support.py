@@ -6,7 +6,7 @@ from collections.abc import Awaitable, Callable, Sequence
 from typing import Any
 
 import httpx
-from contract.adapter_contract import load_example
+from contract.adapter_contract import load_openapi_example
 from testsupport.run_builders import make_case
 
 from pruefstand.adapters.http import HttpTargetAdapter
@@ -165,5 +165,5 @@ def numbered(count: int, **changes: Any) -> list[Any]:
 
 
 def echo_answer(request: httpx.Request) -> httpx.Response:
-    body = load_example("query_ok.json")
+    body = load_openapi_example("query_ok.json")
     return httpx.Response(200, json={**body, "answer": f"Antwort {index_of(request)}"})

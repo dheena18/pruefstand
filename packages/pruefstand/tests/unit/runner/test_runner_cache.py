@@ -7,7 +7,7 @@ from pathlib import Path
 
 import pytest
 import respx
-from contract.adapter_contract import load_example
+from contract.adapter_contract import load_openapi_example
 from testsupport.run_builders import make_case, make_cases, unhashed
 from testsupport.runner_support import DictCache, make_runner, run_cases
 
@@ -30,7 +30,7 @@ class _Evil:
 async def test_a_planted_pickle_in_the_cache_is_a_miss_and_never_executed(
     router: respx.MockRouter, adapter: HttpTargetAdapter, tmp_path: Path
 ) -> None:
-    route = router.post("/v1/query").respond(200, json=load_example("query_ok.json"))
+    route = router.post("/v1/query").respond(200, json=load_openapi_example("query_ok.json"))
     marker = tmp_path / "pwned"
     case = make_case(0)
     cache = DictCache()
@@ -58,7 +58,7 @@ class _BrokenCache:
 async def test_cache_failures_are_misses_not_run_aborts(
     router: respx.MockRouter, adapter: HttpTargetAdapter
 ) -> None:
-    route = router.post("/v1/query").respond(200, json=load_example("query_ok.json"))
+    route = router.post("/v1/query").respond(200, json=load_openapi_example("query_ok.json"))
     results = await run_cases(make_runner(adapter, cache=_BrokenCache()), make_cases(4))
     assert route.call_count == 4
     assert results.manifest.complete is True
@@ -68,7 +68,7 @@ async def test_cache_failures_are_misses_not_run_aborts(
 async def test_a_planted_integer_row_in_a_real_disk_cache_is_a_miss(
     router: respx.MockRouter, adapter: HttpTargetAdapter, tmp_path: Path
 ) -> None:
-    route = router.post("/v1/query").respond(200, json=load_example("query_ok.json"))
+    route = router.post("/v1/query").respond(200, json=load_openapi_example("query_ok.json"))
     case = make_case(0)
     key = stable_hash("fp-test", case.id, case.question, case.tenant)
     with DiskKVCache(tmp_path, "target"):
@@ -118,7 +118,7 @@ PLANTED = {
 async def test_planted_cache_entries_are_misses_and_the_run_stays_writable(
     router: respx.MockRouter, adapter: HttpTargetAdapter, tmp_path: Path, name: str
 ) -> None:
-    route = router.post("/v1/query").respond(200, json=load_example("query_ok.json"))
+    route = router.post("/v1/query").respond(200, json=load_openapi_example("query_ok.json"))
     case = make_case(0)
     cache = DictCache()
     cache.set(stable_hash("fp-test", case.id, case.question, case.tenant), PLANTED[name])
@@ -149,7 +149,7 @@ class _CountingBrokenCache:
 async def test_a_failing_cache_is_skipped_after_the_first_failure(
     router: respx.MockRouter, adapter: HttpTargetAdapter
 ) -> None:
-    router.post("/v1/query").respond(200, json=load_example("query_ok.json"))
+    router.post("/v1/query").respond(200, json=load_openapi_example("query_ok.json"))
     cache = _CountingBrokenCache()
     results = await run_cases(make_runner(adapter, cache=cache, concurrency=1), make_cases(6))
     assert results.manifest.complete is True

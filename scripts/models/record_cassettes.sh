@@ -5,6 +5,8 @@
 # torn down on exit), records server_503.yaml while the server is still loading the model, then runs
 # the recording tests (`--record-mode=rewrite`) and writes the backend-level JSON cassettes.
 # Nothing is ever edited by hand; a recording that does not show the intended behaviour fails the run.
+# T1.13 adds a second stage (`--rag-demo`): the full `live` stack (llm, TEI, Qdrant, rag-demo) records the
+# generator and TEI cassettes of apps/rag-demo/tests/cassettes and the contract examples (`make cassettes-contract`).
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
@@ -61,8 +63,36 @@ inner() {
   uv run pytest packages/pruefstand/tests/unit/llm -q -p no:cacheprovider
 }
 
+rag_demo_inner() {
+  # T1.13 S8: runs inside `make stack-run PROFILES="core live dev"` (all ports are exported by mk/docker.mk).
+  local rag_cassettes=apps/rag-demo/tests/cassettes
+  make --no-print-directory index-slice
+  rm -f "$rag_cassettes"/*.yaml
+  RAG_RECORD=1 RECORD_LLM_URL="http://127.0.0.1:${LLM_HOST_PORT:-8080}" \
+    RECORD_EMBED_URL="http://127.0.0.1:${EMBED_HOST_PORT:-8090}" \
+    uv run pytest apps/rag-demo/tests/live/test_record.py --record-mode=rewrite -q -p no:cacheprovider
+  local day
+  day="$(date +%F)"
+  for f in "$rag_cassettes"/*.yaml; do
+    { echo "# recorded: $day, git: $(git rev-parse --short HEAD), by scripts/models/record_cassettes.sh"; cat "$f"; } > "$f.tmp"
+    mv "$f.tmp" "$f"
+  done
+  make --no-print-directory rag-demo-bug BUG=tenant_filter_post_topk
+  # the bug instance needs a moment to become healthy
+  for _ in $(seq 1 60); do
+    if curl -fsS "http://127.0.0.1:${BUG_PORT:-$((8001 + ${PORT_OFFSET:-0}))}/v1/health" >/dev/null 2>&1; then break; fi
+    sleep 1
+  done
+  make --no-print-directory cassettes-contract
+  uv run pytest apps/rag-demo/tests/unit -q -p no:cacheprovider
+}
+
 if [ "${1:-}" = "--inner" ]; then
   inner
+  exit $?
+fi
+if [ "${1:-}" = "--rag-demo-inner" ]; then
+  rag_demo_inner
   exit $?
 fi
 
@@ -71,3 +101,10 @@ export LIVE_LLM_GGUF="$MODEL_FILE"
 make --no-print-directory stack-run PROFILES="core live dev" SERVICES=llm \
   CMD="bash scripts/models/record_cassettes.sh --inner"
 git --no-pager diff --stat -- "$CASSETTES" || true
+
+# T1.13: second stage, the whole live stack for the rag-demo cassettes and the contract examples.
+uv run python scripts/models/fetch.py --manifest infra/models/live-models.yaml
+unset LIVE_LLM_GGUF  # the compose default is the pinned live generator
+make --no-print-directory stack-run PROFILES="core live dev" \
+  CMD="bash scripts/models/record_cassettes.sh --rag-demo-inner"
+git --no-pager diff --stat -- apps/rag-demo/tests/cassettes packages/pruefstand/tests/contract/examples || true

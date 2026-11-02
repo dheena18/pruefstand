@@ -1,7 +1,7 @@
 import asyncio
 
 import respx
-from contract.adapter_contract import load_example
+from contract.adapter_contract import load_openapi_example
 from testsupport.run_builders import make_cases
 from testsupport.runner_support import (
     SpyPool,
@@ -30,7 +30,7 @@ def failing(case_ids: set[str], error: Exception) -> SpyPool:
 async def test_one_judge_failure_in_twenty_is_an_error_value_but_not_degraded(
     router: respx.MockRouter, adapter: HttpTargetAdapter
 ) -> None:
-    router.post("/v1/query").respond(200, json=load_example("query_ok.json"))
+    router.post("/v1/query").respond(200, json=load_openapi_example("query_ok.json"))
     pool = failing({"law-0007"}, LLMError("judge down", transient=True))
     runner = make_runner(adapter, metrics=registry_with_judged(), judges=pool)
     results = await run_cases(runner, make_cases(20))
@@ -51,7 +51,7 @@ async def test_one_judge_failure_in_twenty_is_an_error_value_but_not_degraded(
 async def test_two_judge_failures_in_twenty_degrade_the_judge(
     router: respx.MockRouter, adapter: HttpTargetAdapter
 ) -> None:
-    router.post("/v1/query").respond(200, json=load_example("query_ok.json"))
+    router.post("/v1/query").respond(200, json=load_openapi_example("query_ok.json"))
     pool = failing({"law-0003", "law-0004"}, LLMError("judge down", transient=True))
     runner = make_runner(adapter, metrics=registry_with_judged(), judges=pool)
     results = await run_cases(runner, make_cases(20))
@@ -62,7 +62,7 @@ async def test_two_judge_failures_in_twenty_degrade_the_judge(
 async def test_policy_violation_is_counted_like_an_llm_error(
     router: respx.MockRouter, adapter: HttpTargetAdapter
 ) -> None:
-    router.post("/v1/query").respond(200, json=load_example("query_ok.json"))
+    router.post("/v1/query").respond(200, json=load_openapi_example("query_ok.json"))
     pool = failing({"law-0001"}, PolicyViolation("provider not allowed"))
     runner = make_runner(adapter, metrics=registry_with_judged(), judges=pool)
     results = await run_cases(runner, make_cases(4))
@@ -75,7 +75,7 @@ async def test_policy_violation_is_counted_like_an_llm_error(
 async def test_quota_exhausted_stops_judging_for_the_rest_of_the_run(
     router: respx.MockRouter, adapter: HttpTargetAdapter
 ) -> None:
-    router.post("/v1/query").respond(200, json=load_example("query_ok.json"))
+    router.post("/v1/query").respond(200, json=load_openapi_example("query_ok.json"))
     pool = failing({"law-0002"}, QuotaExhausted("429", transient=False))
     runner = make_runner(adapter, metrics=registry_with_judged(), judges=pool, concurrency=1)
     results = await run_cases(runner, make_cases(20))
@@ -95,7 +95,7 @@ async def test_quota_exhausted_stops_judging_for_the_rest_of_the_run(
 async def test_request_cap_leaves_one_request_unused_at_concurrency_one(
     router: respx.MockRouter, adapter: HttpTargetAdapter
 ) -> None:
-    router.post("/v1/query").respond(200, json=load_example("query_ok.json"))
+    router.post("/v1/query").respond(200, json=load_openapi_example("query_ok.json"))
     budget = Budget(max_usd=0, max_tokens=None, max_requests=4)
 
     async def one_request(task: JudgeTask) -> None:
@@ -124,7 +124,7 @@ async def test_request_cap_leaves_one_request_unused_at_concurrency_one(
 async def test_request_cap_holds_at_concurrency_eight_with_repairs(
     router: respx.MockRouter, adapter: HttpTargetAdapter
 ) -> None:
-    router.post("/v1/query").respond(200, json=load_example("query_ok.json"))
+    router.post("/v1/query").respond(200, json=load_openapi_example("query_ok.json"))
     budget = Budget(max_usd=0, max_tokens=None, max_requests=4)
 
     async def needs_repair(task: JudgeTask) -> None:
