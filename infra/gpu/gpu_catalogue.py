@@ -142,9 +142,9 @@ def normalise(tag: str) -> str:
 
 
 def catalogue_tag(reported: str) -> str:
-    """The catalogue tag for a name Ollama reports (``bge-m3:latest`` -> ``bge-m3``), else unchanged.
+    """The catalogue tag for a name Ollama reports (``bge-m3:latest`` -> ``bge-m3``), else as is.
 
-    A different tag of the same model (``bge-m3:other``) is not the catalogue model and stays as reported.
+    Another tag of the same model (``bge-m3:other``) is not the catalogue model: unchanged.
     """
     for entry in ollama_entries():
         if normalise(entry["tag"]) == normalise(reported):

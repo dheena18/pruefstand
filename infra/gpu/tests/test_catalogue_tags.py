@@ -1,7 +1,7 @@
-"""T3.1a CPU tests: catalogue tags against the names Ollama reports (``bge-m3`` is listed as ``bge-m3:latest``).
+"""T3.1a CPU tests: catalogue tags against the names Ollama reports (``bge-m3:latest``).
 
 The bodies have the shape of Ollama 0.32 (``name``, ``model``, ``digest``, ``size``, ``size_vram``,
-``context_length``), recorded on the first real run: the catalogue tag of the embedding model has no colon.
+``context_length``), as seen on the first real run: the embedding model's tag has no colon.
 """
 
 import json

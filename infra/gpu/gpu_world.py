@@ -28,7 +28,7 @@ DF_HEAD = "Filesystem 1024-blocks Used Available Capacity Mounted on\n"
 
 
 def reported(tag: str) -> str:
-    """The name Ollama reports for a catalogue tag: a tag without ``:`` is listed as ``<tag>:latest``."""
+    """The name Ollama reports for a catalogue tag (no ``:`` in the tag means ``<tag>:latest``)."""
     return tag if ":" in tag else f"{tag}:latest"
 
 
@@ -36,7 +36,8 @@ def ps_model(tag: str, *, digest: str | None = None, vram_ratio: float = 1.0) ->
     """One ``/api/ps`` model row (Ollama 0.32 shape and names) for a catalogue tag."""
     size = ENTRIES[tag]["disk_bytes"] + 4 * GIB
     return {
-        "name": reported(tag), "model": reported(tag), "size": size, "digest": digest or ENTRIES[tag]["digest"],
+        "name": reported(tag), "model": reported(tag), "size": size,
+        "digest": digest or ENTRIES[tag]["digest"],
         "details": {"family": ENTRIES[tag]["family"]}, "expires_at": "2026-11-03T10:00:00Z",
         "size_vram": int(size * vram_ratio), "context_length": ENTRIES[tag]["options"]["num_ctx"],
     }  # fmt: skip
