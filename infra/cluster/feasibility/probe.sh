@@ -6,20 +6,39 @@
 # (on the VM as `sudo -u pruefstand ssh ...`). Nothing is written on the cluster (the model disk is
 # nearly full, ADR-0019): no installs, no pulls, no server start or restart, no keep_alive change.
 # The probe is READ-ONLY except one OPT-IN step: with MEASURE_LOAD=1 `model-load` sends one empty
-# /api/generate (keep_alive 0) that loads the generator; it runs only when /api/ps lists NO model, and
+# /api/generate that loads the generator (HTTP status, `error` field and /api/ps are checked, then the
+# model is unloaded again with keep_alive 0); it runs only when /api/ps lists NO model, and
 # only as an owner step under `pruefstand-lock` with MAINTENANCE set (nothing else may use the GPUs).
 # Default: SKIP. PROBE_CHECKS="id id" limits the run to those checks (tests).
 # Every check prints `CHECK <id> <PASS|FAIL|WARN> <detail>` on one line and never aborts the script.
 # All code is inside functions and `main` runs with stdin from /dev/null, so no command can swallow
-# the rest of the piped script. Env: MODELS_DIR (default /data/dheena/Models), GEN_MODEL, OLLAMA_URL.
+# the rest of the piped script. Env: MODELS_DIR (default /data/dheena/Models), GEN_MODEL, OLLAMA_URL,
+# LOAD_TIMEOUT_S (default 900), PROBE_PROC_ROOT (default /proc, a test seam).
+# A non-interactive ssh has a minimal PATH, so the Ollama binary is taken from the process that serves
+# :11434 (fallback `command -v ollama`). Output shows it as `<ollama-bin>` and the home directory as
+# `<home>`, so saved evidence never contains the binary path or the account name.
 set -euo pipefail
 
 MODELS_DIR="${MODELS_DIR:-/data/dheena/Models}"
 GEN_MODEL="${GEN_MODEL:-qwen3.8:27b-q8_0}"
 OLLAMA_URL="${OLLAMA_URL:-http://127.0.0.1:11434}"
+PROC_ROOT="${PROBE_PROC_ROOT:-/proc}"
+OLLAMA_BIN=""
+
+redact() { # text -> text without the Ollama binary path and the home directory
+  local s="$1" real
+  if [ -n "$OLLAMA_BIN" ]; then s="${s//"$OLLAMA_BIN"/<ollama-bin>}"; fi
+  if [ -n "${HOME:-}" ] && [ "$HOME" != / ]; then
+    real="$(readlink -f "$HOME" 2>/dev/null || true)"
+    s="${s//"$HOME"/<home>}"
+    if [ -n "$real" ] && [ "$real" != / ]; then s="${s//"$real"/<home>}"; fi
+  fi
+  printf '%s' "$s"
+}
 
 emit() { # id status detail [max-length]
   local detail="${3//$'\n'/ }"
+  detail="$(redact "$detail")"
   detail="$(tr -s ' ' <<<"$detail")"
   printf 'CHECK %s %s %s\n' "$1" "$2" "${detail:0:${4:-400}}"
 }
@@ -66,14 +85,41 @@ check_gpu_procs() {
   if [ -n "$foreign" ]; then emit gpu-procs WARN "VRAM held by a non-ollama process: $listing"; else emit gpu-procs PASS "VRAM held by ollama only: $listing"; fi
 }
 
+listening_pids() { # pids that listen on :11434, from ss, lsof or fuser (whichever exists)
+  if have ss; then
+    ss -ltnp 2>/dev/null | grep -E '[:.]11434[[:space:]]' | grep -o 'pid=[0-9]*' | cut -d= -f2 || true
+  fi
+  if have lsof; then lsof -t -iTCP:11434 -sTCP:LISTEN 2>/dev/null || true; fi
+  if have fuser; then fuser 11434/tcp 2>/dev/null | tr -s ' ' '\n' | grep -E '^[0-9]+$' || true; fi
+}
+
+scan_serve_pids() { # own `ollama serve` processes found by scanning the proc tree
+  local d args
+  for d in "$PROC_ROOT"/[0-9]*; do
+    [ -O "$d/cmdline" ] || continue
+    args="$(tr '\0' ' ' <"$d/cmdline" 2>/dev/null || true)"
+    case "$args" in *ollama\ serve*) basename "$d" ;; esac
+  done
+}
+
+find_ollama_bin() { # path of the serving process's executable, else `command -v ollama`
+  local pid exe
+  for pid in $(listening_pids) $(scan_serve_pids); do
+    exe="$(readlink -f "$PROC_ROOT/$pid/exe" 2>/dev/null || true)"
+    exe="${exe% (deleted)}"
+    if [ -n "$exe" ] && [ -x "$exe" ]; then printf '%s\n' "$exe"; return 0; fi
+  done
+  command -v ollama 2>/dev/null
+}
+
 check_ollama() {
-  if ! have ollama; then emit ollama FAIL "ollama binary not found"; return 0; fi
-  emit ollama PASS "$(command -v ollama): $(ollama --version 2>&1 | head -2 | tr '\n' ' ')"
+  if [ -z "$OLLAMA_BIN" ]; then emit ollama FAIL "ollama binary not found"; return 0; fi
+  emit ollama PASS "$OLLAMA_BIN: $("$OLLAMA_BIN" --version 2>&1 | head -2 | tr '\n' ' ')"
 }
 
 show_one() { # tag -> one-line metadata from `ollama show`
   local out arch params ctx quant lic
-  out="$(ollama show "$1" 2>&1 || true)"
+  out="$("$OLLAMA_BIN" show "$1" 2>&1 || true)"
   arch="$(awk '/^ +architecture/{print $2; exit}' <<<"$out")"
   params="$(awk '/^ +parameters/{print $2; exit}' <<<"$out")"
   ctx="$(awk '/^ +context length/{print $3; exit}' <<<"$out")"
@@ -83,8 +129,8 @@ show_one() { # tag -> one-line metadata from `ollama show`
 }
 
 check_ollama_list() {
-  have ollama || { emit ollama-list FAIL "ollama binary not found"; return 0; }
-  OLLAMA_LIST="$(ollama list 2>&1 || true)"
+  [ -n "$OLLAMA_BIN" ] || { emit ollama-list FAIL "ollama binary not found"; return 0; }
+  OLLAMA_LIST="$("$OLLAMA_BIN" list 2>&1 || true)"
   local tags tag detail="" status=PASS arch
   tags="$(awk 'NR>1 && NF{print $1}' <<<"$OLLAMA_LIST")"
   for tag in $tags; do detail+="$(show_one "$tag"); "; done
@@ -118,9 +164,9 @@ check_ollama_store() {
 }
 
 check_ollama_provenance() {
-  have ollama || { emit ollama-provenance WARN "ollama binary not found"; return 0; }
+  [ -n "$OLLAMA_BIN" ] || { emit ollama-provenance WARN "ollama binary not found"; return 0; }
   local from name tag path code
-  from="$(ollama show --modelfile "$GEN_MODEL" 2>&1 | grep -m1 '^FROM' | sed -E 's#^FROM .*/(sha256-[0-9a-f]{12})[0-9a-f]*$#FROM blob \1...#' || true)"
+  from="$("$OLLAMA_BIN" show --modelfile "$GEN_MODEL" 2>&1 | grep -m1 '^FROM' | sed -E 's#^FROM .*/(sha256-[0-9a-f]{12})[0-9a-f]*$#FROM blob \1...#' || true)"
   name="${GEN_MODEL%%:*}"
   tag="${GEN_MODEL#*:}"
   path="$name"
@@ -191,7 +237,7 @@ check_model_load() {
     return 0
   fi
   have curl || { emit model-load WARN "curl missing, not measuring"; return 0; }
-  local ps_out t0 t1 secs
+  local ps_out t0 t1 secs resp rc=0 code body err note=""
   ps_out="$(curl -fsS -m 10 "$OLLAMA_URL/api/ps" 2>/dev/null || true)"
   if ! grep -q '"models"' <<<"$ps_out"; then
     emit model-load WARN "cannot read a valid /api/ps answer, not measuring"
@@ -202,14 +248,34 @@ check_model_load() {
     return 0
   fi
   t0="$(date +%s%N)"
-  curl -sS -m 900 -o /dev/null "$OLLAMA_URL/api/generate" -d "{\"model\":\"$GEN_MODEL\",\"prompt\":\"\",\"keep_alive\":0,\"stream\":false}" 2>/dev/null || {
-    emit model-load WARN "load request failed"
-    return 0
-  }
+  resp="$(curl -sS -m "${LOAD_TIMEOUT_S:-900}" -w $'\n%{http_code}' "$OLLAMA_URL/api/generate" \
+    -d "{\"model\":\"$GEN_MODEL\",\"prompt\":\"\",\"keep_alive\":\"5m\",\"stream\":false}" 2>&1)" || rc=$?
   t1="$(date +%s%N)"
+  if [ "$rc" -ne 0 ]; then
+    emit model-load FAIL "load request failed (curl exit $rc): ${resp//$'\n'/ }" 300
+    return 0
+  fi
+  code="${resp##*$'\n'}"
+  body="${resp%$'\n'*}"
+  err="$(sed -n 's/.*"error" *: *"\([^"]*\)".*/\1/p' <<<"$body" | head -1)"
+  if ! [[ "$code" =~ ^2[0-9][0-9]$ ]]; then
+    emit model-load FAIL "load request answered HTTP ${code:-?}: ${err:-$body}" 300
+    return 0
+  fi
+  if grep -q '"error"' <<<"$body"; then
+    emit model-load FAIL "load request returned an error: ${err:-$body}" 300
+    return 0
+  fi
+  ps_out="$(curl -fsS -m 10 "$OLLAMA_URL/api/ps" 2>/dev/null || true)"
+  if ! grep -qF "\"$GEN_MODEL\"" <<<"$ps_out"; then
+    emit model-load FAIL "load request answered HTTP $code but $GEN_MODEL is not listed as loaded by /api/ps" 300
+    return 0
+  fi
+  curl -sS -m 60 -o /dev/null "$OLLAMA_URL/api/generate" \
+    -d "{\"model\":\"$GEN_MODEL\",\"prompt\":\"\",\"keep_alive\":0,\"stream\":false}" 2>/dev/null || note="; unloading afterwards failed, unload by hand"
   secs=$(((t1 - t0) / 1000000000))
-  if [ "$secs" -gt 300 ]; then
-    emit model-load WARN "cold load $((secs / 60)).$(((secs % 60) * 10 / 60)) min ($secs s) from $MODELS_DIR"
+  if [ "$secs" -gt 300 ] || [ -n "$note" ]; then
+    emit model-load WARN "cold load $((secs / 60)).$(((secs % 60) * 10 / 60)) min ($secs s) from $MODELS_DIR$note"
   else
     emit model-load PASS "cold load $((secs / 60)).$(((secs % 60) * 10 / 60)) min ($secs s) from $MODELS_DIR"
   fi
@@ -250,7 +316,9 @@ run_check() { "$1" || emit "${1#check_}" WARN "check function failed unexpectedl
 
 main() {
   OLLAMA_LIST=""
-  echo "# probe $(date -u +%FT%TZ) MODELS_DIR=$MODELS_DIR GEN_MODEL=$GEN_MODEL"
+  OLLAMA_BIN="$(find_ollama_bin || true)"
+  redact "# probe $(date -u +%FT%TZ) MODELS_DIR=$MODELS_DIR GEN_MODEL=$GEN_MODEL"
+  echo
   local c name wanted="${PROBE_CHECKS:-}"
   for c in check_os check_gpu check_gpu_procs check_ollama check_ollama_list check_ollama_store \
     check_ollama_provenance check_port check_logind check_tmux check_models_space check_model_load \

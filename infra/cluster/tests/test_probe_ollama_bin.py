@@ -120,7 +120,9 @@ def test_binary_found_by_scanning_proc_when_not_on_path(rig: Rig) -> None:
     binary = _fake_ollama(rig.home / "tools" / "bin" / "ollama", "1.2.3")
     _proc(rig.proc, 4242, ["x/ollama", "serve"], binary)
     out = rig.run("ollama")
-    assert _check(out, "ollama") == "CHECK ollama PASS <ollama-bin>: ollama version is 1.2.3"
+    assert (
+        _check(out, "ollama").rstrip() == "CHECK ollama PASS <ollama-bin>: ollama version is 1.2.3"
+    )
 
 
 def test_binary_follows_the_pid_that_listens_on_11434(rig: Rig) -> None:
