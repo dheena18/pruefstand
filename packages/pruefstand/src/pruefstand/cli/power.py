@@ -29,6 +29,6 @@ def register(app: typer.Typer) -> None:
         try:
             power = power_estimate(sigma, n, delta, alpha, m, true_drop=true_drop)
             mde = minimum_detectable_effect(sigma / math.sqrt(n), alpha, delta, m=m)
-        except GateInputError as exc:
+        except (GateInputError, OverflowError, ValueError) as exc:
             fail(f"error: {exc}", EXIT_USAGE)
         typer.echo(f"power={power:.3f} mde={mde:.4f}")

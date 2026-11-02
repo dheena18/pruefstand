@@ -1499,7 +1499,7 @@ def run_gate(candidate: Path, baseline: Path | None, cfg: PruefstandConfig) -> G
     # `release-b<k>` under the same eval_fingerprint, so every fingerprint mismatch -> GateInputError, no exception.
     # R13 (UI13-14): scripts/dashboard/derive.py --no-baseline calls run_gate(candidate, None, cfg) with
     # cfg.baseline_store = BaselineStoreConfig(type="local_dir", path=<tmp>) through the same code path as
-    # `gate --from-store` (no `--config` flag on the gate CLI)
+    # `gate --from-store`; the gate CLI takes an optional `--config` (D401), derive.py calls run_gate directly
 async def build_dataset(cfg: DatasetBuildConfig) -> DatasetManifest
 ```
 

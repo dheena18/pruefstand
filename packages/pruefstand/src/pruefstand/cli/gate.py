@@ -44,6 +44,11 @@ def register(app: typer.Typer) -> None:
             not_implemented("gate --from-store", "T6.1")
         if baseline is None:
             fail("error: give --baseline <run directory> (or --from-store)", EXIT_USAGE)
+        if candidate.resolve() == baseline.resolve() or candidate.name == baseline.name:
+            fail(
+                "error: --candidate and --baseline are the same run; a run cannot gate itself",
+                EXIT_USAGE,
+            )
         with guarded(ctx):
             report = run_gate(candidate, baseline, load_config(config))
             typer.echo(f"gate {report.status.value}: {candidate / GATE_FILE}")

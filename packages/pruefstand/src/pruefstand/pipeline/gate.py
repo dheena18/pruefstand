@@ -7,6 +7,7 @@ import numpy as np
 from pruefstand.core.config import GatePolicy, PruefstandConfig
 from pruefstand.core.config.gate import JUDGED_METRICS
 from pruefstand.core.enums import GateStatus, Split
+from pruefstand.core.errors import GateInputError
 from pruefstand.core.logging import get_logger
 from pruefstand.core.models.gate import GateReport
 from pruefstand.core.models.run import RunManifest, RunResults
@@ -85,8 +86,18 @@ def _read(path: Path) -> RunResults:
 def _without_baseline(candidate: RunResults, policy: GatePolicy) -> GateReport:
     """The report for a candidate that has no baseline (interfaces §15, R9 X5.5).
 
-    A hard fail still fails: a leak does not need a baseline to be a leak.
+    A hard fail still fails: a leak does not need a baseline to be a leak. An incomplete
+    candidate (aborted, budget exhausted, corpus mismatch) is refused like in ``evaluate_gate``.
+
+    Raises:
+        GateInputError: The candidate run is not complete.
     """
+    if not candidate.manifest.complete:
+        msg = (
+            f"the candidate run is not complete (stop_reason={candidate.manifest.stop_reason}); "
+            "the gate refuses incomplete runs"
+        )
+        raise GateInputError(msg)
     hard_fails = find_hard_fails(candidate, policy.hard_fail)
     status = GateStatus.FAIL if hard_fails else GateStatus.INSUFFICIENT_DATA
     return GateReport(

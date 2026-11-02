@@ -94,3 +94,5 @@ ADR-0006, ADR-0009, ADR-0012, ADR-0017.
 
 `SECURITY.md` at the repo root: report privately through GitHub Security Advisories; first response
 within 7 days; supported versions = latest minor.
+
+**`pruefstand gate --config` (T1.10, D401).** The gate policy comes from the config file. The executor (T6.2a) must always pass an explicit trusted `--config` taken from `main`; the default `./pruefstand.yaml` of a PR checkout is never used on the executor.
