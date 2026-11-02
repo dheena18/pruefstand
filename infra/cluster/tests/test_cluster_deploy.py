@@ -2,13 +2,23 @@
 
 import getpass
 import hashlib
+import sys
 from pathlib import Path
 
 import pytest
+from gpu_repo import Repo
 from gpu_testkit import CLUSTER_DIR, GPU_DIR, fake_ssh, link_tools, run_script
 from vm_testkit import Result, Stubs
 
 DEPLOY = GPU_DIR / "deploy-cluster-bin.sh"
+
+
+@pytest.fixture(autouse=True)
+def _clean_checkout(repo: Repo, monkeypatch: pytest.MonkeyPatch) -> None:
+    """The real deploy only acts on a clean tree equal to origin/main: run the copy in a temp repo."""
+    monkeypatch.setattr(
+        sys.modules[__name__], "DEPLOY", repo.root / "infra/gpu/deploy-cluster-bin.sh"
+    )
 
 
 @pytest.fixture

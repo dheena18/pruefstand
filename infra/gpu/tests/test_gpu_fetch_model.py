@@ -1,6 +1,8 @@
 """T3.1a CPU tests: ``fetch-model.sh`` (pull, digest check, the disk rule, ``--rm``; ADR-0019)."""
 
 import pytest
+import yaml
+from gpu_testkit import GPU_DIR
 from gpu_world import ENTRIES, GIB, GpuWorld, status_csv
 
 BGE = "ollama/bge-m3"
@@ -25,6 +27,7 @@ def test_enough_free_space_pulls_once_and_accepts_the_pinned_digest(gpu: GpuWorl
     assert res.rc == 0, res.out + res.err
     pulls = _remote(gpu, "ollama-op.sh pull bge-m3")
     assert len(pulls) == 1
+    assert pulls[0].endswith("ollama-op.sh pull bge-m3 1157672605")  # the cluster re-checks size
     assert "/data/dheena/pruefstand-bin/ollama-op.sh" in pulls[0]
     assert not _remote(gpu, "ollama-op.sh rm")
 
@@ -151,3 +154,34 @@ def test_the_generator_present_with_its_pin_needs_no_pull(gpu: GpuWorld) -> None
 
 def test_the_reserve_is_two_gib() -> None:
     assert RESERVE_KB * 1024 == 2 * GIB
+
+
+def _broken_catalogue(gpu: GpuWorld, **changes: object) -> str:
+    data = yaml.safe_load((GPU_DIR / "models.yaml").read_text(encoding="utf-8"))
+    for entry in data["models"]:
+        if entry["id"] == BGE:
+            for key, value in changes.items():
+                if value is None:
+                    entry.pop(key, None)
+                else:
+                    entry[key] = value
+    path = gpu.root / "broken-models.yaml"
+    path.write_text(yaml.safe_dump(data), encoding="utf-8")
+    return str(path)
+
+
+@pytest.mark.parametrize(
+    "changes",
+    [{"disk_bytes": None}, {"disk_bytes": 0}, {"digest": None}, {"digest": "abc"}, {"digest": "G" * 64}],
+)  # fmt: skip
+def test_an_incomplete_catalogue_entry_is_refused_before_anything_runs(
+    gpu: GpuWorld, changes: dict[str, object]
+) -> None:
+    gpu.set_tags([])
+    gpu.ssh(status_csv(free_kb=10**9))
+    res = gpu.script(
+        "fetch-model.sh", BGE, PRUEFSTAND_GPU_CATALOGUE=_broken_catalogue(gpu, **changes)
+    )
+    assert res.rc == 1
+    assert not gpu.stubs.calls("ssh")
+    assert not gpu.stubs.calls("curl")

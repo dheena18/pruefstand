@@ -176,10 +176,19 @@ def test_shellcheck_clean(stubs: Stubs) -> None:
     files = [*CLUSTER_DIR.glob("*.sh"), *GPU_DIR.glob("*.sh"), *GPU_DIR.glob("lib/*.sh")]
     files += [GPU_DIR / "pruefstand-cluster"]
     proc = subprocess.run(  # noqa: S603
-        [tool, "-x", "-P", "SCRIPTDIR", *map(str, files)],
+        [tool, "-x", "-P", "SCRIPTDIR", "-S", "info", *map(str, files)],
         capture_output=True,
         text=True,
         cwd=REPO,
         check=False,
     )
     assert proc.returncode == 0, proc.stdout
+
+
+def test_no_script_uses_the_a_and_b_or_c_pattern() -> None:
+    """Newer shellcheck versions report SC2015 for ``A && B || C``; use if/then instead."""
+    for path in [*CLUSTER_DIR.glob("*.sh"), *GPU_DIR.glob("*.sh"), *GPU_DIR.glob("lib/*.sh")]:
+        for number, line in enumerate(_code_lines(path), 1):
+            assert not re.search(r"&&.*\|\|", line), f"{path.name}:{number}: {line.strip()}"
+    wrapper = _code_lines(GPU_DIR / "pruefstand-cluster")
+    assert not [ln for ln in wrapper if re.search(r"&&.*\|\|", ln)]

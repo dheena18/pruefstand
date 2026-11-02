@@ -5,6 +5,8 @@ The scores come from the real ``BAAI/bge-reranker-v2-m3`` model, recorded once b
 scores). The model itself is exercised by the ``[DOCKER]`` check and ``test_endpoints.py`` (gpu).
 """
 
+import hashlib
+import http.client
 import json
 import threading
 import urllib.error
@@ -16,10 +18,12 @@ from typing import Any
 
 import pytest
 from rerank.rerank_app import (
+    MAX_QUERY_CHARS,
     MAX_TEXTS,
     MAX_TOKENS_FULL,
     MAX_TOKENS_TRUNCATED,
     RerankState,
+    verify_sha256,
     handle_rerank,
     make_server,
 )
@@ -176,3 +180,46 @@ def test_there_is_no_auth_logic_in_the_service() -> None:
     source = (Path(__file__).parents[1] / "rerank" / "rerank_app.py").read_text(encoding="utf-8")
     assert "401" not in source
     assert "403" not in source
+
+
+def test_an_overlong_query_is_refused_without_scoring() -> None:
+    scorer = RecordedScorer()
+    body = json.dumps({"query": "q" * (MAX_QUERY_CHARS + 1), "texts": ["a"]}).encode()
+    status, payload = handle_rerank(body, scorer)
+    assert status == 413
+    assert "error" in payload
+    assert scorer.calls == 0
+
+
+def test_a_negative_content_length_is_refused_and_does_not_block(
+    server: tuple[str, RerankState],
+) -> None:
+    url, state = server
+    state.scorer = RecordedScorer()
+    host, port = url.removeprefix("http://").split(":")
+    conn = http.client.HTTPConnection(host, int(port), timeout=5)
+    conn.putrequest("POST", "/rerank")
+    conn.putheader("Content-Length", "-1")
+    conn.endheaders()
+    assert conn.getresponse().status == 400
+    conn.close()
+
+
+def test_the_handler_sets_a_socket_timeout_of_30_seconds(server: tuple[str, RerankState]) -> None:
+    url, _ = server
+    del url
+    state = RerankState()
+    httpd = make_server("127.0.0.1", 0, state)
+    try:
+        assert httpd.RequestHandlerClass.timeout == 30
+    finally:
+        httpd.server_close()
+
+
+def test_verify_sha256_accepts_the_pinned_file_and_refuses_another(tmp_path: Path) -> None:
+    weights = tmp_path / "model.safetensors"
+    weights.write_bytes(b"weights")
+    pin = hashlib.sha256(b"weights").hexdigest()
+    verify_sha256(weights, pin)
+    with pytest.raises(ValueError, match="sha256"):
+        verify_sha256(weights, "0" * 64)
