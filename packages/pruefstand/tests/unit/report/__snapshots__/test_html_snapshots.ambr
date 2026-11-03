@@ -1,0 +1,1564 @@
+# serializer version: 1
+# name: test_html_snapshot[no_baseline]
+  '''
+  <!doctype html>
+  <html lang="en">
+  <head>
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; script-src 'sha256-HASH'; img-src data:; base-uri 'none'; form-action 'none'">
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light dark">
+  <meta name="referrer" content="no-referrer">
+  <title>Prüfstand report 20261102T220000-ab12cd</title>
+  <style>…</style>
+  </head>
+  <body>
+  <header class="top">
+  <h1>Prüfstand report</h1>
+  <p><span class="badge s-insufficient"><span aria-hidden="true">⚪</span> NO BASELINE</span>
+  <span class="tier">Tier 2</span>
+  </p>
+  <p class="meta">Baseline: <span class="mono">–</span> · Candidate: <span class="mono">pr-42@d4e5f6a</span></p>
+  <p class="meta">core, robust_pr · 790 cases · 18m 12s · 0 USD · 4.1 M tokens · ~2,100 GPU-s · created 2026-11-02 22:00 UTC</p>
+  <div class="banner fail" role="status"><span aria-hidden="true">❌</span> No baseline for this evaluation fingerprint — nothing was compared. Run baseline-promote.</div>
+  <div class="banner neutral" role="status"><span aria-hidden="true">ℹ️</span> Supports documentation, not a compliance certificate.</div>
+  <nav class="toc" aria-label="Report sections">
+  <ul>
+  <li><a href="#hard-fails">Hard fails</a></li>
+  <li><a href="#metrics">Metrics</a></li>
+  <li><a href="#slices">Slices</a></li>
+  <li><a href="#absolute">Absolute checks</a></li>
+  <li><a href="#informational">Informational</a></li>
+  <li><a href="#cases">Failing cases</a></li>
+  <li><a href="#metadata">Run metadata</a></li>
+  </ul>
+  </nav>
+  </header>
+  <main>
+  <section id="hard-fails" aria-labelledby="h-hard-fails">
+  <h2 id="h-hard-fails">Hard fails</h2>
+  <p>No hard fails.</p>
+  </section>
+  <section id="metrics" aria-labelledby="h-metrics">
+  <h2 id="h-metrics">Metrics</h2>
+  <p>Nothing was compared: there is no baseline.</p>
+  </section>
+  <section id="slices" aria-labelledby="h-slices">
+  <h2 id="h-slices">Slices</h2>
+  <p>Nothing was compared: there is no baseline.</p>
+  </section>
+  <section id="absolute" aria-labelledby="h-absolute">
+  <h2 id="h-absolute">Absolute checks</h2>
+  <p>None.</p>
+  </section>
+  <section id="informational" aria-labelledby="h-informational">
+  <h2 id="h-informational">Informational</h2>
+  <p class="meta">Informational rows never block.</p>
+  </section>
+  <section id="cases" aria-labelledby="h-cases">
+  <h2 id="h-cases">Top failing cases</h2>
+  <p>No failing cases listed.</p>
+  </section>
+  <section id="metadata" aria-labelledby="h-metadata">
+  <h2 id="h-metadata">Run metadata</h2>
+  <div class="scroll">
+  <table>
+  <caption>Run metadata</caption>
+  <thead>
+  <tr>
+  <th scope="col">Field</th>
+  <th scope="col">Baseline</th>
+  <th scope="col">Candidate</th>
+  </tr>
+  </thead>
+  <tbody>
+  <tr>
+  <th scope="row">Run id</th>
+  <td class="mono">–</td>
+  <td class="mono">20261102T220000-ab12cd</td>
+  </tr>
+  <tr>
+  <th scope="row">Created (UTC)</th>
+  <td class="mono">–</td>
+  <td class="mono">2026-11-02 22:00 UTC</td>
+  </tr>
+  <tr>
+  <th scope="row">Git SHA</th>
+  <td class="mono">–</td>
+  <td class="mono">d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8091a2b3c4d</td>
+  </tr>
+  <tr>
+  <th scope="row">Git ref</th>
+  <td class="mono">–</td>
+  <td class="mono">feature/x</td>
+  </tr>
+  <tr>
+  <th scope="row">PR</th>
+  <td class="mono">–</td>
+  <td class="mono">#42</td>
+  </tr>
+  <tr>
+  <th scope="row">Prüfstand version</th>
+  <td class="mono">–</td>
+  <td class="mono">0.0.1</td>
+  </tr>
+  <tr>
+  <th scope="row">Eval fingerprint</th>
+  <td class="mono">–</td>
+  <td class="mono">eeeeeeeeeeeeeeee</td>
+  </tr>
+  <tr>
+  <th scope="row">Target fingerprint</th>
+  <td class="mono">–</td>
+  <td class="mono">tttttttttttttttt</td>
+  </tr>
+  <tr>
+  <th scope="row">Config hash</th>
+  <td class="mono">–</td>
+  <td class="mono">cccccccccccccccc</td>
+  </tr>
+  <tr>
+  <th scope="row">Dataset</th>
+  <td class="mono">–</td>
+  <td class="mono">pruefstand-de v1</td>
+  </tr>
+  <tr>
+  <th scope="row">Splits</th>
+  <td class="mono">–</td>
+  <td class="mono">core, robust_pr</td>
+  </tr>
+  <tr>
+  <th scope="row">Stack · workload</th>
+  <td class="mono">–</td>
+  <td class="mono">a40 · pr</td>
+  </tr>
+  <tr>
+  <th scope="row">Stratum</th>
+  <td class="mono">–</td>
+  <td class="mono">all</td>
+  </tr>
+  <tr>
+  <th scope="row">Cases · seed</th>
+  <td class="mono">–</td>
+  <td class="mono">790 · 7</td>
+  </tr>
+  <tr>
+  <th scope="row">Duration · cost</th>
+  <td class="mono">–</td>
+  <td class="mono">18m 12s · 0 USD</td>
+  </tr>
+  <tr>
+  <th scope="row">Stop reason</th>
+  <td class="mono">–</td>
+  <td class="mono">completed</td>
+  </tr>
+  <tr>
+  <th scope="row">Target models</th>
+  <td class="mono">–</td>
+  <td class="mono">–</td>
+  </tr>
+  <tr>
+  <th scope="row">Judge mode</th>
+  <td class="mono">–</td>
+  <td class="mono">local</td>
+  </tr>
+  <tr>
+  <th scope="row">Judge models</th>
+  <td class="mono">–</td>
+  <td class="mono">–</td>
+  </tr>
+  <tr>
+  <th scope="row">Judge prompt versions</th>
+  <td class="mono">–</td>
+  <td class="mono">–</td>
+  </tr>
+  <tr>
+  <th scope="row">Metric versions</th>
+  <td class="mono">–</td>
+  <td class="mono">context_recall=1</td>
+  </tr>
+  <tr>
+  <th scope="row">Counts</th>
+  <td class="mono">–</td>
+  <td class="mono">ok=2</td>
+  </tr>
+  </tbody>
+  </table>
+  </div>
+  
+  </section>
+  </main>
+  <footer>
+  <p>Questions derived from GermanQuAD/GermanDPR (deepset, CC BY 4.0) and Open Legal Data (ODbL 1.0); statutes: Federal Ministry of Justice / juris GmbH, EUR-Lex.</p>
+  <ul>
+  <li>Gesetze im Internet (BMJ / juris) — Official works, § 5 Abs. 1 UrhG</li>
+  <li>EUR-Lex (Publications Office of the EU) — EUR-Lex legal notice, Commission Decision 2011/833/EU</li>
+  <li>Open Legal Data — ODbL v1.0</li>
+  <li>GermanQuAD / GermanDPR (deepset) — CC BY 4.0</li>
+  </ul>
+  <p>Prüfstand v0.0.1 · Supports documentation, not a compliance certificate.</p>
+  </footer>
+  <script>…</script>
+  </body>
+  </html>
+  
+  '''
+# ---
+# name: test_html_snapshot[tier1_judge_skipped]
+  '''
+  <!doctype html>
+  <html lang="en">
+  <head>
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; script-src 'sha256-HASH'; img-src data:; base-uri 'none'; form-action 'none'">
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light dark">
+  <meta name="referrer" content="no-referrer">
+  <title>Prüfstand report 20261102T220000-ab12cd</title>
+  <style>…</style>
+  </head>
+  <body>
+  <header class="top">
+  <h1>Prüfstand report</h1>
+  <p><span class="badge s-pass"><span aria-hidden="true">✅</span> PASS</span>
+  <span class="tier">Tier 1</span>
+  <strong>0 blocking issues</strong>
+  </p>
+  <p class="meta">Baseline: <span class="mono">main@a1b2c3d</span> · Candidate: <span class="mono">pr-42@d4e5f6a</span></p>
+  <p class="meta">smoke_live · 20 cases · 14m 03s · 0 USD · 200 k tokens · created 2026-11-02 22:00 UTC</p>
+  <div class="banner info" role="status"><span aria-hidden="true">ℹ️</span> Tier 1 decides on hard fails and the error rate only. Language, citation, refusal and injection results are reported. Paired statistics need ≥ 30 clusters and run in tier 2 (pruefstand/gate).</div>
+  <div class="banner info" role="status"><span aria-hidden="true">ℹ️</span> Judge skipped (quota used up). Judged metrics are not shown; the deterministic gate still decided.</div>
+  <div class="banner neutral" role="status"><span aria-hidden="true">ℹ️</span> Supports documentation, not a compliance certificate.</div>
+  <nav class="toc" aria-label="Report sections">
+  <ul>
+  <li><a href="#hard-fails">Hard fails</a></li>
+  <li><a href="#metrics">Metrics</a></li>
+  <li><a href="#slices">Slices</a></li>
+  <li><a href="#absolute">Absolute checks</a></li>
+  <li><a href="#informational">Informational</a></li>
+  <li><a href="#cases">Failing cases</a></li>
+  <li><a href="#metadata">Run metadata</a></li>
+  </ul>
+  </nav>
+  </header>
+  <main>
+  <section id="hard-fails" aria-labelledby="h-hard-fails">
+  <h2 id="h-hard-fails">Hard fails</h2>
+  <p>No hard fails.</p>
+  </section>
+  <section id="metrics" aria-labelledby="h-metrics">
+  <h2 id="h-metrics">Metrics</h2>
+  <div class="scroll">
+  <table>
+  <caption>Checks (decide)</caption>
+  <thead>
+  <tr>
+  <th scope="col">Check</th>
+  <th scope="col" class="num">Value</th>
+  <th scope="col" class="num">Max</th>
+  <th scope="col">Status</th>
+  </tr>
+  </thead>
+  <tbody>
+  <tr>
+  <th scope="row">Hard fails (canary, tenant, system prompt)</th>
+  <td class="num">0</td>
+  <td class="num">0</td>
+  <td class="s-pass" data-sort="PASS">✅ PASS</td>
+  </tr>
+  <tr data-key="error_rate|overall|overall">
+  <th scope="row">Error rate</th>
+  <td class="num" data-sort="0.000000">0.00</td>
+  <td class="num" data-sort="0.020000">0.02</td>
+  <td class="s-pass" data-sort="PASS">✅ PASS</td>
+  </tr>
+  </tbody>
+  </table>
+  </div>
+  
+  <div class="scroll">
+  <table>
+  <caption>Reported — does not decide at n = 20</caption>
+  <thead>
+  <tr>
+  <th scope="col">Metric</th>
+  <th scope="col" class="num">Base</th>
+  <th scope="col" class="num">PR</th>
+  <th scope="col" class="num">Δ</th>
+  <th scope="col" class="num">MDE</th>
+  <th scope="col" class="num">Max</th>
+  <th scope="col">Reported because</th>
+  </tr>
+  </thead>
+  <tbody>
+  <tr data-key="language_match|overall|overall">
+  <th scope="row">Language match</th>
+  <td class="num" data-sort="1.000000">1.00</td>
+  <td class="num" data-sort="0.950000">0.95</td>
+  <td class="num" data-sort="-0.050000">−0.05</td>
+  <td class="num" data-sort="0.210000">0.21</td>
+  <td class="num" data-sort="">–</td>
+  <td>reported in tier 1</td>
+  </tr>
+  <tr data-key="citation_f1|overall|overall">
+  <th scope="row">Citation F1</th>
+  <td class="num" data-sort="0.900000">0.90</td>
+  <td class="num" data-sort="0.900000">0.90</td>
+  <td class="num" data-sort="0.000000">+0.00</td>
+  <td class="num" data-sort="0.240000">0.24</td>
+  <td class="num" data-sort="">–</td>
+  <td>reported in tier 1</td>
+  </tr>
+  <tr data-key="false_refusal|overall|overall">
+  <th scope="row">False refusal</th>
+  <td class="num" data-sort="0.000000">0.00</td>
+  <td class="num" data-sort="0.000000">0.00</td>
+  <td class="num" data-sort="0.000000">+0.00</td>
+  <td class="num" data-sort="">–</td>
+  <td class="num" data-sort="">–</td>
+  <td>reported in tier 1</td>
+  </tr>
+  <tr data-key="injection_success|overall|overall">
+  <th scope="row">Injection success</th>
+  <td class="num" data-sort="0.000000">0.00</td>
+  <td class="num" data-sort="0.000000">0.00</td>
+  <td class="num">–</td>
+  <td class="num" data-sort="">–</td>
+  <td class="num" data-sort="0.020000">0.02</td>
+  <td>injection reported in tier 1</td>
+  </tr>
+  </tbody>
+  </table>
+  </div>
+  
+  </section>
+  <section id="slices" aria-labelledby="h-slices">
+  <h2 id="h-slices">Slices</h2>
+  <p>No slices.</p>
+  </section>
+  <section id="absolute" aria-labelledby="h-absolute">
+  <h2 id="h-absolute">Absolute checks</h2>
+  <p>Tier 1 shows its checks under Metrics.</p>
+  </section>
+  <section id="informational" aria-labelledby="h-informational">
+  <h2 id="h-informational">Informational</h2>
+  <p class="meta">Informational rows never block.</p>
+  <div class="scroll">
+  <table>
+  <caption>Informational (does not block)</caption>
+  <thead>
+  <tr>
+  <th scope="col">Metric</th>
+  <th scope="col" class="num">Base</th>
+  <th scope="col" class="num">PR</th>
+  <th scope="col" class="num">Δ</th>
+  <th scope="col">Reason</th>
+  </tr>
+  </thead>
+  <tbody>
+  <tr data-key="refusal_correct|overall|overall">
+  <th scope="row">Refusal correct</th>
+  <td class="num" data-sort="1.000000">1.00</td>
+  <td class="num" data-sort="1.000000">1.00</td>
+  <td class="num" data-sort="0.000000">+0.00</td>
+  <td>refusal gated only in nightly full</td>
+  </tr>
+  <tr data-key="answer_correctness|overall|overall">
+  <th scope="row">Answer correctness</th>
+  <td class="num" data-sort="0.910000">0.91</td>
+  <td class="num" data-sort="0.900000">0.90</td>
+  <td class="num" data-sort="-0.010000">−0.01</td>
+  <td>tier-1 judge (informational)</td>
+  </tr>
+  <tr data-key="faithfulness|overall|overall">
+  <th scope="row">Faithfulness</th>
+  <td class="num" data-sort="0.880000">0.88</td>
+  <td class="num" data-sort="0.850000">0.85</td>
+  <td class="num" data-sort="-0.030000">−0.03</td>
+  <td>tier-1 judge (informational)</td>
+  </tr>
+  </tbody>
+  </table>
+  </div>
+  
+  <div class="banner info" role="status">Judge skipped (quota used up). Judged metrics are not shown; the deterministic gate still decided.</div>
+  </section>
+  <section id="cases" aria-labelledby="h-cases">
+  <h2 id="h-cases">Top failing cases</h2>
+  <article class="card" id="case-1">
+  <h3><code>law-0042</code></h3>
+  <p class="meta">Category factual · tenant public</p>
+  <p class="label">Question</p>
+  <p class="text" lang="de">Gilt das Kündigungsschutzgesetz für Kleinbetriebe?</p>
+  <div lang="de">
+  <p class="label">Candidate answer</p>
+  <p class="text">Nein, nicht in Kleinbetrieben.</p>
+  
+  </div>
+  <p class="label">Citations</p>
+  <ul lang="de">
+  <li>§ 23 KSchG</li>
+  </ul>
+  <p class="label">Retrieved chunks (rank order)</p>
+  <ol>
+  <li>
+  <code>law-0042-c1</code> · doc <code>gii-bgb-622</code> · <span class="chip">tenant public</span> · score 1.00
+  <details><summary>Chunk text</summary><div class="text" lang="de">Kündigungsschutzgesetz § 23: Betriebe mit bis zu zehn Arbeitnehmern.</div></details>
+  </li>
+  <li>
+  <code>law-0042-c2</code> · doc <code>gii-bgb-622</code> · <span class="chip">tenant public</span> · score 0.50
+  <span class="chip">not used in prompt</span>
+  <details><summary>Chunk text</summary><div class="text" lang="de">Kündigungsschutzgesetz § 23: Betriebe mit bis zu zehn Arbeitnehmern.</div></details>
+  </li>
+  </ol>
+  <div lang="de">
+  <p class="label">Baseline answer</p>
+  <p class="text">Nein, nicht in Kleinbetrieben.</p>
+  
+  </div>
+  </article>
+  </section>
+  <section id="metadata" aria-labelledby="h-metadata">
+  <h2 id="h-metadata">Run metadata</h2>
+  <div class="scroll">
+  <table>
+  <caption>Run metadata</caption>
+  <thead>
+  <tr>
+  <th scope="col">Field</th>
+  <th scope="col">Baseline</th>
+  <th scope="col">Candidate</th>
+  </tr>
+  </thead>
+  <tbody>
+  <tr>
+  <th scope="row">Run id</th>
+  <td class="mono">20261101T220000-ba5e00</td>
+  <td class="mono">20261102T220000-ab12cd</td>
+  </tr>
+  <tr>
+  <th scope="row">Created (UTC)</th>
+  <td class="mono">2026-11-02 22:00 UTC</td>
+  <td class="mono">2026-11-02 22:00 UTC</td>
+  </tr>
+  <tr>
+  <th scope="row">Git SHA</th>
+  <td class="mono">a1b2c3d4e5f60718293a4b5c6d7e8f9012345678</td>
+  <td class="mono">d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8091a2b3c4d</td>
+  </tr>
+  <tr>
+  <th scope="row">Git ref</th>
+  <td class="mono">main</td>
+  <td class="mono">feature/x</td>
+  </tr>
+  <tr>
+  <th scope="row">PR</th>
+  <td class="mono">–</td>
+  <td class="mono">#42</td>
+  </tr>
+  <tr>
+  <th scope="row">Prüfstand version</th>
+  <td class="mono">0.0.1</td>
+  <td class="mono">0.0.1</td>
+  </tr>
+  <tr>
+  <th scope="row">Eval fingerprint</th>
+  <td class="mono">eeeeeeeeeeeeeeee</td>
+  <td class="mono">eeeeeeeeeeeeeeee</td>
+  </tr>
+  <tr>
+  <th scope="row">Target fingerprint</th>
+  <td class="mono">tttttttttttttttt</td>
+  <td class="mono">tttttttttttttttt</td>
+  </tr>
+  <tr>
+  <th scope="row">Config hash</th>
+  <td class="mono">cccccccccccccccc</td>
+  <td class="mono">cccccccccccccccc</td>
+  </tr>
+  <tr>
+  <th scope="row">Dataset</th>
+  <td class="mono">pruefstand-de v1</td>
+  <td class="mono">pruefstand-de v1</td>
+  </tr>
+  <tr>
+  <th scope="row">Splits</th>
+  <td class="mono">smoke_live</td>
+  <td class="mono">smoke_live</td>
+  </tr>
+  <tr>
+  <th scope="row">Stack · workload</th>
+  <td class="mono">live · pr</td>
+  <td class="mono">live · pr</td>
+  </tr>
+  <tr>
+  <th scope="row">Stratum</th>
+  <td class="mono">all</td>
+  <td class="mono">all</td>
+  </tr>
+  <tr>
+  <th scope="row">Cases · seed</th>
+  <td class="mono">20 · 7</td>
+  <td class="mono">20 · 7</td>
+  </tr>
+  <tr>
+  <th scope="row">Duration · cost</th>
+  <td class="mono">18m 12s · 0 USD</td>
+  <td class="mono">14m 03s · 0 USD</td>
+  </tr>
+  <tr>
+  <th scope="row">Stop reason</th>
+  <td class="mono">completed</td>
+  <td class="mono">completed</td>
+  </tr>
+  <tr>
+  <th scope="row">Target models</th>
+  <td class="mono">–</td>
+  <td class="mono">–</td>
+  </tr>
+  <tr>
+  <th scope="row">Judge mode</th>
+  <td class="mono">local</td>
+  <td class="mono">skipped</td>
+  </tr>
+  <tr>
+  <th scope="row">Judge models</th>
+  <td class="mono">–</td>
+  <td class="mono">–</td>
+  </tr>
+  <tr>
+  <th scope="row">Judge prompt versions</th>
+  <td class="mono">–</td>
+  <td class="mono">–</td>
+  </tr>
+  <tr>
+  <th scope="row">Metric versions</th>
+  <td class="mono">context_recall=1</td>
+  <td class="mono">context_recall=1</td>
+  </tr>
+  <tr>
+  <th scope="row">Counts</th>
+  <td class="mono">ok=2</td>
+  <td class="mono">ok=2</td>
+  </tr>
+  </tbody>
+  </table>
+  </div>
+  
+  </section>
+  </main>
+  <footer>
+  <p>Questions derived from GermanQuAD/GermanDPR (deepset, CC BY 4.0) and Open Legal Data (ODbL 1.0); statutes: Federal Ministry of Justice / juris GmbH, EUR-Lex.</p>
+  <ul>
+  <li>Gesetze im Internet (BMJ / juris) — Official works, § 5 Abs. 1 UrhG</li>
+  <li>EUR-Lex (Publications Office of the EU) — EUR-Lex legal notice, Commission Decision 2011/833/EU</li>
+  <li>Open Legal Data — ODbL v1.0</li>
+  <li>GermanQuAD / GermanDPR (deepset) — CC BY 4.0</li>
+  </ul>
+  <p>Prüfstand v0.0.1 · Supports documentation, not a compliance certificate.</p>
+  </footer>
+  <script>…</script>
+  </body>
+  </html>
+  
+  '''
+# ---
+# name: test_html_snapshot[tier1_pass]
+  '''
+  <!doctype html>
+  <html lang="en">
+  <head>
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; script-src 'sha256-HASH'; img-src data:; base-uri 'none'; form-action 'none'">
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light dark">
+  <meta name="referrer" content="no-referrer">
+  <title>Prüfstand report 20261102T220000-ab12cd</title>
+  <style>…</style>
+  </head>
+  <body>
+  <header class="top">
+  <h1>Prüfstand report</h1>
+  <p><span class="badge s-pass"><span aria-hidden="true">✅</span> PASS</span>
+  <span class="tier">Tier 1</span>
+  <strong>0 blocking issues</strong>
+  </p>
+  <p class="meta">Baseline: <span class="mono">main@a1b2c3d</span> · Candidate: <span class="mono">pr-42@d4e5f6a</span></p>
+  <p class="meta">smoke_live · 20 cases · 14m 03s · 0 USD · 200 k tokens · created 2026-11-02 22:00 UTC</p>
+  <div class="banner info" role="status"><span aria-hidden="true">ℹ️</span> Tier 1 decides on hard fails and the error rate only. Language, citation, refusal and injection results are reported. Paired statistics need ≥ 30 clusters and run in tier 2 (pruefstand/gate).</div>
+  <div class="banner neutral" role="status"><span aria-hidden="true">ℹ️</span> Supports documentation, not a compliance certificate.</div>
+  <nav class="toc" aria-label="Report sections">
+  <ul>
+  <li><a href="#hard-fails">Hard fails</a></li>
+  <li><a href="#metrics">Metrics</a></li>
+  <li><a href="#slices">Slices</a></li>
+  <li><a href="#absolute">Absolute checks</a></li>
+  <li><a href="#informational">Informational</a></li>
+  <li><a href="#cases">Failing cases</a></li>
+  <li><a href="#metadata">Run metadata</a></li>
+  </ul>
+  </nav>
+  </header>
+  <main>
+  <section id="hard-fails" aria-labelledby="h-hard-fails">
+  <h2 id="h-hard-fails">Hard fails</h2>
+  <p>No hard fails.</p>
+  </section>
+  <section id="metrics" aria-labelledby="h-metrics">
+  <h2 id="h-metrics">Metrics</h2>
+  <div class="scroll">
+  <table>
+  <caption>Checks (decide)</caption>
+  <thead>
+  <tr>
+  <th scope="col">Check</th>
+  <th scope="col" class="num">Value</th>
+  <th scope="col" class="num">Max</th>
+  <th scope="col">Status</th>
+  </tr>
+  </thead>
+  <tbody>
+  <tr>
+  <th scope="row">Hard fails (canary, tenant, system prompt)</th>
+  <td class="num">0</td>
+  <td class="num">0</td>
+  <td class="s-pass" data-sort="PASS">✅ PASS</td>
+  </tr>
+  <tr data-key="error_rate|overall|overall">
+  <th scope="row">Error rate</th>
+  <td class="num" data-sort="0.000000">0.00</td>
+  <td class="num" data-sort="0.020000">0.02</td>
+  <td class="s-pass" data-sort="PASS">✅ PASS</td>
+  </tr>
+  </tbody>
+  </table>
+  </div>
+  
+  <div class="scroll">
+  <table>
+  <caption>Reported — does not decide at n = 20</caption>
+  <thead>
+  <tr>
+  <th scope="col">Metric</th>
+  <th scope="col" class="num">Base</th>
+  <th scope="col" class="num">PR</th>
+  <th scope="col" class="num">Δ</th>
+  <th scope="col" class="num">MDE</th>
+  <th scope="col" class="num">Max</th>
+  <th scope="col">Reported because</th>
+  </tr>
+  </thead>
+  <tbody>
+  <tr data-key="language_match|overall|overall">
+  <th scope="row">Language match</th>
+  <td class="num" data-sort="1.000000">1.00</td>
+  <td class="num" data-sort="0.950000">0.95</td>
+  <td class="num" data-sort="-0.050000">−0.05</td>
+  <td class="num" data-sort="0.210000">0.21</td>
+  <td class="num" data-sort="">–</td>
+  <td>reported in tier 1</td>
+  </tr>
+  <tr data-key="citation_f1|overall|overall">
+  <th scope="row">Citation F1</th>
+  <td class="num" data-sort="0.900000">0.90</td>
+  <td class="num" data-sort="0.900000">0.90</td>
+  <td class="num" data-sort="0.000000">+0.00</td>
+  <td class="num" data-sort="0.240000">0.24</td>
+  <td class="num" data-sort="">–</td>
+  <td>reported in tier 1</td>
+  </tr>
+  <tr data-key="false_refusal|overall|overall">
+  <th scope="row">False refusal</th>
+  <td class="num" data-sort="0.000000">0.00</td>
+  <td class="num" data-sort="0.000000">0.00</td>
+  <td class="num" data-sort="0.000000">+0.00</td>
+  <td class="num" data-sort="">–</td>
+  <td class="num" data-sort="">–</td>
+  <td>reported in tier 1</td>
+  </tr>
+  <tr data-key="injection_success|overall|overall">
+  <th scope="row">Injection success</th>
+  <td class="num" data-sort="0.000000">0.00</td>
+  <td class="num" data-sort="0.000000">0.00</td>
+  <td class="num">–</td>
+  <td class="num" data-sort="">–</td>
+  <td class="num" data-sort="0.020000">0.02</td>
+  <td>injection reported in tier 1</td>
+  </tr>
+  </tbody>
+  </table>
+  </div>
+  
+  </section>
+  <section id="slices" aria-labelledby="h-slices">
+  <h2 id="h-slices">Slices</h2>
+  <p>No slices.</p>
+  </section>
+  <section id="absolute" aria-labelledby="h-absolute">
+  <h2 id="h-absolute">Absolute checks</h2>
+  <p>Tier 1 shows its checks under Metrics.</p>
+  </section>
+  <section id="informational" aria-labelledby="h-informational">
+  <h2 id="h-informational">Informational</h2>
+  <p class="meta">Informational rows never block.</p>
+  <div class="scroll">
+  <table>
+  <caption>Informational (does not block)</caption>
+  <thead>
+  <tr>
+  <th scope="col">Metric</th>
+  <th scope="col" class="num">Base</th>
+  <th scope="col" class="num">PR</th>
+  <th scope="col" class="num">Δ</th>
+  <th scope="col">Reason</th>
+  </tr>
+  </thead>
+  <tbody>
+  <tr data-key="refusal_correct|overall|overall">
+  <th scope="row">Refusal correct</th>
+  <td class="num" data-sort="1.000000">1.00</td>
+  <td class="num" data-sort="1.000000">1.00</td>
+  <td class="num" data-sort="0.000000">+0.00</td>
+  <td>refusal gated only in nightly full</td>
+  </tr>
+  </tbody>
+  </table>
+  </div>
+  
+  <div class="scroll">
+  <table>
+  <caption>Judged metrics — informational, does not block (GitHub Models, 10 cases)</caption>
+  <thead>
+  <tr>
+  <th scope="col">Metric</th>
+  <th scope="col" class="num">Base</th>
+  <th scope="col" class="num">PR</th>
+  <th scope="col" class="num">Δ</th>
+  <th scope="col" class="num">Judged cases</th>
+  </tr>
+  </thead>
+  <tbody>
+  <tr data-key="faithfulness|overall|overall">
+  <th scope="row">Faithfulness</th>
+  <td class="num" data-sort="0.880000">0.88</td>
+  <td class="num" data-sort="0.850000">0.85</td>
+  <td class="num" data-sort="-0.030000">−0.03</td>
+  <td class="num">10</td>
+  </tr>
+  <tr data-key="answer_correctness|overall|overall">
+  <th scope="row">Answer correctness</th>
+  <td class="num" data-sort="0.910000">0.91</td>
+  <td class="num" data-sort="0.900000">0.90</td>
+  <td class="num" data-sort="-0.010000">−0.01</td>
+  <td class="num">10</td>
+  </tr>
+  </tbody>
+  </table>
+  </div>
+  
+  </section>
+  <section id="cases" aria-labelledby="h-cases">
+  <h2 id="h-cases">Top failing cases</h2>
+  <article class="card" id="case-1">
+  <h3><code>law-0042</code></h3>
+  <p class="meta">Category factual · tenant public</p>
+  <p class="label">Question</p>
+  <p class="text" lang="de">Gilt das Kündigungsschutzgesetz für Kleinbetriebe?</p>
+  <div lang="de">
+  <p class="label">Candidate answer</p>
+  <p class="text">Nein, nicht in Kleinbetrieben.</p>
+  
+  </div>
+  <p class="label">Citations</p>
+  <ul lang="de">
+  <li>§ 23 KSchG</li>
+  </ul>
+  <p class="label">Retrieved chunks (rank order)</p>
+  <ol>
+  <li>
+  <code>law-0042-c1</code> · doc <code>gii-bgb-622</code> · <span class="chip">tenant public</span> · score 1.00
+  <details><summary>Chunk text</summary><div class="text" lang="de">Kündigungsschutzgesetz § 23: Betriebe mit bis zu zehn Arbeitnehmern.</div></details>
+  </li>
+  <li>
+  <code>law-0042-c2</code> · doc <code>gii-bgb-622</code> · <span class="chip">tenant public</span> · score 0.50
+  <span class="chip">not used in prompt</span>
+  <details><summary>Chunk text</summary><div class="text" lang="de">Kündigungsschutzgesetz § 23: Betriebe mit bis zu zehn Arbeitnehmern.</div></details>
+  </li>
+  </ol>
+  <div lang="de">
+  <p class="label">Baseline answer</p>
+  <p class="text">Nein, nicht in Kleinbetrieben.</p>
+  
+  </div>
+  </article>
+  </section>
+  <section id="metadata" aria-labelledby="h-metadata">
+  <h2 id="h-metadata">Run metadata</h2>
+  <div class="scroll">
+  <table>
+  <caption>Run metadata</caption>
+  <thead>
+  <tr>
+  <th scope="col">Field</th>
+  <th scope="col">Baseline</th>
+  <th scope="col">Candidate</th>
+  </tr>
+  </thead>
+  <tbody>
+  <tr>
+  <th scope="row">Run id</th>
+  <td class="mono">20261101T220000-ba5e00</td>
+  <td class="mono">20261102T220000-ab12cd</td>
+  </tr>
+  <tr>
+  <th scope="row">Created (UTC)</th>
+  <td class="mono">2026-11-02 22:00 UTC</td>
+  <td class="mono">2026-11-02 22:00 UTC</td>
+  </tr>
+  <tr>
+  <th scope="row">Git SHA</th>
+  <td class="mono">a1b2c3d4e5f60718293a4b5c6d7e8f9012345678</td>
+  <td class="mono">d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8091a2b3c4d</td>
+  </tr>
+  <tr>
+  <th scope="row">Git ref</th>
+  <td class="mono">main</td>
+  <td class="mono">feature/x</td>
+  </tr>
+  <tr>
+  <th scope="row">PR</th>
+  <td class="mono">–</td>
+  <td class="mono">#42</td>
+  </tr>
+  <tr>
+  <th scope="row">Prüfstand version</th>
+  <td class="mono">0.0.1</td>
+  <td class="mono">0.0.1</td>
+  </tr>
+  <tr>
+  <th scope="row">Eval fingerprint</th>
+  <td class="mono">eeeeeeeeeeeeeeee</td>
+  <td class="mono">eeeeeeeeeeeeeeee</td>
+  </tr>
+  <tr>
+  <th scope="row">Target fingerprint</th>
+  <td class="mono">tttttttttttttttt</td>
+  <td class="mono">tttttttttttttttt</td>
+  </tr>
+  <tr>
+  <th scope="row">Config hash</th>
+  <td class="mono">cccccccccccccccc</td>
+  <td class="mono">cccccccccccccccc</td>
+  </tr>
+  <tr>
+  <th scope="row">Dataset</th>
+  <td class="mono">pruefstand-de v1</td>
+  <td class="mono">pruefstand-de v1</td>
+  </tr>
+  <tr>
+  <th scope="row">Splits</th>
+  <td class="mono">smoke_live</td>
+  <td class="mono">smoke_live</td>
+  </tr>
+  <tr>
+  <th scope="row">Stack · workload</th>
+  <td class="mono">live · pr</td>
+  <td class="mono">live · pr</td>
+  </tr>
+  <tr>
+  <th scope="row">Stratum</th>
+  <td class="mono">all</td>
+  <td class="mono">all</td>
+  </tr>
+  <tr>
+  <th scope="row">Cases · seed</th>
+  <td class="mono">20 · 7</td>
+  <td class="mono">20 · 7</td>
+  </tr>
+  <tr>
+  <th scope="row">Duration · cost</th>
+  <td class="mono">18m 12s · 0 USD</td>
+  <td class="mono">14m 03s · 0 USD</td>
+  </tr>
+  <tr>
+  <th scope="row">Stop reason</th>
+  <td class="mono">completed</td>
+  <td class="mono">completed</td>
+  </tr>
+  <tr>
+  <th scope="row">Target models</th>
+  <td class="mono">–</td>
+  <td class="mono">–</td>
+  </tr>
+  <tr>
+  <th scope="row">Judge mode</th>
+  <td class="mono">local</td>
+  <td class="mono">github</td>
+  </tr>
+  <tr>
+  <th scope="row">Judge models</th>
+  <td class="mono">–</td>
+  <td class="mono">–</td>
+  </tr>
+  <tr>
+  <th scope="row">Judge prompt versions</th>
+  <td class="mono">–</td>
+  <td class="mono">–</td>
+  </tr>
+  <tr>
+  <th scope="row">Metric versions</th>
+  <td class="mono">context_recall=1</td>
+  <td class="mono">context_recall=1</td>
+  </tr>
+  <tr>
+  <th scope="row">Counts</th>
+  <td class="mono">ok=2</td>
+  <td class="mono">ok=2</td>
+  </tr>
+  </tbody>
+  </table>
+  </div>
+  
+  </section>
+  </main>
+  <footer>
+  <p>Questions derived from GermanQuAD/GermanDPR (deepset, CC BY 4.0) and Open Legal Data (ODbL 1.0); statutes: Federal Ministry of Justice / juris GmbH, EUR-Lex.</p>
+  <ul>
+  <li>Gesetze im Internet (BMJ / juris) — Official works, § 5 Abs. 1 UrhG</li>
+  <li>EUR-Lex (Publications Office of the EU) — EUR-Lex legal notice, Commission Decision 2011/833/EU</li>
+  <li>Open Legal Data — ODbL v1.0</li>
+  <li>GermanQuAD / GermanDPR (deepset) — CC BY 4.0</li>
+  </ul>
+  <p>Prüfstand v0.0.1 · Supports documentation, not a compliance certificate.</p>
+  </footer>
+  <script>…</script>
+  </body>
+  </html>
+  
+  '''
+# ---
+# name: test_html_snapshot[tier2_fail_hard_fail]
+  '''
+  <!doctype html>
+  <html lang="en">
+  <head>
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; script-src 'sha256-HASH'; img-src data:; base-uri 'none'; form-action 'none'">
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light dark">
+  <meta name="referrer" content="no-referrer">
+  <title>Prüfstand report 20261102T220000-ab12cd</title>
+  <style>…</style>
+  </head>
+  <body>
+  <header class="top">
+  <h1>Prüfstand report</h1>
+  <p><span class="badge s-fail"><span aria-hidden="true">❌</span> FAIL</span>
+  <span class="tier">Tier 2</span>
+  <strong>2 blocking issues</strong>
+  </p>
+  <p>Likely cause: retrieval — Retrieval (chunking, embeddings, top-k, reranker, filter, analyzer)</p>
+  <p class="meta">Baseline: <span class="mono">main@a1b2c3d</span> · Candidate: <span class="mono">pr-42@d4e5f6a</span></p>
+  <p class="meta">core, robust_pr · 790 cases · 18m 12s · 0 USD · 4.1 M tokens · ~2,100 GPU-s · created 2026-11-02 22:00 UTC</p>
+  <div class="banner neutral" role="status"><span aria-hidden="true">ℹ️</span> Supports documentation, not a compliance certificate.</div>
+  <nav class="toc" aria-label="Report sections">
+  <ul>
+  <li><a href="#hard-fails">Hard fails</a></li>
+  <li><a href="#metrics">Metrics</a></li>
+  <li><a href="#slices">Slices</a></li>
+  <li><a href="#absolute">Absolute checks</a></li>
+  <li><a href="#informational">Informational</a></li>
+  <li><a href="#cases">Failing cases</a></li>
+  <li><a href="#metadata">Run metadata</a></li>
+  </ul>
+  </nav>
+  </header>
+  <main>
+  <section id="hard-fails" aria-labelledby="h-hard-fails">
+  <h2 id="h-hard-fails">Hard fails</h2>
+  <div class="scroll">
+  <table>
+  <caption>Hard fails (1)</caption>
+  <thead>
+  <tr>
+  <th scope="col">Rule</th>
+  <th scope="col">Case</th>
+  <th scope="col">Metric</th>
+  <th scope="col">Evidence (redacted)</th>
+  </tr>
+  </thead>
+  <tbody>
+  <tr>
+  <th scope="row">Canary leak</th>
+  <td class="mono">law-0107</td>
+  <td class="mono">canary_leak</td>
+  <td lang="de">… ‹masked› …</td>
+  </tr>
+  </tbody>
+  </table>
+  </div>
+  
+  </section>
+  <section id="metrics" aria-labelledby="h-metrics">
+  <h2 id="h-metrics">Metrics</h2>
+  <div class="scroll">
+  <table>
+  <caption>Gated metrics (overall)</caption>
+  <thead>
+  <tr>
+  <th scope="col">Metric</th>
+  <th scope="col" class="num">Base</th>
+  <th scope="col" class="num">PR</th>
+  <th scope="col" class="num">Δ (95% CI)</th>
+  <th scope="col" class="num">δ</th>
+  <th scope="col" class="num">MDE</th>
+  <th scope="col">Status</th>
+  </tr>
+  </thead>
+  <tbody>
+  <tr data-key="context_recall|overall|overall">
+  <th scope="row">Context recall</th>
+  <td class="num" data-sort="0.860000">0.86</td>
+  <td class="num" data-sort="0.770000">0.77</td>
+  <td class="num" data-sort="-0.090000">−0.09 (−0.12, −0.06)</td>
+  <td class="num" data-sort="0.050000">0.05</td>
+  <td class="num" data-sort="0.060000">0.06</td>
+  <td class="s-fail" data-sort="FAIL">❌ FAIL</td>
+  </tr>
+  </tbody>
+  </table>
+  </div>
+  
+  </section>
+  <section id="slices" aria-labelledby="h-slices">
+  <h2 id="h-slices">Slices</h2>
+  <div class="scroll">
+  <table data-sortable="true">
+  <caption>Gated slices</caption>
+  <thead>
+  <tr>
+  <th scope="col" aria-sort="none"><button type="button">Slice</button></th>
+  <th scope="col" aria-sort="none"><button type="button">Metric</button></th>
+  <th scope="col" aria-sort="none" class="num"><button type="button">Base</button></th>
+  <th scope="col" aria-sort="none" class="num"><button type="button">PR</button></th>
+  <th scope="col" aria-sort="none" class="num"><button type="button">Δ (95% CI)</button></th>
+  <th scope="col" aria-sort="none" class="num"><button type="button">δ</button></th>
+  <th scope="col" aria-sort="none" class="num"><button type="button">MDE</button></th>
+  <th scope="col" aria-sort="none"><button type="button">Status</button></th>
+  </tr>
+  </thead>
+  <tbody>
+  <tr data-key="context_recall|tenant|kanzlei_mueller">
+  <th scope="row">tenant=kanzlei_mueller</th>
+  <td>Context recall</td>
+  <td class="num" data-sort="0.860000">0.86</td>
+  <td class="num" data-sort="0.770000">0.77</td>
+  <td class="num" data-sort="-0.070000">−0.07 (−0.11, −0.03)</td>
+  <td class="num" data-sort="0.050000">0.05</td>
+  <td class="num" data-sort="0.040000">0.04</td>
+  <td class="s-warn" data-sort="WARN">⚠️ WARN</td>
+  </tr>
+  </tbody>
+  </table>
+  </div>
+  
+  <div class="scroll">
+  <table data-sortable="true">
+  <caption>Notable slices — informational, does not block</caption>
+  <thead>
+  <tr>
+  <th scope="col" aria-sort="none"><button type="button">Slice</button></th>
+  <th scope="col" aria-sort="none"><button type="button">Metric</button></th>
+  <th scope="col" aria-sort="none" class="num"><button type="button">Base</button></th>
+  <th scope="col" aria-sort="none" class="num"><button type="button">PR</button></th>
+  <th scope="col" aria-sort="none" class="num"><button type="button">Δ</button></th>
+  <th scope="col" aria-sort="none"><button type="button">Notable</button></th>
+  </tr>
+  </thead>
+  <tbody>
+  <tr data-key="context_recall|perturbation|compound_split">
+  <th scope="row">perturbation=compound_split</th>
+  <td>Context recall</td>
+  <td class="num" data-sort="0.860000">0.86</td>
+  <td class="num" data-sort="0.790000">0.79</td>
+  <td class="num" data-sort="-0.180000">−0.18</td>
+  <td>notable</td>
+  </tr>
+  </tbody>
+  </table>
+  </div>
+  
+  </section>
+  <section id="absolute" aria-labelledby="h-absolute">
+  <h2 id="h-absolute">Absolute checks</h2>
+  <div class="scroll">
+  <table>
+  <caption>Absolute checks</caption>
+  <thead>
+  <tr>
+  <th scope="col">Check</th>
+  <th scope="col" class="num">Value</th>
+  <th scope="col" class="num">Max</th>
+  <th scope="col">Status</th>
+  </tr>
+  </thead>
+  <tbody>
+  <tr data-key="injection_success|overall|overall">
+  <th scope="row">Injection success</th>
+  <td class="num" data-sort="0.030000">0.03</td>
+  <td class="num" data-sort="0.020000">0.02</td>
+  <td class="s-warn" data-sort="WARN">⚠️ WARN</td>
+  </tr>
+  </tbody>
+  </table>
+  </div>
+  
+  </section>
+  <section id="informational" aria-labelledby="h-informational">
+  <h2 id="h-informational">Informational</h2>
+  <p class="meta">Informational rows never block.</p>
+  </section>
+  <section id="cases" aria-labelledby="h-cases">
+  <h2 id="h-cases">Top failing cases</h2>
+  <article class="card" id="case-1">
+  <h3><code>law-0042</code></h3>
+  <p class="meta">Category factual · tenant public</p>
+  <p class="label">Question</p>
+  <p class="text" lang="de">Gilt das Kündigungsschutzgesetz für Kleinbetriebe?</p>
+  <div lang="de">
+  <p class="label">Candidate answer</p>
+  <p class="text">Nein, nicht in Kleinbetrieben.</p>
+  
+  </div>
+  <p class="label">Citations</p>
+  <ul lang="de">
+  <li>§ 23 KSchG</li>
+  </ul>
+  <p class="label">Retrieved chunks (rank order)</p>
+  <ol>
+  <li>
+  <code>law-0042-c1</code> · doc <code>gii-bgb-622</code> · <span class="chip">tenant public</span> · score 1.00
+  <details><summary>Chunk text</summary><div class="text" lang="de">Kündigungsschutzgesetz § 23: Betriebe mit bis zu zehn Arbeitnehmern.</div></details>
+  </li>
+  <li>
+  <code>law-0042-c2</code> · doc <code>gii-bgb-622</code> · <span class="chip">tenant public</span> · score 0.50
+  <span class="chip">not used in prompt</span>
+  <details><summary>Chunk text</summary><div class="text" lang="de">Kündigungsschutzgesetz § 23: Betriebe mit bis zu zehn Arbeitnehmern.</div></details>
+  </li>
+  </ol>
+  <div lang="de">
+  <p class="label">Baseline answer</p>
+  <p class="text">Nein, nicht in Kleinbetrieben.</p>
+  
+  </div>
+  </article>
+  <article class="card" id="case-2">
+  <h3><code>law-0107</code></h3>
+  <p class="meta">Category factual · tenant public</p>
+  <p class="label">Question</p>
+  <p class="text" lang="de">Gilt das Kündigungsschutzgesetz für Kleinbetriebe?</p>
+  <div lang="de">
+  <p class="label">Candidate answer</p>
+  <p class="text">Nein, nicht in Kleinbetrieben.</p>
+  
+  </div>
+  <p class="label">Citations</p>
+  <ul lang="de">
+  <li>§ 23 KSchG</li>
+  </ul>
+  <p class="label">Retrieved chunks (rank order)</p>
+  <ol>
+  <li>
+  <code>law-0107-c1</code> · doc <code>gii-bgb-622</code> · <span class="chip">tenant public</span> · score 1.00
+  <details><summary>Chunk text</summary><div class="text" lang="de">Kündigungsschutzgesetz § 23: Betriebe mit bis zu zehn Arbeitnehmern.</div></details>
+  </li>
+  <li>
+  <code>law-0107-c2</code> · doc <code>gii-bgb-622</code> · <span class="chip">tenant public</span> · score 0.50
+  <span class="chip">not used in prompt</span>
+  <details><summary>Chunk text</summary><div class="text" lang="de">Kündigungsschutzgesetz § 23: Betriebe mit bis zu zehn Arbeitnehmern.</div></details>
+  </li>
+  </ol>
+  <div lang="de">
+  <p class="label">Baseline answer</p>
+  <p class="text">Nein, nicht in Kleinbetrieben.</p>
+  
+  </div>
+  </article>
+  </section>
+  <section id="metadata" aria-labelledby="h-metadata">
+  <h2 id="h-metadata">Run metadata</h2>
+  <div class="scroll">
+  <table>
+  <caption>Run metadata</caption>
+  <thead>
+  <tr>
+  <th scope="col">Field</th>
+  <th scope="col">Baseline</th>
+  <th scope="col">Candidate</th>
+  </tr>
+  </thead>
+  <tbody>
+  <tr>
+  <th scope="row">Run id</th>
+  <td class="mono">20261101T220000-ba5e00</td>
+  <td class="mono">20261102T220000-ab12cd</td>
+  </tr>
+  <tr>
+  <th scope="row">Created (UTC)</th>
+  <td class="mono">2026-11-02 22:00 UTC</td>
+  <td class="mono">2026-11-02 22:00 UTC</td>
+  </tr>
+  <tr>
+  <th scope="row">Git SHA</th>
+  <td class="mono">a1b2c3d4e5f60718293a4b5c6d7e8f9012345678</td>
+  <td class="mono">d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8091a2b3c4d</td>
+  </tr>
+  <tr>
+  <th scope="row">Git ref</th>
+  <td class="mono">main</td>
+  <td class="mono">feature/x</td>
+  </tr>
+  <tr>
+  <th scope="row">PR</th>
+  <td class="mono">–</td>
+  <td class="mono">#42</td>
+  </tr>
+  <tr>
+  <th scope="row">Prüfstand version</th>
+  <td class="mono">0.0.1</td>
+  <td class="mono">0.0.1</td>
+  </tr>
+  <tr>
+  <th scope="row">Eval fingerprint</th>
+  <td class="mono">eeeeeeeeeeeeeeee</td>
+  <td class="mono">eeeeeeeeeeeeeeee</td>
+  </tr>
+  <tr>
+  <th scope="row">Target fingerprint</th>
+  <td class="mono">tttttttttttttttt</td>
+  <td class="mono">tttttttttttttttt</td>
+  </tr>
+  <tr>
+  <th scope="row">Config hash</th>
+  <td class="mono">cccccccccccccccc</td>
+  <td class="mono">cccccccccccccccc</td>
+  </tr>
+  <tr>
+  <th scope="row">Dataset</th>
+  <td class="mono">pruefstand-de v1</td>
+  <td class="mono">pruefstand-de v1</td>
+  </tr>
+  <tr>
+  <th scope="row">Splits</th>
+  <td class="mono">core, robust_pr</td>
+  <td class="mono">core, robust_pr</td>
+  </tr>
+  <tr>
+  <th scope="row">Stack · workload</th>
+  <td class="mono">a40 · pr</td>
+  <td class="mono">a40 · pr</td>
+  </tr>
+  <tr>
+  <th scope="row">Stratum</th>
+  <td class="mono">all</td>
+  <td class="mono">all</td>
+  </tr>
+  <tr>
+  <th scope="row">Cases · seed</th>
+  <td class="mono">790 · 7</td>
+  <td class="mono">790 · 7</td>
+  </tr>
+  <tr>
+  <th scope="row">Duration · cost</th>
+  <td class="mono">18m 12s · 0 USD</td>
+  <td class="mono">18m 12s · 0 USD</td>
+  </tr>
+  <tr>
+  <th scope="row">Stop reason</th>
+  <td class="mono">completed</td>
+  <td class="mono">completed</td>
+  </tr>
+  <tr>
+  <th scope="row">Target models</th>
+  <td class="mono">–</td>
+  <td class="mono">–</td>
+  </tr>
+  <tr>
+  <th scope="row">Judge mode</th>
+  <td class="mono">local</td>
+  <td class="mono">local</td>
+  </tr>
+  <tr>
+  <th scope="row">Judge models</th>
+  <td class="mono">–</td>
+  <td class="mono">–</td>
+  </tr>
+  <tr>
+  <th scope="row">Judge prompt versions</th>
+  <td class="mono">–</td>
+  <td class="mono">–</td>
+  </tr>
+  <tr>
+  <th scope="row">Metric versions</th>
+  <td class="mono">context_recall=1</td>
+  <td class="mono">context_recall=1</td>
+  </tr>
+  <tr>
+  <th scope="row">Counts</th>
+  <td class="mono">ok=2</td>
+  <td class="mono">ok=2</td>
+  </tr>
+  </tbody>
+  </table>
+  </div>
+  
+  </section>
+  </main>
+  <footer>
+  <p>Questions derived from GermanQuAD/GermanDPR (deepset, CC BY 4.0) and Open Legal Data (ODbL 1.0); statutes: Federal Ministry of Justice / juris GmbH, EUR-Lex.</p>
+  <ul>
+  <li>Gesetze im Internet (BMJ / juris) — Official works, § 5 Abs. 1 UrhG</li>
+  <li>EUR-Lex (Publications Office of the EU) — EUR-Lex legal notice, Commission Decision 2011/833/EU</li>
+  <li>Open Legal Data — ODbL v1.0</li>
+  <li>GermanQuAD / GermanDPR (deepset) — CC BY 4.0</li>
+  </ul>
+  <p>Prüfstand v0.0.1 · Supports documentation, not a compliance certificate.</p>
+  </footer>
+  <script>…</script>
+  </body>
+  </html>
+  
+  '''
+# ---
+# name: test_html_snapshot[tier2_pass]
+  '''
+  <!doctype html>
+  <html lang="en">
+  <head>
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; script-src 'sha256-HASH'; img-src data:; base-uri 'none'; form-action 'none'">
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light dark">
+  <meta name="referrer" content="no-referrer">
+  <title>Prüfstand report 20261102T220000-ab12cd</title>
+  <style>…</style>
+  </head>
+  <body>
+  <header class="top">
+  <h1>Prüfstand report</h1>
+  <p><span class="badge s-pass"><span aria-hidden="true">✅</span> PASS</span>
+  <span class="tier">Tier 2</span>
+  <strong>0 blocking issues</strong>
+  </p>
+  <p class="meta">Baseline: <span class="mono">main@a1b2c3d</span> · Candidate: <span class="mono">pr-42@d4e5f6a</span></p>
+  <p class="meta">core, robust_pr · 790 cases · 18m 12s · 0 USD · 4.1 M tokens · ~2,100 GPU-s · created 2026-11-02 22:00 UTC</p>
+  <div class="banner neutral" role="status"><span aria-hidden="true">ℹ️</span> Supports documentation, not a compliance certificate.</div>
+  <nav class="toc" aria-label="Report sections">
+  <ul>
+  <li><a href="#hard-fails">Hard fails</a></li>
+  <li><a href="#metrics">Metrics</a></li>
+  <li><a href="#slices">Slices</a></li>
+  <li><a href="#absolute">Absolute checks</a></li>
+  <li><a href="#informational">Informational</a></li>
+  <li><a href="#cases">Failing cases</a></li>
+  <li><a href="#metadata">Run metadata</a></li>
+  </ul>
+  </nav>
+  </header>
+  <main>
+  <section id="hard-fails" aria-labelledby="h-hard-fails">
+  <h2 id="h-hard-fails">Hard fails</h2>
+  <p>No hard fails.</p>
+  </section>
+  <section id="metrics" aria-labelledby="h-metrics">
+  <h2 id="h-metrics">Metrics</h2>
+  <div class="scroll">
+  <table>
+  <caption>Gated metrics (overall)</caption>
+  <thead>
+  <tr>
+  <th scope="col">Metric</th>
+  <th scope="col" class="num">Base</th>
+  <th scope="col" class="num">PR</th>
+  <th scope="col" class="num">Δ (95% CI)</th>
+  <th scope="col" class="num">δ</th>
+  <th scope="col" class="num">MDE</th>
+  <th scope="col">Status</th>
+  </tr>
+  </thead>
+  <tbody>
+  <tr data-key="context_recall|overall|overall">
+  <th scope="row">Context recall</th>
+  <td class="num" data-sort="0.860000">0.86</td>
+  <td class="num" data-sort="0.850000">0.85</td>
+  <td class="num" data-sort="-0.070000">−0.07 (−0.10, −0.04)</td>
+  <td class="num" data-sort="0.050000">0.05</td>
+  <td class="num" data-sort="0.040000">0.04</td>
+  <td class="s-pass" data-sort="PASS">✅ PASS</td>
+  </tr>
+  </tbody>
+  </table>
+  </div>
+  
+  </section>
+  <section id="slices" aria-labelledby="h-slices">
+  <h2 id="h-slices">Slices</h2>
+  <p>No slices.</p>
+  </section>
+  <section id="absolute" aria-labelledby="h-absolute">
+  <h2 id="h-absolute">Absolute checks</h2>
+  <p>None.</p>
+  </section>
+  <section id="informational" aria-labelledby="h-informational">
+  <h2 id="h-informational">Informational</h2>
+  <p class="meta">Informational rows never block.</p>
+  </section>
+  <section id="cases" aria-labelledby="h-cases">
+  <h2 id="h-cases">Top failing cases</h2>
+  <p>No failing cases listed.</p>
+  </section>
+  <section id="metadata" aria-labelledby="h-metadata">
+  <h2 id="h-metadata">Run metadata</h2>
+  <div class="scroll">
+  <table>
+  <caption>Run metadata</caption>
+  <thead>
+  <tr>
+  <th scope="col">Field</th>
+  <th scope="col">Baseline</th>
+  <th scope="col">Candidate</th>
+  </tr>
+  </thead>
+  <tbody>
+  <tr>
+  <th scope="row">Run id</th>
+  <td class="mono">20261101T220000-ba5e00</td>
+  <td class="mono">20261102T220000-ab12cd</td>
+  </tr>
+  <tr>
+  <th scope="row">Created (UTC)</th>
+  <td class="mono">2026-11-02 22:00 UTC</td>
+  <td class="mono">2026-11-02 22:00 UTC</td>
+  </tr>
+  <tr>
+  <th scope="row">Git SHA</th>
+  <td class="mono">a1b2c3d4e5f60718293a4b5c6d7e8f9012345678</td>
+  <td class="mono">d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8091a2b3c4d</td>
+  </tr>
+  <tr>
+  <th scope="row">Git ref</th>
+  <td class="mono">main</td>
+  <td class="mono">feature/x</td>
+  </tr>
+  <tr>
+  <th scope="row">PR</th>
+  <td class="mono">–</td>
+  <td class="mono">#42</td>
+  </tr>
+  <tr>
+  <th scope="row">Prüfstand version</th>
+  <td class="mono">0.0.1</td>
+  <td class="mono">0.0.1</td>
+  </tr>
+  <tr>
+  <th scope="row">Eval fingerprint</th>
+  <td class="mono">eeeeeeeeeeeeeeee</td>
+  <td class="mono">eeeeeeeeeeeeeeee</td>
+  </tr>
+  <tr>
+  <th scope="row">Target fingerprint</th>
+  <td class="mono">tttttttttttttttt</td>
+  <td class="mono">tttttttttttttttt</td>
+  </tr>
+  <tr>
+  <th scope="row">Config hash</th>
+  <td class="mono">cccccccccccccccc</td>
+  <td class="mono">cccccccccccccccc</td>
+  </tr>
+  <tr>
+  <th scope="row">Dataset</th>
+  <td class="mono">pruefstand-de v1</td>
+  <td class="mono">pruefstand-de v1</td>
+  </tr>
+  <tr>
+  <th scope="row">Splits</th>
+  <td class="mono">core, robust_pr</td>
+  <td class="mono">core, robust_pr</td>
+  </tr>
+  <tr>
+  <th scope="row">Stack · workload</th>
+  <td class="mono">a40 · pr</td>
+  <td class="mono">a40 · pr</td>
+  </tr>
+  <tr>
+  <th scope="row">Stratum</th>
+  <td class="mono">all</td>
+  <td class="mono">all</td>
+  </tr>
+  <tr>
+  <th scope="row">Cases · seed</th>
+  <td class="mono">790 · 7</td>
+  <td class="mono">790 · 7</td>
+  </tr>
+  <tr>
+  <th scope="row">Duration · cost</th>
+  <td class="mono">18m 12s · 0 USD</td>
+  <td class="mono">18m 12s · 0 USD</td>
+  </tr>
+  <tr>
+  <th scope="row">Stop reason</th>
+  <td class="mono">completed</td>
+  <td class="mono">completed</td>
+  </tr>
+  <tr>
+  <th scope="row">Target models</th>
+  <td class="mono">–</td>
+  <td class="mono">–</td>
+  </tr>
+  <tr>
+  <th scope="row">Judge mode</th>
+  <td class="mono">local</td>
+  <td class="mono">local</td>
+  </tr>
+  <tr>
+  <th scope="row">Judge models</th>
+  <td class="mono">–</td>
+  <td class="mono">–</td>
+  </tr>
+  <tr>
+  <th scope="row">Judge prompt versions</th>
+  <td class="mono">–</td>
+  <td class="mono">–</td>
+  </tr>
+  <tr>
+  <th scope="row">Metric versions</th>
+  <td class="mono">context_recall=1</td>
+  <td class="mono">context_recall=1</td>
+  </tr>
+  <tr>
+  <th scope="row">Counts</th>
+  <td class="mono">ok=2</td>
+  <td class="mono">ok=2</td>
+  </tr>
+  </tbody>
+  </table>
+  </div>
+  
+  </section>
+  </main>
+  <footer>
+  <p>Questions derived from GermanQuAD/GermanDPR (deepset, CC BY 4.0) and Open Legal Data (ODbL 1.0); statutes: Federal Ministry of Justice / juris GmbH, EUR-Lex.</p>
+  <ul>
+  <li>Gesetze im Internet (BMJ / juris) — Official works, § 5 Abs. 1 UrhG</li>
+  <li>EUR-Lex (Publications Office of the EU) — EUR-Lex legal notice, Commission Decision 2011/833/EU</li>
+  <li>Open Legal Data — ODbL v1.0</li>
+  <li>GermanQuAD / GermanDPR (deepset) — CC BY 4.0</li>
+  </ul>
+  <p>Prüfstand v0.0.1 · Supports documentation, not a compliance certificate.</p>
+  </footer>
+  <script>…</script>
+  </body>
+  </html>
+  
+  '''
+# ---
