@@ -60,13 +60,13 @@ Fields that can hold a hash or digest, and what each one is:
 
 | Field | Where | What it is |
 | --- | --- | --- |
-| `git_sha`, `candidate.git_sha`, `baseline.git_sha` | `run.json`, `runs/index.json`, `gate.json` | commit SHAs of the public repository |
+| `git_sha` | `run.json`, `runs/index.json` | commit SHAs of the public repository |
 | `target.serving.model_sha256` | `run.json` | SHA-256 of the pinned Qwen2.5-0.5B-Instruct GGUF (Q4_K_M), the public Hugging Face file listed in `infra/models/live-models.yaml` |
 | `target.image_digest` | `run.json` | null (no image digest in these runs) |
 | `config_hash`, `eval_fingerprint`, `target_fingerprint`, `target.config_hash` (16 hex) | `run.json`, `gate.json` | hashes of the committed tier-1 config, the fixture dataset and the target description |
 | `artifact_sha256` | raw `run.json` only (empty in the export) | SHA-256 of `results.parquet`, `responses.jsonl`, `scored.jsonl` of the run: hashes of data about the synthetic slice |
 | `files.*` | `manifest.json` | SHA-256 of the files of this set |
 
-No field holds a digest of anything private. No real path, login, host or IP address is in the set: the CI runner CPU model (`serving.gpu`) and the placeholder `http://localhost:8000` in `raw/pruefstand.yaml` are the only host-like strings; `git_ref` is `refs/pull/<n>/merge` or `refs/heads/main`. Tenant text: the questions are the hand-written cases of `datasets/fixtures/slice_v1`; tenants are the six synthetic tenants of the slice corpus (`corpus/slice_v1`, hand-written, CC0, fictitious names). `populated/` has no chunk text (sanitised); `raw/` keeps chunk text of the public slice only (law text and those synthetic documents). Canary tokens in `raw/` are the public slice canaries (the VN and KM tokens of `corpus/slice_v1/canaries.public.json`), masked in every exported file.
+No field holds a digest of anything private. No real path, login, host or IP address is in the set: the CI runner CPU model (`serving.gpu`) and the placeholder `http://localhost:8000` in `raw/pruefstand.yaml` are the only host-like strings; `git_ref` is `refs/pull/<n>/merge` or `refs/heads/main`. Tenant text: the questions are the hand-written cases of `datasets/fixtures/slice_v1`; the tenants used are two of the synthetic customer tenants of the slice corpus (`kanzlei_mueller`, `stadtwerke_sued`) (`corpus/slice_v1`, hand-written, CC0, fictitious names). `populated/` has no chunk text (sanitised); `raw/` keeps chunk text of the public slice only (law text and those synthetic documents). Canary tokens in `raw/` are the public slice canaries (the KM token of `corpus/slice_v1/canaries.public.json`), masked in every exported file.
 
 Judge: the quota-less tier-1 runs of this snapshot have `judge_mode=skipped`; a `judge_mode=github` run (block J rows) is added when a live PR run has quota.
