@@ -1,11 +1,11 @@
 """html_to_text (T2.3): HTML of the court decisions -> plain text lines, hardened."""
 
 import contextlib
-import time
 from typing import Any
 
 import pytest
 from lxml import html as lxml_html
+from testsupport.timing import assert_scales_linearly, cpu_budget
 
 from pruefstand.ingest.html_text import HtmlTextError, html_to_text
 
@@ -79,19 +79,11 @@ def test_output_is_nfc() -> None:
     assert html_to_text("<p>Kündigung</p>") == "Kündigung"
 
 
-def best_of(runs: int, markup: str) -> float:
-    best = float("inf")
-    for _ in range(runs):
-        start = time.perf_counter()
-        html_to_text(markup)
-        best = min(best, time.perf_counter() - start)
-    return best
-
-
 def test_time_is_linear_in_the_markup() -> None:
     unit = "<div><p>Die <b>Kündigung</b> &uuml;ber § 622 BGB.</p><br></div>"
-    small, large = best_of(3, unit * 2_000), best_of(3, unit * 16_000)
-    assert large / small < 20  # linear = 8, quadratic = 64
+    small, large = unit * 2_000, unit * 16_000
+    # linear = 8, quadratic = 64
+    assert_scales_linearly(lambda: html_to_text(small), lambda: html_to_text(large), scale=8)
 
 
 @pytest.mark.parametrize(
@@ -99,18 +91,16 @@ def test_time_is_linear_in_the_markup() -> None:
     ["<div>" * 100_000, "<" * 500_000, "<p>" * 200_000 + "x", "&" * 500_000, "<a " * 100_000],
 )
 def test_pathological_markup_terminates_quickly(markup: str) -> None:
-    start = time.perf_counter()
-    with contextlib.suppress(HtmlTextError):  # the one documented way to refuse
+    with cpu_budget(10), contextlib.suppress(HtmlTextError):  # the one documented way to refuse
         assert isinstance(html_to_text(markup), str)
-    assert time.perf_counter() - start < 10
 
 
 @pytest.mark.parametrize(
     "unit", ["<script></script>x", "<style>a</style>x", "<script>y</script>x", "<title>t</title>x"]
 )
 def test_dropped_elements_cost_linear_time(unit: str) -> None:
-    small, large = best_of(3, unit * 10_000), best_of(3, unit * 40_000)  # 4x the markup
-    assert large / small <= 8  # linear = 4, quadratic = 16
+    small, large = unit * 10_000, unit * 40_000  # 4x the markup: linear = 4, quadratic = 16
+    assert_scales_linearly(lambda: html_to_text(small), lambda: html_to_text(large), scale=4)
 
 
 def test_dropped_elements_keep_their_tail_text() -> None:

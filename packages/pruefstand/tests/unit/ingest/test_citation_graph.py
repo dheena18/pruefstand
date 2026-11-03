@@ -1,13 +1,13 @@
 """load_citation_graph (T2.3 S6): OLDP citation edges -> normalised law keys per decision."""
 
 import json
-import time
 from collections.abc import Callable, Mapping, Sequence
 from pathlib import Path
 
 import polars as pl
 import pytest
 from structlog.testing import capture_logs
+from testsupport.timing import cpu_budget
 
 from pruefstand.core.ids import DocId
 from pruefstand.ingest.citation_graph import load_citation_graph
@@ -124,10 +124,8 @@ def test_many_distinct_unknown_laws_are_logged_once_each_and_fast(
     graph_dir = oldp_raw.parent / "oldp_citation_graph"
     rows = [edge(LABOUR, f"Gesetz{i % 50}", f"§ {i}") for i in range(20_000)]
     write_jsonl(graph_dir / "e.jsonl", rows)
-    start = time.perf_counter()
-    with capture_logs() as logs:
+    with cpu_budget(20), capture_logs() as logs:
         graph = load_citation_graph(graph_dir)
-    assert time.perf_counter() - start < 20
     assert len(graph[DocId("oldp-446202")]) == 20_000
     assert len([entry for entry in logs if entry["event"] == "citation_unknown_law"]) == 50
 

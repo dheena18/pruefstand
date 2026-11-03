@@ -1,12 +1,12 @@
 """Property and timing tests for the deterministic perturbations (T4.4)."""
 
-import time
 import unicodedata
 from collections.abc import Callable
 
 import numpy as np
 from hypothesis import given
 from hypothesis import strategies as st
+from testsupport.timing import assert_scales_linearly
 
 from pruefstand.perturb.registry import get_perturbation, perturbation_names
 
@@ -67,14 +67,9 @@ def test_same_seed_same_result(text: str, seed: int) -> None:
         )
 
 
-def _seconds(name: str, text: str) -> float:
+def _applier(name: str, text: str) -> Callable[[], object]:
     p = get_perturbation(name)
-    best = float("inf")
-    for _ in range(3):
-        start = time.perf_counter()
-        p.apply(text, np.random.default_rng(0))
-        best = min(best, time.perf_counter() - start)
-    return best
+    return lambda: p.apply(text, np.random.default_rng(0))
 
 
 ADVERSARIAL: dict[str, Callable[[int], str]] = {
@@ -89,9 +84,8 @@ ADVERSARIAL: dict[str, Callable[[int], str]] = {
 
 
 def test_linear_time_on_adversarial_input() -> None:
-    """Doubling the input must not much more than double the time (ratio, not absolute)."""
+    """4x the input must not cost much more than 4x the CPU time (ratio, not absolute)."""
     for name, build in ADVERSARIAL.items():
-        small, large = build(20_000), build(40_000)
-        _seconds(name, small)  # warm up caches (law regex compile)
-        ratio = _seconds(name, large) / max(_seconds(name, small), 1e-4)
-        assert ratio < 4.0, (name, ratio)
+        small, large = _applier(name, build(20_000)), _applier(name, build(80_000))
+        small()  # warm up caches (law regex compile)
+        assert_scales_linearly(small, large, scale=4, floor_s=1e-4)

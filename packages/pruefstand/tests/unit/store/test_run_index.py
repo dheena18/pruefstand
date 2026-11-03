@@ -1,14 +1,16 @@
 """``RunIndex``: DuckDB over run directories, never parsing an unverified parquet (T6.1 S6)."""
 
+import itertools
 import json
 import shutil
-import time
+from collections.abc import Callable
 from pathlib import Path
 
 import polars as pl
 import pytest
 from testsupport.run_builders import refresh_hashes
 from testsupport.store_support import run_id, run_of
+from testsupport.timing import assert_scales_linearly
 
 from pruefstand.core.errors import StoreError
 from pruefstand.store.artifacts import ArtifactStore
@@ -175,10 +177,10 @@ def test_the_manifest_json_round_trips_through_the_runs_table(tmp_path: Path) ->
 def test_refresh_cost_is_linear_in_the_number_of_runs(tmp_path: Path) -> None:
     write_runs(tmp_path / "small", 4)
     write_runs(tmp_path / "big", 24)
-    t0 = time.perf_counter()
-    RunIndex(tmp_path / "s.duckdb", tmp_path / "small").refresh()
-    small = time.perf_counter() - t0
-    t0 = time.perf_counter()
-    RunIndex(tmp_path / "b.duckdb", tmp_path / "big").refresh()
-    big = time.perf_counter() - t0
-    assert big / small < 6 * 4  # 6x the runs; generous bound against a quadratic rebuild
+    fresh = itertools.count()  # a new index file per run: a second refresh would be a no-op
+
+    def refresher(runs: str) -> Callable[[], object]:
+        return lambda: RunIndex(tmp_path / f"{runs}{next(fresh)}.duckdb", tmp_path / runs).refresh()
+
+    # 6x the runs: linear ~6x, a quadratic rebuild ~36x
+    assert_scales_linearly(refresher("small"), refresher("big"), scale=6, reps=3)

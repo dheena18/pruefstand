@@ -3,7 +3,6 @@
 import hashlib
 import json
 import re
-import time
 from pathlib import Path
 
 import numpy as np
@@ -11,6 +10,7 @@ import pytest
 from hypothesis import HealthCheck, given, settings
 from hypothesis import strategies as st
 from testsupport.corpus_support import REPO_ROOT, build_raw_root
+from testsupport.timing import assert_scales_linearly
 
 from pruefstand.core.config import CorpusBuildConfig
 from pruefstand.core.config_loader import load_model
@@ -246,16 +246,9 @@ def test_rendering_scales_linearly(chunks: list[Chunk]) -> None:
             for c in chunks
         ]
 
-    def best_of_three(items: list[Chunk]) -> float:
-        times = []
-        for _ in range(3):
-            start = time.perf_counter()
-            render_corpus(items)
-            times.append(time.perf_counter() - start)
-        return min(times)
-
-    small, large = best_of_three(many(100)), best_of_three(many(400))
-    assert large / max(small, 1e-6) < 12  # 4x the input; quadratic would be about 16x
+    small, large = many(100), many(400)
+    # 4x the input: linear ~4x, quadratic ~16x
+    assert_scales_linearly(lambda: render_corpus(small), lambda: render_corpus(large), scale=4)
 
 
 @settings(

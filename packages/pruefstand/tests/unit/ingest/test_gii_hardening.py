@@ -4,13 +4,13 @@ import contextlib
 import socket
 import stat
 import threading
-import time
 import zipfile
 from collections.abc import Callable, Mapping
 from pathlib import Path
 
 import pytest
 from lxml import etree
+from testsupport.timing import cpu_budget
 
 from pruefstand.ingest.gii.errors import GiiError, GiiParseError, UnsafeArchiveError, UnsafeXmlError
 from pruefstand.ingest.gii.safezip import ZipLimits, check_member, read_bounded, read_xml_members
@@ -79,9 +79,8 @@ def test_billion_laughs_is_rejected_fast(make_raw: RawFactory) -> None:
     )
     xml = wrap(NORM.replace("(1) Text.", "(1) &l9;"), f"<!DOCTYPE dokumente [{decls}]>")
     loader = GiiXmlLoader()
-    start = time.perf_counter()
-    assert list(loader.load(make_raw({"kschg": {"a.xml": xml}}))) == []
-    assert time.perf_counter() - start < 5
+    with cpu_budget(5):
+        assert list(loader.load(make_raw({"kschg": {"a.xml": xml}}))) == []
     assert kinds(loader) == ["unsafe_xml"]
 
 

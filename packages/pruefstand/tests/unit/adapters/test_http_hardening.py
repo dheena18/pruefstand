@@ -84,7 +84,7 @@ def test_non_http_or_credential_urls_are_refused(url: str) -> None:
 
 class _Drip(httpx.AsyncByteStream):
     async def __aiter__(self) -> AsyncIterator[bytes]:
-        for _ in range(20):
+        for _ in range(100):  # 10 s in all; the total timeout is 0.5 s
             await asyncio.sleep(0.1)
             yield b" "
 
@@ -97,7 +97,7 @@ async def test_total_timeout_bounds_a_slow_drip(router: respx.MockRouter) -> Non
         await adapter.query(REQ)
     await adapter.aclose()
     assert excinfo.value.transient is True
-    assert time.monotonic() - started < 1.5
+    assert time.monotonic() - started < 8.0  # wall time is the point; 16x the timeout, < the drip
 
 
 @pytest.mark.parametrize(

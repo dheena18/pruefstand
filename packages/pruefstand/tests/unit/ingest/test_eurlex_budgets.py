@@ -2,11 +2,11 @@
 
 import subprocess
 import sys
-import time
 from collections.abc import Callable
 from pathlib import Path
 
 import pytest
+from testsupport.timing import assert_scales_linearly, cpu_budget
 
 from pruefstand.core.enums import Lang
 from pruefstand.ingest.eurlex import EurLexLoader
@@ -29,19 +29,8 @@ def raw_with(tmp_path: Path, de: bytes, en: bytes) -> Path:
     return tmp_path / "raw"
 
 
-def best_of(fn: Callable[[], object], runs: int = 3) -> float:
-    times = []
-    for _ in range(runs):
-        start = time.perf_counter()
-        fn()
-        times.append(time.perf_counter() - start)
-    return min(times)
-
-
 def assert_linear(make: Callable[[int], Callable[[], object]], n: int) -> None:
-    small, large = make(n), make(4 * n)
-    ratio = best_of(large) / max(best_of(small), 1e-6)
-    assert ratio <= 8, f"4x input took {ratio:.1f}x the time"
+    assert_scales_linearly(make(n), make(4 * n), scale=4, floor_s=1e-4)
 
 
 def sibling_headings_page(n: int) -> bytes:
@@ -176,9 +165,8 @@ def test_nested_tables_are_bounded_by_the_budget() -> None:
     opens = "<table><tr><td>" * n
     closes = "</td></tr></table>" * n
     page = f'<html><body>{ART}<div id="rct_1">{opens}{LOREM}{closes}</div></body></html>'.encode()
-    start = time.perf_counter()
-    assert total_chars(page) <= len(page)
-    assert time.perf_counter() - start < 10
+    with cpu_budget(10):
+        assert total_chars(page) <= len(page)
 
 
 def test_flat_recital_scan_is_linear_for_nested_tables() -> None:
