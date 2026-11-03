@@ -4,6 +4,8 @@ Paste this file at the start of every session. One line per decision, newest at 
 section. Details live in the linked ADR. Tasks append here; they never rewrite earlier lines. If a
 decision changes, add a new line and link the superseding ADR.
 
+Reserved decision ranges (2026-11-03): disjoint ranges per agent avoid merge collisions, so gaps are intentional and rows are not renumbered: D520 T5.1, D540 T6.4, D560 wrapper PR, D580 checkpoint, D600 T3.1b prep, D620 T3.6.
+
 ## Architecture and process (2026-10-27)
 
 | # | Decision | ADR |
@@ -671,3 +673,10 @@ below are exact.
 | D541 | [T6.4, CLI] `pruefstand report --format html\|evidence` writes `report.html` / `evidence.json` atomically into the run directory (private render with chunk text) and prints the path; `--format evidence` requires the new flag `--config` and exits 2 when the config's `stable_hash` differs from `RunManifest.config_hash` | [0021](adr/0021-html-report-evidence-record.md) |
 | D542 | [T6.4, safety] Every case-, target- or branch-derived string in `report.html` is cleaned (canary tokens masked with the detector's folding, control and bidi characters dropped, length capped) **and** HTML-escaped by Jinja autoescape; the mask reads `‹masked›` so a sanitised render contains no `CANARY-`. Chunk text appears only when the run still holds it | [0021](adr/0021-html-report-evidence-record.md) |
 | D543 | [T6.4, layout] One inline script (`_sort.js`, table sorting) hashed in the report's own CSP `<meta>`; inline CSS = `_tokens.css` (ui-spec §7.1 by hand until T8.1 generates it) + `_style.css`; `_licences.json` is a hand-written first copy (T8.1's `gen_licences.mjs` replaces it); tables carry `data-key` (metric\|dimension\|value) so tests count every `SliceDecision` exactly once | [0021](adr/0021-html-report-evidence-record.md) |
+| D580 | [owner decision 2026-11-03] T5.1 starts with the provisional pins (judge `gemma3:12b`, generator `qwen3.8:27b-q8_0`, `bge-m3`); T3.1b later updates the pins in `infra/gpu/models.yaml` without code changes. |
+| D581 | [owner decision 2026-11-03] `indomain_dev.jsonl` is not hand-written by the owner: the lead drafts 200 German questions with gold passages from the public corpus using the DATAGEN model, a second-family model spot-checks the first 30, the file is marked `dev-only`, source passages are recorded, and T4.x must exclude or deduplicate them from the test set. |
+| D582 | [owner decision 2026-11-03] Owner scoring of 10 smoke items goes through `experiments/model_selection/owner_score_10.csv` (question, answer, score 0/1/2); `REPORT.md` is filled with model scores first and the owner's scores are added when they arrive (not blocking). |
+| D583 | [owner decision 2026-11-03, amends D451] Candidate swaps for T3.1b are done by the lead under D451 (catalogue models only, wrapper only, only while no gate or nightly runs, under `pruefstand-lock`, `MAINTENANCE` always removed again, each swap logged in `docs/engineering/gpu-cluster.md` section 8); the generator `qwen3.8:27b-q8_0` is never removed; step S6 of the T3.1b prompt is no longer HUMAN. |
+| D584 | [owner decision 2026-11-03] A read-only wrapper op for the Ollama load log (last N lines, redacted on the cluster side) is added as its own owner-merge PR (T3.1e); until it is merged and installed, `overhead_gib` is estimated from `status` (`size_vram` minus model disk size) and marked provisional. |
+| D585 | [owner decision 2026-11-03] Dataset first round = `core` plus a smaller `full` sample; the size and the wider confidence intervals are recorded as a limitation; expansion after M4. |
+| D586 | [owner decision 2026-11-03] Full-speed mode, time-boxed to about 2 hours: up to 5 Sonnet task agents when files do not overlap; docs-only/test-only PRs get one review round then merge on green; code PRs at most 2 rounds; owner steps are collected in one list and sent once at the end; a task that needs the owner is parked (`docs/ops/lead-handoff.md` section 7). |
