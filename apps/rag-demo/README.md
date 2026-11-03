@@ -13,9 +13,9 @@ against it; T3.x extends the same app to the A40 stack.
 | Dense | `index/encoders.py` | `TeiDenseEncoder` (TEI CPU, e5 `query: ` / `passage: ` prefixes, `truncate: true`) and `OllamaDenseEncoder` (native `/api/embed`, catalogue options, unit vectors) |
 | Index | `index/` (`corpus_reader`, `indexer`, `naming`, `qdrant_admin`, `tokens`), `cli.py` | `rag-demo index`: corpus lines validated by `index/chunk.schema.json`; one Qdrant collection per index fingerprint, `tenant_id` tenant index, atomic `chunks_active` alias |
 | Retrieval | `retrieval/` (`filters`, `query_builder`, `retriever`, `rerank`, `store`, `corpus_meta`, `bugs`, `testing`) | `QdrantRetriever`: one Query API call, dense + sparse prefetch, tenant filter inside **every** prefetch and on the fused query, RRF `k` 60, optional `rerank-cpu` reranker, post-condition guard; backs `/v1/query` and `/v1/retrieve`; see "Retrieval" below |
-| Generation | `generate.py`, `prompts/*.txt` | OpenAI-compatible (llama.cpp) client `OpenAICompatGenerator`, prompt building, injection guard, output guard, `<think>` strip |
+| Generation | `generation/` (`prompting`, `postprocess`, `budget`, `llm_client`, `generator`), `prompts/*.txt` | `OpenAICompatGenerator` (llama.cpp) and `OllamaChatGenerator` (native `/api/chat`) on one `ChatGenerator` base, prompt files with rule blocks, injection guard, output guard, refusal, citations, `<think>` strip, prompt budget; see "Generation" below |
 | API | `api.py`, `schemas.py`, `info.py`, `wiring.py` | `create_app`, response mapping, `/v1/info` (`info.py`), the collaborators per profile (`wiring.py`), `/v1/health` |
-| Tier 2 | `catalogue.py`, `endpoints.py`, `generate_ollama.py` | catalogue validation (D453), endpoint rules (D454), `OllamaChatGenerator` on native `/api/chat` |
+| Tier 2 | `catalogue.py`, `endpoints.py` | catalogue validation (D453), endpoint rules (D454) |
 
 ## Bug switches (all in `configs/rag.yaml`; default = correct behaviour)
 
@@ -51,7 +51,7 @@ curl -s -X POST 127.0.0.1:$(make -s ports | awk '/^rag-demo /{print $2}')/v1/que
 
 Environment (`config.Settings`): `RAG_CONFIG` (path of the YAML inside the container, default
 `/app/configs/rag.yaml`), `QDRANT_URL`, `LLM_URL`, `EMBED_URL`, `RAG_COLLECTION`, `GIT_SHA`, `IMAGE_DIGEST`,
-`LLAMA_CPP_VERSION`, `MODEL_SHA256`, `RAG_MODEL_CATALOGUE`, `SERVING_ENGINE_VERSION`, `SERVING_GPU`. None of them is part of `config_hash`.
+`LLAMA_CPP_VERSION`, `MODEL_SHA256`, `RAG_MODEL_CATALOGUE`, `SERVING_ENGINE_VERSION`, `SERVING_GPU`, `RAG_GENERATOR_TOKENIZER`. None of them is part of `config_hash`.
 
 ## Profiles: live (tier 1) and gpu (tier 2)
 
@@ -73,6 +73,22 @@ container, host network, `127.0.0.1:18000`):
 make up COMPOSE_FILES="infra/gpu/compose.gpu.yml infra/gpu/compose.rag-demo.yml" PROFILES="gpu dev" SERVICES=rag-demo-dev
 curl -s 127.0.0.1:18000/v1/info
 ```
+
+## Generation (T3.6)
+
+`Generator.answer(question, hits)`: render the prompt, one chat call, post-process. The prompt file (`prompt_file`,
+`prompts/answer_de_v1.txt` tier 1, `answer_de_v2.txt` tier 2) may contain directive lines: `### layout:numbered` (v2
+document layout: `<dokumente>` around `[n] source — text`) and `### rule:<cite|refuse|injection_guard|language>` blocks,
+one per mutation (M5 `answer_no_citations_de_v2.txt`, M6 `answer_no_refusal_de_v2.txt`; the `injection_guard` block
+only while the switch is on). Changing a prompt means a new `*_v<N>.txt`; its bytes are part of `config_hash`.
+`refused` = the answer starts with the canonical sentence (DE or EN twin) and then has no `citations`; an empty
+retrieval is refused without a model call. Knobs: `max_tokens` (tier 2: `generation.max_tokens` = `num_predict`),
+`generation.temperature` / `seed` (inside the catalogue `option_bounds`), `chunk_prompt_tokens`, `top_k`; timeouts: the
+catalogue entry's `request_timeout_s` else 300 s read timeout (the generator serialises requests, so a request can queue
+for over a minute), 502/503/504 and connection errors retried twice, a read timeout never. Tier 2 counts the prompt with
+the generator's own tokenizer (`RAG_GENERATOR_TOKENIZER`, baked by the Dockerfile from the catalogue pin; the `bge-m3` one is
+never used), drops the lowest-ranked chunks above `num_ctx − num_predict` and counts suspected truncation in
+`/v1/health.stats.prompt_overflow`. Free, local generators only (llama.cpp, Ollama on the A40s); no hosted variant.
 
 ## Retrieval (T3.5)
 
@@ -110,7 +126,7 @@ llama.cpp and TEI servers by `make cassettes` and from `rerank-cpu` by `make cas
 
 ## Open follow-ups
 
-- Ollama embeddings (`OllamaDenseEncoder`, `/api/embed`) and the bge-m3 index: T3.4. Finishing `OllamaChatGenerator` (tokenizer budget, citations): T3.6.
+- Record the Ollama generator cassette `generate_ollama_622.yaml` (`test_record.py`), run the `gpu` generator tests and calibrate `prompt_overflow` on the first GPU run (D623): lead, under `pruefstand-lock`.
 - Build and Trivy-scan the rag-demo image in `build-images.yml`, push and sign it: T6.2b (`push-sign`).
 - Check the TEI weights SHA-256 (`live-models.yaml` `weights_sha256`) in the live stack, not only in the integration fixture: T1.12.
 - Measure the p95 margin (14.2 s against 15 s on the VM) and the guard-on injection result on the hosted runner: T1.12.

@@ -15,7 +15,7 @@ from rag_demo.analysis.fingerprint import fingerprint
 from rag_demo.analysis.sparse import SparseEncoder
 from rag_demo.api import create_app
 from rag_demo.config import Settings, config_hash, load_config
-from rag_demo.generate import OpenAICompatGenerator
+from rag_demo.generation import OpenAICompatGenerator
 from rag_demo.models import RagConfig
 from rag_demo.wiring import build_analyzer, expected_fingerprint
 
