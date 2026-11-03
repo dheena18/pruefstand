@@ -3,6 +3,7 @@
 import json
 from pathlib import Path
 
+import pytest
 from gpu_testkit import GEN_DIGEST, ClusterWorld, add_proc
 from vm_testkit import Result
 
@@ -101,6 +102,36 @@ def test_low_free_space_on_the_models_disk_warns(world: ClusterWorld) -> None:
     assert row[0] == "WARN"
     assert "free_kb=1048576" in row[1]
     assert "min_free_gb=2" in row[1]
+
+
+def test_free_space_between_the_reserve_and_reserve_plus_1_gb_warns(world: ClusterWorld) -> None:
+    """Reserve 2 GB: 2.5 GB free is above the reserve but inside the early-warning band (D662)."""
+    _healthy(world, df=DF_OK.replace("14000000", str(int(2.5 * 1024 * 1024))))
+    row = _csv(world.script("status.sh"))["disk-models"]
+    assert row[0] == "WARN"
+    assert "min_free_gb=2" in row[1]
+    assert "warn_below_gb=3" in row[1]
+
+
+def test_free_space_above_the_early_warning_band_is_ok(world: ClusterWorld) -> None:
+    _healthy(world, df=DF_OK.replace("14000000", str(int(3.5 * 1024 * 1024))))
+    assert _csv(world.script("status.sh"))["disk-models"][0] == "OK"
+
+
+@pytest.mark.parametrize(
+    ("free_kb", "state"), [(3 * 1024 * 1024, "OK"), (3 * 1024 * 1024 - 1, "WARN")]
+)
+def test_the_early_warning_boundary_is_exactly_3_gb(
+    world: ClusterWorld, free_kb: int, state: str
+) -> None:
+    _healthy(world, df=DF_OK.replace("14000000", str(free_kb)))
+    assert _csv(world.script("status.sh"))["disk-models"][0] == state
+
+
+def test_the_disk_row_keeps_the_fields_fetch_model_parses(world: ClusterWorld) -> None:
+    _healthy(world)
+    detail = _csv(world.script("status.sh"))["disk-models"][1]
+    assert detail.startswith("free_kb=14000000 min_free_gb=2")
 
 
 def test_two_ollama_serve_processes_fail(world: ClusterWorld) -> None:

@@ -330,7 +330,7 @@ cluster scripts (infra/cluster/, copied over SSH to /data/dheena/pruefstand-bin/
   stop-ollama.sh                   stops the one server (pid found as below), only under the lock via the wrapper;
                                    normally the owner restarts it by hand (runbook §2a)
   status.sh                        CSV check,status,detail: server pid (pgrep -u $USER -x ollama + listener on :11434),
-                                   free space on /data (< 2 GB -> WARN, ADR-0019),
+                                   free space on /data (< reserve + 1 GB = 3 GB -> WARN, D662; was 2 GB, ADR-0019),
                                    its OLLAMA_* env from /proc/<pid>/environ (WARN on a difference from
                                    cluster.env), /api/tags, /api/ps (size, size_vram), nvidia-smi per card, and the
                                    card(s) of each resident model (compute-apps pid/gpu_uuid joined with the
