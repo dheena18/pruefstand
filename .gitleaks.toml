@@ -55,6 +55,17 @@ regexes = [
 ]
 
 [[allowlists]]
+description = "T2.6 public canary registries and the validator test: synthetic canary tokens (CLAUDE.md section 9), not credentials; the held-out registry is never committed here"
+condition = "AND"
+paths = [
+  '''datasets/canaries/''',
+  '''scripts/tests/test_validate_canaries\.py''',
+]
+regexes = [
+  '''CANARY-(KM|VN|SS)-[0-9a-f]{6}''',
+]
+
+[[allowlists]]
 description = "T3.1e log-tail redaction test: a made-up key=value secret that the redaction must mask (synthetic sample, not a credential)"
 condition = "AND"
 paths = [

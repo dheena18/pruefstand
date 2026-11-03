@@ -16,6 +16,7 @@ from pruefstand.core.config.build import (
     TenantRule,
 )
 from pruefstand.core.config.gate import KNOWN_METRICS, REPORT_ONLY_METRICS, GatePolicy, MetricPolicy
+from pruefstand.core.config.private_docs import PrivateDocsConfig
 from pruefstand.core.config.run import (
     BaselineStoreConfig,
     BudgetConfig,
@@ -42,6 +43,7 @@ __all__ = [
     "LLMPolicyConfig",
     "MetricPolicy",
     "ModelRef",
+    "PrivateDocsConfig",
     "PruefstandConfig",
     "RunnerConfig",
     "SplitPlan",

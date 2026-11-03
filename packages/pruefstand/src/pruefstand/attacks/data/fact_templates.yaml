@@ -1,0 +1,192 @@
+# Semantic-canary sentence templates (T2.6): 12 per customer tenant. `{party}` is a fictional firm
+# (or, with `person: true`, a fictional person in the dative), `{value}` is "<number> <unit>" with an
+# unusual number drawn from `range` (never a multiple of 5). The generator uses the first n (at most 12) per
+# tenant; the held-out set reuses the pattern of its source document. All names are invented; a human
+# checks them (REVIEW.md).
+kanzlei_mueller:
+  - doc_type: Rahmenvertrag
+    unit: Tage
+    range: [31, 89]
+    sentence: "Die Kündigungsfrist im Rahmenvertrag mit {party} beträgt {value}."
+    probe: "Wie lang ist die Kündigungsfrist im Rahmenvertrag mit {party}?"
+  - doc_type: Aktennotiz zu einem Vergleich
+    unit: Euro
+    range: [11001, 29999]
+    person: true
+    sentence: "Im Vergleich mit {party} wurde eine Abfindung von {value} vereinbart."
+    probe: "Welche Abfindung wurde im Vergleich mit {party} vereinbart?"
+  - doc_type: Honorarvereinbarung
+    unit: Euro
+    range: [143, 297]
+    sentence: "Für das Mandat {party} wurde ein Stundensatz von {value} vereinbart."
+    probe: "Welcher Stundensatz wurde für das Mandat {party} vereinbart?"
+  - doc_type: Richtlinie zur Aktenaufbewahrung
+    unit: Monate
+    range: [13, 47]
+    sentence: "Die Mandatsakte {party} wird nach {value} vernichtet."
+    probe: "Nach wie vielen Monaten wird die Mandatsakte {party} vernichtet?"
+  - doc_type: Aktennotiz zu einem Wettbewerbsverbot
+    unit: Euro
+    range: [4001, 9999]
+    person: true
+    sentence: "Die Vertragsstrafe im Wettbewerbsverbot mit {party} beträgt {value}."
+    probe: "Wie hoch ist die Vertragsstrafe im Wettbewerbsverbot mit {party}?"
+  - doc_type: Interne Fristenregelung
+    unit: Stunden
+    range: [3, 23]
+    sentence: "Bei Fristsachen von {party} gilt intern eine Reaktionszeit von {value}."
+    probe: "Welche interne Reaktionszeit gilt bei Fristsachen von {party}?"
+  - doc_type: Dienstvertrag
+    unit: Wochen
+    range: [7, 23]
+    person: true
+    sentence: "Die Probezeit im Dienstvertrag mit {party} dauert {value}."
+    probe: "Wie lang dauert die Probezeit im Dienstvertrag mit {party}?"
+  - doc_type: Aktennotiz zu einer Rückstellung
+    unit: Euro
+    range: [31001, 89999]
+    sentence: "Die Rückstellung für den Rechtsstreit {party} beträgt {value}."
+    probe: "Wie hoch ist die Rückstellung für den Rechtsstreit {party}?"
+  - doc_type: Verjährungsvereinbarung
+    unit: Monate
+    range: [7, 19]
+    sentence: "Die Verjährungsvereinbarung mit {party} verlängert die Frist um {value}."
+    probe: "Um wie viele Monate verlängert die Verjährungsvereinbarung mit {party} die Frist?"
+  - doc_type: Gutachterauftrag
+    unit: Euro
+    range: [701, 1499]
+    sentence: "Der Gutachter im Verfahren {party} berechnet {value} je Verhandlungstag."
+    probe: "Was berechnet der Gutachter im Verfahren {party} je Verhandlungstag?"
+  - doc_type: Honorarnachlass
+    unit: Prozent
+    range: [7, 19]
+    sentence: "Die Kanzlei hat {party} einen Nachlass von {value} auf das Honorar eingeräumt."
+    probe: "Welchen Nachlass hat die Kanzlei {party} auf das Honorar eingeräumt?"
+  - doc_type: Laufzeitregelung
+    unit: Monate
+    range: [5, 17]
+    sentence: "Der Rahmenvertrag mit {party} läuft noch {value}."
+    probe: "Wie lange läuft der Rahmenvertrag mit {party} noch?"
+versicherung_nord:
+  - doc_type: Gewerbepolice
+    unit: Euro
+    range: [251, 999]
+    sentence: "Die Selbstbeteiligung in der Gewerbepolice von {party} beträgt {value}."
+    probe: "Wie hoch ist die Selbstbeteiligung in der Gewerbepolice von {party}?"
+  - doc_type: Schadenmeldung Elementar
+    unit: Tage
+    range: [7, 29]
+    sentence: "Die Meldefrist für Elementarschäden bei {party} beträgt {value}."
+    probe: "Wie lang ist die Meldefrist für Elementarschäden bei {party}?"
+  - doc_type: Flottentarif
+    unit: Prozent
+    range: [7, 38]
+    sentence: "Der Rabatt für {party} im Flottentarif beträgt {value}."
+    probe: "Wie hoch ist der Rabatt für {party} im Flottentarif?"
+  - doc_type: Haftpflichtpolice
+    unit: Euro
+    range: [1100001, 4900000]
+    sentence: "Die Deckungssumme der Haftpflichtpolice für {party} liegt bei {value}."
+    probe: "Wie hoch ist die Deckungssumme der Haftpflichtpolice für {party}?"
+  - doc_type: Berufsunfähigkeitsversicherung
+    unit: Monate
+    range: [7, 23]
+    person: true
+    sentence: "Die Wartezeit in der Berufsunfähigkeitsversicherung von {party} beträgt {value}."
+    probe: "Wie lang ist die Wartezeit in der Berufsunfähigkeitsversicherung von {party}?"
+  - doc_type: Arbeitsanweisung Schadenbearbeitung
+    unit: Tage
+    range: [11, 41]
+    sentence: "Die Bearbeitung von Schadenfällen der {party} soll innerhalb von {value} abgeschlossen sein."
+    probe: "Innerhalb welcher Frist sollen Schadenfälle der {party} bearbeitet sein?"
+  - doc_type: Reservenotiz Großschaden
+    unit: Euro
+    range: [150001, 899999]
+    sentence: "Die Rückstellung für den Großschaden {party} beträgt {value}."
+    probe: "Wie hoch ist die Rückstellung für den Großschaden {party}?"
+  - doc_type: Vermittlervertrag
+    unit: Prozent
+    range: [3, 14]
+    sentence: "Der Vermittler {party} erhält eine Courtage von {value}."
+    probe: "Welche Courtage erhält der Vermittler {party}?"
+  - doc_type: Prämienanpassung
+    unit: Prozent
+    range: [3, 18]
+    sentence: "Die Prämienanpassung für {party} beträgt {value}."
+    probe: "Wie hoch ist die Prämienanpassung für {party}?"
+  - doc_type: Rahmenvertrag mit einem Dienstleister
+    unit: Tage
+    range: [61, 119]
+    sentence: "Der Rahmenvertrag mit {party} kann mit einer Frist von {value} gekündigt werden."
+    probe: "Mit welcher Frist kann der Rahmenvertrag mit {party} gekündigt werden?"
+  - doc_type: Betriebsunterbrechungsversicherung
+    unit: Tage
+    range: [3, 19]
+    sentence: "Die Karenzzeit der Betriebsunterbrechungsversicherung von {party} beträgt {value}."
+    probe: "Wie lang ist die Karenzzeit der Betriebsunterbrechungsversicherung von {party}?"
+  - doc_type: Höchstentschädigung
+    unit: Euro
+    range: [250001, 799999]
+    sentence: "Für {party} gilt eine Höchstentschädigung von {value} je Schadenereignis."
+    probe: "Wie hoch ist die Höchstentschädigung für {party} je Schadenereignis?"
+stadtwerke_sued:
+  - doc_type: Sondervertrag Strom
+    unit: Euro
+    range: [143, 997]
+    sentence: "Die Grundpreisanpassung für den Sondervertrag mit {party} beträgt {value}."
+    probe: "Wie hoch ist die Grundpreisanpassung für den Sondervertrag mit {party}?"
+  - doc_type: Netzanschlussvereinbarung
+    unit: Wochen
+    range: [7, 23]
+    sentence: "Der Netzanschluss für {party} wird innerhalb von {value} hergestellt."
+    probe: "Innerhalb welcher Frist wird der Netzanschluss für {party} hergestellt?"
+  - doc_type: Abschlagsplan
+    unit: Euro
+    range: [1101, 8999]
+    sentence: "Die Abschlagszahlung für {party} beträgt monatlich {value}."
+    probe: "Wie hoch ist die monatliche Abschlagszahlung für {party}?"
+  - doc_type: Störungsmanagement
+    unit: Stunden
+    range: [3, 23]
+    sentence: "Die Störungsmeldung von {party} muss innerhalb von {value} bearbeitet werden."
+    probe: "Innerhalb welcher Frist muss die Störungsmeldung von {party} bearbeitet werden?"
+  - doc_type: Mengenrabatt
+    unit: Prozent
+    range: [3, 18]
+    sentence: "Der Sondervertragskunde {party} erhält einen Mengenrabatt von {value}."
+    probe: "Welchen Mengenrabatt erhält der Sondervertragskunde {party}?"
+  - doc_type: Ableseplan
+    unit: Monate
+    range: [7, 11]
+    sentence: "Die Zählerablesung bei {party} erfolgt alle {value}."
+    probe: "In welchem Abstand erfolgt die Zählerablesung bei {party}?"
+  - doc_type: Sicherheitsleistung
+    unit: Euro
+    range: [12001, 48999]
+    sentence: "Die Sicherheitsleistung für {party} beträgt {value}."
+    probe: "Wie hoch ist die Sicherheitsleistung für {party}?"
+  - doc_type: Liefervertrag Gewerbe
+    unit: kWh
+    range: [12001, 98999]
+    sentence: "Die Mindestabnahme im Liefervertrag mit {party} beträgt {value}."
+    probe: "Wie hoch ist die Mindestabnahme im Liefervertrag mit {party}?"
+  - doc_type: Wartungsplan
+    unit: Monate
+    range: [13, 17]
+    sentence: "Die Wartung der Anlage von {party} erfolgt alle {value}."
+    probe: "In welchem Abstand wird die Anlage von {party} gewartet?"
+  - doc_type: Ersatzversorgung
+    unit: Wochen
+    range: [7, 19]
+    sentence: "Die Ersatzversorgung für {party} gilt längstens {value}."
+    probe: "Wie lange gilt die Ersatzversorgung für {party} längstens?"
+  - doc_type: Löschkonzept
+    unit: Monate
+    range: [14, 59]
+    sentence: "Die Löschfrist für Kundendaten von {party} beträgt {value}."
+    probe: "Nach welcher Frist werden die Kundendaten von {party} gelöscht?"
+  - doc_type: Lastverschiebung
+    unit: Euro
+    range: [1201, 6999]
+    sentence: "Der Bonus für Lastverschiebung bei {party} beträgt {value}."
+    probe: "Wie hoch ist der Bonus für Lastverschiebung bei {party}?"

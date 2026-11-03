@@ -387,10 +387,15 @@ owning module's unit test dir (`pt/unit/<module>/`, `rd/unit/…`).
 
 | Symbol | Module | Task | Test file | Test cases (short) | Status |
 | --- | --- | --- | --- | --- | --- |
-| `make_canary_token` | `attacks.canary` | T2.6 | `test_canary.py` | format; seeded; 1 000 unique; unknown tenant → `DatasetError` | covered |
-| `plant_canaries` | `attacks.canary` | T2.6 | `test_canary.py` | token once per doc; 3 + 3 canaries | covered |
-| `semantic_variants` | `attacks.canary` | T2.6 | `pt/unit/pipeline/test_ingest_private.py` | „47-tägigen“, „Siebenundvierzig Tage“ match; „147 Tage“ doesn't | covered |
-| Held-out set handling | `pipeline` (T2.6 scripts) | T2.6 | `test_heldout.py`, `test_private_docs.py` | held-out registry never written under the public tree | covered |
+| `make_canary_token` | `attacks.canary` | T2.6 | `pt/unit/attacks/test_canary.py` | format; seeded; 1 000 unique; unknown tenant → `DatasetError` | covered |
+| `plant_canaries`, `number_word` | `attacks.canary` | T2.6 | `pt/unit/attacks/test_canary.py` | token once per doc; 3 + 3 canaries; fact exactly once; all 3 places; deterministic; 1..999 words | covered |
+| `semantic_variants` | `attacks.canary` | T2.6 | `pt/unit/pipeline/test_ingest_private.py` | „47-tägigen“, „Siebenundvierzig Tage“, „2.381 €“, „13 %“ match; „147 Tage“, „4,7 Tage“ don't | covered |
+| `make_semantic_fact`, `template_index_of` | `attacks.facts` | T2.6 | `pt/unit/attacks/test_heldout.py`, `scripts/tests/test_generate_private_docs.py` | distinct values; seeded; template round trip | covered |
+| `PrivateDocsLoader`, `render_private_doc` | `ingest.private_docs` | T2.6 | `pt/unit/ingest/test_private_docs.py` | `source=private`, `license=own`; missing `forbidden_answer`; folder≠tenant; drafts skipped | covered |
+| `load_private_documents`, `write_registry` (via `build_corpus`) | `pipeline.ingest_private` | T2.6 | `pt/unit/pipeline/test_ingest_private.py` | private docs only in their tenant file; registry outside the corpus; reproducible; empty dir stops | covered |
+| `build_heldout` and `make_heldout_canaries.py` | `attacks.heldout`, `scripts/` | T2.6 | `pt/unit/attacks/test_heldout.py`, `scripts/tests/test_make_heldout_canaries.py`, `test_ingest_private.py` | 6 docs, tokens disjoint; seed from env, never echoed; git-ignored default; no registry in the corpus dir | covered |
+| `generate_private_docs.py` (`check_datagen_model`, `check_output`, resume) | `scripts/` | T2.6 | `scripts/tests/test_generate_private_docs.py` | gemma ok, qwen / `github/` refused; output rules; resume; retries (scripted loopback, no cassette yet: `[GPU]` run records none) | covered |
+| `validate_canaries.py` | `scripts/` | T2.6 | `scripts/tests/test_validate_canaries.py` | OK line; cross-tenant hit; missing; duplicate key | covered |
 | `make_injection_docs` | `attacks.injection` | T4.6 | `test_injection.py`, `test_ingest_attacks.py` | 12 docs + cases; BASE64; METADATA; seeded | covered |
 | `make_leak_probes` | `attacks.probes` | T4.6 | `test_probes.py` | 6 ordered pairs, ≥ 3 each | covered |
 | `make_filter_bypass_probes` | `attacks.probes` | T4.6 | `test_probes.py` | ≥ 1 probe per ordered tenant pair; category; foreign token in `forbidden_strings` | covered |
