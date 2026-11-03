@@ -56,7 +56,7 @@ visible there; the Ollama load log would show it (and fix `kv_bytes_per_token`).
 | --- | --- |
 | Second generator candidate: `qwen3:4b` Q4_K_M (2.5 GB, in catalogue) | pull (free disk now about 4.5 GB, reserve 2 GB: fits only barely) |
 | Second judge candidate (e.g. `gemma3:4b`, about 3.3 GB) | pull plus catalogue entry; swap rule, one at a time |
-| Embeddings `jeffh/intfloat-multilingual-e5-large-instruct:f16` (1.1 GB), one German model | pull; GermanDPR/GerDaLIR download [NET]; `indomain_dev.jsonl` (200 hand-written questions) is not written |
+| Embeddings `jeffh/intfloat-multilingual-e5-large-instruct:f16` (1.1 GB), one German model | pull; GermanDPR/GerDaLIR download [NET]; `indomain_dev.jsonl`: tooling, rules and the 240-passage plan are done; the questions need GitHub Models (section below) |
 | bge-m3 cosine >= 0.99 vs HF checkpoint (20 passages) | HF download [NET] on the VM CPU |
 | Rerankers (`bge-reranker-v2-m3`, `gte-multilingual-reranker-base`), CPU latency, 384-token variant | compose stack with `rerank-cpu` (`stack.lock`) and HF download; `embed_bench.py` has the helpers |
 | Scoring of S3 by the GitHub Models datagen model and by a person on 10 items | datagen model (T4.2) not pinned; HUMAN |
@@ -64,3 +64,72 @@ visible there; the Ollama load log would show it (and fix `kv_bytes_per_token`).
 
 Note: contexts in `questions_de.jsonl` are shortened statute wording written for the test; the deterministic score is a proxy,
 not a quality verdict.
+
+## Owner scoring of 10 items (HUMAN)
+
+`owner_score_10.csv` holds 10 generator answers from the committed run (`results/2026-11-03_answers.jsonl`),
+picked with a fixed seed, round-robin over the 7 kinds so each category appears at least once. Rebuild with
+`PYTHONPATH=experiments python -m model_selection.owner_sheet --answers experiments/model_selection/results/2026-11-03_answers.jsonl`
+(the committed file is checked by `test_candidate.py`). Fill the empty `score` column with 0, 1 or 2, using the same meaning as the
+deterministic scorer (`bench_cases.score_case`); read `context` (the passage the answer must rest on) next to `question`:
+
+| Score | Meaning |
+| --- | --- |
+| 2 | German, no `<think>`, correct and complete for the question (and, where a context is given, supported by it); for refusal items it says the documents do not contain the answer; for register items it uses "du" for a du-question |
+| 1 | at least half right: the core fact is there but incomplete, partly wrong, or the wrong register |
+| 0 | empty, wrong, English, hallucinated beyond the context, a refusal where the context answers, or an answer where a refusal was required |
+
+Commit the filled file; the mean of the ten human scores is compared with the deterministic score of the same items.
+The owner-actions list of the PR repeats this.
+
+## Candidate pass (`make bench-models CANDIDATE=<catalogue tag>`)
+
+One candidate at a time, after the lead has pulled and loaded it by the swap rule (`MAINTENANCE`, one model, at least 2 GB free on the
+cluster disk, ADR-0019). The pass runs under `pruefstand-lock`, only for a tag listed in `infra/gpu/models.yaml` with role `generator`
+or `judge` (embeddings: `embed_bench.py`), refuses to start when the tag is not pulled, and never pulls, removes or swaps. It
+appends to `results/<date>.csv` (phases `cand_load`, `cand_quality`, `cand_json`, `cand_throughput`, `cand_vram`; column `run_id`
+starts with `cand-`) and writes the answers to `results/<date>_<tag>_answers.jsonl`.
+
+| Step | Metric (CSV `metric`) |
+| --- | --- |
+| first call, before anything else | `first_load_s` (cold load from the cluster disk when `was_resident` is 0) |
+| German smoke, 107 items | `score_mean`, `ci_lo`, `ci_hi`, `think_answers`, `reloads` |
+| judge JSON, 50 calls with the schema | `json_validity`, `verdict_accuracy` |
+| throughput, concurrency 1 and 4 | `decode_tps_per_stream`, `decode_tps_aggregate`, `prefill_tps`, `ttft_p50_s`, `ttft_p95_s`, `reloads` |
+| VRAM | wrapper `status` per card (`gpuN_used_mib`, `_delta` to before the load), `/api/ps` `size_vram_gib`, `disk_gib`, `overhead_gib`, `disk_free_gib` |
+
+**`overhead_gib` (provisional).** Estimated as `size_vram` (`/api/ps`) minus the model's `disk_bytes` (catalogue), in GiB. It still includes the KV cache at
+the pinned `num_ctx` and slots, so it is an upper bound of the vision tower plus compute buffer that `fits()` needs
+(`budget.py`); the Ollama load log gives the exact split and replaces it. A negative value means partial CPU offload. The day-set
+models get the same figure from `make bench-models BENCH_PHASES=overhead` (phase `overhead`, resident models only).
+
+### Candidate comparison (the lead fills one row per pass)
+
+Reference rows are the committed phase-1 numbers; `n/m` = not measured yet. Pick by the rule of S3: German quality first (CIs must not
+overlap), then JSON validity, tok/s, VRAM headroom; the lead decides swaps.
+
+| Model (role) | run_id | Smoke mean (95 % CI) | JSON validity | Decode tok/s c=1 | Aggregate c=4 | TTFT p50 c=4 | First load (s) | size_vram / disk (GiB) | overhead_gib (prov.) | Reloads | `<think>` | Pick |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| `qwen3.8:27b-q8_0` (generator, resident) | r1, r3 | 1.83 (1.72-1.93) | n/a | 19.4 | 14.5 | 30 s | n/m | n/m / 27.9 | n/m (phase `overhead`) | 0 | 0 | reference |
+| `gemma3:12b` (judge, resident) | r1, r3 | 1.67 (1.53-1.81) | 1.00 | 56.9 | 54.5 | 4.3 s | n/m | n/m / 7.6 | n/m (phase `overhead`) | 4 | 0 | reference |
+| `qwen3:4b` (generator candidate) | | | | | | | | | | | | |
+| second judge candidate (needs a catalogue entry first) | | | | | | | | | | | | |
+
+## In-domain dev set `indomain_dev.jsonl` (S4 primary ranking set): status
+
+Tooling, rules and tests are in (`indomain_data.py`, `indomain_gen.py`, `indomain_cli.py`, prompts `indomain_gen_v1` and
+`indomain_check_v1`, card `indomain_dev_card.md`). The 240 planned passages (200 items plus 40 reserve, seed 20261103, 19 public laws,
+T1.13 slice norms excluded) are committed in `indomain_dev_sources.json` as the T4.x exclusion list (`source_passage_ids`).
+**The questions are not generated yet:** GitHub Models answers `200 text/plain OK` to every path from the VM and from the cloud
+sandbox, so no generation call succeeds there. Run the steps where `models.github.ai` answers JSON (the owner's laptop with the
+`PRUEFSTAND_GH_MODELS_TOKEN` PAT, or an Actions job with `models: read`):
+
+```bash
+python data/download.py $(python -c "import sys; sys.path.insert(0,'experiments'); from model_selection import indomain_cli as c; print(' '.join('--only '+i for i in c.source_ids()))")
+PYTHONPATH=experiments python -m model_selection.indomain_cli generate --max-calls 120 --env-file .env   # repeat daily until 240 are cached
+PYTHONPATH=experiments python -m model_selection.indomain_cli check --max-calls 40 --env-file .env       # second family, first 30 items
+PYTHONPATH=experiments python -m model_selection.indomain_cli assemble
+```
+
+A 429 ends a step cleanly (exit code 3); every answer is cached under `data/raw/indomain_dev_cache`, so reruns cost no quota.
+`assemble` writes `indomain_dev.jsonl`, `indomain_dev_checks.jsonl`, the final sources list and the card.
