@@ -449,6 +449,8 @@ before the next one starts (cluster paths as `<models-dir>`, no login or home pa
 | Date | Operation | Tag | Digest | Free before | Free after | MAINTENANCE removed again | Note |
 | --- | --- | --- | --- | --- | --- | --- | --- |
 | 2026-11-02 | pull (no remove) | `gemma3:12b` | `b92b218582c5...` (matches catalogue) | 12.7 GB | 4.5 GB | not needed (pull only) | S2b; `fetch-model.sh` digest check passed |
+| 2026-11-03 | pull (no remove) | `qwen3:4b` | matches the catalogue digest | 4.5 GiB | 2.2 GiB | not needed (pull only) | T3.1b candidate pass (smoke 0.00, not a generator candidate) |
+| 2026-11-03 | remove | `qwen3:4b` | matches the catalogue digest | 2.2 GiB | 4.5 GiB | yes, removed again | no task needs it; `fetch-model.sh --rm` first refused it (role generator, fixed in D630); day set stayed resident |
 
 ## 9. Storage: VM disk, data root and cluster disk (Z2, ADR-0019)
 
