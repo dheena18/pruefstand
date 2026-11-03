@@ -80,17 +80,32 @@ class EmbedCfg(_Frozen):
 
 
 class RerankCfg(_Frozen):
-    """The reranker placeholder (T3.5 fills it); ``rerank-cpu`` has no auth, so no key (D217)."""
+    """The reranker (``rerank-cpu``, T3.5); it has no auth, so no key (D217).
 
-    enabled: bool = False
+    ``top_n`` fused candidates are reranked (tier 2: 10, D222); passages are cut to the
+    catalogue's ``max_input_tokens`` (256) and sent in one batch. ``on_retrieve: false`` makes
+    ``POST /v1/retrieve`` skip the reranker (the D222 fallback, DEV12-09); ``/v1/query`` is
+    never affected. Whether a reranker runs at all is ``RagConfig.reranker``.
+    """
+
     endpoint_env: str | None = "RERANK_URL"
     base_url: str | None = None
+    top_n: int = Field(default=10, ge=1, le=50)
+    on_retrieve: bool = True
 
     @model_validator(mode="after")
     def _endpoint(self) -> Self:
         if self.base_url is not None:
             check_endpoint(self.base_url, engine="cpu")
         return self
+
+
+class RetrievalCfg(_Frozen):
+    """First-stage retrieval: ``hybrid`` false = dense only; ``prefetch_k`` per leg; RRF ``k``."""
+
+    hybrid: bool = True
+    prefetch_k: int = Field(default=50, ge=1, le=1000)
+    rrf_k: int = Field(default=60, ge=1, le=1000)
 
 
 class GenerationCfg(_Frozen):
@@ -122,6 +137,7 @@ class RagConfig(_Frozen):
     generator: GeneratorCfg
     embed: EmbedCfg
     rerank: RerankCfg = Field(default_factory=RerankCfg)
+    retrieval: RetrievalCfg = Field(default_factory=RetrievalCfg)
     analyzer: AnalyzerCfg = Field(default_factory=AnalyzerCfg)
     generation: GenerationCfg | None = None
     top_k: int = Field(default=8, ge=1, le=50)
@@ -134,13 +150,6 @@ class RagConfig(_Frozen):
     prompt_file: str = "prompts/answer_de_v1.txt"
     injection_guard: Literal["on", "off"] = "on"
     system_prompt_guard: Literal["on", "off"] = "on"
-
-    @model_validator(mode="after")
-    def _no_reranker_yet(self) -> Self:
-        if self.reranker == "on":
-            msg = "reranker 'on' arrives with T3.5; v0 has no reranker"
-            raise ValueError(msg)
-        return self
 
     @model_validator(mode="after")
     def _ollama_generation(self) -> Self:
@@ -180,6 +189,8 @@ class Hit(_Frozen):
     score: float
     rank: int
     citation_key: str | None = None
+    section: str | None = None
+    lang: str | None = None
 
 
 class GenOutput(_Frozen):

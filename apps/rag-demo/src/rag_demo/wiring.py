@@ -16,8 +16,11 @@ from rag_demo.generate_ollama import OllamaChatGenerator
 from rag_demo.index.encoders import OllamaDenseEncoder, TeiDenseEncoder
 from rag_demo.index.tokens import load_token_counter
 from rag_demo.models import RagConfig, Stats
-from rag_demo.protocols import DenseEncoder, Generator
-from rag_demo.retrieve import Retriever
+from rag_demo.protocols import DenseEncoder, Generator, Reranker
+from rag_demo.retrieval.corpus_meta import CorpusMeta
+from rag_demo.retrieval.rerank import CrossEncoderReranker, IdentityReranker
+from rag_demo.retrieval.retriever import QdrantRetriever
+from rag_demo.retrieval.store import QdrantStore
 
 
 @dataclass(frozen=True)
@@ -136,21 +139,70 @@ def build_dense(
     )
 
 
+RERANK_PASSAGE_TOKENS = 256
+RERANK_TIMEOUT_S = 60.0
+
+
+def build_reranker(cfg: RagConfig, catalogue: dict[str, CatalogueEntry] | None = None) -> Reranker:
+    """``IdentityReranker`` for ``reranker: off``, else ``CrossEncoderReranker`` on ``rerank-cpu``.
+
+    The URL is the checked ``rerank.base_url`` or the variable ``rerank.endpoint_env``
+    (``RERANK_URL``); the passage limit and the timeout come from the catalogue entry with the
+    role ``rerank`` (256 tokens, CPU-sized timeout) when there is a catalogue.
+
+    Raises:
+        ConfigError: ``reranker: on`` and the URL variable is unset or breaks the endpoint rules.
+    """
+    if cfg.reranker == "off":
+        return IdentityReranker()
+    r = cfg.rerank
+    url = resolve_endpoint(base_url=r.base_url, endpoint_env=r.endpoint_env, engine="cpu")
+    entry = next((e for e in (catalogue or {}).values() if e.role == "rerank"), None)
+    tokens = entry.max_input_tokens if entry else None
+    timeout = entry.request_timeout_s if entry else None
+    return CrossEncoderReranker(
+        url,
+        max_passage_tokens=tokens or RERANK_PASSAGE_TOKENS,
+        timeout_s=timeout or RERANK_TIMEOUT_S,
+    )
+
+
+def qdrant_key(settings: Settings) -> str | None:
+    """The Qdrant API key (``QDRANT_API_KEY``) or ``None``."""
+    return settings.qdrant_api_key.get_secret_value() if settings.qdrant_api_key else None
+
+
+def build_store(settings: Settings) -> QdrantStore:
+    """The Qdrant client of the served collection, with the API key when one is set."""
+    return QdrantStore(settings.qdrant_url, settings.collection, api_key=qdrant_key(settings))
+
+
+def build_corpus(
+    cfg: RagConfig, settings: Settings, store: QdrantStore | None = None
+) -> CorpusMeta:
+    """The checked collection metadata (complete index, same analyzer fingerprint as the app)."""
+    return CorpusMeta(store or build_store(settings), expected_fingerprint(cfg))
+
+
 def build_retriever(
     cfg: RagConfig,
     settings: Settings,
     embed_url: str,
     catalogue: dict[str, CatalogueEntry] | None = None,
-) -> Retriever:
-    """The retriever with the dense encoder of ``cfg.embed.engine``."""
+    *,
+    corpus: CorpusMeta | None = None,
+) -> QdrantRetriever:
+    """The retriever with the dense encoder of ``cfg.embed.engine`` and the configured reranker."""
     encoder = build_dense(cfg, embed_url, catalogue=catalogue, tokenizer=settings.embed_tokenizer)
-    return Retriever(
+    store = build_store(settings)
+    return QdrantRetriever(
         cfg,
-        settings.qdrant_url,
-        encoder,
-        build_analyzer(cfg),
-        SparseEncoder(),
-        collection=settings.collection,
+        store=store,
+        corpus=corpus or build_corpus(cfg, settings, store),
+        dense=encoder,
+        analyzer=build_analyzer(cfg),
+        sparse=SparseEncoder(),
+        reranker=build_reranker(cfg, catalogue),
     )
 
 

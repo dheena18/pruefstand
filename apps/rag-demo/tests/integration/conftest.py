@@ -6,7 +6,15 @@ from collections.abc import Iterator
 import httpx
 import pytest
 import yaml
-from rd_support import CONFIGS, MODEL_DIR, REPO, SLICE, compose_image, wait_http
+from rd_support import (
+    CONFIGS,
+    MODEL_DIR,
+    REPO,
+    SLICE,
+    build_test_retriever,
+    compose_image,
+    wait_http,
+)
 from testcontainers.core.container import DockerContainer
 from testcontainers.core.waiting_utils import wait_for_logs
 
@@ -18,7 +26,7 @@ from rag_demo.index.indexer import Indexer, IndexTarget, alias_actions
 from rag_demo.index.naming import ALIAS
 from rag_demo.index.qdrant_admin import QdrantAdmin
 from rag_demo.models import RagConfig
-from rag_demo.retrieve import Retriever
+from rag_demo.retrieval.retriever import QdrantRetriever
 
 COLLECTION = "slice_v2"  # the restored snapshot; the app and the retriever use the alias ALIAS
 SNAPSHOT = REPO / ".cache" / "pruefstand" / "qdrant" / "slice_v2.snapshot"
@@ -109,19 +117,13 @@ class RecordingTransport(httpx.HTTPTransport):
 
 @pytest.fixture
 def make_retriever(qdrant_url: str, tei_url: str):  # type: ignore[no-untyped-def]  # factory fixture
-    def make(config_name: str = "rag.yaml") -> tuple[Retriever, RecordingTransport]:
+    def make(
+        config_name: str = "rag.yaml", *, guard: bool = True
+    ) -> tuple[QdrantRetriever, RecordingTransport]:
         cfg = load_config(CONFIGS / config_name)
         transport = RecordingTransport()
-        retriever = Retriever(
-            cfg,
-            qdrant_url,
-            _dense(cfg, tei_url),
-            _analyzer(cfg),
-            SparseEncoder(),
-            collection=ALIAS,
-            client=httpx.Client(transport=transport, timeout=30),
-        )
-        return retriever, transport
+        client = httpx.Client(transport=transport, timeout=30)
+        return build_test_retriever(cfg, qdrant_url, tei_url, guard=guard, client=client), transport
 
     return make
 

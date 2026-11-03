@@ -1,4 +1,4 @@
-"""Pure builders (D9-18a): Qdrant query, prompt, response mapping, info and health payloads."""
+"""Pure builders (D9-18a): prompt, response mapping, info and health payloads."""
 
 from rd_support import CONFIGS, attack_hits, hit
 
@@ -6,68 +6,9 @@ from rag_demo.api import build_health, to_query_response
 from rag_demo.config import config_hash, load_config
 from rag_demo.generate import build_prompt
 from rag_demo.info import build_info
-from rag_demo.models import GenOutput, QueryVectors, SparseVector, Stats
-from rag_demo.retrieve import apply_post_topk, build_query, build_shared_query, merge_by_score
+from rag_demo.models import GenOutput, Stats
 
 GOOD = load_config(CONFIGS / "rag.yaml")
-POST = load_config(CONFIGS / "bugs" / "tenant_filter_post_topk.yaml")
-UNFILTERED = load_config(CONFIGS / "bugs" / "shared_public_unfiltered.yaml")
-VECS = QueryVectors(dense=[0.1, 0.2, 0.3], sparse=SparseVector(indices=[1, 5], values=[1.0, 1.0]))
-
-
-def test_inside_puts_the_tenant_filter_in_every_prefetch() -> None:
-    body = build_query("kanzlei_mueller", VECS, GOOD)
-    assert [p["using"] for p in body["prefetch"]] == ["dense", "sparse"]
-    for prefetch in body["prefetch"]:
-        assert prefetch["filter"] == {
-            "must": [{"key": "tenant_id", "match": {"any": ["kanzlei_mueller", "shared_public"]}}]
-        }
-    assert body["query"] == {"fusion": "rrf"}
-    assert body["limit"] == 4
-    assert body["with_payload"] is True
-
-
-def test_shared_public_tenant_asks_only_for_itself() -> None:
-    body = build_query("shared_public", VECS, GOOD)
-    assert body["prefetch"][0]["filter"]["must"][0]["match"] == {"any": ["shared_public"]}
-
-
-def test_post_topk_has_no_filter_anywhere() -> None:
-    body = build_query("kanzlei_mueller", VECS, POST)
-    assert all("filter" not in p for p in body["prefetch"])
-    assert "filter" not in body
-
-
-def test_filtered_merge_needs_no_second_query() -> None:
-    assert build_shared_query(VECS, GOOD) is None
-
-
-def test_unfiltered_merge_sends_a_second_query_without_any_filter() -> None:
-    body = build_shared_query(VECS, UNFILTERED)
-    assert body is not None
-    assert all("filter" not in p for p in body["prefetch"])
-    assert "filter" not in body
-
-
-def test_post_topk_filters_after_the_cut_and_backfills_from_the_unfiltered_list() -> None:
-    foreign = hit("gii-bgb-622#0").model_copy(update={"tenant_id": "versicherung_nord"})
-    own = [
-        hit("gii-bgb-620#0", 2).model_copy(update={"tenant_id": "kanzlei_mueller"}),
-        hit("gii-bgb-621#0", 3).model_copy(update={"tenant_id": "shared_public"}),
-    ]
-    out = apply_post_topk([foreign, *own], "kanzlei_mueller", top_k=3)
-    assert [h.chunk_id for h in out] == ["gii-bgb-620#0", "gii-bgb-621#0", "gii-bgb-622#0"]
-    assert [h.rank for h in out] == [1, 2, 3]
-    assert out[-1].tenant_id == "versicherung_nord"
-
-
-def test_merge_by_score_keeps_the_best_score_per_chunk_and_renumbers_ranks() -> None:
-    a = [hit("gii-bgb-620#0", 1, 0.9), hit("gii-bgb-621#0", 2, 0.5)]
-    b = [hit("gii-bgb-621#0", 1, 0.8), hit("gii-bgb-622#0", 2, 0.3)]
-    merged = merge_by_score([a, b], top_k=3)
-    assert [h.chunk_id for h in merged] == ["gii-bgb-620#0", "gii-bgb-621#0", "gii-bgb-622#0"]
-    assert [h.rank for h in merged] == [1, 2, 3]
-    assert merged[1].score == 0.8
 
 
 def test_prompt_wraps_chunks_in_dokument_blocks_with_the_guard_note() -> None:

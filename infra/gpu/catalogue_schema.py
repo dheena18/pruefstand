@@ -97,6 +97,9 @@ class Entry(_Frozen):
     query_prefix: str | None = None
     doc_prefix: str | None = None
     max_input_tokens: int | None = None
+    request_timeout_s: float | None = (
+        None  # rerank entries: client timeout sized for the CPU (T3.5)
+    )
 
     @model_validator(mode="after")
     def _entry_rules(self) -> Self:

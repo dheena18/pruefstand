@@ -2,30 +2,35 @@
 
 import asyncio
 import logging
-import time
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from typing import Any
 
-import httpx
 from fastapi import FastAPI, HTTPException, Request, Response
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 
-from rag_demo.analysis.fingerprint import check_fingerprint
 from rag_demo.catalogue import CatalogueEntry
 from rag_demo.config import Settings, load_config
-from rag_demo.errors import IndexMismatchError, RagDemoError
+from rag_demo.errors import IndexMismatchError, IndexUnavailableError, RagDemoError
 from rag_demo.info import build_info, cpu_model
 from rag_demo.models import GenOutput, Hit, RagConfig, Stats
 from rag_demo.protocols import Generator
-from rag_demo.retrieve import Retriever
-from rag_demo.schemas import HealthResponse, InfoResponse, QueryRequest, QueryResponse
+from rag_demo.retrieval.corpus_meta import CorpusMeta
+from rag_demo.retrieval.rerank import IdentityReranker
+from rag_demo.retrieval.retriever import QdrantRetriever
+from rag_demo.schemas import (
+    HealthResponse,
+    InfoResponse,
+    QueryRequest,
+    QueryResponse,
+    RetrieveResponse,
+)
 from rag_demo.wiring import (
     build_catalogue,
+    build_corpus,
     build_generator,
     build_retriever,
-    expected_fingerprint,
     info_env,
     resolve_urls,
 )
@@ -61,6 +66,23 @@ def to_query_response(hits: list[Hit], gen: GenOutput, prompt_hits: list[Hit]) -
     }
 
 
+def to_retrieve_response(hits: list[Hit]) -> dict[str, Any]:
+    """The ``/v1/retrieve`` body: the chunks of ``to_query_response`` without ``used_in_prompt``."""
+    return {
+        "chunks": [
+            {
+                "chunk_id": h.chunk_id,
+                "doc_id": h.doc_id,
+                "tenant_id": h.tenant_id,
+                "text": h.text,
+                "score": h.score,
+                "rank": h.rank,
+            }
+            for h in hits
+        ]
+    }
+
+
 def build_health(stats: Stats) -> dict[str, Any]:
     """The ``/v1/health`` body: status and the runtime counters."""
     return {
@@ -73,55 +95,15 @@ def build_health(stats: Stats) -> dict[str, Any]:
     }
 
 
-class _CorpusMeta:
-    """Corpus version and tenants from the collection metadata, re-read every ``TTL_S`` seconds.
-
-    Only a collection that is ``complete`` and whose analyzer fingerprint matches is accepted; an
-    unfinished, stale or differently analysed index is refused with 503. The re-read follows an
-    alias swap (``chunks_active``) to the new collection within ``TTL_S``.
-    """
-
-    TTL_S = 10.0
-
-    def __init__(self, qdrant_url: str, collection: str, expected: dict[str, Any]) -> None:
-        self._url = f"{qdrant_url.rstrip('/')}/collections/{collection}"
-        self._expected = expected
-        self._value: dict[str, Any] | None = None
-        self._read_at = 0.0
-
-    def get(self) -> dict[str, Any]:
-        now = time.monotonic()
-        if self._value is None or now - self._read_at >= self.TTL_S:
-            self._value = self._read()
-            self._read_at = now
-        return self._value
-
-    def _read(self) -> dict[str, Any]:
-        try:
-            resp = httpx.get(self._url, timeout=10)
-            meta = resp.json()["result"]["config"]["metadata"]
-            if resp.status_code != 200 or not {"corpus_version", "tenants"} <= meta.keys():
-                raise KeyError("metadata")  # noqa: EM101, TRY301
-        except (httpx.HTTPError, KeyError, TypeError, ValueError):
-            raise HTTPException(503, "index unavailable") from None
-        if meta.get("complete") is not True:
-            raise HTTPException(503, "index build is not complete; re-index")
-        try:
-            check_fingerprint(meta.get("analyzer"), self._expected)
-        except IndexMismatchError as err:
-            raise HTTPException(503, str(err)) from None
-        result: dict[str, Any] = meta
-        return result
-
-
 @dataclass(frozen=True)
 class _Parts:
     """The collaborators of one app instance."""
 
     stats: Stats
-    retriever: Retriever
+    retriever: QdrantRetriever
+    retrieve_only: QdrantRetriever
     generator: Generator
-    corpus: _CorpusMeta
+    corpus: CorpusMeta
     env: dict[str, str]
     catalogue: dict[str, CatalogueEntry] | None
 
@@ -131,22 +113,40 @@ def _build_parts(cfg: RagConfig, s: Settings) -> _Parts:
     stats = Stats()
     urls = resolve_urls(cfg, s)
     catalogue = build_catalogue(cfg, s)
+    corpus = build_corpus(cfg, s)
+    retriever = build_retriever(cfg, s, urls.embed, catalogue, corpus=corpus)
     return _Parts(
         stats=stats,
-        retriever=build_retriever(cfg, s, urls.embed, catalogue),
+        retriever=retriever,
+        # D271: on_retrieve false = /v1/retrieve skips the reranker (/v1/query never does)
+        retrieve_only=retriever
+        if cfg.rerank.on_retrieve
+        else retriever.with_reranker(IdentityReranker()),
         generator=build_generator(cfg, urls.llm, stats),
-        corpus=_CorpusMeta(s.qdrant_url, s.collection, expected_fingerprint(cfg)),
+        corpus=corpus,
         env=info_env(s),
         catalogue=catalogue,
     )
 
 
+async def _meta(parts: _Parts) -> dict[str, Any]:
+    """The checked collection metadata; an unreadable, incomplete or mismatched index is a 503."""
+    try:
+        return await asyncio.to_thread(parts.corpus.get)
+    except (IndexUnavailableError, IndexMismatchError) as err:
+        raise HTTPException(503, str(err)) from None
+
+
+async def _checked_tenant(parts: _Parts, tenant_id: str) -> None:
+    """Refuse an unknown tenant with 422 (after the index check)."""
+    if tenant_id not in (await _meta(parts))["tenants"]:
+        raise HTTPException(422, "unknown tenant")
+
+
 def _add_routes(app: FastAPI, cfg: RagConfig, parts: _Parts) -> None:
     @app.post("/v1/query", operation_id="query", response_model=QueryResponse)
     async def query(req: QueryRequest) -> dict[str, Any]:
-        meta = await asyncio.to_thread(parts.corpus.get)
-        if req.tenant_id not in meta["tenants"]:
-            raise HTTPException(422, "unknown tenant")
+        await _checked_tenant(parts, req.tenant_id)
         parts.stats.requests += 1
         try:
             hits = await asyncio.to_thread(
@@ -159,9 +159,28 @@ def _add_routes(app: FastAPI, cfg: RagConfig, parts: _Parts) -> None:
         prompted = [h for h in hits if h.chunk_id in set(gen.prompt_chunk_ids)]
         return to_query_response(hits, gen, prompted)
 
+    @app.post(
+        "/v1/retrieve",
+        operation_id="retrieve",
+        response_model=RetrieveResponse,
+        response_model_exclude_unset=True,
+    )
+    async def retrieve(req: QueryRequest) -> dict[str, Any]:
+        """Retrieval only (D218): the chunks `/v1/query` would return, no generator call."""
+        await _checked_tenant(parts, req.tenant_id)
+        parts.stats.requests += 1
+        try:
+            hits = await asyncio.to_thread(
+                parts.retrieve_only.retrieve, req.tenant_id, req.question, req.top_k or cfg.top_k
+            )
+        except RagDemoError as err:
+            _log.warning("retrieve failed: %s", err)
+            raise HTTPException(503, "backend unavailable") from None
+        return to_retrieve_response(hits)
+
     @app.get("/v1/info", operation_id="info", response_model=InfoResponse)
     async def info() -> dict[str, Any]:
-        meta = await asyncio.to_thread(parts.corpus.get)
+        meta = await _meta(parts)
         return build_info(
             cfg,
             corpus_version=meta["corpus_version"],

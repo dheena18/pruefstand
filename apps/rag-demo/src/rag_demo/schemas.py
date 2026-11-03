@@ -26,6 +26,12 @@ class RetrievedChunk(BaseModel):
     used_in_prompt: bool | None = None
 
 
+class RetrieveResponse(BaseModel):
+    """Body of the ``/v1/retrieve`` answer: chunks only, no answer, no generation (D218)."""
+
+    chunks: list[RetrievedChunk]
+
+
 class Usage(BaseModel):
     """Token usage of the generator call."""
 

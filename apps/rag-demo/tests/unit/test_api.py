@@ -140,6 +140,7 @@ def test_gpu_info_serving_comes_from_the_catalogue_and_env(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.setenv("OLLAMA_GPU0_URL", "http://127.0.0.1:11434")
+    monkeypatch.setenv("RERANK_URL", "http://rerank-cpu:8201")
     cfg = load_config(CONFIGS / "rag.gpu.yaml", catalogue_path=GPU_SETTINGS.rag_model_catalogue)
     client = TestClient(create_app(cfg, settings=GPU_SETTINGS))
     respx.get("http://qdrant.test:6333/collections/slice_v2").mock(
@@ -164,7 +165,7 @@ def test_gpu_info_serving_comes_from_the_catalogue_and_env(
         "generator": "ollama/qwen3.8:27b-q8_0",
         "generator_family": "qwen",
         "embed": "ollama/bge-m3",
-        "rerank": "none",
+        "rerank": "cpu/bge-reranker-v2-m3",
     }
     health = client.get("/v1/health").json()["stats"]
     assert health["requests"] == stats_before + 3

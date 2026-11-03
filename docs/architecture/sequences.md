@@ -405,7 +405,7 @@ sequenceDiagram
     else daily budget spent or kill switch on
         RL-->>D: 503 JSON {code: budget_exhausted or demo_disabled, message, retry_after_s}
     else allowed
-        API->>API: retrieve (tenant filter in query)
+        API->>API: retrieve (tenant filter inside every prefetch and on the fused query, RRF)
         API->>LLM: generate answer
         LLM-->>API: answer
         API-->>D: answer + citations + chunks
@@ -462,3 +462,35 @@ sequenceDiagram
 Results keep the input order. After the run, `judge_error / judged_cases > 5 %` sets `judge_degraded`. An
 executor infra failure is a different path: the executor calls `ArtifactStore.mark_aborted(run, infra_error)`
 (R11 D245) on a finished or partial run.
+
+## 9. rag-demo: one retrieval (T3.5, `/v1/query` and `/v1/retrieve`)
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant C as Caller (runner or demo)
+    participant A as rag-demo API
+    participant R as QdrantRetriever
+    participant M as CorpusMeta
+    participant Q as Qdrant (alias chunks_active)
+    participant K as rerank-cpu (VM CPU, no auth)
+
+    C->>A: POST /v1/query or /v1/retrieve {tenant_id, question, top_k}
+    A->>M: get() (cached 10 s)
+    M->>Q: GET collection (api-key header)
+    M-->>A: complete and same analyzer fingerprint, else 503 re-index
+    A->>R: retrieve(tenant_id, question, top_k)
+    R->>R: allowed_tenants, embed query (dense) and tokenise (sparse)
+    R->>Q: ONE Query API call: prefetch dense and sparse, filter tenant_id in tenant and shared_public in EACH prefetch and on the fused query, RRF k=60
+    Q-->>R: fused points (payload)
+    opt reranker on, and /v1/query or rerank.on_retrieve true
+        R->>K: POST /rerank, first 10 passages cut to 256 tokens, one batch, no Authorization
+        K-->>R: scores
+    end
+    R->>R: cut to top_k, ranks 1..n, guard: foreign tenant raises TenantIsolationError
+    R-->>A: hits
+    A-->>C: /v1/query adds the generator answer, /v1/retrieve returns chunks only
+```
+
+The seeded bugs change only step 6 (`tenant_filter: post_topk` sends no filter and filters in Python after
+the cut, `shared_public_merge: unfiltered` adds a second unfiltered query) and switch the guard off.

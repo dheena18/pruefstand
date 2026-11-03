@@ -130,3 +130,4 @@ models:
     license: Apache-2.0
     provisional: true
     max_input_tokens: 256
+    request_timeout_s: 60

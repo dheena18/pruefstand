@@ -1655,6 +1655,9 @@ class RagConfig(BaseModel)          # chosen by RAG_CONFIG: apps/rag-demo/config
                                     # sends Authorization: Bearer <value> to LLM_PROXY_URL; unset/empty -> no header (tier 1);
                                     # the value is never logged. rerank has no key (D217). Tier-2 rerank: top_n 10,
                                     # passages truncated to 256 tokens, batched (D222).
+                                    # T3.5 (D511, D514): concrete fields retrieval.hybrid (true), retrieval.prefetch_k (50),
+                                    # retrieval.rrf_k (60), rerank.top_n (10), rerank.endpoint_env (RERANK_URL); reranker
+                                    # on|off is the only on/off switch (rerank.enabled does not exist)
                                     # R12 DEV12-09 (D271, owner T3.5): rerank.on_retrieve: bool = True; false = POST
                                     # /v1/retrieve skips the reranker (the D222 fallback, set in rag.gpu.yaml only when
                                     # T3.1b records it; part of config_hash, so of target_fingerprint); /v1/query is never
@@ -1684,10 +1687,12 @@ class DenseEncoder(Protocol):  def encode(self, texts: Sequence[str]) -> NDArray
                        # model limit (tier 1: TEI CPU truncate=true; tier 2: Ollama /api/embed with num_ctx = max_input_tokens,
                        # R10) and the truncated count is logged (D121)
 class Indexer:         def index(self, corpus_dir: Path) -> None                   # one collection, payload index on tenant_id
-class Retriever:       def retrieve(self, tenant_id: str, query: str, top_k: int) -> list[Hit]
+class Retriever:       def retrieve(self, tenant_id: str, query: str, top_k: int) -> list[Hit]    # QdrantRetriever, rag_demo.retrieval
                        # Qdrant Query API: prefetch dense + sparse, both with filter tenant_id ∈ {tenant, "shared_public"},
-                       # RRF fusion, then optional rerank. The filter is INSIDE every prefetch (never post-filter).
+                       # RRF fusion (k 60), then optional rerank. The filter is INSIDE every prefetch (never post-filter) and
+                       # on the fused query too. Refuses an incomplete index or one built with another analyzer (D515).
 class Reranker(Protocol):      def rerank(self, query: str, hits: list[Hit], top_n: int) -> list[Hit]
+                       # scores the first top_n hits and reorders them; the rest follows unchanged; ranks 1..n (D513)
                        # tier 1: no reranker; tier 2: BAAI/bge-reranker-v2-m3 on the VM CPU via RERANK_URL (rerank-cpu, §1.5; R10 D198)
                        # Retriever also backs POST /v1/retrieve (§1.1, R11 D218, T3.5): same hits, no Generator call
 class Generator:       async def answer(self, question: str, hits: list[Hit]) -> GenOutput   # prompt file, citations, refusal

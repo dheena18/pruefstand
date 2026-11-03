@@ -33,6 +33,8 @@ class CatalogueEntry(BaseModel):
     options: dict[str, float] = {}
     option_bounds: dict[str, tuple[float, float]] = {}
     tokenizer: TokenizerRef | None = None
+    max_input_tokens: int | None = None
+    request_timeout_s: float | None = None
 
 
 def load_catalogue(path: Path) -> dict[str, CatalogueEntry]:

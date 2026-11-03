@@ -1,6 +1,6 @@
 # rag-demo: the reference RAG app (system under test)
 
-A small, real, CPU-only German RAG app that serves **Target HTTP API v1** (`/v1/query`, `/v1/info`,
+A small, real, CPU-only German RAG app that serves **Target HTTP API v1** (`/v1/query`, `/v1/retrieve`, `/v1/info`,
 `/v1/health`; `schemas/target-api-v1.openapi.yaml`) over the committed 5-law slice corpus
 (`corpus/slice_v1`, built by `scripts/slice/build_slice.py`). It never imports `pruefstand` and nothing
 here reads `datasets/` (import-linter contract `sut-independent`). Tier-1 CI and every e2e test run
@@ -12,7 +12,7 @@ against it; T3.x extends the same app to the A40 stack.
 | Analysis | `analysis/` (`normalise`, `abbreviations`, `compound`, `analyzer`, `sparse`) | `GermanAnalyzer` and `SparseEncoder`, see "Analyzer" below |
 | Dense | `index/encoders.py` | `TeiDenseEncoder` (TEI CPU, e5 `query: ` / `passage: ` prefixes, `truncate: true`) and `OllamaDenseEncoder` (native `/api/embed`, catalogue options, unit vectors) |
 | Index | `index/` (`corpus_reader`, `indexer`, `naming`, `qdrant_admin`, `tokens`), `cli.py` | `rag-demo index`: corpus lines validated by `index/chunk.schema.json`; one Qdrant collection per index fingerprint, `tenant_id` tenant index, atomic `chunks_active` alias |
-| Retrieval | `retrieve.py` | Query API, dense + sparse prefetch, tenant filter inside **every** prefetch, RRF |
+| Retrieval | `retrieval/` (`filters`, `query_builder`, `retriever`, `rerank`, `store`, `corpus_meta`, `bugs`, `testing`) | `QdrantRetriever`: one Query API call, dense + sparse prefetch, tenant filter inside **every** prefetch and on the fused query, RRF `k` 60, optional `rerank-cpu` reranker, post-condition guard; backs `/v1/query` and `/v1/retrieve`; see "Retrieval" below |
 | Generation | `generate.py`, `prompts/*.txt` | OpenAI-compatible (llama.cpp) client `OpenAICompatGenerator`, prompt building, injection guard, output guard, `<think>` strip |
 | API | `api.py`, `schemas.py`, `info.py`, `wiring.py` | `create_app`, response mapping, `/v1/info` (`info.py`), the collaborators per profile (`wiring.py`), `/v1/health` |
 | Tier 2 | `catalogue.py`, `endpoints.py`, `generate_ollama.py` | catalogue validation (D453), endpoint rules (D454), `OllamaChatGenerator` on native `/api/chat` |
@@ -30,7 +30,7 @@ against it; T3.x extends the same app to the A40 stack.
 | `injection_guard` | `on` | `injection_guard_off` | raw chunks in the prompt instead of `<dokument>` blocks without instruction lines (M7) |
 | `system_prompt_guard` | `on` | `system_prompt_guard_off` | no 8-gram output filter against prompt leaks |
 | `top_k` | `4` (tier 1) | `top_k_1` | one chunk (M10; statistical, tested in tier 2) |
-| `reranker` | `off` | - | v0 has no reranker (T3.5) |
+| `reranker` | `off` (tier 1) / `on` (`rag.gpu.yaml`) | `reranker_off` (tier 2 only, `configs/bugs/gpu/`) | no `rerank-cpu` call, fused order (M1) |
 
 `generator.enable_thinking: false` is part of the config hash; for Qwen3 families the request carries
 `chat_template_kwargs.enable_thinking=false` and a leading `<think>` block is stripped and counted.
@@ -74,6 +74,19 @@ make up COMPOSE_FILES="infra/gpu/compose.gpu.yml infra/gpu/compose.rag-demo.yml"
 curl -s 127.0.0.1:18000/v1/info
 ```
 
+## Retrieval (T3.5)
+
+`QdrantRetriever.retrieve(tenant_id, query, top_k)`: embed the query (dense) and tokenise it with the same analyzer as the index
+(sparse); one `POST /collections/chunks_active/points/query` whose two prefetch legs (`retrieval.prefetch_k` 50 each) and
+whose fused query all carry `tenant_id in {tenant, shared_public}` (`filters.tenant_filter`, the only place the filter is
+built; `testing.assert_tenant_scoped` checks a request or a recorded body), RRF with `retrieval.rrf_k` 60; with
+`reranker: on` the first `rerank.top_n` (10) hits are scored by `rerank-cpu` (`RERANK_URL`, no auth; passages cut to the
+catalogue's 256 tokens, one batched request), then the list is cut to `top_k`. Before every query the collection metadata
+must be `complete` with the app's analyzer fingerprint (else 503 "re-index", never a dense-only answer); a hit of a
+foreign tenant raises `TenantIsolationError` (skipped only while a leak bug switch is on). `QDRANT_API_KEY` is sent as
+`api-key`. `retrieval.hybrid: false` = dense only. `POST /v1/retrieve` returns the same chunks as `/v1/query` (`{"chunks": [...]}`,
+no answer, no generator call); `rerank.on_retrieve: false` makes it skip the reranker (D222 fallback, part of `config_hash`).
+
 ## Indexing (T3.4)
 
 ```bash
@@ -92,8 +105,8 @@ sent as `api-key` when set. Without `--config` the profile of `--encoder` is use
 ## Tests
 
 `tests/unit` (pure functions on real slice text, respx for HTTP plumbing, vcr cassettes recorded from the real
-llama.cpp and TEI servers by `make cassettes`), `tests/contract` (OpenAPI), `tests/integration`
-(Testcontainers Qdrant + TEI), `tests/live` (the running `live` stack), `tests/gpu` (the tier-2 dev stack, marker `gpu`).
+llama.cpp and TEI servers by `make cassettes` and from `rerank-cpu` by `make cassettes-rerank`), `tests/contract` (OpenAPI), `tests/integration`
+(Testcontainers: Qdrant with an API key, TEI, `rerank-cpu` built from `infra/gpu/rerank`), `tests/live` (the running `live` stack), `tests/gpu` (the tier-2 dev stack, marker `gpu`).
 
 ## Open follow-ups
 
