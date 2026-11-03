@@ -64,7 +64,7 @@ def wrap(kind: str, text: str, nonce: str) -> str:
 
     Examples:
         >>> wrap("frage", "Was?", "7f3a")
-        '<frage-7f3a>\\nWas?\\n</frage-7f3a>'
+        '<frage-7f3a>\nWas?\n</frage-7f3a>'
     """
     if kind not in KINDS:
         msg = f"unknown block kind '{kind}' (known: {', '.join(KINDS)})"
@@ -77,6 +77,6 @@ def format_chunks(chunks: Sequence[str]) -> str:
 
     Examples:
         >>> format_chunks(["a", "b"])
-        '[1] a\\n[2] b'
+        '[1] a\n[2] b'
     """
     return "\n".join(f"[{n}] {chunk}" for n, chunk in enumerate(chunks, start=1))
