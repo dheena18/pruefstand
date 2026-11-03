@@ -43,3 +43,14 @@ paths = [
 regexes = [
   '''CANARY-VN-7f3a9c''',
 ]
+
+[[allowlists]]
+description = "T3.1e log-tail redaction test: synthetic token/key values in the sample log (commits before they were built at run time); only this test file and only these literals"
+condition = "AND"
+paths = [
+  '''infra/cluster/tests/test_cluster_log_tail\.py''',
+]
+regexes = [
+  '''Zq9Xk2LmN4pR7sT1vW3y''',
+  '''Abcdef0123456789Abcd''',
+]

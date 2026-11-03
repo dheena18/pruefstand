@@ -10,6 +10,8 @@ from vm_testkit import Result
 LOGIN = getpass.getuser()
 AUTH = "Authorization: Bearer abcdef0123456789"
 V6 = "ipv6=[fe80::1]:8080 addr=2001:db8::7"
+FAKE = "".join(["not", "real", "Q9Xk", "2LmN", "4pR7"])  # built at run time: not a credential
+FAKE2 = "".join(["fake", "0123", "4567", "89ab"])
 IP = "10.20.30.40"
 OTHER = "192.168.7.9"
 TOKEN = "ghp_" + "a1B2c3D4e5F6g7H8i9J0k1L2m3N4o5P6q7R8"
@@ -191,7 +193,7 @@ ADVERSARIAL = [
     f"decoded %2Fhome%2f{LOGIN}%2Fmodels path",
     "ssh to gpu02.cluster:5000 and localhost:41233 then ssh -p 2222 box",
     'json {"port":2222,"host":"x"} and port=4455',
-    "token=" + "Zq9Xk2LmN4pR7sT1vW3y" + " key: " + "Abcdef0123456789Abcd",
+    "token=" + FAKE + " key: " + FAKE2,
     "password=hunter2 secret_key = s3cr3t",
     "cwd /usr/local/lib/ollama/cuda_v12/libggml-cuda-sm80-fa-hdim128-q8_0-q8_0.so",
 ]
@@ -230,8 +232,8 @@ def test_adversarial_names_hosts_ports_and_secrets_are_masked(world: ClusterWorl
     res = _tail(world, text="\n".join(ADVERSARIAL) + "\n")
     assert res.rc == 0, res.err
     for gone in (
-        LOGIN, "gpu02", "5000", "41233", "2222", "4455", "Zq9Xk2LmN4pR7sT1vW3y",
-        "Abcdef0123456789Abcd", "hunter2", "s3cr3t",
+        LOGIN, "gpu02", "5000", "41233", "2222", "4455", FAKE,
+        FAKE2, "hunter2", "s3cr3t",
     ):  # fmt: skip
         assert gone not in res.out, gone
 
@@ -252,10 +254,10 @@ def test_a_huge_line_is_cut_before_the_redaction(world: ClusterWorld) -> None:
 
 
 def test_control_characters_are_dropped_before_the_redaction(world: ClusterWorld) -> None:
-    res = _tail(world, text=f"to\x1bk\x07en=Zq9Xk2LmN4pR7sT1vW3y {LOGIN[:2]}\x00{LOGIN[2:]}\n")
+    res = _tail(world, text=f"to\x1bk\x07en={FAKE} {LOGIN[:2]}\x00{LOGIN[2:]}\n")
     assert res.rc == 0, res.err
     assert LOGIN not in res.out
-    assert "Zq9Xk2LmN4pR7sT1vW3y" not in res.out
+    assert FAKE not in res.out
 
 
 @pytest.mark.parametrize(
@@ -267,7 +269,7 @@ def test_control_characters_are_dropped_before_the_redaction(world: ClusterWorld
         f"d sha256-{HEX64}",
         "v6 2001:db8::7",
         "as http://gpu02.cluster:5000/x",
-        "token=Zq9Xk2LmN4pR7sT1vW3y",
+        f"token={FAKE}",
     ],
 )
 def test_the_leak_scan_catches_unredacted_input(world: ClusterWorld, line: str) -> None:
