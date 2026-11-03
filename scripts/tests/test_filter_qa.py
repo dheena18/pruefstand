@@ -115,10 +115,13 @@ def test_no_support_is_reported_and_makes_no_request(tmp_path: Path) -> None:
 def test_a_quota_gives_exit_three_and_keeps_nothing_unchecked_as_kept(tmp_path: Path) -> None:
     run = _run_dir(tmp_path)
     with datagen_server("{}", [Step(429, {"Retry-After": "86400"})]) as (base, _):
-        code = main(_argv(run), client=client_factory(base, []), embedder=_embed)
+        code = main(
+            _argv(run, "--concurrency", "1"), client=client_factory(base, []), embedder=_embed
+        )
     assert code == 3
     report = json.loads((run / "filter_report.json").read_text("utf-8"))
-    assert report["not_checked"] == 2
+    assert report["not_checked"] == 2  # concurrency 1: the second is never sent
+    assert report["kept"] + report["dropped"] + report["not_checked"] == report["total"]
     assert report["kept"] == 0
     assert not (run / "filtered.jsonl").exists()
     assert (run / "filtered_partial.jsonl").exists()
