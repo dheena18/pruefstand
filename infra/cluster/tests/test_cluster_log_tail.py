@@ -1,13 +1,12 @@
 """T3.1e CPU tests: ``log-tail.sh`` (read-only Ollama log tail, redacted on the cluster)."""
 
-import getpass
 import hashlib
 
 import pytest
 from gpu_testkit import ClusterWorld
 from vm_testkit import Result
 
-LOGIN = getpass.getuser()
+LOGIN = "alice-cluster"  # fixed: the tests never depend on the login of whoever runs them
 AUTH = "Authorization: Bearer abcdef0123456789"
 V6 = "ipv6=[fe80::1]:8080 addr=2001:db8::7"
 FAKE = "".join(["not", "real", "Q9Xk", "2LmN", "4pR7"])  # built at run time: not a credential
@@ -50,7 +49,11 @@ def _sample(world: ClusterWorld) -> str:
     )
 
 
-def _tail(world: ClusterWorld, *args: object, text: str | None = None) -> Result:
+def _tail(
+    world: ClusterWorld, *args: object, text: str | None = None, login: str = LOGIN
+) -> Result:
+    (world.stubs.bin / "id").unlink(missing_ok=True)
+    world.stubs.add("id", [("*", login, 0)])  # `id -un` is the cluster login
     world.log.write_text(text if text is not None else _sample(world) + "\n", encoding="utf-8")
     world.add_serve(4242)
     world.stub_server([4242])
@@ -281,3 +284,14 @@ def test_the_leak_scan_catches_unredacted_input(world: ClusterWorld, line: str) 
     res = _tail(world, text=line + "\n")
     assert res.rc == 5
     assert res.out == ""
+
+
+def test_a_login_that_is_a_common_word_is_redacted_and_the_script_still_runs(
+    world: ClusterWorld,
+) -> None:
+    text = "ollama runner --model m\nuser runner at /srv/runner/x\nn_ctx = 8192\n"
+    res = _tail(world, text=text, login="runner")
+    assert res.rc == 0, res.err
+    assert "runner" not in res.out
+    assert "<cluster-user>" in res.out
+    assert "n_ctx = 8192" in res.out
