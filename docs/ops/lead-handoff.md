@@ -114,3 +114,12 @@ Reserved decision ranges (2026-11-03): the lead assigned disjoint ranges per age
 - Up to 5 Sonnet task agents in parallel when their files do not overlap.
 - Docs-only and test-only PRs get one review round, then merge on green. Code PRs get at most 2 review rounds.
 - Owner steps are collected in one list and sent once at the end; they never block work. A task that needs the owner is parked.
+
+## 8. Shared-VM discipline (D660, 2026-11-03)
+
+- Full checks go through `make check-vm` (`scripts/vm_check.sh`): at most 2 at once. Targeted tests (`uv run pytest <path>`) while
+  working; the full check only before pushing. Tell every task agent this in its brief.
+- Never take a timing measurement for a budget (rerank latency, tok/s, TTFT, load times) while other checks run; repeat any
+  measurement that was taken under load.
+- At most 3 task agents at once (the full-speed window of D586 is over).
+
