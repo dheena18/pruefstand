@@ -16,7 +16,7 @@ fi
 
 root="$(cd "$(dirname "$0")/../.." && pwd)"
 app="$root/apps/dashboard"
-DASHBOARD_DATA_DIR="$app/fixtures/$set_name" pnpm -C "$app" build
+(cd "$app" && DASHBOARD_DATA_DIR="$app/fixtures/$set_name" pnpm build)
 
 rm -rf "$app/.sets/$out_name"
 mkdir -p "$app/.sets"

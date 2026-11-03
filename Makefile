@@ -22,7 +22,7 @@ endef
 
 install:
 	uv sync --all-packages --all-extras
-	@if [ -f apps/dashboard/package.json ]; then if command -v pnpm >/dev/null; then pnpm -C apps/dashboard install; else echo "install: pnpm not installed, dashboard dependencies skipped"; fi; fi
+	@if [ -f apps/dashboard/package.json ]; then if command -v pnpm >/dev/null; then (cd apps/dashboard && pnpm install); else echo "install: pnpm not installed, dashboard dependencies skipped"; fi; fi
 
 lint:
 	uv run ruff check .
@@ -85,10 +85,10 @@ docs:
 
 ui-check:
 	@if [ -f apps/dashboard/package.json ]; then set -e; \
-	  pnpm -C apps/dashboard lint; pnpm -C apps/dashboard typecheck; \
+	  (cd apps/dashboard && pnpm lint); (cd apps/dashboard && pnpm typecheck); \
 	  scripts/dashboard/build_set.sh populated; scripts/dashboard/build_set.sh empty; \
 	  node scripts/dashboard/check_fixture_states.mjs; \
-	  DASHBOARD_SETS_PREBUILT=1 pnpm -C apps/dashboard test:coverage; \
+	  (cd apps/dashboard && DASHBOARD_SETS_PREBUILT=1 pnpm test:coverage); \
 	else echo "ui-check: apps/dashboard not there yet (T8.1), skipped"; fi
 
 experiments:

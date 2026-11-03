@@ -29,9 +29,9 @@ jobs:
         with:
           node-version: "22"
       - name: Install
-        run: corepack enable && pnpm -C apps/dashboard install --frozen-lockfile
+        run: corepack enable && (cd apps/dashboard && pnpm install --frozen-lockfile)
       - name: lint
-        run: pnpm -C apps/dashboard lint
+        run: (cd apps/dashboard && pnpm lint)
 
   ui-typecheck:
     name: ui-typecheck
@@ -47,9 +47,9 @@ jobs:
         with:
           node-version: "22"
       - name: Install
-        run: corepack enable && pnpm -C apps/dashboard install --frozen-lockfile
+        run: corepack enable && (cd apps/dashboard && pnpm install --frozen-lockfile)
       - name: typecheck
-        run: pnpm -C apps/dashboard typecheck
+        run: (cd apps/dashboard && pnpm typecheck)
 
   ui-unit:
     name: ui-unit
@@ -65,7 +65,7 @@ jobs:
         with:
           node-version: "22"
       - name: Install
-        run: corepack enable && pnpm -C apps/dashboard install --frozen-lockfile
+        run: corepack enable && (cd apps/dashboard && pnpm install --frozen-lockfile)
       - name: Build both fixture sets
         run: |
           scripts/dashboard/build_set.sh populated
@@ -73,7 +73,7 @@ jobs:
       - name: Vitest with coverage (src/lib >= 80 %)
         env:
           DASHBOARD_SETS_PREBUILT: "1"
-        run: pnpm -C apps/dashboard test:coverage
+        run: (cd apps/dashboard && pnpm test:coverage)
 
   types-fresh:
     name: types-fresh
@@ -89,12 +89,12 @@ jobs:
         with:
           node-version: "22"
       - name: Install
-        run: corepack enable && pnpm -C apps/dashboard install --frozen-lockfile
+        run: corepack enable && (cd apps/dashboard && pnpm install --frozen-lockfile)
       - name: Regenerate types, licences and report tokens
         run: |
-          pnpm -C apps/dashboard gen:types
-          pnpm -C apps/dashboard gen:licences
-          pnpm -C apps/dashboard gen:report-tokens
+          (cd apps/dashboard && pnpm gen:types)
+          (cd apps/dashboard && pnpm gen:licences)
+          (cd apps/dashboard && pnpm gen:report-tokens)
       - name: No drift
         run: |
           git diff --exit-code -- \
@@ -122,7 +122,7 @@ jobs:
       - name: Install
         run: |
           corepack enable
-          pnpm -C apps/dashboard install --frozen-lockfile
+          (cd apps/dashboard && pnpm install --frozen-lockfile)
           uv sync --frozen --all-packages --all-extras
       - name: Both sets pass validate_data.mjs
         run: |
@@ -156,7 +156,7 @@ jobs:
         with:
           node-version: "22"
       - name: Install
-        run: corepack enable && pnpm -C apps/dashboard install --frozen-lockfile
+        run: corepack enable && (cd apps/dashboard && pnpm install --frozen-lockfile)
       - name: Build both sets
         run: |
           scripts/dashboard/build_set.sh populated

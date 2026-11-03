@@ -50,7 +50,8 @@
   "packageManager": "pnpm@9.15.9",
   "pnpm": {
     "overrides": {
-      "tinypool": "2.1.2"
+      "tinypool": "2.1.2",
+      "postcss": "8.5.32"
     }
   }
 }

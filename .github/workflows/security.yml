@@ -98,7 +98,7 @@ jobs:
             exit 0
           fi
           corepack enable
-          pnpm -C apps/dashboard audit --prod
+          (cd apps/dashboard && pnpm audit --prod)
 
   zizmor:
     name: zizmor
