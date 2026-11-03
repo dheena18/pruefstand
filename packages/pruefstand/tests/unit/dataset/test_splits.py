@@ -1,10 +1,11 @@
 """``assign_splits``: whole clusters, quotas, nightly blocks, judged subset, ``rq1`` (T4.1 S2)."""
 
+import logging
 from collections import Counter, defaultdict
 
 import numpy as np
 import pytest
-from hypothesis import given, reject, settings
+from hypothesis import given, settings
 from hypothesis import strategies as st
 from testsupport.dataset_support import (
     ANSWERABLE,
@@ -109,10 +110,24 @@ def test_mixed_role_cluster_is_dropped_and_counted() -> None:
         mixed + answerable_clusters(5), small_plan(core_answerable=5), _rng()
     )
     assert {c.id for c in report.dropped} == {"m1", "m2"}
+    assert report.reasons["mixed_role"] == 2
+    assert sum(report.reasons.values()) == len(report.dropped)
+
+
+def test_every_drop_reason_is_reported_and_logged(caplog: pytest.LogCaptureFixture) -> None:
+    surplus = answerable_clusters(10, prefix="s")
+    trimmed = [case(f"t{j}", "tr-doc") for j in range(3)]
+    variants = with_variants(case("v0", "v-doc"), ("typos", "numbers"))
+    plan = small_plan(core_answerable=4)
+    with caplog.at_level(logging.WARNING):
+        report = assign_splits_report(surplus + trimmed + variants, plan, _rng(0))
+    assert sum(report.reasons.values()) == len(report.dropped) > 0
+    assert set(report.reasons) <= {"surplus", "mixed_role", "trimmed", "variants_dropped"}
+    assert "splits_dropped" in caplog.text
 
 
 @given(sizes=st.lists(st.integers(1, 4), min_size=3, max_size=30), seed=st.integers(0, 50))
-@settings(max_examples=40, deadline=None)
+@settings(max_examples=300, deadline=None)
 def test_no_cluster_spans_two_splits_and_the_total_is_preserved(
     sizes: list[int], seed: int
 ) -> None:
@@ -121,10 +136,13 @@ def test_no_cluster_spans_two_splits_and_the_total_is_preserved(
         for i, size in enumerate(sizes)
         for j in range(size)
     ]
-    plan = small_plan(smoke_size=len(cases) // 8, core_answerable=len(cases) // 4)
-    try:
-        report = assign_splits_report(cases, plan, _rng(seed))
-    except DatasetError:  # trimming a cluster can leave too few cases for a quota
-        reject()
+    plan = small_plan(smoke_size=len(cases) // 8, core_answerable=len(cases) // 8)
+    report = assign_splits_report(cases, plan, _rng(seed))
     assert all(len(s) == 1 for s in _by_cluster(list(report.cases)).values())
     assert len(report.cases) + len(report.dropped) == len(cases)
+
+
+def test_smoke_minimum_larger_than_the_size_is_trimmed_not_an_error() -> None:
+    cases = answerable_clusters(20)
+    out = assign_splits(cases, small_plan(smoke_size=6, smoke_min_per_category=3), _rng())
+    assert sum(1 for c in out if c.split is Split.SMOKE) == 6

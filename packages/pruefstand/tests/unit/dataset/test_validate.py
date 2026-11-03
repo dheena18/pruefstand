@@ -5,7 +5,15 @@ import shutil
 from pathlib import Path
 
 import pytest
-from testsupport.dataset_support import ANSWERABLE, case, edit, has, problems_for, write_dir
+from testsupport.dataset_support import (
+    ANSWERABLE,
+    case,
+    edit,
+    has,
+    problems_for,
+    with_variants,
+    write_dir,
+)
 
 from pruefstand.core.enums import Category, Split
 from pruefstand.core.models.testcase import TestCase
@@ -174,3 +182,9 @@ def test_fixture_copy_is_not_modified_by_validation(tmp_path: Path) -> None:
     before = sorted(p.name for p in copy.iterdir())
     validate_dataset(copy)
     assert sorted(p.name for p in copy.iterdir()) == before
+
+
+def test_variant_in_another_cluster_than_its_base_is_a_problem(tmp_path: Path) -> None:
+    base = case("b1", "doc-1", split=Split.ROBUST_PR)
+    moved = with_variants(base, ("typos",))[1].model_copy(update={"cluster_id": "doc-2"})
+    assert has(problems_for(tmp_path, [base, moved]), "b1~typos", "cluster")

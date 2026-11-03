@@ -68,18 +68,18 @@ class _Blocks:
         if with_variants:
             self.variants[b] += len(usable_variants(cluster))
 
-    def deal(self, cluster: Cluster, *, with_variants: bool) -> bool:
-        """Put ``cluster`` in the best block it fits; False when none can take it."""
+    def deal(self, cluster: Cluster, target: list[int], *, with_variants: bool) -> bool:
+        """Put ``cluster`` in a block that still has stratum quota and room; False if none."""
         options = [
-            b for b in range(NUM_BLOCKS) if self.fits(b, cluster, with_variants=with_variants)
+            b
+            for b in range(NUM_BLOCKS)
+            if target[b] > 0 and self.fits(b, cluster, with_variants=with_variants)
         ]
         if not options:
             return False
-        if with_variants:
-            best = min(options, key=lambda b: (self.variants[b], self.plain[b], b))
-        else:
-            best = min(options, key=lambda b: (self.strata[b][_stratum(cluster)], self.plain[b], b))
+        best = min(options, key=lambda b: (self.plain[b], self.variants[b], b))
         self.add(best, cluster, with_variants=with_variants)
+        target[best] -= 1
         return True
 
 
@@ -95,22 +95,37 @@ def _choose_answerable(pool: Pool, plan: SplitPlan, rng: np.random.Generator) ->
     return stratified(candidates, _stratum, total, rng, first=[c.id for c in perturbed])
 
 
+def _targets(n: int, totals: list[int]) -> list[int]:
+    """Clusters per block for a stratum of ``n``: even, the remainder to the smallest blocks."""
+    base, extra = divmod(n, NUM_BLOCKS)
+    target = [base] * NUM_BLOCKS
+    for b in sorted(range(NUM_BLOCKS), key=lambda x: (totals[x], x))[:extra]:
+        target[b] += 1
+    return target
+
+
 def _deal_all(chosen: list[Cluster], plan: SplitPlan, rng: np.random.Generator) -> _Blocks:
+    """Deal per stratum so blocks differ by at most one cluster in every tenant x category."""
     blocks = _Blocks(plan)
-    ordered = shuffled(chosen, rng)
+    strata: dict[Stratum, list[Cluster]] = {}
+    for c in shuffled(chosen, rng):
+        strata.setdefault(_stratum(c), []).append(c)
     budget = NUM_BLOCKS * plan.full_block_perturbed
-    leftover: list[Cluster] = []
-    used = 0
-    for c in (x for x in ordered if usable_variants(x)):
-        n = len(usable_variants(c))
-        if used + n <= budget and blocks.deal(c, with_variants=True):
-            used += n
-        else:
-            leftover.append(c)
-    plain_first = [x for x in ordered if not usable_variants(x)] + leftover
-    for c in sorted(plain_first, key=_stratum):
-        if not blocks.deal(c, with_variants=False):
-            leftover.append(c)
+    totals = [0] * NUM_BLOCKS
+    for key in sorted(strata):
+        members = sorted(strata[key], key=lambda c: not usable_variants(c))  # perturbed first
+        target = _targets(len(members), totals)
+        for b in range(NUM_BLOCKS):
+            totals[b] += target[b]
+        for c in members:
+            n = len(usable_variants(c))
+            if (
+                n
+                and sum(blocks.variants) + n <= budget
+                and blocks.deal(c, target, with_variants=True)
+            ):
+                continue
+            blocks.deal(c, target, with_variants=False)
     return blocks
 
 

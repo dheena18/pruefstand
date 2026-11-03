@@ -1465,7 +1465,7 @@ def assign_splits(cases: Sequence[TestCase], plan: SplitPlan, rng: np.random.Gen
     #   refusal stratum = every UNANSWERABLE `full` case (block None). Shortfall -> DatasetError.
     # R13 P3.2 (D293): `rq1` (Split.RQ1) = 300 bases x applicable perturbations, cluster-disjoint from core, robust_pr
     #   and full; block None, judged_subset False
-# T4.1 (D480, D481; additive): assign_splits_report(...) -> SplitReport(cases, dropped, n_perturbed) is assign_splits plus
+# T4.1 (D480, D481; additive): assign_splits_report(...) -> SplitReport(cases, dropped, n_perturbed, reasons) is assign_splits plus
 #   the dropped cases and the perturbed count per split; assignment_summary(cases, seed) -> (blocks, judged_subset, seed)
 #   gives the DatasetManifest fields; dataset.io: read_dataset / read_split (lenient, collect `file:line` problems),
 #   write_dataset, write_split_file, build_manifest(name, version, corpus_version, cases, *, seed, ...)

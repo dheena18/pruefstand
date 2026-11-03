@@ -137,3 +137,25 @@ def test_judged_subset_is_stratified_and_includes_injection() -> None:
             assert abs(sum(1 for c in in_sub if c.tenant == t) - share) <= 1
     assert assignment_summary(first, 2)[1] == 150
     assert not any(c.judged_subset for c in first if c.split is not Split.CORE)
+
+
+@pytest.mark.parametrize("seed", range(6))
+def test_strata_stay_balanced_when_variants_are_dealt(seed: int) -> None:
+    cases = _full_fixture() + [
+        c
+        for i in range(30)
+        for c in with_variants(
+            case(f"p{i:02d}", f"p-doc-{i:02d}", category=ANSWERABLE[i % 4], tenant=TENANTS[i % 3]),
+            ("typos", "numbers"),
+        )
+    ]
+    plan = small_plan(**{**FULL_PLAN, "full_block_unperturbed": 40, "full_block_perturbed": 30})
+    out = assign_splits(cases, plan, _rng(seed))
+    strata: dict[tuple[str, Category], Counter[int | None]] = defaultdict(Counter)
+    for c in out:
+        if c.block is not None and c.perturbation is None:
+            strata[(c.tenant, c.category)][c.block] += 1
+    assert any(c.perturbation for c in out), "fixture must exercise variants"
+    for counts in strata.values():
+        values = [counts[b] for b in (0, 1, 2)]
+        assert max(values) - min(values) <= 1

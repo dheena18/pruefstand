@@ -18,6 +18,7 @@ from pruefstand.dataset.splits_pool import (
     Pool,
     Role,
     count,
+    draw,
     shuffled,
     stratified,
 )
@@ -56,10 +57,7 @@ def _guarantee_minimum(
         if seen[category] < minimum:
             msg = f"smoke: only {seen[category]} {category.value} cases available, need {minimum}"
             raise DatasetError(msg)
-    if count(chosen) > size:
-        msg = f"smoke: {minimum} cases per category need {count(chosen)} cases, size is {size}"
-        raise DatasetError(msg)
-    return chosen
+    return draw(chosen, size)  # a minimum that does not fit the size is trimmed, not an error
 
 
 def pick_smoke(pool: Pool, plan: SplitPlan, rng: np.random.Generator) -> list[TestCase]:

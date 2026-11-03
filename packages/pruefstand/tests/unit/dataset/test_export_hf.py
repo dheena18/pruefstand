@@ -212,3 +212,36 @@ def test_a_non_empty_output_directory_is_refused(tmp_path: Path) -> None:
     with pytest.raises(DatasetError, match="empty"):
         module.build_hf_layout(directory, out)
     assert (out / "keep.txt").exists()
+
+
+def test_an_existing_export_is_replaced_but_foreign_files_are_never_deleted(
+    tmp_path: Path,
+) -> None:
+    directory = _dataset(tmp_path / "d")
+    export_hf(directory, "u/r", private=True, dry_run=True)
+    export_hf(directory, "u/r", private=True, dry_run=True)  # our own marker: replaced
+    (directory / "hf_export" / "mine.txt").write_text("keep", encoding="utf-8")
+    (directory / "hf_export" / module.MARKER).unlink()
+    with pytest.raises(DatasetError, match="empty"):
+        export_hf(directory, "u/r", private=True, dry_run=True)
+    assert (directory / "hf_export" / "mine.txt").exists()
+
+
+def test_the_token_alias_from_settings_is_honoured(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    seen: list[str] = []
+
+    class Recorder:
+        def __init__(self, token: str) -> None:
+            seen.append(token)
+
+        def create_repo(self, **kwargs: object) -> None: ...
+
+        def upload_folder(self, **kwargs: object) -> None: ...
+
+    monkeypatch.delenv("HF_TOKEN", raising=False)
+    monkeypatch.setenv("PRUEFSTAND_HF_TOKEN", "hf_alias_token_value")
+    monkeypatch.setattr(module, "HfApi", Recorder)
+    export_hf(_dataset(tmp_path / "d"), "u/r", private=True)
+    assert seen == ["hf_alias_token_value"]

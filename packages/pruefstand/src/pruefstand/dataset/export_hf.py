@@ -13,7 +13,6 @@ CLI: ``python -m pruefstand.dataset.export_hf <dir> --repo <user>/<name> [--dry-
 
 import argparse
 import importlib
-import os
 import re
 import shutil
 import sys
@@ -32,6 +31,7 @@ from pruefstand.core.enums import Split
 from pruefstand.core.errors import ConfigError, DatasetError
 from pruefstand.core.logging import get_logger
 from pruefstand.core.models.testcase import TestCase
+from pruefstand.core.settings import PruefstandSettings
 from pruefstand.dataset.io import read_dataset, write_split_file
 from pruefstand.dataset.licenses import LICENSE_CONFIGS
 
@@ -39,6 +39,7 @@ _log = get_logger(__name__)
 _REPO_ID = re.compile(r"[A-Za-z0-9][A-Za-z0-9_.-]{0,95}/[A-Za-z0-9][A-Za-z0-9_.-]{0,95}")
 PRIVATE_TAGS = frozenset({"heldout", "held_out", "private"})
 EXPORT_DIR = "hf_export"
+MARKER = ".pruefstand-hf-export"
 _TEMPLATE_DIR = Path(__file__).parent
 _LOAD_CHECK_SPLIT = "train"
 
@@ -122,8 +123,8 @@ def build_hf_layout(
 
     Args:
         directory: A dataset version directory.
-        out: Target; must not exist or be empty, except a directory named ``hf_export``, which is
-            replaced.
+        out: Target; must not exist or be empty, unless it holds the marker file of a previous
+            export (then it is replaced); anything else is never deleted.
         repo_id: Used in the card text only.
 
     Returns:
@@ -139,11 +140,11 @@ def build_hf_layout(
     if unknown:
         msg = f"{directory}: unknown license_config {unknown[0]!r}; cannot export"
         raise DatasetError(msg)
-    if out.name == EXPORT_DIR and out.exists():
+    if out.exists() and any(out.iterdir()):
+        if not (out / MARKER).is_file():  # only a previous export of ours may be replaced
+            msg = f"{out}: output directory must be empty"
+            raise DatasetError(msg)
         shutil.rmtree(out)
-    elif out.exists() and any(out.iterdir()):
-        msg = f"{out}: output directory must be empty"
-        raise DatasetError(msg)
     layout: dict[str, list[str]] = {}
     counts: dict[str, Counter[str]] = {}
     for config, by_split in grouped.items():
@@ -152,6 +153,7 @@ def build_hf_layout(
         for split, rows in by_split.items():
             if rows:
                 write_split_file(out / config / f"{split.value}.jsonl", rows)
+    (out / MARKER).write_text("written by pruefstand.dataset.export_hf\n", encoding="utf-8")
     (out / "README.md").write_text(
         _render_card(directory, repo_id, counts, layout), encoding="utf-8"
     )
@@ -228,7 +230,8 @@ def export_hf(dir: Path, repo_id: str, private: bool, *, dry_run: bool = False) 
         out = dir / EXPORT_DIR
         _check_loadable(out, build_hf_layout(dir, out, repo_id))
         return
-    token = os.environ.get("HF_TOKEN")
+    secret = PruefstandSettings().hf_token  # HF_TOKEN, else the alias PRUEFSTAND_HF_TOKEN
+    token = secret.get_secret_value() if secret is not None else ""
     if not token:
         msg = (
             "HF_TOKEN is not set; a real export needs a Hugging Face write token in the environment"
@@ -243,6 +246,7 @@ def export_hf(dir: Path, repo_id: str, private: bool, *, dry_run: bool = False) 
             repo_id=repo_id,
             repo_type="dataset",
             folder_path=str(out),
+            ignore_patterns=[MARKER],
             commit_message="Update Prüfstand-DE dataset",
         )
 

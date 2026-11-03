@@ -78,6 +78,11 @@ def _bases(cases: list[TestCase], out: Findings) -> None:
     for c in cases:
         if c.base_id not in ids:
             out.problem(f"case {c.id!r}: base_id {c.base_id!r} is not a case of the dataset")
+    by_id = {c.id: c for c in cases}
+    for c in cases:
+        base = by_id.get(c.base_id)
+        if c.perturbation and base is not None and base.cluster_id != c.cluster_id:
+            out.problem(f"case {c.id!r}: cluster {c.cluster_id!r} differs from its base's")
     based = {c.base_id for c in cases if c.perturbation}
     for c in cases:
         if c.split is Split.ROBUST_PR and c.perturbation is None and c.id not in based:

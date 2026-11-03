@@ -15,6 +15,7 @@ import numpy as np
 
 from pruefstand.core.config import SplitPlan
 from pruefstand.core.enums import Split
+from pruefstand.core.logging import get_logger
 from pruefstand.core.models.testcase import TestCase
 from pruefstand.dataset.splits_core import pick_core, pick_smoke
 from pruefstand.dataset.splits_full import pick_full
@@ -23,6 +24,20 @@ from pruefstand.dataset.splits_pool import Pool
 from pruefstand.dataset.splits_subset import flag_judged_subset
 
 _ORDER = {s: i for i, s in enumerate(Split)}
+_log = get_logger(__name__)
+
+
+def _reasons(dropped: Sequence[TestCase], used: set[str], pooled: set[str]) -> dict[str, int]:
+    """Count ``dropped`` cases by reason (see ``SplitReport.reasons``)."""
+    found: Counter[str] = Counter()
+    for c in dropped:
+        if c.cluster_id not in pooled:
+            found["mixed_role"] += 1
+        elif c.cluster_id not in used:
+            found["surplus"] += 1
+        else:
+            found["variants_dropped" if c.perturbation else "trimmed"] += 1
+    return dict(found)
 
 
 @dataclass(frozen=True)
@@ -33,6 +48,10 @@ class SplitReport:
         cases: The kept cases with ``split``, ``block`` and ``judged_subset`` set, ordered by
             split then id.
         dropped: Cases no split took (surplus, mixed-role clusters, surplus variants).
+        reasons: Why cases were dropped: ``surplus`` (cluster unused), ``mixed_role`` (cluster
+            without a base or with several roles), ``trimmed`` (cut from a used cluster),
+            ``variants_dropped`` (variants of a used cluster outside its quota). Sums to
+            ``len(dropped)``.
         n_perturbed: Perturbed cases per split (``robust_pr``, ``rq1``, ``full``): the real
             ``perturbed_all`` n the manifest and the reports state.
     """
@@ -40,6 +59,7 @@ class SplitReport:
     cases: tuple[TestCase, ...]
     dropped: tuple[TestCase, ...]
     n_perturbed: dict[Split, int]
+    reasons: dict[str, int]
 
 
 def assign_splits_report(
@@ -59,6 +79,7 @@ def assign_splits_report(
         DatasetError: A quota cannot be met (names the split and the shortfall).
     """
     pool = Pool.from_cases(cases)
+    pool_ids = {c.id for c in pool.rest()}
     kept: list[TestCase] = []
     stages: tuple[Callable[[], list[TestCase]], ...] = (
         lambda: pick_perturbed(pool, plan.robust_pr_bases, Split.ROBUST_PR, plan),
@@ -77,7 +98,12 @@ def assign_splits_report(
     placed = {c.id for c in kept}
     dropped = [c for c in cases if c.id not in placed]
     perturbed = Counter(c.split for c in kept if c.perturbation)
-    return SplitReport(tuple(kept), tuple(sorted(dropped, key=lambda c: c.id)), dict(perturbed))
+    reasons = _reasons(dropped, {c.cluster_id for c in kept}, pool_ids)
+    if reasons:
+        _log.warning("splits_dropped", total=len(dropped), reasons=reasons)
+    return SplitReport(
+        tuple(kept), tuple(sorted(dropped, key=lambda c: c.id)), dict(perturbed), reasons
+    )
 
 
 def assign_splits(
