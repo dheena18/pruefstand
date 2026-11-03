@@ -1443,6 +1443,12 @@ class LLMPerturbation(Perturbation, Protocol):
 #                 citation_style, abbreviations, typos, colloquial
 def perturb_case(case: TestCase, p: Perturbation, rng: np.random.Generator) -> TestCase | None   # None if unchanged
 async def perturb_case_async(case: TestCase, p: LLMPerturbation, llm: LLMClient, rng: np.random.Generator) -> TestCase | None
+# T4.5 (D740-D744, additive; no signature above changed): perturb_case_async returns None for a rejected rewrite or an
+#   LLMError (warning `perturb_llm_error`) and re-raises QuotaExhausted. The four LLM perturbations are built with
+#   `build_llm_perturbation(name, Rewriter(model, local=...), RewriteValidator(...))` (`perturb/llm_registry.py`;
+#   `perturbation_names()` / `get_perturbation()` stay the seven deterministic ones). `LLMRewritePerturbation.apply` raises
+#   ConfigError (use `aapply`); `adraft` + `acheck` are the two halves behind `aapply`. `perturb/batch.py`: `RewriteStore`,
+#   `rewrite_pass(items, perturbations, llm=, store=, seed=) -> PassReport`, `validate_pass(...) -> list[Outcome]`.
 ```
 
 ## 13. attacks
