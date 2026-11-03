@@ -2,7 +2,7 @@
 
 Run it under the GPU lock only (``make bench-models``); it refuses to start without
 ``PRUEFSTAND_LOCK_HELD=1`` or when the resident set differs from the day set. Phases: quality,
-throughput, parallel, json, kv, longctx, vram.
+throughput, parallel, json, kv, longctx, vram, overhead.
 
     PYTHONPATH=experiments python -m model_selection.bench --phases quality,json --date 2026-11-02
 """
@@ -26,7 +26,7 @@ from model_selection.client import BenchError, OllamaClient, load_entry
 RESULTS = Path(__file__).resolve().parent / "results"
 GEN_ID, JUDGE_ID, EMBED_ID = "ollama/qwen3.8:27b-q8_0", "ollama/gemma3:12b", "ollama/bge-m3"
 DAY_SET = {"qwen3.8:27b-q8_0", "bge-m3", "gemma3:12b"}
-PHASES = ("quality", "throughput", "parallel", "json", "vram", "kv", "longctx")
+PHASES = ("quality", "throughput", "parallel", "json", "vram", "overhead", "kv", "longctx")
 FIELDS = ("run_id", "date", "phase", "model", "concurrency", "metric", "value")
 
 
@@ -147,6 +147,28 @@ def phase_json(ctx: dict[str, Any]) -> list[dict[str, Any]]:
     ]
 
 
+def phase_overhead(ctx: dict[str, Any]) -> list[dict[str, Any]]:
+    """Provisional ``overhead_gib`` (``size_vram`` minus disk size) of each resident model."""
+    out = []
+    for entry, client in (
+        (ctx["gen"], ctx["c0"]),
+        (ctx["judge"], ctx["c1"]),
+        (ctx["embed"], ctx["c0"]),
+    ):
+        size_vram = int(runs.ps_entry(client, entry.tag).get("size_vram", 0))
+        disk = vram.disk_bytes_of(entry.tag)
+        out.append(
+            {
+                "model": entry.id,
+                "size_vram_gib": round(size_vram / vram.GIB, 3),
+                "disk_gib": round(disk / vram.GIB, 3),
+                "overhead_gib": vram.overhead_gib(size_vram, disk),
+                "overhead_provisional": 1,
+            }
+        )
+    return out
+
+
 def run(phases: list[str], day: str, out_dir: Path) -> None:
     """Execute ``phases`` and write ``<day>.csv`` and ``<day>_answers.jsonl``.
 
@@ -163,6 +185,7 @@ def run(phases: list[str], day: str, out_dir: Path) -> None:
         "c1": c1,
         "gen": load_entry(GEN_ID),
         "judge": load_entry(JUDGE_ID),
+        "embed": load_entry(EMBED_ID),
     }
     rows: list[tuple[Any, ...]] = []
     answers: list[dict[str, Any]] = []
@@ -179,6 +202,7 @@ def run(phases: list[str], day: str, out_dir: Path) -> None:
                 "parallel": phase_parallel,
                 "kv": phase_kv,
                 "json": phase_json,
+                "overhead": phase_overhead,
             }[name](ctx)
         for row in summary:
             rows += flatten(run_id, day, name, row)
