@@ -22,6 +22,16 @@ from pruefstand.llm.recorder import CallRecorder
 from pruefstand.llm.retry import RetryPolicy
 
 
+@pytest.fixture(autouse=True)
+def _probe_answer(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The cassettes hold no version-probe exchange; give the probe a fixed answer."""
+
+    async def fixed(self: LiteLLMBackend, model: str) -> str:
+        return "cassette-model"
+
+    monkeypatch.setattr(LiteLLMBackend, "resolve_version", fixed)
+
+
 class Probe(BaseModel):
     reason: str
     score: int
@@ -78,11 +88,16 @@ async def test_second_identical_request_hits_the_cache() -> None:
 @pytest.mark.vcr
 async def test_corrupt_cache_entry_is_a_miss_and_is_overwritten() -> None:
     cache = DictCache()
-    cache.set(cache_key(echo_request()), b"not json")
+    cache.set(cache_key(echo_request(), "cassette-model"), b"not json")
     client, _, _ = _client(cache)
     resp = await client.complete(echo_request())
     assert resp.cached is False
-    assert LLMResponse.model_validate_json(cache.data[cache_key(echo_request())]).text == resp.text
+    assert (
+        LLMResponse.model_validate_json(
+            cache.data[cache_key(echo_request(), "cassette-model")]
+        ).text
+        == resp.text
+    )
 
 
 def test_cache_key_covers_every_request_field() -> None:

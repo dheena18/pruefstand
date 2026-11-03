@@ -128,7 +128,7 @@ def build_client(
     recorder: CallRecorder,
     *,
     model: ModelRef | None = None,
-    canaries: CanaryRegistry | None = None,
+    canaries: CanaryRegistry | None,
     external_datagen: bool = False,
 ) -> LLMClient:
     """Build the ``LLMClient`` for one model: policy, optional fallback judge, cache epochs.
@@ -139,15 +139,19 @@ def build_client(
         budget: The run budget.
         recorder: Receives the call rows.
         model: The model this client serves; default ``cfg.judge.pr``.
-        canaries: Registry for the external-provider data guard.
+        canaries: Registry for the external-provider data guard. Required (fail closed): pass an
+            empty ``CanaryRegistry`` only when no canary exists; None is refused.
         external_datagen: Allow public-text datagen to external providers (T4.2 only).
 
     Returns:
         The client; cache epochs are read from ``PRUEFSTAND_CACHE_DIR/cache_epochs.json``.
 
     Raises:
-        ConfigError: A backend cannot be built (see ``build_backend``).
+        ConfigError: A backend cannot be built (see ``build_backend``), or ``canaries`` is None.
     """
+    if canaries is None:
+        msg = "build_client needs a CanaryRegistry (the data guard fails closed)"
+        raise ConfigError(msg)
     ref = model or cfg.judge.pr
     backend = build_backend(ref, policy=cfg.llm)
     fallback_ref = cfg.llm.fallback_judge

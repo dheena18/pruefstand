@@ -7,6 +7,7 @@ from testsupport.llm_scenarios import echo_request
 from pruefstand.core.config import LLMPolicyConfig, ModelRef
 from pruefstand.core.config_loader import load_config
 from pruefstand.core.errors import ConfigError, LLMError, PolicyViolation
+from pruefstand.core.models.attacks import CanaryRegistry
 from pruefstand.core.protocols import LLMBackend, LLMClientLike
 from pruefstand.llm.backends.litellm import LiteLLMBackend, litellm_model
 from pruefstand.llm.budget import Budget
@@ -87,8 +88,26 @@ def test_a_missing_endpoints_file_is_a_config_error(
 
 def test_build_client_wires_the_judge_and_the_policy() -> None:
     cfg = load_config(Path(__file__).resolve().parents[5] / "examples" / "live" / "pruefstand.yaml")
-    client = build_client(cfg, None, Budget(max_usd=0.0, max_tokens=None), CallRecorder())
+    client = build_client(
+        cfg,
+        None,
+        Budget(max_usd=0.0, max_tokens=None),
+        CallRecorder(),
+        canaries=CanaryRegistry(canaries=()),
+    )
     assert isinstance(client, LLMClient)
+
+
+def test_build_client_fails_closed_without_a_canary_registry() -> None:
+    cfg = load_config(Path(__file__).resolve().parents[5] / "examples" / "live" / "pruefstand.yaml")
+    with pytest.raises(ConfigError, match="CanaryRegistry"):
+        build_client(
+            cfg,
+            None,
+            Budget(max_usd=0.0, max_tokens=None),
+            CallRecorder(),
+            canaries=None,
+        )
 
 
 def test_build_client_refuses_a_fallback_provider_the_policy_does_not_list() -> None:
@@ -101,7 +120,13 @@ def test_build_client_refuses_a_fallback_provider_the_policy_does_not_list() -> 
         }
     )
     with pytest.raises(ConfigError):
-        build_client(bad, None, Budget(max_usd=0.0, max_tokens=None), CallRecorder())
+        build_client(
+            bad,
+            None,
+            Budget(max_usd=0.0, max_tokens=None),
+            CallRecorder(),
+            canaries=CanaryRegistry(canaries=()),
+        )
 
 
 def test_paid_provider_is_refused() -> None:

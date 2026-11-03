@@ -9,6 +9,7 @@ import hashlib
 
 import httpx
 
+from pruefstand.core.hashing import stable_hash
 from pruefstand.core.logging import get_logger
 from pruefstand.llm.providers import catalogue_entry
 
@@ -45,7 +46,9 @@ def ollama_version(base: str, model_id: str) -> str | None:
             pin = catalogue_entry(model_id).digest
             if pin and pin != digest:
                 _log.warning("ollama_digest_differs_from_catalogue", model=model_id)
-            return f"{tag}@{digest[:_DIGEST_CHARS]}"
+            entry = catalogue_entry(model_id)
+            effective = stable_hash(sorted(entry.options.items()), "think=false")
+            return f"{tag}@{digest[:_DIGEST_CHARS]}|opts={effective[:_DIGEST_CHARS]}"
     return None
 
 

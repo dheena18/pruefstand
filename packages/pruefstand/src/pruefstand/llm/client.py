@@ -3,26 +3,23 @@
 from collections.abc import Callable
 from typing import TypeVar
 
-import numpy as np
 from pydantic import BaseModel, ValidationError
 
 from pruefstand.core.errors import ConfigError, LLMError, PolicyViolation, QuotaExhausted
 from pruefstand.core.hashing import stable_hash
 from pruefstand.core.models.llm import LLMRequest, LLMResponse
 from pruefstand.core.protocols import KVCache, LLMBackend
-from pruefstand.llm import retry as retrying
 from pruefstand.llm.budget import Budget
 from pruefstand.llm.json_extract import MAX_CANDIDATES, MAX_SCAN_CHARS, extract_json_object
 from pruefstand.llm.policy import LOCAL_PROVIDERS, LLMPolicy, provider_of
 from pruefstand.llm.prompts import PromptRegistry
 from pruefstand.llm.recorder import CallRecorder
-from pruefstand.llm.retry import RateLimitedError, RetryPolicy
+from pruefstand.llm.retry import Retrier, RetryPolicy, describe
 
 T = TypeVar("T", bound=BaseModel)
 CACHE_NAMESPACE = "llm"
 _EXCERPT = 200
 MAX_REPAIR_TOKENS = 16384
-HTTP_TOO_MANY_REQUESTS = 429
 
 
 def repair_max_tokens(max_tokens: int) -> int:
@@ -100,8 +97,7 @@ class LLMClient:
         self._policy = policy
         self._fallback = fallback
         self._fallback_model = _fallback_model(fallback)
-        self._retry = retry or RetryPolicy()
-        self._rng = np.random.default_rng(self._retry.seed)
+        self._retrier = Retrier(retry or RetryPolicy(), recorder)
         self._epochs = epochs
         self._versions: dict[str, str] = {}
         self._exhausted: set[str] = set()
@@ -124,50 +120,76 @@ class LLMClient:
             LLMError: The backend failed after the retries (cause chained).
             BudgetExceeded: The answered call pushed the budget over a limit.
         """
+        return await self._complete(req, None)
+
+    async def _complete(
+        self, req: LLMRequest, pending: list[tuple[str, LLMResponse]] | None
+    ) -> LLMResponse:
+        """``complete``; with ``pending`` the cache write is deferred to the caller."""
         self._check(req)
         try:
-            return await self._serve(self._backend, req, fallback=False)
+            return await self._serve(self._backend, req, pending, fallback=False)
         except QuotaExhausted:
             self._exhausted.add(req.model)
             if self._fallback is None or self._fallback_model is None:
                 raise
             fallback_req = req.model_copy(update={"model": self._fallback_model})
             self._check(fallback_req)  # the data guard applies to the fallback provider too
-            return await self._serve(self._fallback, fallback_req, fallback=True)
+            try:
+                return await self._serve(self._fallback, fallback_req, pending, fallback=True)
+            except QuotaExhausted:
+                self._exhausted.add(fallback_req.model)
+                raise
 
     def _check(self, req: LLMRequest) -> None:
         try:
             self._policy.check(req, provider_of(req.model))
         except ConfigError as err:  # not provider/model
             violation = PolicyViolation(str(err))
-            self._recorder.record(req, None, _describe(violation))
+            self._recorder.record(req, None, describe(violation))
             raise violation from err
         except PolicyViolation as err:
-            self._recorder.record(req, None, _describe(err))
+            self._recorder.record(req, None, describe(err))
             raise
 
-    async def _serve(self, backend: LLMBackend, req: LLMRequest, *, fallback: bool) -> LLMResponse:
+    async def _serve(
+        self,
+        backend: LLMBackend,
+        req: LLMRequest,
+        pending: list[tuple[str, LLMResponse]] | None,
+        *,
+        fallback: bool,
+    ) -> LLMResponse:
         version = await self._version(backend, req.model)
+        # A provider that can be probed but did not tell its version is never cached (a stale
+        # entry of another model could be served), neither read nor written.
+        probed = provider_of(req.model) in LOCAL_PROVIDERS and hasattr(backend, "resolve_version")
+        cacheable = (
+            self._cache is not None and req.temperature == 0 and not (probed and version is None)
+        )
         key = self._key(req, version)
-        cached = self._lookup(key)
+        cached = self._lookup(key) if cacheable else None
         if cached is not None:
             self._recorder.record(req, cached, None)
             return cached
-        if req.model in self._exhausted and not fallback:
+        if req.model in self._exhausted:
             err = QuotaExhausted(f"{req.model}: quota exhausted earlier in this run", status=429)
-            if self._fallback is None:  # with a fallback the answer row follows at once
-                self._recorder.record(req, None, _describe(err))
+            if self._fallback is None or fallback:  # else the fallback's answer row follows
+                self._recorder.record(req, None, describe(err))
             raise err
         self._budget.check()  # a caller that swallowed BudgetExceeded cannot keep sending
-        resp = await self._call(backend, req)
+        resp = await self._retrier.call(backend, req)
         if fallback:
             resp = resp.model_copy(update={"fallback": True})
         if resp.model_version and req.model not in self._versions:
             self._versions[req.model] = resp.model_version
             key = self._key(req, resp.model_version)
         self._recorder.record(req, resp, None)
-        if self._cache is not None and req.temperature == 0:
-            self._cache.set(key, resp.model_dump_json().encode("utf-8"))
+        if cacheable and self._cache is not None and resp.text.strip():
+            if pending is None:
+                self._cache.set(key, resp.model_dump_json().encode("utf-8"))
+            else:
+                pending.append((key, resp))
         self._budget.charge(resp)
         return resp
 
@@ -201,37 +223,10 @@ class LLMClient:
         except ValidationError:
             return None  # a corrupt entry is a miss; the fresh answer overwrites it
 
-    async def _call(self, backend: LLMBackend, req: LLMRequest) -> LLMResponse:
-        """One logical call: retry transient failures; every failed attempt is recorded."""
-        for attempt in range(self._retry.max_retries + 1):
-            try:
-                return await backend.acomplete(req)
-            except LLMError as err:
-                await self._after_failure(req, err, attempt)  # raises unless a retry follows
-            except Exception as err:
-                self._recorder.record(req, None, type(err).__name__)  # no message: may hold secrets
-                msg = f"backend failed: {type(err).__name__}"
-                raise LLMError(msg, transient=False) from err
-        msg = "retry loop ended without an answer"  # unreachable: the last attempt raises
-        raise LLMError(msg, transient=False)
-
-    async def _after_failure(self, req: LLMRequest, err: LLMError, attempt: int) -> None:
-        """Decide after a failed attempt: raise (permanent, last, quota) or sleep and return."""
-        policy = self._retry
-        wait = err.retry_after_s if isinstance(err, RateLimitedError) else None
-        final = attempt >= policy.max_retries
-        external_429 = err.status == HTTP_TOO_MANY_REQUESTS and (
-            provider_of(req.model) not in LOCAL_PROVIDERS
-        )
-        if external_429 and (final or (wait is not None and wait > policy.max_retry_after_s)):
-            self._recorder.record(req, None, _describe(err))
-            msg = f"{req.model}: free quota exhausted ({_describe(err)})"
-            raise QuotaExhausted(msg, status=HTTP_TOO_MANY_REQUESTS) from err
-        if not external_429 and (not err.transient or final):
-            self._recorder.record(req, None, _describe(err))
-            raise err
-        self._recorder.record(req, None, f"retry {attempt + 1}: {_describe(err)}")
-        await retrying.pause(retrying.backoff_delay(policy, attempt, wait, self._rng))
+    def _flush(self, pending: list[tuple[str, LLMResponse]]) -> None:
+        if self._cache is not None:
+            for key, resp in pending:
+                self._cache.set(key, resp.model_dump_json().encode("utf-8"))
 
     async def complete_json(self, req: LLMRequest, schema: type[T]) -> T:
         """Answer in JSON mode and validate against ``schema``.
@@ -251,10 +246,13 @@ class LLMClient:
             LLMError: Both answers are invalid (message holds a 200-character excerpt).
         """
         first = req.model_copy(update={"response_format": "json"})
-        resp = await self.complete(first)
+        pending: list[tuple[str, LLMResponse]] = []
+        resp = await self._complete(first, pending)
         parsed = _parse(resp.text, schema)
         if parsed is not None:
+            self._flush(pending)
             return parsed
+        invalid = len(pending)  # entries before this index belong to the invalid first answer
         repair = self._prompts.get("json_repair", "v1").render()
         again = first.model_copy(
             update={
@@ -262,8 +260,10 @@ class LLMClient:
                 "max_tokens": repair_max_tokens(first.max_tokens),
             }
         )
-        resp = await self.complete(again)
+        resp = await self._complete(again, pending)
         parsed = _parse(resp.text, schema)
+        if parsed is not None:
+            self._flush(pending[invalid:])  # the invalid first answer is never cached
         if parsed is None:
             msg = (
                 "invalid JSON after one repair "
@@ -292,7 +292,3 @@ def _parse[M: BaseModel](text: str, schema: type[M]) -> M | None:
         return schema.model_validate_json(raw)
     except ValidationError:
         return None
-
-
-def _describe(err: Exception) -> str:
-    return f"{type(err).__name__}: {err}"[: _EXCERPT * 2]

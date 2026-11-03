@@ -5,7 +5,14 @@ from dataclasses import dataclass
 
 import numpy as np
 
-from pruefstand.core.errors import LLMError
+from pruefstand.core.errors import LLMError, QuotaExhausted
+from pruefstand.core.models.llm import LLMRequest, LLMResponse
+from pruefstand.core.protocols import LLMBackend
+from pruefstand.llm.policy import LOCAL_PROVIDERS, provider_of
+from pruefstand.llm.recorder import CallRecorder
+
+_EXCERPT = 200
+HTTP_TOO_MANY_REQUESTS = 429
 
 
 @dataclass(frozen=True)
@@ -75,3 +82,61 @@ def backoff_delay(
 async def pause(seconds: float) -> None:
     """Sleep; a module-level function so tests can replace it."""
     await asyncio.sleep(seconds)
+
+
+def describe(err: Exception) -> str:
+    """Return ``Type: message`` cut to a recorder-friendly length."""
+    return f"{type(err).__name__}: {err}"[: _EXCERPT * 2]
+
+
+class Retrier:
+    """Runs one logical backend call with retries; records every failed attempt.
+
+    Args:
+        policy: Backoff policy.
+        recorder: Receives one row per failed attempt.
+    """
+
+    def __init__(self, policy: RetryPolicy, recorder: CallRecorder) -> None:
+        self._policy = policy
+        self._recorder = recorder
+        self._rng = np.random.default_rng(policy.seed)
+
+    async def call(self, backend: LLMBackend, req: LLMRequest) -> LLMResponse:
+        """Call ``backend`` until it answers, fails permanently or the retries are used up.
+
+        Raises:
+            QuotaExhausted: An external provider's 429 survived the retries, or its
+                ``Retry-After`` exceeds the wait cap.
+            LLMError: Permanent failure, or a transient one after the last retry (a local
+                provider's ``Retry-After`` above the cap also ends the retries at once).
+        """
+        for attempt in range(self._policy.max_retries + 1):
+            try:
+                return await backend.acomplete(req)
+            except LLMError as err:
+                await self._after_failure(req, err, attempt)  # raises unless a retry follows
+            except Exception as err:
+                self._recorder.record(req, None, type(err).__name__)  # message may hold secrets
+                msg = f"backend failed: {type(err).__name__}"
+                raise LLMError(msg, transient=False) from err
+        msg = "retry loop ended without an answer"  # unreachable: the last attempt raises
+        raise LLMError(msg, transient=False)
+
+    async def _after_failure(self, req: LLMRequest, err: LLMError, attempt: int) -> None:
+        policy = self._policy
+        wait = err.retry_after_s if isinstance(err, RateLimitedError) else None
+        final = attempt >= policy.max_retries
+        too_long = wait is not None and wait > policy.max_retry_after_s
+        external_429 = err.status == HTTP_TOO_MANY_REQUESTS and (
+            provider_of(req.model) not in LOCAL_PROVIDERS
+        )
+        if external_429 and (final or too_long):
+            self._recorder.record(req, None, describe(err))
+            msg = f"{req.model}: free quota exhausted ({describe(err)})"
+            raise QuotaExhausted(msg, status=HTTP_TOO_MANY_REQUESTS) from err
+        if not external_429 and (not err.transient or final or too_long):
+            self._recorder.record(req, None, describe(err))
+            raise err
+        self._recorder.record(req, None, f"retry {attempt + 1}: {describe(err)}")
+        await pause(backoff_delay(policy, attempt, wait, self._rng))
