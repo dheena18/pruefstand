@@ -55,6 +55,7 @@ from pruefstand.core.models.dataset import QACandidate
 from pruefstand.dataset.cross_check import (
     CrossCheckPlan,
     CrossCheckRow,
+    check_second_model,
     cross_check,
     pick_sample,
     row_key,
@@ -81,9 +82,10 @@ _STOP_COUNTERS = ("quota_exhausted", "budget_exceeded", "llm_error")
 
 def _plan(args: argparse.Namespace, chunks: list[Chunk]) -> list[Sequence[Chunk]]:
     """The seeded plan: one chunk or one pair per unit, tenants in sorted order."""
-    exclude = (
-        load_excluded_doc_ids(args.exclude_file) if args.exclude_file.is_file() else frozenset()
-    )
+    if not args.exclude_file.is_file():
+        msg = f"--exclude-file {args.exclude_file.name} is not a file (exclusion list)"
+        raise ConfigError(msg)
+    exclude = load_excluded_doc_ids(args.exclude_file)
     rng = np.random.default_rng([args.seed, 0])
     tenants = sorted({c.tenant for c in chunks}) if args.tenant == "all" else [args.tenant]
     graph: dict[str, tuple[str, ...]] | None = None
@@ -230,7 +232,9 @@ def _report(stats: GenStats, recorder: CallRecorder, cands: int, run_dir: Path) 
 async def _run(args: argparse.Namespace, make: ClientFactory, make_judge: JudgeFactory) -> int:
     check_datagen_model(args.model)
     if args.cross_check > 0:
-        check_datagen_model(args.cross_check_model)
+        check_second_model(args.cross_check_model, args.model)
+    if args.max_requests is not None:
+        args.concurrency = 1  # the cap is exact only when requests are sent one at a time
     job = Job(args, _run_dir(args), load_chunks(args.corpus_dir), make, GenStats(), CallRecorder())
     stopped = False
     if args.phase in {"generate", "both"}:
@@ -238,6 +242,7 @@ async def _run(args: argparse.Namespace, make: ClientFactory, make_judge: JudgeF
         stopped = any(job.stats.counts[k] for k in _STOP_COUNTERS)
         if args.cross_check > 0 and not stopped and cands:
             await _cross(job, cands)
+            stopped = any(job.stats.counts[k] for k in _STOP_COUNTERS)
         print(_report(job.stats, job.recorder, len(cands), job.run_dir))
     if args.phase in {"validate", "both"} and not stopped:
         validated, problems = await _validate(args, job.run_dir, job.chunks, make_judge)

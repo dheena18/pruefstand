@@ -29,7 +29,7 @@ Quelle: § 556 BGB
 Auszug:
 (2) Betriebskostenvorauszahlungen müssen angemessen sein. Bei einer Pauschale entfällt die Abrechnung; bei einer Vorauszahlung muss der Vermieter jährlich abrechnen.
 Antwort:
-{"question": "Worin unterscheidet sich die Betriebskostenpauschale von der Vorauszahlung hinsichtlich der Abrechnungspflicht?", "answer": "Bei der Pauschale entfällt die Abrechnung, bei der Vorauszahlung muss der Vermieter jährlich abrechnen.", "citation": "§ 556 Abs. 2 BGB", "evidence": "Bei einer Pauschale entfällt die Abrechnung; bei einer Vorauszahlung muss der Vermieter jährlich abrechnen.", "style": "fachlich"}
+{"question": "Worin unterscheidet sich die Betriebskostenpauschale von der Vorauszahlung hinsichtlich der Abrechnungspflicht?", "answer": "Eine Pauschale braucht keine Abrechnung; wer Vorschüsse verlangt, muss jedes Jahr abrechnen.", "citation": "§ 556 Abs. 2 BGB", "evidence": "Bei einer Pauschale entfällt die Abrechnung; bei einer Vorauszahlung muss der Vermieter jährlich abrechnen.", "style": "fachlich"}
 
 Jetzt dein Auftrag.
 Gewünschter Stil: {{stil}}

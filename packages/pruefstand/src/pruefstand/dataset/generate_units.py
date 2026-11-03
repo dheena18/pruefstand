@@ -20,7 +20,7 @@ from pruefstand.core.errors import ConfigError
 from pruefstand.core.models.corpus import Chunk
 from pruefstand.core.models.dataset import QACandidate
 from pruefstand.core.models.llm import LLMRequest, LLMRole
-from pruefstand.dataset.evidence import cited_absatz, evidence_span
+from pruefstand.dataset.evidence import cited_absatz, cites_chunk, evidence_span
 from pruefstand.llm.prompts import PromptRegistry
 
 PROMPT_ROOT = Path(__file__).resolve().parent / "prompts"
@@ -172,6 +172,8 @@ def _span(spec: PromptSpec, answer: QAAnswer, unit: Unit) -> str | None:
     """Check the evidence against the gold chunk (cross-lingual) or either chunk (multi-hop)."""
     sources = unit.chunks[:1] if spec.category is Category.CROSS_LINGUAL else unit.chunks
     for chunk in sources:
+        if not cites_chunk(answer.citation, chunk):
+            continue
         span = evidence_span(answer.evidence, chunk.text, cited_absatz(answer.citation, chunk))
         if span is not None:
             return span

@@ -110,3 +110,25 @@ def cited_absatz(citation: str | None, chunk: Chunk) -> str | None:
         if (item.kind, item.number, item.law) == (key.kind, key.number, key.law):
             return item.absatz
     return None
+
+
+def cites_chunk(citation: str | None, chunk: Chunk) -> bool:
+    """Return False when ``citation`` names other paragraphs only and none of this chunk's.
+
+    A missing or unparsable citation (or a chunk without ``citation_key``) cannot say so: True.
+
+    Examples:
+        >>> from pruefstand.core.models.corpus import Chunk
+        >>> c = Chunk(
+        ...     chunk_id="a#0", doc_id="a", tenant="t", lang="de", text="x",
+        ...     citation_key="§ 622 BGB", section=None, parallel_id=None, version_date=None,
+        ...     license="l", source="gii:bgb",
+        ... )
+        >>> cites_chunk("§ 1 KSchG", c), cites_chunk("§ 622 Abs. 2 BGB", c)
+        (False, True)
+    """
+    found = extract_citations(citation or "")
+    key = parse_one(chunk.citation_key) if chunk.citation_key else None
+    if not found or key is None:
+        return True
+    return any((f.kind, f.number, f.law) == (key.kind, key.number, key.law) for f in found)

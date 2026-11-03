@@ -31,7 +31,7 @@ Auszug:
 (1) Die Mietsicherheit darf höchstens das Dreifache der Monatsmiete ohne Betriebskostenvorauszahlungen betragen.
 (2) Der Mieter darf die Sicherheit in drei gleichen Monatsraten zahlen; die erste Rate ist zu Beginn des Mietverhältnisses fällig.
 Antwort:
-{"question": "In wie vielen Teilzahlungen darf der Mieter die Kaution leisten und wann wird die erste fällig?", "answer": "In drei gleichen Monatsraten; die erste Rate ist zu Beginn des Mietverhältnisses fällig.", "citation": "§ 551 Abs. 2 BGB", "evidence": "Der Mieter darf die Sicherheit in drei gleichen Monatsraten zahlen; die erste Rate ist zu Beginn des Mietverhältnisses fällig.", "style": "fachlich"}
+{"question": "In wie vielen Teilzahlungen darf der Mieter die Kaution leisten und wann wird die erste fällig?", "answer": "In drei gleich hohen Teilbeträgen, wobei der erste schon mit dem Einzug gezahlt wird.", "citation": "§ 551 Abs. 2 BGB", "evidence": "Der Mieter darf die Sicherheit in drei gleichen Monatsraten zahlen; die erste Rate ist zu Beginn des Mietverhältnisses fällig.", "style": "fachlich"}
 
 Jetzt dein Auftrag.
 Gewünschter Stil: {{stil}}

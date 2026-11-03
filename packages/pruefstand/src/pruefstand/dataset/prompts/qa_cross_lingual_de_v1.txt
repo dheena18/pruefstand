@@ -23,7 +23,7 @@ Zielauszug (§ 573c BGB):
 Vergleichstext:
 (1) The tenant may give notice no later than the third working day of a calendar month, to take effect at the end of the month after next.
 Antwort:
-{"question": "By when do I have to hand in my notice so that my flat contract ends two months later?", "answer": "No later than the third working day of a month; the contract then ends at the end of the month after next.", "citation": "§ 573c Abs. 1 BGB", "evidence": "Der Mieter kann spätestens am dritten Werktag eines Kalendermonats für den Ablauf des übernächsten Monats kündigen.", "style": "laie"}
+{"question": "By when do I have to hand in my notice so that my flat contract ends two months later?", "answer": "Your notice has to arrive within the first three working days of a month; the contract then ends two months later.", "citation": "§ 573c Abs. 1 BGB", "evidence": "Der Mieter kann spätestens am dritten Werktag eines Kalendermonats für den Ablauf des übernächsten Monats kündigen.", "style": "laie"}
 
 Jetzt dein Auftrag.
 Sprache von Frage und Antwort: {{frage_sprache}}

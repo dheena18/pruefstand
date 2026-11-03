@@ -16,6 +16,7 @@ import numpy as np
 from pydantic import ValidationError
 
 from pruefstand.core.citations import parse_one
+from pruefstand.core.enums import Lang
 from pruefstand.core.errors import DatasetError
 from pruefstand.core.models.corpus import Chunk
 from pruefstand.dataset.to_case import license_config_of
@@ -93,11 +94,20 @@ def load_excluded_doc_ids(path: Path) -> frozenset[str]:
     return frozenset(ids)
 
 
-def _eligible(chunks: Sequence[Chunk], exclude: Collection[str], min_tokens: int) -> list[Chunk]:
+def _eligible(
+    chunks: Sequence[Chunk],
+    exclude: Collection[str],
+    min_tokens: int,
+    *,
+    german_only: bool = True,
+) -> list[Chunk]:
     return [
         c
         for c in sorted(chunks, key=lambda c: c.chunk_id)
-        if is_public_text(c) and c.doc_id not in exclude and estimate_tokens(c.text) >= min_tokens
+        if is_public_text(c)
+        and (c.lang is Lang.DE or not german_only)
+        and c.doc_id not in exclude
+        and estimate_tokens(c.text) >= min_tokens
     ]
 
 
@@ -251,7 +261,11 @@ def sample_cross_lingual_pairs(
     The chunks of a parallel document are aligned by their position (``#k``); a parallel id whose
     two languages have a different number of chunks is skipped, since the alignment is unknown.
     """
-    pool = [c for c in _eligible(chunks, exclude_doc_ids, min_tokens) if c.parallel_id]
+    pool = [
+        c
+        for c in _eligible(chunks, exclude_doc_ids, min_tokens, german_only=False)
+        if c.parallel_id
+    ]
     groups: dict[tuple[str, str], dict[str, list[Chunk]]] = {}
     for c in pool:
         groups.setdefault((c.tenant, c.parallel_id or ""), {}).setdefault(c.lang.value, []).append(

@@ -27,8 +27,9 @@ JudgeFactory = Callable[[ModelRef], LLMClient]
 def _canaries() -> CanaryRegistry:
     try:
         return load_canary_registry(root=REPO)
-    except StoreError:
-        return CanaryRegistry(canaries=())
+    except StoreError as exc:  # fail closed: no registry means no canary scan (ADR-0009)
+        msg = f"the canary registry is unreadable ({exc}); refusing to run without the data guard"
+        raise ConfigError(msg) from exc
 
 
 def default_client(ref: ModelRef, max_requests: int | None, recorder: CallRecorder) -> LLMClient:

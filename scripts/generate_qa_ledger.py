@@ -66,9 +66,19 @@ def read_ledger(run_dir: Path) -> dict[str, Entry]:
     return entries
 
 
+def _cut_partial_line(path: Path) -> None:
+    """Drop a half-written last line (a killed run) so the next append starts on a new line."""
+    if not path.is_file():
+        return
+    data = path.read_bytes()
+    if data and not data.endswith(b"\n"):
+        path.write_bytes(data[: data.rfind(b"\n") + 1])
+
+
 def append_entry(run_dir: Path, key: str, candidate: QACandidate | None) -> None:
     """Append one finished unit to the ledger and flush it to disk."""
     run_dir.mkdir(parents=True, exist_ok=True)
+    _cut_partial_line(run_dir / LEDGER)
     row: dict[str, object] = {
         "key": key,
         "status": "ok" if candidate else "invalid",

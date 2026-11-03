@@ -118,5 +118,6 @@ async def cross_check(
                 primary=cand, second=second, primary_model=primary_model, second_model=model
             )
         )
-        counts.add("cross_checked")
+        if second is not None:
+            counts.add("cross_checked")
     return rows
