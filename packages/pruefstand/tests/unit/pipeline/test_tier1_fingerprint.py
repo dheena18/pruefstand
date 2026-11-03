@@ -24,7 +24,7 @@ POLICY = GatePolicy(
     metrics={
         "context_recall": MetricPolicy(max_drop=0.05),
         "faithfulness": MetricPolicy(max_drop=0.05),
-        "refusal_judged": MetricPolicy(max_drop=0.05),
+        "answer_correctness": MetricPolicy(max_drop=0.05),
     },
     min_clusters=1,
 )
@@ -61,7 +61,7 @@ async def test_a_run_with_and_without_judged_metrics_has_one_tier_one_fingerprin
         s.metric for s in report.notable_slices if s.informational_reason == "tier1_judged"
     }
     assert report.no_baseline is False
-    assert informational <= {"faithfulness", "refusal_judged", "context_recall"}
+    assert informational <= {"faithfulness", "answer_correctness", "context_recall"}
 
 
 async def test_in_tier_two_the_judged_metric_versions_do_enter_the_fingerprint(

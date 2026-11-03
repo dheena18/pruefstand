@@ -1,16 +1,19 @@
 """Judge input cap, token estimate, the Judge guard and the answer-echo rule (T5.2b, X3.9)."""
 
+import json
 from pathlib import Path
 
 import pytest
 from testsupport.gpu_files import SHIPPED_CATALOGUE
-from testsupport.judge_support import configure, make_judge
-from testsupport.judged_support import CAP, judges, user_prompts
+from testsupport.judge_support import DE_ROOT, MODEL, configure, make_client, make_judge
+from testsupport.judged_support import CAP, judges, user_prompts, verdict
 from testsupport.loopback_script import Step, ollama_body
 
-from pruefstand.core.errors import ConfigError, LLMError
+from pruefstand.core.errors import ConfigError, JudgeInputTruncated, LLMError
+from pruefstand.judges.judge import CI_NONCE_KEY, Judge
 from pruefstand.judges.output import make_task
 from pruefstand.judges.tokens import estimate_tokens, input_cap
+from pruefstand.llm.prompts import PromptRegistry
 
 
 def test_the_a40_judge_cap_is_its_window_minus_1024(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -58,3 +61,59 @@ def test_a_judge_builds_without_reading_the_catalogue(
     configure(tmp_path, monkeypatch, "http://127.0.0.1:1")
     judge, _ = make_judge()
     assert judge.model.startswith("ollama/")  # the cap is read on first use (D520)
+
+
+async def test_a_provider_report_over_the_window_is_a_truncation_error(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    window = 4096 - 77  # num_ctx - num_predict of the loopback catalogue
+    body = json.dumps(
+        {
+            "model": "m",
+            "message": {"role": "assistant", "content": '{"reason": "x", "score": 1}'},
+            "done": True,
+            "prompt_eval_count": window,
+            "eval_count": 2,
+        }
+    ).encode()
+    task = make_task("refusal_judged", frage="F?", antwort="A.")
+    with (
+        judges(tmp_path, monkeypatch, [Step(body=body)]) as (pool, _, _),
+        pytest.raises(JudgeInputTruncated),
+    ):
+        await pool.for_metric("refusal_judged").score(task)
+
+
+async def test_a_provider_report_below_the_window_is_fine(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    task = make_task("refusal_judged", frage="F?", antwort="A.")
+    with judges(tmp_path, monkeypatch, [verdict(1)]) as (pool, _, _):
+        assert (await pool.for_metric("refusal_judged").score(task)).raw_score == 1
+
+
+def env_judge() -> Judge:
+    client, _ = make_client()
+    return Judge(client, MODEL, PromptRegistry([DE_ROOT]))  # the key comes from the environment
+
+
+def test_tier_two_refuses_a_weak_or_the_public_ci_nonce_key(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    configure(tmp_path, monkeypatch, "http://127.0.0.1:1")
+    monkeypatch.setenv("PRUEFSTAND_STACK", "a40")
+    for weak in (CI_NONCE_KEY, "abc", "z" * 40, "a" * 31):
+        monkeypatch.setenv("PRUEFSTAND_NONCE_KEY", weak)
+        with pytest.raises(ConfigError, match="weak or public"):
+            env_judge()
+    monkeypatch.setenv("PRUEFSTAND_NONCE_KEY", "ab12" * 8)
+    env_judge()
+
+
+def test_tier_one_may_use_the_public_ci_nonce_key(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    configure(tmp_path, monkeypatch, "http://127.0.0.1:1")
+    monkeypatch.setenv("PRUEFSTAND_STACK", "live")
+    monkeypatch.setenv("PRUEFSTAND_NONCE_KEY", CI_NONCE_KEY)
+    env_judge()

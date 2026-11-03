@@ -29,12 +29,12 @@ JUDGE_SIDE_REASONS: frozenset[str] = frozenset(
         "judge_quota",
         "judge_cap",
         "judge_not_selected",
-        "judge_input_too_long",
     }
 )
 """``not_applicable`` reasons that come from the judge side (scope, quota, cap, infrastructure),
-not from the candidate: the gate leaves such a case out of the pairing like a judge error, it
-never worst-fills it (B1)."""
+not from the candidate: the gate treats such a case like a judge error (excluded from the pairing,
+but capped at 20 % of a slice, beyond which it is worst-filled). ``judge_input_too_long`` is not
+in this set: the candidate controls its answer length, so it is worst-filled (B1')."""
 
 
 class MetricValue(BaseModel):

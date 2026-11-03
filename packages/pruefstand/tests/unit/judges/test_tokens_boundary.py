@@ -42,3 +42,16 @@ async def test_a_prompt_of_exactly_the_cap_is_sent_and_one_token_more_is_refused
         with pytest.raises(LLMError, match="input cap"):
             await judge.score(over)
     assert len(user_prompts(state)) == 1
+
+
+def test_hex_and_base64_runs_cost_one_token_per_character() -> None:
+    hexed = "9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08"
+    base64 = "TWFuIGlzIGRpc3Rpbmd1aXNoZWQsIG5vdCBvbmx5IGJ5IGhpcyByZWFzb24" * 3
+    assert estimate_tokens(hexed) >= len(hexed)
+    assert estimate_tokens(base64) >= len(base64)
+
+
+def test_table_text_with_pipes_is_not_undercounted() -> None:
+    table = "| Az | 12 C 345/21 | 1.234,56 EUR |\n" * 100
+    pipes_digits_punct = sum(not c.isalpha() and not c.isspace() for c in table)
+    assert estimate_tokens(table) >= pipes_digits_punct

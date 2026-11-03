@@ -76,13 +76,21 @@ def _request_failed(scored: ScoredCase) -> bool:
 def _fillable(scored: ScoredCase, value: MetricValue | None, *, fill_errors: bool) -> bool:
     """Whether a candidate value without a number is worst-filled.
 
-    Not a judge error and not a judge-side ``not_applicable`` (canary scope, quota, cap, no judges).
+    A candidate ``not_applicable`` is filled (a judge-side one too: ``_judge_side`` flags it so the
+    gate caps its exclusion exactly like a judge error).
     """
-    if value is not None and value.status is MetricStatus.NOT_APPLICABLE:
-        return value.details.get("reason") not in JUDGE_SIDE_REASONS
-    if value is None:
+    if value is None or value.status is MetricStatus.NOT_APPLICABLE:
         return True
     return value.status is MetricStatus.ERROR and (fill_errors or _request_failed(scored))
+
+
+def _judge_side(value: MetricValue | None) -> bool:
+    """A judge error or a judge-side ``not_applicable``: excluded unless over the 20 % cap."""
+    if value is None:
+        return False
+    if value.status is MetricStatus.NOT_APPLICABLE:
+        return value.details.get("reason") in JUDGE_SIDE_REASONS
+    return value.status is MetricStatus.ERROR
 
 
 def _columns(scored: Iterable[ScoredCase]) -> dict[str, tuple[str, ...]]:
@@ -116,11 +124,7 @@ def _build(
         elif fill_worst and _fillable(scored, value, fill_errors=fill_errors):
             values.append(worst)
             filled.add(str(scored.case.id))
-            if (
-                value is not None
-                and value.status is MetricStatus.ERROR
-                and not _request_failed(scored)
-            ):
+            if _judge_side(value) and not _request_failed(scored):
                 errors.add(str(scored.case.id))
         else:
             continue

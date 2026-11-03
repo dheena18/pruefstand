@@ -16,6 +16,7 @@ from testsupport.runner_support import (
 )
 
 from pruefstand.adapters.http import HttpTargetAdapter
+from pruefstand.core.errors import JudgeInputTruncated
 from pruefstand.core.ids import DocId, TenantId
 from pruefstand.core.models.attacks import Canary, CanaryRegistry
 from pruefstand.core.models.judge import JudgeTask
@@ -207,11 +208,37 @@ async def test_a_truncated_judge_input_is_counted_and_listed(
     router: respx.MockRouter, adapter: HttpTargetAdapter
 ) -> None:
     router.post("/v1/query").respond(200, json=load_openapi_example("query_ok.json"))
-    pool = SpyPool(cap=60)  # only part of the context fits
-    results = await run_cases(make_runner(adapter, metrics=registry(), judges=pool), [make_case(0)])
-    value = values_of(results, 0)["faithfulness"]
+    results = value = None
+    for cap in range(60, 600, 10):  # the first cap at which only part of the context fits
+        pool = SpyPool(cap=cap)
+        results = await run_cases(
+            make_runner(adapter, metrics=registry(), judges=pool), [make_case(0)]
+        )
+        value = values_of(results, 0)["faithfulness"]
+        if value.details.get("reason") != "judge_input_too_long":
+            break
+    assert value is not None
+    assert results is not None
     assert value.details.get("truncated") is True
     assert results.manifest.counts["judge_truncated"] == 1
+
+
+async def test_a_provider_that_cut_the_input_is_a_counted_truncation_and_a_judge_error(
+    router: respx.MockRouter, adapter: HttpTargetAdapter
+) -> None:
+    router.post("/v1/query").respond(200, json=load_openapi_example("query_ok.json"))
+
+    async def cut(_: JudgeTask) -> None:
+        message = "the provider reported more prompt tokens than the window leaves"
+        raise JudgeInputTruncated(message)
+
+    results = await run_cases(
+        make_runner(adapter, metrics=registry(), judges=SpyPool(act=cut)), [make_case(0)]
+    )
+    value = values_of(results, 0)["faithfulness"]
+    assert (value.status, value.details["error"]) == (MetricStatus.ERROR, "JudgeInputTruncated")
+    assert results.manifest.counts["judge_truncated"] == 2  # faithfulness and correctness
+    assert results.manifest.counts["judge_error"] == 2
 
 
 async def test_the_refusal_flag_mismatch_is_counted_once_per_case(

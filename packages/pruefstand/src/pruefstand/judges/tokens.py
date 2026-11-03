@@ -2,10 +2,11 @@
 
 The cap of a judge is its context window minus 1 024 tokens: the catalogue ``options.num_ctx`` for
 an Ollama judge, the documented input limit of ``llm/quotas.yaml`` for a GitHub Models judge.
-No tokenizer file is available offline, so the count is a conservative estimate (digits one token
-each, other ASCII 0.4, non-ASCII one): it over-counts German prose and truncates earlier than a
-real tokenizer would, never later. The catalogue tokenizer (``tokenizer.source``) is a follow-up:
-it needs a new dependency.
+No tokenizer file is available offline, so the count is a conservative estimate (letters 0.4,
+digits, punctuation and non-ASCII one, long unbroken runs one per character): it over-counts
+German prose and truncates earlier than a real tokenizer would, never later. After each call the
+judge also compares the provider's reported prompt tokens with the window (``judge_window``). The
+catalogue tokenizer (``tokenizer.source``) is a follow-up: it needs a new dependency.
 """
 
 import math
@@ -18,26 +19,42 @@ from pruefstand.llm.providers import catalogue_options
 HEADROOM_TOKENS = 1_024
 DEFAULT_WINDOW_TOKENS = 8_192
 """Window assumed for a judge whose provider documents none (a local OpenAI-compatible server)."""
-_ASCII_CHAR_TOKENS = 0.4  # one token per 2.5 ordinary ASCII characters (conservative)
+_LETTER_TOKENS = 0.4  # one token per 2.5 letters of an ordinary word (conservative)
+_SPACE_TOKENS = 0.25
+_LONG_WORD = (
+    12  # longer unbroken runs (hex, base64, identifiers, URLs) cost one token per character
+)
+
+
+def _word_tokens(word: str) -> float:
+    if len(word) > _LONG_WORD:
+        return float(len(word))
+    total = 0.0
+    for char in word:
+        plain = char.isascii() and char.isalpha()
+        total += _LETTER_TOKENS if plain else 1.0  # digits, punctuation, pipes, non-ASCII
+    return total
 
 
 def estimate_tokens(text: str) -> int:
     """Return a conservative (high) token count of ``text``.
 
-    Digits count one token each (Gemma splits numbers into single digits, so amounts, file
-    numbers and tables are token-dense), a non-ASCII character one token, any other character
-    0.4 token. This over-counts German prose and never under-counts number-dense text.
+    Letters of an ordinary word count 0.4 token, a space 0.25, everything else (digits,
+    punctuation, table pipes, non-ASCII characters) one token each, and an unbroken run of more
+    than 12 characters (hex, base64, identifiers) one token per character. This over-counts German
+    prose and does not under-count number-, hex- or table-dense text.
 
     Examples:
         >>> estimate_tokens(""), estimate_tokens("abc"), estimate_tokens("4711")
         (0, 2, 4)
         >>> estimate_tokens("Kündigung")
         5
+        >>> estimate_tokens("a" * 40)
+        40
     """
-    digits = sum(c.isdigit() for c in text)
-    other = text.encode("ascii", "ignore").decode().__len__() - digits
-    non_ascii = len(text) - len(text.encode("ascii", "ignore"))
-    return math.ceil(digits + non_ascii + other * _ASCII_CHAR_TOKENS)
+    words = text.split()
+    spaces = len(text) - sum(len(w) for w in words)
+    return math.ceil(sum(_word_tokens(w) for w in words) + spaces * _SPACE_TOKENS)
 
 
 def input_cap(model_id: str) -> int:
@@ -65,3 +82,11 @@ def input_cap(model_id: str) -> int:
         msg = f"the context window of {model_id} ({window}) leaves no room for an input"
         raise ConfigError(msg)
     return cap
+
+
+def judge_window(model_id: str) -> int | None:
+    """Return ``num_ctx - num_predict`` of an Ollama judge (the room for the prompt), else None."""
+    if provider_of(model_id) != "ollama":
+        return None
+    options = catalogue_options(model_id)
+    return int(options["num_ctx"]) - int(options["num_predict"])

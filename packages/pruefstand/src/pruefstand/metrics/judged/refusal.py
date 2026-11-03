@@ -26,6 +26,7 @@ class RefusalJudged(JudgedBase):
     """
 
     name = "refusal_judged"
+    version = "2"  # v2: not_applicable unless ambiguous (T5.2b review)
 
     def __init__(self, *, judge_enabled: bool | None = None) -> None:
         self._enabled = refusal_judge_passed() if judge_enabled is None else judge_enabled

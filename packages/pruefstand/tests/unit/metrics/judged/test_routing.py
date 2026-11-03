@@ -60,3 +60,10 @@ def test_probe_cases_are_never_selected() -> None:
         [probe], METRICS, dataset_version="v1", max_calls=100, canaries=None
     )
     assert chosen == frozenset()
+
+
+def test_metrics_whose_meaning_changed_have_a_new_version() -> None:
+    from pruefstand.metrics.judged.refusal import RefusalJudged
+
+    assert (Faithfulness().version, RefusalJudged().version) == ("2", "2")
+    assert AnswerCorrectness().version == "1"  # unchanged meaning, old baselines stay comparable

@@ -51,6 +51,7 @@ class Faithfulness(JudgedBase):
     """
 
     name = "faithfulness"
+    version = "2"  # v2: not_applicable without a used chunk, judge-side reasons (T5.2b review)
     requires = frozenset({"chunks"})
     applies_to: frozenset[Category] | None = frozenset(Category) - _NOT_APPLICABLE
 

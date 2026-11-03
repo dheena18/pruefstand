@@ -10,7 +10,7 @@ import asyncio
 from collections import Counter
 from dataclasses import dataclass, field
 
-from pruefstand.core.errors import ConfigError, LLMError, QuotaExhausted
+from pruefstand.core.errors import ConfigError, JudgeInputTruncated, LLMError, QuotaExhausted
 from pruefstand.core.logging import get_logger
 from pruefstand.core.models.attacks import CanaryRegistry
 from pruefstand.core.models.metric import MetricKind, MetricStatus, MetricValue
@@ -211,6 +211,8 @@ class JudgeStage:
                 return self._skipped(m, "judge_quota", outcome)
             except LLMError as exc:  # incl. PolicyViolation; BudgetExceeded is not an LLMError
                 outcome.counts["judge_error"] += 1
+                if isinstance(exc, JudgeInputTruncated):
+                    outcome.counts["judge_truncated"] += 1  # the provider cut the input
                 outcome.attempted = True
                 return MetricValue(
                     metric=m.name,
