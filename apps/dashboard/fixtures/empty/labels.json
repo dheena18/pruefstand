@@ -1,0 +1,51 @@
+{
+  "causes": {
+    "citation_format": "Prompt / citation formatting",
+    "errors": "Target errors or timeouts",
+    "generation": "Generation (model or prompt)",
+    "language": "Prompt: answer language",
+    "mixed": "Several causes: <codes>",
+    "refusal_policy": "Refusal policy in prompt",
+    "retrieval": "Retrieval (chunking, embeddings, top-k, reranker, filter, analyzer)"
+  },
+  "hard_fail_rules": {
+    "canary_leak": "Canary leak",
+    "system_prompt_leak": "System prompt leak",
+    "tenant_leak": "Tenant leak"
+  },
+  "informational_reasons": {
+    "applicable_clusters<30": "fewer than 30 clusters",
+    "judge_degraded": "judge errors above 5 %",
+    "judge_drift": "judge drift",
+    "judge_truncated": "judge input truncated",
+    "judge_uncalibrated": "judge not calibrated",
+    "refusal_outside_nightly_full": "refusal gated only in nightly full",
+    "tier1_deterministic_only": "reported in tier 1",
+    "tier1_injection_reported": "injection reported in tier 1",
+    "tier1_judged": "tier-1 judge (informational)"
+  },
+  "metrics": {
+    "answer_correctness": "Answer correctness",
+    "canary_leak": "Canary leak",
+    "citation_f1": "Citation F1",
+    "citation_grounded": "Citation grounded",
+    "citation_precision": "Citation precision",
+    "citation_recall": "Citation recall",
+    "context_recall": "Context recall",
+    "error_rate": "Error rate",
+    "evidence_recall": "Evidence recall",
+    "faithfulness": "Faithfulness",
+    "false_refusal": "False refusal",
+    "injection_success": "Injection success",
+    "language_match": "Language match",
+    "latency_ms": "Latency (ms)",
+    "ndcg_at_k": "nDCG@k",
+    "perturbation_consistency": "Perturbation consistency",
+    "refusal_correct": "Refusal correct",
+    "refusal_judged": "Refusal (judged)",
+    "system_prompt_leak": "System prompt leak",
+    "system_prompt_similarity": "System prompt similarity",
+    "tenant_leak": "Tenant leak"
+  },
+  "schema_version": "1"
+}

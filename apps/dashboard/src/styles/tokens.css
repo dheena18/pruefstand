@@ -1,0 +1,106 @@
+/* Design tokens (ui-spec §7). `scripts/dashboard/tokens_to_report.mjs` copies the colour tokens of the first
+   two blocks into the HTML report's `_tokens.css`; `test/styles/contrast.test.ts` tests the §7.1 pairs. */
+:root {
+  --bg: #ffffff;
+  --surface: #f8fafc;
+  --surface-2: #f1f5f9;
+  --border: #cbd5e1;
+  --border-strong: #64748b;
+  --text: #0f172a;
+  --text-muted: #475569;
+  --accent: #1d4ed8;
+  --accent-contrast: #ffffff;
+  --focus: #1d4ed8;
+  --pass-fg: #15803d;
+  --pass-bg: #f0fdf4;
+  --warn-fg: #b45309;
+  --warn-bg: #fffbeb;
+  --fail-fg: #b91c1c;
+  --fail-bg: #fef2f2;
+  --insufficient-fg: #475569;
+  --insufficient-bg: #f1f5f9;
+  --info-fg: #1d4ed8;
+  --info-bg: #eff6ff;
+  --chart-baseline: #64748b;
+  --chart-candidate: #1d4ed8;
+  --chart-threshold: #b91c1c;
+  --chart-zero: #0f172a;
+  --text-xs: 0.75rem;
+  --text-sm: 0.875rem;
+  --text-base: 1rem;
+  --text-lg: 1.125rem;
+  --text-xl: 1.25rem;
+  --text-2xl: 1.5rem;
+  --text-3xl: 1.875rem;
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-6: 24px;
+  --space-8: 32px;
+  --space-12: 48px;
+  --radius-sm: 4px;
+  --radius-md: 8px;
+  --shadow-1: 0 1px 2px rgba(15,23,42,.12);
+  --font-sans: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --font-mono: ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
+}
+
+[data-theme="dark"] {
+  --bg: #0b1120;
+  --surface: #111827;
+  --surface-2: #1f2937;
+  --border: #334155;
+  --border-strong: #94a3b8;
+  --text: #e5e7eb;
+  --text-muted: #9ca3af;
+  --accent: #60a5fa;
+  --accent-contrast: #0b1120;
+  --focus: #93c5fd;
+  --pass-fg: #4ade80;
+  --pass-bg: #052e16;
+  --warn-fg: #fbbf24;
+  --warn-bg: #422006;
+  --fail-fg: #f87171;
+  --fail-bg: #450a0a;
+  --insufficient-fg: #9ca3af;
+  --insufficient-bg: #1f2937;
+  --info-fg: #93c5fd;
+  --info-bg: #172554;
+  --chart-baseline: #94a3b8;
+  --chart-candidate: #60a5fa;
+  --chart-threshold: #f87171;
+  --chart-zero: #e5e7eb;
+  --shadow-1: none;
+}
+
+/* Default theme = system: no attribute, or `data-theme="system"`, follows the browser. */
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]):not([data-theme="dark"]) {
+    --bg: #0b1120;
+    --surface: #111827;
+    --surface-2: #1f2937;
+    --border: #334155;
+    --border-strong: #94a3b8;
+    --text: #e5e7eb;
+    --text-muted: #9ca3af;
+    --accent: #60a5fa;
+    --accent-contrast: #0b1120;
+    --focus: #93c5fd;
+    --pass-fg: #4ade80;
+    --pass-bg: #052e16;
+    --warn-fg: #fbbf24;
+    --warn-bg: #422006;
+    --fail-fg: #f87171;
+    --fail-bg: #450a0a;
+    --insufficient-fg: #9ca3af;
+    --insufficient-bg: #1f2937;
+    --info-fg: #93c5fd;
+    --info-bg: #172554;
+    --chart-baseline: #94a3b8;
+    --chart-candidate: #60a5fa;
+    --chart-threshold: #f87171;
+    --chart-zero: #e5e7eb;
+    --shadow-1: none;
+  }
+}

@@ -11,6 +11,7 @@ import json
 import re
 import secrets
 import shutil
+from collections.abc import Callable
 from pathlib import Path
 
 import polars as pl
@@ -67,6 +68,22 @@ class _Masker:
             ):
                 return True
         return False
+
+
+def text_masker(run: RunArtifacts, canaries: CanaryRegistry) -> Callable[[str], str]:
+    """Return a function that masks the canaries and forbidden strings of ``run`` in any text.
+
+    ``export-dashboard`` (T8.1) uses it for text that ``sanitise_run`` does not touch, such as the
+    hard-fail evidence of ``gate.json`` (D542).
+
+    Args:
+        run: The unsanitised run (its cases supply the forbidden strings).
+        canaries: The registry.
+
+    Returns:
+        A function from text to text; every match becomes ``REDACTED``.
+    """
+    return _Masker(canaries, [s.case for s in run.results.values]).mask
 
 
 def sanitise_run(run: RunArtifacts, canaries: CanaryRegistry) -> RunArtifacts:
