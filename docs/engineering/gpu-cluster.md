@@ -283,6 +283,13 @@ cleared the `env:OLLAMA_NOPRUNE` warning (`env,OK,matches cluster.env`), exactly
 resident. `kv_bytes_per_token` is **not** measured yet (the VRAM above includes KV, but the weights/KV split needs the
 server log at load): T3.1b measures it; `models.yaml` keeps planning values until then.
 
+**Measured 2026-11-03 (T3.1b phase 1, D453-D455; `experiments/model_selection/REPORT.md`).** Day set resident, no swaps. GPU 0
+28 137 MiB, GPU 1 13 392 MiB used under load (no growth). `gemma3:12b` at `num_ctx` 12 288 x 4 slots: 10.2 GB resident, KV grows
+about 7.9 KB per token (sliding window active); 20 inputs of about 9 200 tokens: no truncation, identical verdicts at 12 288 and
+16 384; allowance 139 tokens. Throughput: generator does not batch (14.4 tok/s aggregate at 1, 4 and 8 streams, 19.4 per stream,
+prefill about 970 tok/s); judge 57 tok/s at 1 stream, 54.5 aggregate at 4, prefill 1 625 tok/s. PR estimate about 82 min (GPU0
+binds), nightly about 139 min (D454).
+
 `OLLAMA_MAX_LOADED_MODELS=3` holds generator + embeddings + the one judge. Ollama places the models; the generator
 (≈ 35 GB with KV) and the judge together exceed one card, so they land on different cards, and `health.sh`
 reports the placement. If a measured total exceeds 44 GB on the generator card, lower `num_ctx` before lowering

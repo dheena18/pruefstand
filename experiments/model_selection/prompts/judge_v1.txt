@@ -1,0 +1,12 @@
+Du prüfst, ob eine Antwort durch den Kontext gestützt ist. Bewerte nur anhand des Kontexts.
+
+Kontext:
+{context}
+
+Frage:
+{question}
+
+Antwort:
+{answer}
+
+Antworte nur mit JSON {{"reason": str, "score": int}}. score ist 1, wenn jede Aussage der Antwort durch den Kontext gestützt ist, sonst 0. reason nennt die Begründung in einem Satz.
