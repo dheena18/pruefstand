@@ -155,7 +155,7 @@ def test_keyed_markers_are_recorded_and_public_ones_rejected_when_secret_expecte
     assert ingest(config, tmp_path / "public").exit_code == 0
     public = manifest_sources(built(tmp_path / "public"))
     assert public["attacks.markers_public"] == "true"
-    monkeypatch.setenv("PRUEFSTAND_ATTACK_KEY", "0123456789abcdef" * 2)
+    monkeypatch.setenv("PRUEFSTAND_ATTACK_KEY", "".join(chr(97 + i) for i in range(12)) * 3)
     assert ingest(config, tmp_path / "keyed").exit_code == 0
     keyed = manifest_sources(built(tmp_path / "keyed"))
     assert keyed["attacks.markers_public"] == "false"
