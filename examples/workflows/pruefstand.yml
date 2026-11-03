@@ -1,0 +1,81 @@
+# Copy-paste workflow: gate a RAG service with Prüfstand on every pull request (T1.12).
+#
+# The target runs as a `services:` container next to the job and the Action reaches it on localhost. Replace
+# the image, port and health path with your own; `pruefstand.yaml` must point `target.url` at the same port.
+# `baseline-run` is a run directory of the same config and dataset (same eval_fingerprint), for example the
+# run directory you committed or downloaded from your main branch. The baseline store (--from-store) arrives
+# with T6.1.
+#
+# Until the Action image is published (T9.1b) `uses:` names this repository's path; pin it by commit SHA.
+name: pruefstand
+
+on:
+  pull_request:
+
+permissions: {}  # every job asks for what it needs
+
+concurrency:
+  group: pruefstand-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  gate:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    permissions:
+      contents: read  # check out the repository
+    services:
+      rag:
+        image: ghcr.io/example/my-rag-service:latest  # your service, pinned by digest in real use
+        ports:
+          - 8000:8000
+        options: >-
+          --health-cmd "curl -fsS http://localhost:8000/v1/health"
+          --health-interval 5s --health-retries 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Prüfstand
+        id: pruefstand
+        uses: dheena18/pruefstand/action@v0  # pin by commit SHA
+        with:
+          config: pruefstand.yaml
+          tier: pr
+          baseline-run: baselines/main/run  # run directory of the same config and dataset
+          fail-on-warn: "false"
+      # The report is also in the job summary; the comment job posts it for pull requests of this repository.
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: ${{ !cancelled() && steps.pruefstand.outputs.comment-path != '' }}
+        with:
+          name: pruefstand-report
+          path: ${{ steps.pruefstand.outputs.comment-path }}
+
+  # Only this job can write to the pull request, and it runs none of your code. A forked PR gets a read-only
+  # token, so it is skipped there (the summary above still has the report).
+  comment:
+    needs: gate
+    if: ${{ !cancelled() && github.event.pull_request.head.repo.full_name == github.repository }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      pull-requests: write
+    steps:
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: pruefstand-report
+          path: report
+      - uses: actions/github-script@ed597411d8f924073f98dfc5c65a23a2325f34cd # v8.0.0
+        with:
+          script: |
+            const fs = require('fs');
+            const body = fs.readFileSync('report/comment.md', 'utf8');
+            const marker = body.split('\n', 1)[0];
+            const comments = await github.paginate(github.rest.issues.listComments, {
+              ...context.repo, issue_number: context.issue.number, per_page: 100 });
+            const mine = comments.find((c) => c.user.type === 'Bot' && c.body.startsWith(marker));
+            if (mine) {
+              await github.rest.issues.updateComment({ ...context.repo, comment_id: mine.id, body });
+            } else {
+              await github.rest.issues.createComment({ ...context.repo, issue_number: context.issue.number, body });
+            }

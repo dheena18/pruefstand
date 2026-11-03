@@ -1,0 +1,126 @@
+name: action-selftest
+
+# T1.12 S4: builds the Action image and runs it against the REAL live stack (compose profile `live`, judged
+# metrics off, no `models` permission): a good run passes, `tenant_filter: post_topk` fails with exit code 1.
+# The one job `selftest` is the required check `action-selftest / selftest`. No PR comment: the report is
+# the job summary and the uploaded artefact.
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions: {}
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || format('{0}-{1}', github.event_name, github.ref) }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+env:
+  IMAGE: pruefstand-action:selftest
+  # Same trust boundary as the Action: the workspace is mounted, the container runs as the runner's uid.
+  RUN_ARGS: --rm --network host -e PRUEFSTAND_STACK=live -e PRUEFSTAND_JUDGE_MODE=skipped -e PRUEFSTAND_HOME=/tmp/pruefstand -v ${{ github.workspace }}:/github/workspace -w /github/workspace
+
+jobs:
+  selftest:
+    name: selftest
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 2
+          persist-credentials: false
+      # Docs-only PRs cannot change the Action or the stack: exit early with success (ci-cd.md section 1).
+      - name: Plan
+        id: plan
+        env:
+          EVENT: ${{ github.event_name }}
+          DOCS_ONLY: '^(docs/|prompts/|tasks/|\.github/ISSUE_TEMPLATE/)|\.md$|^(mkdocs\.yml|\.github/(pull_request_template\.md|CODEOWNERS))$'
+        run: |
+          run=true
+          if [ "$EVENT" = "pull_request" ]; then
+            if ! git diff --name-only HEAD^1 HEAD | grep -Eqv "$DOCS_ONLY"; then run=false; fi
+          fi
+          echo "run=$run" >> "$GITHUB_OUTPUT"
+      - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
+        if: steps.plan.outputs.run == 'true'
+        with:
+          version: "0.13.6"
+          enable-cache: true
+      - name: Install
+        if: steps.plan.outputs.run == 'true'
+        run: uv sync --frozen --all-packages --all-extras
+      - name: Live stack
+        if: steps.plan.outputs.run == 'true'
+        uses: ./.github/actions/live-stack
+      - name: Build the Action image
+        if: steps.plan.outputs.run == 'true'
+        run: docker buildx build --load -f action/Dockerfile --build-arg "GIT_SHA=$GITHUB_SHA" -t "$IMAGE" .
+      - name: Baseline run (mini.yaml)
+        if: steps.plan.outputs.run == 'true'
+        shell: bash  # pipefail: a failing run must fail the step despite `| tee`
+        run: |
+          mkdir -p .pruefstand/out
+          # shellcheck disable=SC2086  # RUN_ARGS is a fixed option list
+          docker run $RUN_ARGS --user "$(id -u):$(id -g)" --entrypoint pruefstand "$IMAGE" \
+            run --config examples/live/mini.yaml --tier pr --out .pruefstand/out | tee .pruefstand/baseline.txt
+          tail -n 1 .pruefstand/baseline.txt > .pruefstand/baseline-run.txt
+      - name: Action on the good target
+        if: steps.plan.outputs.run == 'true'
+        run: |
+          : > .pruefstand/good.out
+          # shellcheck disable=SC2046,SC2086  # fixed option list
+          docker run $RUN_ARGS --user "$(id -u):$(id -g)" \
+            -e INPUT_CONFIG=examples/live/mini.yaml -e INPUT_TIER=pr -e "INPUT_BASELINE-RUN=$(cat .pruefstand/baseline-run.txt)" \
+            -e INPUT_OUTPUT-DIR=.pruefstand/out -e GITHUB_OUTPUT=/github/workspace/.pruefstand/good.out \
+            -e GITHUB_STEP_SUMMARY=/github/workspace/.pruefstand/good.md "$IMAGE"
+          cat .pruefstand/good.out
+          grep -Eq '^status=(pass|warn)$' .pruefstand/good.out
+          cat .pruefstand/good.md >> "$GITHUB_STEP_SUMMARY"
+      - name: Bug instance (tenant_filter_post_topk on :8001)
+        if: steps.plan.outputs.run == 'true'
+        run: bash scripts/live/two_targets.sh tenant_filter_post_topk
+      - name: Action on the bug target (expected to fail)
+        id: bug
+        if: steps.plan.outputs.run == 'true'
+        continue-on-error: true
+        run: |
+          : > .pruefstand/bug.out
+          # shellcheck disable=SC2086  # fixed option list
+          docker run $RUN_ARGS --user "$(id -u):$(id -g)" \
+            -e INPUT_CONFIG=examples/live/mini-bug-tenant.yaml -e INPUT_TIER=pr -e "INPUT_BASELINE-RUN=$(cat .pruefstand/baseline-run.txt)" \
+            -e INPUT_OUTPUT-DIR=.pruefstand/out -e GITHUB_OUTPUT=/github/workspace/.pruefstand/bug.out \
+            -e GITHUB_STEP_SUMMARY=/github/workspace/.pruefstand/bug.md "$IMAGE"
+      - name: Assert the bug target failed with exit code 1
+        if: steps.plan.outputs.run == 'true'
+        env:
+          OUTCOME: ${{ steps.bug.outcome }}
+        run: |
+          cat .pruefstand/bug.out
+          [ "$OUTCOME" = "failure" ]
+          grep -q '^status=fail$' .pruefstand/bug.out
+          cat .pruefstand/bug.md >> "$GITHUB_STEP_SUMMARY"
+      - name: Collect the reports
+        if: always() && steps.plan.outputs.run == 'true'
+        run: |
+          mkdir -p selftest-report
+          cp -f .pruefstand/*.md selftest-report/ 2>/dev/null || true
+          for gate in .pruefstand/out/*/gate.json; do
+            [ -f "$gate" ] && cp "$gate" "selftest-report/$(basename "$(dirname "$gate")")-gate.json"
+          done
+          ls selftest-report
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: always() && steps.plan.outputs.run == 'true'
+        with:
+          name: selftest-report
+          path: selftest-report
+          if-no-files-found: warn
+          retention-days: 14
+      - name: Stack logs
+        if: failure()
+        run: docker compose --profile '*' logs --tail=200
+      - name: Stop the stack
+        if: always() && steps.plan.outputs.run == 'true'
+        run: make down
