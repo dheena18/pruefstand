@@ -1,5 +1,6 @@
-"""Canary data models (interfaces §13). Planting and rotation live in ``attacks/`` (T2.6, T4.6)."""
+"""Canary and injection-placement models (interfaces §13); planting is in ``attacks/``."""
 
+from enum import StrEnum
 from typing import Literal
 
 from pydantic import BaseModel, ConfigDict
@@ -38,3 +39,14 @@ class CanaryRegistry(BaseModel):
             Canaries planted for other tenants (all of them for an unknown tenant).
         """
         return tuple(c for c in self.canaries if c.tenant != tenant)
+
+
+class InjectionPlacement(StrEnum):
+    """Where the payload of an injection document sits (T4.6)."""
+
+    PLAIN = "plain"
+    TABLE_CELL = "table_cell"
+    FOOTNOTE = "footnote"
+    METADATA = "metadata"
+    MIXED_LANG = "mixed_lang"
+    BASE64 = "base64"
