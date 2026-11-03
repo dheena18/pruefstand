@@ -45,8 +45,8 @@ class ScriptState:
     lock: threading.Lock = field(default_factory=threading.Lock)
 
     def posts(self) -> int:
-        """Number of POST requests seen (version probes are GETs)."""
-        return sum(1 for s in self.seen if s.method == "POST")
+        """Number of model POSTs seen (version probes are GETs; `/api/show` is metadata)."""
+        return sum(1 for s in self.seen if s.method == "POST" and s.path != "/api/show")
 
 
 def ollama_body(content: str) -> bytes:
@@ -91,6 +91,9 @@ def _handler(state: ScriptState) -> type[BaseHTTPRequestHandler]:
         def do_POST(self) -> None:
             raw = self.rfile.read(int(self.headers.get("content-length", "0")))
             state.seen.append(Seen(self.path, json.loads(raw or b"{}")))
+            if self.path == "/api/show":  # LiteLLM asks for model info when a schema is sent
+                self._send(200, {}, b"{}")
+                return
             with state.lock:
                 step = state.steps.pop(0) if state.steps else Step()
             if step.delay_s:

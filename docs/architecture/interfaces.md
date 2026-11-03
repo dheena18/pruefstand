@@ -645,6 +645,7 @@ class Message(BaseModel):     role: Literal["system", "user", "assistant"]; cont
 class LLMRequest(BaseModel):  role: LLMRole; model: str; messages: tuple[Message, ...]
                               temperature: float = 0.0; max_tokens: int = 1024; seed: int | None = 0
                               prompt_id: str; prompt_version: str; response_format: Literal["text", "json"] = "text"
+                              json_schema: dict[str, object] | None = None   # T5.2a (D700): Ollama `format`; in the cache key when set
 class LLMResponse(BaseModel): text: str; model: str; usage: Usage; cost_usd: float; latency_ms: float; cached: bool
                               provider: str = ""; fallback: bool = False   # fallback = served by the tier-2 fallback judge
                               model_version: str | None = None   # provider-reported version (GitHub Models response
@@ -666,6 +667,7 @@ class LLMClient:                                     # wraps a backend; adds cac
     # policy checks run BEFORE every call: provider allowlist, paid-provider block, external-data guard (below)
     async def complete(self, req: LLMRequest) -> LLMResponse
     async def complete_json(self, req: LLMRequest, schema: type[T]) -> T  # validates; 1 repair retry; raises LLMError
+    async def complete_json_meta(self, req: LLMRequest, schema: type[T]) -> tuple[T, LLMResponse]   # T5.2a (D700): + the response (cached, fallback)
 
 class LiteLLMBackend(LLMBackend)    # llm/backends/litellm.py; OpenAI-compatible providers: openai_compatible_local/…
                                     # (llama.cpp server), ollama/<tag> (A40 Ollama, base URL via infra/gpu/endpoints.yaml
@@ -857,6 +859,10 @@ class Judge:                   def __init__(self, llm: LLMClient, model: str, re
                                async def score(self, task: JudgeTask) -> JudgeVerdict     # parses JSON {reason, score}
 class JudgePool:               def __init__(self, judges: Mapping[str, Judge], default: str) -> None   # satisfies core.protocols.JudgePoolLike
                                def for_metric(self, metric: str) -> Judge
+# T5.2a additions (D701-D706): Judge.__init__ gains the keyword-only nonce_key (default PRUEFSTAND_NONCE_KEY, fails closed);
+#   judges/output.py: JudgeOutput, SPECS (metric -> max_raw, prompt_id, variables), make_task(metric, **inputs), output_schema(metric);
+#   judges/escaping.py: make_nonce, wrap, escape, format_chunks; judges/robustness.py: load_items, task_inputs, summarize;
+#   judges/factory.py: build_pool(cfg, *, tier, make_client, registry=None, nonce_key=None) -> JudgePool
 # judges/family_guard.py (T5.2a)
 def check_judge_families(judges: JudgeConfig, infos: Sequence[TargetInfo]) -> None   # raises ConfigError
 # judges/calibration.py (pure, numpy/scipy, polars)

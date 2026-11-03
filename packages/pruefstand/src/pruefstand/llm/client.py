@@ -10,26 +10,18 @@ from pruefstand.core.hashing import stable_hash
 from pruefstand.core.models.llm import LLMRequest, LLMResponse
 from pruefstand.core.protocols import KVCache, LLMBackend
 from pruefstand.llm.budget import Budget
-from pruefstand.llm.json_extract import MAX_CANDIDATES, MAX_SCAN_CHARS, extract_json_object
+from pruefstand.llm.json_call import (
+    Pending,
+    complete_json_response,
+    repair_max_tokens,
+)
 from pruefstand.llm.policy import LOCAL_PROVIDERS, LLMPolicy, provider_of
-from pruefstand.llm.prompts import PromptRegistry
 from pruefstand.llm.recorder import CallRecorder
 from pruefstand.llm.retry import Retrier, RetryPolicy, describe
 
+__all__ = ["LLMClient", "cache_key", "repair_max_tokens"]  # the last is a re-export (T1.4 API)
 T = TypeVar("T", bound=BaseModel)
 CACHE_NAMESPACE = "llm"
-_EXCERPT = 200
-MAX_REPAIR_TOKENS = 16384
-
-
-def repair_max_tokens(max_tokens: int) -> int:
-    """Return the repair call's token budget: doubled, capped at 16384, never below the original.
-
-    Examples:
-        >>> repair_max_tokens(12), repair_max_tokens(9000), repair_max_tokens(20000)
-        (24, 16384, 20000)
-    """
-    return max(max_tokens, min(max_tokens * 2, MAX_REPAIR_TOKENS))
 
 
 def cache_key(req: LLMRequest, model_version: str | None = None, epoch: int = 0) -> str:
@@ -38,7 +30,9 @@ def cache_key(req: LLMRequest, model_version: str | None = None, epoch: int = 0)
     The key covers the model, the provider-reported version suffixed with the judge's cache epoch
     (``<version>#e<epoch>``), prompt id and version, the rendered messages (question, answer,
     every context chunk and the reference are in them), temperature, max tokens, seed and
-    response format. Qwen3's ``enable_thinking=false`` follows from the model id (D95).
+    response format, and the JSON schema when the request has one (T5.2a; a request without a
+    schema keeps its earlier key). Qwen3's ``enable_thinking=false`` follows from the model
+    id (D95).
 
     Examples:
         >>> from pruefstand.core.models.llm import LLMRole, Message
@@ -49,12 +43,17 @@ def cache_key(req: LLMRequest, model_version: str | None = None, epoch: int = 0)
         True
         >>> cache_key(r, "gpt-x", 0) != cache_key(r, "gpt-x", 1)
         True
+        >>> cache_key(r.model_copy(update={"json_schema": {"type": "object"}})) != cache_key(r)
+        True
     """
     version = f"{model_version or ''}#e{epoch}"
-    digest = stable_hash(
+    parts: list[object] = [
         req.model, version, req.prompt_id, req.prompt_version, req.messages,
         req.temperature, req.max_tokens, req.seed, req.response_format,
-    )  # fmt: skip
+    ]  # fmt: skip
+    if req.json_schema is not None:
+        parts.append(req.json_schema)
+    digest = stable_hash(*parts)
     return f"{CACHE_NAMESPACE}:{digest}"
 
 
@@ -101,7 +100,6 @@ class LLMClient:
         self._epochs = epochs
         self._versions: dict[str, str] = {}
         self._exhausted: set[str] = set()
-        self._prompts = PromptRegistry()
 
     async def complete(self, req: LLMRequest) -> LLMResponse:
         """Answer ``req`` from the cache or the backend.
@@ -122,9 +120,11 @@ class LLMClient:
         """
         return await self._complete(req, None)
 
-    async def _complete(
-        self, req: LLMRequest, pending: list[tuple[str, LLMResponse]] | None
-    ) -> LLMResponse:
+    async def complete_deferred(self, req: LLMRequest, pending: Pending) -> LLMResponse:
+        """``complete`` with the cache write deferred into ``pending`` (``flush`` writes it)."""
+        return await self._complete(req, pending)
+
+    async def _complete(self, req: LLMRequest, pending: Pending | None) -> LLMResponse:
         """``complete``; with ``pending`` the cache write is deferred to the caller."""
         self._check(req)
         try:
@@ -156,7 +156,7 @@ class LLMClient:
         self,
         backend: LLMBackend,
         req: LLMRequest,
-        pending: list[tuple[str, LLMResponse]] | None,
+        pending: Pending | None,
         *,
         fallback: bool,
     ) -> LLMResponse:
@@ -223,17 +223,14 @@ class LLMClient:
         except ValidationError:
             return None  # a corrupt entry is a miss; the fresh answer overwrites it
 
-    def _flush(self, pending: list[tuple[str, LLMResponse]]) -> None:
+    def flush(self, pending: Pending) -> None:
+        """Write the cache entries a ``complete_deferred`` call kept back."""
         if self._cache is not None:
             for key, resp in pending:
                 self._cache.set(key, resp.model_dump_json().encode("utf-8"))
 
     async def complete_json(self, req: LLMRequest, schema: type[T]) -> T:
-        """Answer in JSON mode and validate against ``schema``.
-
-        The first JSON object of the text is extracted (code fences stripped). On failure one
-        repair call follows: the request plus ``json_repair_v1`` and **doubled** ``max_tokens``
-        (truncation is the usual cause).
+        """Answer in JSON mode and validate against ``schema`` (see ``complete_json_response``).
 
         Args:
             req: The request; ``response_format`` is forced to ``"json"``.
@@ -245,33 +242,18 @@ class LLMClient:
         Raises:
             LLMError: Both answers are invalid (message holds a 200-character excerpt).
         """
-        first = req.model_copy(update={"response_format": "json"})
-        pending: list[tuple[str, LLMResponse]] = []
-        resp = await self._complete(first, pending)
-        parsed = _parse(resp.text, schema)
-        if parsed is not None:
-            self._flush(pending)
-            return parsed
-        invalid = len(pending)  # entries before this index belong to the invalid first answer
-        repair = self._prompts.get("json_repair", "v1").render()
-        again = first.model_copy(
-            update={
-                "messages": (*first.messages, *repair),
-                "max_tokens": repair_max_tokens(first.max_tokens),
-            }
-        )
-        resp = await self._complete(again, pending)
-        parsed = _parse(resp.text, schema)
-        if parsed is not None:
-            self._flush(pending[invalid:])  # the invalid first answer is never cached
-        if parsed is None:
-            msg = (
-                "invalid JSON after one repair "
-                f"(only the first {MAX_SCAN_CHARS // 1024} KiB are scanned, at most "
-                f"{MAX_CANDIDATES} candidates tried): {resp.text[:_EXCERPT]!r}"
-            )
-            raise LLMError(msg, transient=False)
-        return parsed
+        return (await complete_json_response(self, req, schema))[0]
+
+    async def complete_json_meta(self, req: LLMRequest, schema: type[T]) -> tuple[T, LLMResponse]:
+        """Like ``complete_json``, plus the response the object came from (T5.2a).
+
+        The response tells the caller whether the answer was ``cached`` and whether the fallback
+        backend served it (``fallback``).
+
+        Raises:
+            LLMError: Both answers are invalid.
+        """
+        return await complete_json_response(self, req, schema)
 
 
 def _fallback_model(fallback: LLMBackend | None) -> str | None:
@@ -282,13 +264,3 @@ def _fallback_model(fallback: LLMBackend | None) -> str | None:
         msg = "the fallback backend must expose model_id (the model it serves)"
         raise ConfigError(msg)
     return model
-
-
-def _parse[M: BaseModel](text: str, schema: type[M]) -> M | None:
-    raw = extract_json_object(text)
-    if raw is None:
-        return None
-    try:
-        return schema.model_validate_json(raw)
-    except ValidationError:
-        return None
