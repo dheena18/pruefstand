@@ -83,3 +83,13 @@ paths = [
 regexes = [
   '''CANARY-VN-7f3a9c''',
 ]
+
+[[allowlists]]
+description = "T4.5 rewriter test (early commit of an open branch): the synthetic canary ZXQ-CANARY-7731 assigned to a variable named token (CLAUDE.md section 9: canary tokens are test data, not credentials)"
+condition = "AND"
+paths = [
+  '''packages/pruefstand/tests/unit/perturb/test_rewriter\.py''',
+]
+regexes = [
+  '''ZXQ-CANARY-7731''',
+]

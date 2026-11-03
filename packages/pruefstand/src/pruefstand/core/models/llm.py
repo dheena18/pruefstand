@@ -4,7 +4,7 @@ import re
 from enum import StrEnum
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, SerializerFunctionWrapHandler, model_serializer
 
 from pruefstand.core.errors import PromptError
 from pruefstand.core.models.target import Usage
@@ -35,6 +35,9 @@ class LLMRequest(BaseModel):
 
     ``model`` is the provider-qualified id (``openai_compatible_local/<m>``, ``ollama/<tag>``,
     ``github/<m>``). ``response_format="json"`` asks the provider for JSON mode.
+    ``json_schema`` (T5.2a) is a JSON Schema the answer must follow: Ollama gets it as the native
+    ``format`` (grammar-constrained decoding), other providers stay in plain JSON mode. It is part
+    of the cache key.
     """
 
     model_config = ConfigDict(frozen=True, extra="forbid")
@@ -48,6 +51,15 @@ class LLMRequest(BaseModel):
     prompt_id: str
     prompt_version: str
     response_format: Literal["text", "json"] = "text"
+    json_schema: dict[str, object] | None = None
+
+    @model_serializer(mode="wrap")
+    def _without_empty_schema(self, handler: SerializerFunctionWrapHandler) -> dict[str, object]:
+        """Leave ``json_schema`` out when unset, so earlier cassette hashes and files stay valid."""
+        data: dict[str, object] = handler(self)
+        if data.get("json_schema") is None:
+            data.pop("json_schema", None)
+        return data
 
 
 class LLMResponse(BaseModel):
