@@ -184,3 +184,98 @@ def test_control_characters_and_long_lines_are_cut(world: ClusterWorld) -> None:
 def test_the_new_script_is_part_of_the_deployed_set(world: ClusterWorld) -> None:
     sums = (world.bin_dir / "SHA256SUMS").read_text(encoding="utf-8")
     assert "  log-tail.sh" in sums
+
+
+ADVERSARIAL = [
+    f"user_{LOGIN}-style and {LOGIN}2 and {LOGIN}-x and /%2Fhome%2F{LOGIN}/f",
+    f"decoded %2Fhome%2f{LOGIN}%2Fmodels path",
+    "ssh to gpu02.cluster:5000 and localhost:41233 then ssh -p 2222 box",
+    'json {"port":2222,"host":"x"} and port=4455',
+    "token=" + "Zq9Xk2LmN4pR7sT1vW3y" + " key: " + "Abcdef0123456789Abcd",
+    "password=hunter2 secret_key = s3cr3t",
+    "cwd /usr/local/lib/ollama/cuda_v12/libggml-cuda-sm80-fa-hdim128-q8_0-q8_0.so",
+]
+
+LVL = "time=2026-11-03T10:00:00.000+01:00 level=INFO"
+REQ = (
+    "LoraPath:[] Parallel:4 BatchSize:512 FlashAttention:true KvSize:32768 KvCacheType:q8_0 "
+    "NumThreads:8 GPULayers:65[ID:GPU-1a2b3c4d-5e6f-7a8b-9c0d-1e2f3a4b5c6d Layers:65(0..64)] "
+    "MainGPU:0 UseMmap:false"
+)
+REAL_LINES = [
+    f'{LVL} source=ggml.go:482 msg="kv cache" device=CUDA0 size="1.0 GiB"',
+    f'{LVL} source=ggml.go:490 msg="compute graph" device=CUDA0 size="512.0 MiB"',
+    f'{LVL} source=server.go:900 msg=load request="{{Operation:commit {REQ}}}"',
+    "llama_context: n_ctx_per_seq = 8192",
+    "llama_kv_cache_unified: size = 1024.00 MiB (8192 cells, 64 layers, 4/4 seqs), K (q8_0)",
+    "load_tensors: offloaded 65/65 layers to GPU",
+    "print_info: BOS token        = 11 ','",
+    "llama_context: n_tokens = 512",
+    "terminate called after throwing an instance of 'std::bad_alloc'",
+    "ggml_cuda_init: library=libcudart.so.12.4.127 version=12.4 compute=8.6",
+    "source=sched.go:480 file=llama-model.cpp:1234 at 10:00:04",
+]
+KEPT = (
+    'msg="kv cache" device=CUDA0 size="1.0 GiB"',
+    'msg="compute graph" device=CUDA0 size="512.0 MiB"',
+    "Parallel:4", "KvSize:32768", "KvCacheType:q8_0", "GPULayers:65", "Layers:65(0..64)",
+    "n_ctx_per_seq = 8192", "llama_kv_cache_unified: size = 1024.00 MiB (8192 cells, 64 layers",
+    "offloaded 65/65 layers to GPU", "BOS token        = 11 ','", "n_tokens = 512",
+    "std::bad_alloc", "libcudart.so.12.4.127", "version=12.4", "sched.go:480",
+    "llama-model.cpp:1234", "at 10:00:04",
+)  # fmt: skip
+
+
+def test_adversarial_names_hosts_ports_and_secrets_are_masked(world: ClusterWorld) -> None:
+    res = _tail(world, text="\n".join(ADVERSARIAL) + "\n")
+    assert res.rc == 0, res.err
+    for gone in (
+        LOGIN, "gpu02", "5000", "41233", "2222", "4455", "Zq9Xk2LmN4pR7sT1vW3y",
+        "Abcdef0123456789Abcd", "hunter2", "s3cr3t",
+    ):  # fmt: skip
+        assert gone not in res.out, gone
+
+
+def test_real_engine_lines_survive_unchanged(world: ClusterWorld) -> None:
+    res = _tail(world, text="\n".join(REAL_LINES) + "\n")
+    assert res.rc == 0, res.err
+    for kept in KEPT:
+        assert kept in res.out, kept
+    assert "GPU-<uuid>" in res.out
+
+
+def test_a_huge_line_is_cut_before_the_redaction(world: ClusterWorld) -> None:
+    res = _tail(world, text="a" * 5_000_000 + "\nlast line\n")
+    assert res.rc == 0, res.err
+    assert len(res.out) < 4100
+    assert res.out.splitlines()[-1] == "last line"
+
+
+def test_control_characters_are_dropped_before_the_redaction(world: ClusterWorld) -> None:
+    res = _tail(world, text=f"to\x1bk\x07en=Zq9Xk2LmN4pR7sT1vW3y {LOGIN[:2]}\x00{LOGIN[2:]}\n")
+    assert res.rc == 0, res.err
+    assert LOGIN not in res.out
+    assert "Zq9Xk2LmN4pR7sT1vW3y" not in res.out
+
+
+@pytest.mark.parametrize(
+    "line",
+    [
+        "peer fe80::1 up",
+        "mail bob@corp.example",
+        "id GPU-1a2b3c4d-5e6f",
+        f"d sha256-{HEX64}",
+        "v6 2001:db8::7",
+        "as http://gpu02.cluster:5000/x",
+        "token=Zq9Xk2LmN4pR7sT1vW3y",
+    ],
+)
+def test_the_leak_scan_catches_unredacted_input(world: ClusterWorld, line: str) -> None:
+    """With the redaction replaced by ``cat`` every one of these must be stopped by the scan."""
+    sed = world.stubs.bin / "sed"
+    sed.unlink(missing_ok=True)
+    sed.write_text('#!/bin/sh\nif [ "$1" = "-E" ]; then exec cat; fi\nexec /usr/bin/sed "$@"\n')
+    sed.chmod(0o755)
+    res = _tail(world, text=line + "\n")
+    assert res.rc == 5
+    assert res.out == ""
