@@ -126,6 +126,14 @@ jobs:
       - name: Dependency review
         if: github.event_name == 'pull_request' && github.event.repository.private == false
         uses: actions/dependency-review-action@a1d282b36b6f3519aa1f3fc636f609c47dddb294 # v5.0.0
+        with:
+          # ONE advisory, owner decision 2026-11-03 (tracking issue #79). No wildcard, no severity downgrade, no
+          # blanket dev-dependency exemption. GHSA-g3hv-75wg-m249 = minimatch (moderate, DoS via globparts
+          # amplification). Dev tooling only: eslint 9 / typescript-eslint -> minimatch in apps/dashboard; it is never
+          # in the built dashboard and never at runtime (`pnpm audit --prod` is clean). The patched minimatch 11
+          # breaks eslint's config loader. REMOVE this line once eslint/typescript-eslint ship a patched minimatch
+          # (see issue #79 for the removal steps).
+          allow-ghsas: GHSA-g3hv-75wg-m249
 
   scorecard:
     name: scorecard
