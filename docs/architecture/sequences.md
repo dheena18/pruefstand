@@ -509,7 +509,7 @@ sequenceDiagram
     alt no hits
         G-->>A: refusal sentence (DE or EN), no model call
     else hits
-        G->>T: count prompt (ChatML wrapper); drop lowest-ranked chunks above num_ctx - num_predict
+        G->>T: count prompt (ChatML wrapper), drop lowest-ranked chunks above num_ctx - num_predict
         G->>O: POST /api/chat {model: bare tag, think: false, options: num_ctx, temperature, seed, num_predict}, Bearer key if set, no keep_alive
         O-->>G: message.content, prompt_eval_count, eval_count (HTTP 502/503/504 retried twice, read timeout 300 s not retried)
         G->>G: strip leading think block, output 8-gram guard, refusal flag, citations (regex)
