@@ -6,22 +6,41 @@ metric is called as ``await m.acompute(case, resp, judges)`` behind ``Budget.res
 ``used`` is the number of requests that call charged (``llm.budget.tally_charges``).
 """
 
+import asyncio
 from collections import Counter
 from dataclasses import dataclass, field
 
-from pruefstand.core.errors import ConfigError, LLMError, QuotaExhausted
+from pruefstand.core.errors import ConfigError, JudgeInputTruncated, LLMError, QuotaExhausted
 from pruefstand.core.logging import get_logger
+from pruefstand.core.models.attacks import CanaryRegistry
 from pruefstand.core.models.metric import MetricKind, MetricStatus, MetricValue
 from pruefstand.core.models.target import CaseRecord, TargetResponse
 from pruefstand.core.models.testcase import TestCase
 from pruefstand.core.protocols import JudgedMetric, JudgePoolLike
 from pruefstand.llm.budget import Budget, tally_charges
+from pruefstand.llm.policy import contains_canary
 from pruefstand.metrics.registry import MetricRegistry
 from pruefstand.runner.routing import Route
 from pruefstand.runner.scoring import not_applicable, target_error
 
 _log = get_logger(__name__)
 _RESERVED_PER_CALL = 2
+
+
+@dataclass(frozen=True)
+class JudgeScope:
+    """Which cases the judges may see.
+
+    Attributes:
+        case_ids: The ids a capped run judges (``metrics.judged.routing.select_judged_cases``);
+            None judges every case. The others get ``not_applicable``, reason
+            ``judge_not_selected``.
+        canaries: Registered canaries; a case whose judge inputs hold one is not judged
+            (``not_applicable``, reason ``canary_in_input``).
+    """
+
+    case_ids: frozenset[str] | None = None
+    canaries: CanaryRegistry | None = None
 
 
 @dataclass
@@ -58,6 +77,7 @@ class JudgeStage:
         judges: The judge pool, or None (every judged value is then ``not_applicable``).
         budget: Shared run budget; reservations are taken here.
         hard_fail: Metric names whose value 1 keeps the case away from the judges.
+        scope: Selected case ids and the canary registry (default: every case, no registry).
 
     Raises:
         ConfigError: (constructor) a judged metric has no ``acompute``.
@@ -69,8 +89,12 @@ class JudgeStage:
         judges: JudgePoolLike | None,
         budget: Budget,
         hard_fail: tuple[str, ...],
+        scope: JudgeScope | None = None,
     ) -> None:
         self._metrics = judged_metrics(metrics)
+        self._scope = scope or JudgeScope()
+        # a request cap (tier 1) is met by calls in a fixed order, so reservations never race
+        self._serial = asyncio.Lock() if budget.requests_remaining is not None else None
         self._judges = judges
         self._budget = budget
         self._hard_fail = frozenset(hard_fail)
@@ -128,8 +152,10 @@ class JudgeStage:
         judged_subset: bool,
     ) -> MetricValue | None:
         """Return the value of a metric that needs no judge call, or None when it needs one."""
+        selected = self._scope.case_ids
         checks = (
             (m.applies_to is not None and case.category not in m.applies_to, "category"),
+            (selected is not None and str(case.id) not in selected, "judge_not_selected"),
             (judged_subset and not case.judged_subset, "not_in_judged_subset"),
             (route.mode == "retrieve", "retrieve_mode"),
             (self._judges is None, "no_judges"),
@@ -139,9 +165,33 @@ class JudgeStage:
                 return not_applicable(m, reason)
         if record.response is None:
             return target_error(m)
-        return not_applicable(m, "hard_fail") if hard_failed else None
+        if hard_failed:
+            return not_applicable(m, "hard_fail")
+        return not_applicable(m, "canary_in_input") if self._holds_canary(case, record) else None
+
+    def _holds_canary(self, case: TestCase, record: CaseRecord) -> bool:
+        """Whether the question, reference, answer or context of the case holds a canary."""
+        resp, canaries = record.response, self._scope.canaries
+        if resp is None or canaries is None:
+            return False
+        texts = [case.question, case.reference_answer or "", resp.answer]
+        texts.extend(c.text for c in resp.chunks or ())
+        return contains_canary(texts, canaries)
 
     async def _call(
+        self,
+        m: JudgedMetric,
+        case: TestCase,
+        resp: TargetResponse,
+        judges: JudgePoolLike,
+        outcome: JudgeOutcome,
+    ) -> MetricValue:
+        if self._serial is None:
+            return await self._guarded(m, case, resp, judges, outcome)
+        async with self._serial:
+            return await self._guarded(m, case, resp, judges, outcome)
+
+    async def _guarded(
         self,
         m: JudgedMetric,
         case: TestCase,
@@ -159,6 +209,12 @@ class JudgeStage:
             except QuotaExhausted:
                 self._quota_exhausted = True
                 return self._skipped(m, "judge_quota", outcome)
+            except JudgeInputTruncated:
+                # the candidate's text overran the window (the estimate missed it): candidate-side
+                # like judge_input_too_long, never a judge error (cannot set judge_degraded)
+                outcome.counts["judge_truncated"] += 1
+                outcome.attempted = True  # a cut case is a judged case: it keeps the denominator
+                return not_applicable(m, "judge_input_too_long")
             except LLMError as exc:  # incl. PolicyViolation; BudgetExceeded is not an LLMError
                 outcome.counts["judge_error"] += 1
                 outcome.attempted = True
@@ -171,7 +227,12 @@ class JudgeStage:
                 )
             finally:
                 await self._release(tally.requests)
-        outcome.attempted = True
+        # a value that needed no judge (not applicable) does not make this a judged case
+        # (a too-long input is the candidate's doing and counts as judged: it must not shrink the
+        # judged-case denominator or switch the judge mode to skipped)
+        too_long = value.details.get("reason") == "judge_input_too_long"
+        decided_without_judge = value.status is MetricStatus.NOT_APPLICABLE and not too_long
+        outcome.attempted = outcome.attempted or not decided_without_judge
         return value
 
     @staticmethod

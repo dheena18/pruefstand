@@ -18,9 +18,11 @@ from pruefstand.core.models.target import CaseRecord
 from pruefstand.core.models.testcase import TestCase
 from pruefstand.core.protocols import JudgePoolLike, KVCache, TargetAdapter
 from pruefstand.llm.budget import Budget, ChargeTally, tally_charges
+from pruefstand.metrics.judged.consistency import BaseAnswers, base_answers
 from pruefstand.metrics.registry import MetricRegistry
-from pruefstand.runner.judging import JudgeStage
+from pruefstand.runner.judging import JudgeScope, JudgeStage
 from pruefstand.runner.manifest import RunEnd, RunFacts, StopReason, build_manifest
+from pruefstand.runner.refusal import finalise_refusal
 from pruefstand.runner.routing import Route, route_case
 from pruefstand.runner.scoring import deterministic_values
 from pruefstand.runner.target_call import TargetCaller
@@ -51,6 +53,7 @@ class Runner:
         budget: Run budget, charged only by LLM calls (judged metrics).
         cfg: Concurrency, timeout and retry settings.
         hard_fail: Metrics whose value 1 keeps a case away from the judges.
+        judge_scope: Which cases the judges may see (selected ids of a capped run, canaries).
     """
 
     def __init__(  # noqa: PLR0917  (signature fixed by interfaces §8, X4.1)
@@ -63,12 +66,14 @@ class Runner:
         cfg: RunnerConfig,
         *,
         hard_fail: tuple[str, ...] = ("canary_leak", "tenant_leak", "system_prompt_leak"),
+        judge_scope: JudgeScope | None = None,
     ) -> None:
         self._metrics = metrics
         self._judges = judges
         self._budget = budget
         self._cfg = cfg
         self._hard_fail = hard_fail
+        self._scope = judge_scope
         self._caller = TargetCaller(adapter, cache, cfg)
 
     async def run(
@@ -111,17 +116,19 @@ class Runner:
             judged_subset=judged_subset,
             judges_given=self._judges is not None,
         )
-        stage = JudgeStage(self._metrics, self._judges, self._budget, self._hard_fail)
+        stage = JudgeStage(self._metrics, self._judges, self._budget, self._hard_fail, self._scope)
         slots: list[_Done | None] = [None] * len(cases)
         semaphore = asyncio.Semaphore(self._cfg.concurrency)
+        # bases start before their perturbed variants, which wait for the base answer
+        order = sorted(range(len(cases)), key=lambda i: cases[i].perturbation is not None)
+        bases = [str(c.id) for c in cases if c.perturbation is None]
+        with tally_charges() as cost, base_answers(bases) as answers:
 
-        async def one(index: int, case: TestCase) -> None:
-            async with semaphore:
-                slots[index] = await self._case(index, case, stage, facts)
+            async def one(index: int) -> None:
+                async with semaphore:
+                    slots[index] = await self._case(index, cases[index], stage, facts, answers)
 
-        with tally_charges() as cost:
-            tasks = [asyncio.create_task(one(i, c)) for i, c in enumerate(cases)]
-            stop = await _drive(tasks)
+            stop = await _drive([asyncio.create_task(one(i)) for i in order])
         done = [d for d in slots if d is not None]
         return self._results(facts, done, cost, stop, time.perf_counter() - started)
 
@@ -138,18 +145,27 @@ class Runner:
             values=tuple(d.scored for d in done),
         )
 
-    async def _case(self, index: int, case: TestCase, stage: JudgeStage, facts: RunFacts) -> _Done:
+    async def _case(
+        self, index: int, case: TestCase, stage: JudgeStage, facts: RunFacts, answers: BaseAnswers
+    ) -> _Done:
         route = route_case(case, judged_subset=facts.judged_subset)
         rng = case_rng(facts.seed, index)
-        fetched = await self._caller.fetch(
-            case, route, target_fingerprint=facts.target_fingerprint, rng=rng
-        )
+        try:
+            fetched = await self._caller.fetch(
+                case, route, target_fingerprint=facts.target_fingerprint, rng=rng
+            )
+        except BaseException:
+            answers.resolve(str(case.id), None)  # never leave a variant waiting
+            raise
         record = fetched.record
+        reply = record.response
+        answers.resolve(str(case.id), reply.answer if reply and record.mode == "answer" else None)
         # After a fallback to /v1/query the answer metrics apply; judging keeps the original route.
         scoring_route = route if record.mode == "retrieve" else Route("answer", None)
         # Synchronous on purpose: metrics share a wall-clock regex budget (REGEX_TIMEOUT_S).
         values = deterministic_values(case, record, scoring_route, self._metrics)
         judged = await stage.judge(case, record, route, values, judged_subset=facts.judged_subset)
+        values = finalise_refusal(case, values, judged.values)
         values.update(judged.values)
         ordered = tuple(values[m.name] for m in self._metrics.all())
         counts = _case_counts(record, ordered, self._metrics)
@@ -178,9 +194,8 @@ def _case_counts(
             key = "judge_truncated" if value.metric in judged_names else "metric_truncated"
             counts[key] += 1
             _log.warning("metric_input_truncated", case_id=record.case_id, metric=value.metric)
-        mismatch = value.details.get("refusal_flag_mismatch")
-        if isinstance(mismatch, int | float):  # bool is an int
-            counts["refusal_flag_mismatch"] += int(mismatch)
+    flagged = (v.details.get("refusal_flag_mismatch") for v in values)
+    counts["refusal_flag_mismatch"] += any(isinstance(f, int | float) and f for f in flagged)
     return counts
 
 
