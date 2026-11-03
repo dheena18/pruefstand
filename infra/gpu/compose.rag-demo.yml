@@ -35,10 +35,11 @@ services:
       - --port
       - "${RAG_DEMO_HOST_PORT:-8000}"
     environment:
+      RAG_DEMO_HOST_PORT: ${RAG_DEMO_HOST_PORT:-8000}
       RAG_CONFIG: ${RAG_DEMO_GPU_CONFIG:-/app/configs/rag.gpu.yaml}
       OLLAMA_GPU0_URL: ${OLLAMA_GPU0_URL:?set OLLAMA_GPU0_URL in .env (the VM tunnel, http://127.0.0.1:11434)}
-      RERANK_URL: http://127.0.0.1:${RERANK_HOST_PORT:-8201}
-      QDRANT_URL: http://127.0.0.1:${QDRANT_HTTP_PORT:-6333}
+      RERANK_URL: http://127.0.0.1:${RERANK_HOST_PORT:?use make up (it exports the dev ports)}
+      QDRANT_URL: http://127.0.0.1:${QDRANT_HTTP_PORT:?use make up (it exports the dev ports)}
       SERVING_ENGINE_VERSION: ${SERVING_ENGINE_VERSION:-unknown}
       SERVING_GPU: ${SERVING_GPU:-A40}
     mem_limit: 1g

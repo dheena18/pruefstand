@@ -14,8 +14,8 @@ from rag_demo.config import Settings, load_config
 MANIFEST = json.loads((SLICE / "manifest.json").read_text(encoding="utf-8"))
 SETTINGS = Settings(
     qdrant_url="http://qdrant.test:6333",
-    llm_url="http://llm.test:8080",
-    embed_url="http://embed.test:8090",
+    llm_url="http://llm:8080",
+    embed_url="http://embed:8090",
     collection="slice_v1",
 )
 COLLECTION = {

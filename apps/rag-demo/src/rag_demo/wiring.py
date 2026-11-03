@@ -8,10 +8,10 @@ import numpy as np
 from numpy.typing import NDArray
 
 from rag_demo.analysis import GermanAnalyzer
-from rag_demo.catalogue import CatalogueEntry, load_catalogue
+from rag_demo.catalogue import CatalogueEntry, check_against_catalogue, load_catalogue
 from rag_demo.config import Settings, resolve_model_sha
 from rag_demo.dense import TeiDenseEncoder
-from rag_demo.endpoints import resolve_endpoint
+from rag_demo.endpoints import check_endpoint, resolve_endpoint
 from rag_demo.errors import ConfigError, EmbeddingError
 from rag_demo.generate import OpenAICompatGenerator
 from rag_demo.generate_ollama import OllamaChatGenerator
@@ -59,6 +59,8 @@ def resolve_urls(cfg: RagConfig, settings: Settings) -> Urls:
             rules (the message names the variable).
     """
     if cfg.profile != "gpu":
+        check_endpoint(settings.llm_url, engine=cfg.generator.engine)
+        check_endpoint(settings.embed_url, engine=cfg.embed.engine)
         return Urls(llm=settings.llm_url, embed=settings.embed_url)
     g, e = cfg.generator, cfg.embed
     return Urls(
@@ -71,14 +73,17 @@ def build_catalogue(cfg: RagConfig, settings: Settings) -> dict[str, CatalogueEn
     """The catalogue for the ``gpu`` profile (``None`` for ``live``).
 
     Raises:
-        ConfigError: ``gpu`` profile without ``RAG_MODEL_CATALOGUE`` or with an unreadable file.
+        ConfigError: ``gpu`` profile without ``RAG_MODEL_CATALOGUE``, an unreadable file, or a
+            config that disagrees with it (so a config built in code fails at startup too).
     """
     if cfg.profile != "gpu":
         return None
     if settings.rag_model_catalogue is None:
         msg = "profile gpu needs the model catalogue: set RAG_MODEL_CATALOGUE"
         raise ConfigError(msg)
-    return load_catalogue(settings.rag_model_catalogue)
+    catalogue = load_catalogue(settings.rag_model_catalogue)
+    check_against_catalogue(cfg, catalogue, settings.rag_model_catalogue)
+    return catalogue
 
 
 def build_generator(cfg: RagConfig, url: str, stats: Stats) -> Generator:
