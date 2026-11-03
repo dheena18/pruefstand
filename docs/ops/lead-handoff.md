@@ -128,4 +128,8 @@ Reserved decision ranges (2026-11-03): the lead assigned disjoint ranges per age
   reviewer had killed another session's polling loop.)
 - No `git stash` in worktrees: the stash list is shared across all worktrees, so a `stash pop` can apply another session's
   entry. Use a WIP commit on your own branch, or `git diff > patch`. Old stash entries (T1.13) stay untouched.
+- Pipe gates: every "only on success" step (commit, push, PR create, merge) tests the exit code of the REAL command, never of
+  `tail`, `grep` or `tee` at the end of a pipe. Use `set -o pipefail`, `${PIPESTATUS[0]}`, or write the output to a file and tail
+  the file afterwards, and branch with `if ! cmd >file 2>&1; then ...; exit 1; fi`. For the full check test the exit code of `make check-vm` itself (it `exec`s `make check`, so the status is make's own); when the check runs in the background, write `EXIT=$?` right after it into the log and gate on that line. Do not gate on `cmd | tail -1 && next`.
+  (2026-11-03: `ruff | tail && git add` let two lint-failing commits through to a PR branch; CI caught them.)
 
