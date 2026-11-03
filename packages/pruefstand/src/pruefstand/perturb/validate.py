@@ -13,7 +13,7 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict
 
-from pruefstand.core.errors import ConfigError, LLMError, PolicyViolation
+from pruefstand.core.errors import ConfigError, DataGuardViolation, LLMError
 from pruefstand.core.hashing import stable_hash
 from pruefstand.core.logging import get_logger
 from pruefstand.core.models.llm import LLMRequest, LLMRole
@@ -186,7 +186,7 @@ class RewriteValidator:
         llm, model = picked
         try:
             eq = await self._ask(llm, model, name, source, draft)
-        except PolicyViolation:  # private text may not go to the external second model
+        except DataGuardViolation:  # private text may not go to the external second model
             return Verdict(valid=False, reason="no_independent_validator")
         if eq.score == 0:
             return Verdict(valid=False, reason="not_equivalent", validator=model, detail=eq.reason)

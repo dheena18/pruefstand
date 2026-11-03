@@ -84,11 +84,44 @@ class PassReport(BaseModel):
     stopped: Literal["quota", "budget"] | None = None
 
 
+def _read_jsonl[M: BaseModel](path: Path, model: type[M]) -> list[M]:
+    """Read a JSON-lines file; a truncated last line (crash during a write) is skipped."""
+    if not path.is_file():
+        return []
+    lines = [
+        (n, ln)
+        for n, ln in enumerate(path.read_text(encoding="utf-8").splitlines(), 1)
+        if ln.strip()
+    ]
+    rows: list[M] = []
+    for position, (number, line) in enumerate(lines):
+        try:
+            rows.append(model.model_validate_json(line))
+        except ValidationError as err:
+            if position == len(lines) - 1:
+                log.warning("perturb_store_truncated_line", file=path.name, line=number)
+                continue
+            msg = f"{path.name}:{number} is not a valid entry"
+            raise DatasetError(msg) from err
+    return rows
+
+
+def _append_line(path: Path, line: str) -> None:
+    """Append one line; a truncated last line (no newline) is cut off first."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    if path.is_file():
+        raw = path.read_bytes()
+        if raw and not raw.endswith(b"\n"):
+            path.write_bytes(raw[: raw.rfind(b"\n") + 1])
+    with path.open("a", encoding="utf-8") as fh:
+        fh.write(line + "\n")
+
+
 class RewriteStore:
     """Append-only JSON-lines store of drafts in ``directory``.
 
     Raises:
-        DatasetError: A line of an existing file is not a valid entry.
+        DatasetError: A line other than the last of an existing file is not a valid entry.
     """
 
     def __init__(self, directory: Path) -> None:
@@ -96,23 +129,10 @@ class RewriteStore:
         self._verdict_path = directory / VERDICT_FILE
         self._entries: dict[str, Entry] = {}
         self._verdicts: dict[str, Verdict] = {}
-        if self._verdict_path.is_file():
-            for line in self._verdict_path.read_text(encoding="utf-8").splitlines():
-                if line.strip():
-                    stored = StoredVerdict.model_validate_json(line)
-                    self._verdicts[stored.key] = stored.verdict
-        if self._path.is_file():
-            for number, line in enumerate(self._path.read_text(encoding="utf-8").splitlines(), 1):
-                if line.strip():
-                    entry = self._parse(line, number)
-                    self._entries[entry.key] = entry
-
-    def _parse(self, line: str, number: int) -> Entry:
-        try:
-            return Entry.model_validate(json.loads(line))
-        except (json.JSONDecodeError, ValidationError) as err:
-            msg = f"{self._path.name}:{number} is not a valid rewrite entry"
-            raise DatasetError(msg) from err
+        for stored in _read_jsonl(self._verdict_path, StoredVerdict):
+            self._verdicts[stored.key] = stored.verdict
+        for entry in _read_jsonl(self._path, Entry):
+            self._entries[entry.key] = entry
 
     def get(self, key: str) -> Entry | None:
         """Return the entry stored under ``key``."""
@@ -128,22 +148,28 @@ class RewriteStore:
 
     def put_verdict(self, key: str, verdict: Verdict) -> None:
         """Append a verdict (flushed at once) so a later failure does not lose it."""
-        line = StoredVerdict(key=key, verdict=verdict).model_dump_json()
-        with self._verdict_path.open("a", encoding="utf-8") as fh:
-            fh.write(line + "\n")
+        _append_line(self._verdict_path, StoredVerdict(key=key, verdict=verdict).model_dump_json())
         self._verdicts[key] = verdict
 
     def put(self, entry: Entry) -> None:
         """Append ``entry`` to the file (flushed at once) and remember it."""
-        self._path.parent.mkdir(parents=True, exist_ok=True)
-        with self._path.open("a", encoding="utf-8") as fh:
-            fh.write(json.dumps(entry.model_dump(mode="json"), ensure_ascii=False) + "\n")
+        _append_line(self._path, json.dumps(entry.model_dump(mode="json"), ensure_ascii=False))
         self._entries[entry.key] = entry
 
 
 def item_id(text: str) -> str:
     """Return the id of a text: ``q`` + 8 hex of its content hash (stable under reordering)."""
     return "q" + stable_hash(nfc(text))[:8]
+
+
+def check_item_ids(items: Sequence[Item]) -> None:
+    """Raise ``DatasetError`` when two different texts (or privacy flags) share one item id."""
+    seen: dict[str, tuple[str, bool]] = {}
+    for item in items:
+        value = (nfc(item.text), item.private)
+        if seen.setdefault(item.id, value) != value:
+            msg = f"item id collision: '{item.id}' names two different items"
+            raise DatasetError(msg)
 
 
 def entry_key(item: Item, p: LLMRewritePerturbation, seed: int) -> str:
@@ -180,6 +206,7 @@ async def rewrite_pass(
     Raises:
         PolicyViolation: The data guard blocked a call and the rewriter has no local model.
     """
+    check_item_ids(items)
     done = skipped = failed = 0
     total = len(items) * len(perturbations)
     for item in items:
@@ -241,6 +268,7 @@ async def validate_pass(
         ConfigError: No validator, or none of another family than the rewriter.
         LLMError: An equivalence call failed.
     """
+    check_item_ids(items)
     outcomes: list[Outcome] = []
     for item in items:
         source = nfc(item.text)

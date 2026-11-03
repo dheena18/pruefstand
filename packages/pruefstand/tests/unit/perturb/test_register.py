@@ -94,3 +94,17 @@ def test_lowercase_sie_and_sich_go_to_the_model(src: str) -> None:
     assert got is not None
     assert got.needs_llm
     assert got.text == src
+
+
+@pytest.mark.parametrize(
+    "src",
+    [
+        "Ihnen steht Urlaub zu, oder?",
+        "Haben Sie und Ihr Mann Anspruch auf Urlaub?",
+        "Er fragte: \u201eKönnen Sie mir helfen?\u201c",
+    ],
+)
+def test_ambiguous_forms_go_to_the_model(src: str) -> None:
+    got = rule_register(src)
+    assert got is not None
+    assert got.needs_llm

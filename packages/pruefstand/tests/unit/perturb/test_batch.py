@@ -8,7 +8,7 @@ from testsupport.loopback_script import Step, serve_script
 from testsupport.perturb_support import JUDGE, REWRITER, answers, client, verdict
 
 from pruefstand.core.errors import DatasetError, LLMError
-from pruefstand.perturb.batch import Item, RewriteStore, item_id, rewrite_pass, validate_pass
+from pruefstand.perturb.batch import Entry, Item, RewriteStore, item_id, rewrite_pass, validate_pass
 from pruefstand.perturb.colloquial import Colloquial
 from pruefstand.perturb.rewriter import Rewriter
 from pruefstand.perturb.validate import RewriteValidator
@@ -104,7 +104,7 @@ async def test_validate_pass_skips_items_without_a_draft(tmp_path: Path) -> None
 
 @pytest.mark.parametrize("bad", ["{not json", ""])
 def test_corrupt_store_line_is_an_error(tmp_path: Path, bad: str) -> None:
-    (tmp_path / "rewrites.jsonl").write_text(bad + "\n" if bad else "\n{x\n", encoding="utf-8")
+    (tmp_path / "rewrites.jsonl").write_text(f"{bad or '{x'}\n{{y\n", encoding="utf-8")
     with pytest.raises(DatasetError):
         RewriteStore(tmp_path)
 
@@ -135,3 +135,22 @@ def test_item_id_is_a_content_hash() -> None:
     assert item_id("Wann endet die Frist?") == item_id("Wann endet die Frist?")
     assert item_id("Wann endet die Frist?") != item_id("Wann endet die Frist denn?")
     assert item_id("x").startswith("q")
+
+
+def test_truncated_last_line_is_skipped_and_appending_stays_valid(tmp_path: Path) -> None:
+    store = RewriteStore(tmp_path)
+    store.put(Entry(key="k1", item_id="a", name="colloquial", draft=None))
+    with (tmp_path / "rewrites.jsonl").open("a", encoding="utf-8") as fh:
+        fh.write('{"key": "k2", "item_')  # a crash in the middle of a write
+    again = RewriteStore(tmp_path)
+    assert [e.key for e in again.entries()] == ["k1"]
+    again.put(Entry(key="k3", item_id="b", name="colloquial", draft=None))
+    assert [e.key for e in RewriteStore(tmp_path).entries()] == ["k1", "k3"]
+
+
+async def test_item_id_collision_with_different_text_raises(tmp_path: Path) -> None:
+    items = [Item(id="same", text="Wann endet es?"), Item(id="same", text="Wann endet sie?")]
+    with serve_script(answers(OUT[0])) as (rb, _), pytest.raises(DatasetError, match="collision"):
+        await rewrite_pass(
+            items, [_perturbation()], llm=client(rb, REWRITER), store=RewriteStore(tmp_path), seed=0
+        )

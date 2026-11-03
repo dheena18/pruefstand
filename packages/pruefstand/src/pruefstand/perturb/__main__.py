@@ -17,6 +17,7 @@ from pruefstand.core.errors import ConfigError, LLMError
 from pruefstand.perturb import llm_cli
 from pruefstand.perturb.llm_registry import llm_perturbation_names
 from pruefstand.perturb.registry import get_perturbation, perturbation_names
+from pruefstand.perturb.rewriter import PUBLIC_TENANT
 
 
 def _split(names: Sequence[str]) -> tuple[list[str], list[str]]:
@@ -57,7 +58,7 @@ def main(
     except ConfigError as exc:
         sys.stderr.write(f"{exc}\n")
         return 2
-    for question in questions:
+    for question, _ in questions:
         for p in chosen:
             result = p.apply(question, np.random.default_rng(args.seed))
             status = "changed" if result.changed else "unchanged"
@@ -65,16 +66,31 @@ def main(
     return _run_llm(args, questions, with_llm, client_factory) if with_llm else 0
 
 
-def _questions(args: argparse.Namespace) -> list[str]:
-    if args.questions is not None:
-        lines = args.questions.read_text(encoding="utf-8").splitlines()
-        return [ln.strip() for ln in lines if ln.strip() and not ln.startswith("#")]
-    return [args.question] if args.question else []
+def _questions(args: argparse.Namespace) -> list[tuple[str, bool]]:
+    """Return ``(text, private)`` per question.
+
+    A line ``tenant<TAB>question`` is public only for ``shared_public``; a question without tenant
+    is private unless ``--public`` is given.
+    """
+    default_private = not args.public
+    if args.questions is None:
+        return [(args.question, default_private)] if args.question else []
+    out: list[tuple[str, bool]] = []
+    for line in args.questions.read_text(encoding="utf-8").splitlines():
+        if not line.strip() or line.startswith("#"):
+            continue
+        tenant, sep, text = line.partition("\t")
+        out.append(
+            (text.strip(), tenant.strip() != PUBLIC_TENANT)
+            if sep
+            else (line.strip(), default_private)
+        )
+    return out
 
 
 def _run_llm(
     args: argparse.Namespace,
-    questions: list[str],
+    questions: list[tuple[str, bool]],
     names: list[str],
     factory: llm_cli.ClientFactory | None,
 ) -> int:

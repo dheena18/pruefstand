@@ -28,10 +28,13 @@ _SINGULAR = re.compile(
     r"welche[rmns]|kein(?:em|en|er|es)?|vom|zum|beim|im|am|(?:mein|dein|sein|unser|euer|ihr)"
     r"(?:em|en|er|es)?)$"
 )
-_PLURAL = re.compile(
-    r"^(?:die|viele|alle|keine|welche|einige|mehrere|etliche|zwei|drei|vier|fünf|sechs|sieben|"
-    r"acht|neun|zehn|\d+|(?:mein|dein|sein|unser|euer|ihr)e)$"
+_WEAK = re.compile(r"^(?:die|diese|alle|keine|jene|(?:mein|dein|sein|unser|euer|ihr)e)$")
+_STRONG = re.compile(
+    r"^(?:viele|einige|mehrere|etliche|zwei|drei|vier|fünf|sechs|sieben|acht|neun|zehn|\d+)$"
 )
+_OTHER_PLURAL = re.compile(r"^welche$")
+_ADJECTIVE = re.compile(r"^[a-zäöüß]+(?:e|en|er|es|em)$")
+_MAX_ADJECTIVES = 3
 
 
 @dataclass(frozen=True)
@@ -73,43 +76,67 @@ def _lookup() -> dict[str, tuple[Noun, str]]:
     return table
 
 
-def _form(noun: Noun, style: str, *, dative: bool) -> str:
+def _form(noun: Noun, style: str, *, dative: bool, weak: bool) -> str:
     if style == "star":
         return noun.stem + "*innen"
     if style == "colon":
         return noun.stem + ":innen"
     if style == "partizip":
-        return (noun.part or noun.pl) + ("n" if dative else "")
+        return (noun.part or noun.pl) + ("n" if dative or weak else "")
     return f"{noun.f_pl} und {noun.dative if dative else noun.pl}"
 
 
-def _number_context(text: str, pos: int) -> str:
-    """Return ``sg``, ``pl`` or ``none``: the nearest determiner (three words back at most)."""
-    words = re.findall(r"[\wäöüß]+|[,.;:!?]", text[:pos].lower())[-3:]
-    for word in reversed(words):
-        if not word[0].isalnum():
-            break
+def _number_context(text: str, pos: int) -> tuple[str, str]:
+    """Return ``(number, strength)`` from the determiner directly before the noun.
+
+    Only adjectives (at most three) may stand between determiner and noun; a comma, a noun, a
+    preposition phrase or any other word ends the search with ``("none", "")``. ``number`` is
+    ``sg``, ``pl`` or ``none``; ``strength`` is ``weak``, ``strong`` or ``other`` for a plural.
+    """
+    words = re.findall(r"[\wäöüß]+|[,.;:!?]", text[:pos])[-(_MAX_ADJECTIVES + 1) :]
+    for original in reversed(words):
+        word = original.lower()
         if _SINGULAR.match(word):
-            return "sg"
-        if _PLURAL.match(word):
-            return "pl"
-    return "none"
+            return "sg", ""
+        for pattern, strength in ((_WEAK, "weak"), (_STRONG, "strong"), (_OTHER_PLURAL, "other")):
+            if pattern.match(word):
+                return "pl", strength
+        if not (original[0].islower() and _ADJECTIVE.match(word)):
+            break
+    return "none", ""
 
 
-def _scan(text: str) -> tuple[list[tuple[re.Match[str], Noun, bool]], bool]:
-    """Return the plural hits (match, noun, dative) and whether a singular needs the model."""
-    hits: list[tuple[re.Match[str], Noun, bool]] = []
-    singular = False
+Hit = tuple[re.Match[str], Noun, bool, str]
+
+
+def _scan(text: str) -> tuple[list[Hit], bool]:
+    """Return the plural hits (match, noun, dative, strength) and whether the model is needed.
+
+    A noun whose singular equals its plural is rule-converted only behind an explicit plural
+    determiner or number; every other context is left to the model (fail safe, D741/D745).
+    """
+    hits: list[Hit] = []
+    unsure = False
     for m in _WORD.finditer(text):
         found = _lookup().get(m.group(0))
         if found is None or text[m.end() : m.end() + 1] in _JOINERS:
             continue
         noun, kind = found
-        if kind == "sg" or _number_context(text, m.start()) == "sg":
-            singular = True
+        if kind == "dat":
+            hits.append((m, noun, True, "weak"))
             continue
-        hits.append((m, noun, kind == "dat"))
-    return hits, singular
+        number, strength = _number_context(text, m.start())
+        if kind == "sg" or number == "sg" or (noun.m == noun.pl and number != "pl"):
+            unsure = True
+            continue
+        hits.append((m, noun, False, strength or "other"))
+    return hits, unsure
+
+
+def _participle_ok(hit: Hit) -> bool:
+    """The participle exists and its declension is certain (weak or strong context)."""
+    _, noun, dative, strength = hit
+    return bool(noun.part) and (dative or strength in ("weak", "strong"))
 
 
 def pick_style(rng: np.random.Generator, allowed: tuple[str, ...] = STYLES) -> str:
@@ -136,13 +163,14 @@ def rule_gender(text: str, rng: np.random.Generator) -> RuleResult | None:
     hits, singular = _scan(text)
     if not hits and not singular:
         return None
-    allowed = tuple(s for s in STYLES if s != "partizip" or all(n.part for _, n, _ in hits))
+    allowed = tuple(s for s in STYLES if s != "partizip" or all(_participle_ok(h) for h in hits))
     style = pick_style(rng, allowed)
     if singular:
         return RuleResult(text=text, variant=style, needs_llm=True)
     out, last = [], 0
-    for m, noun, dative in hits:
-        out += [text[last : m.start()], _form(noun, style, dative=dative)]
+    for m, noun, dative, strength in hits:
+        form = _form(noun, style, dative=dative, weak=strength == "weak")
+        out += [text[last : m.start()], form]
         last = m.end()
     return RuleResult(text="".join(out) + text[last:], variant=style)
 

@@ -4,6 +4,7 @@ import pytest
 from testsupport.loopback_script import serve_script
 from testsupport.perturb_support import (
     JUDGE,
+    KEY_ENV,
     LOCAL_REWRITER,
     REWRITER,
     SECOND,
@@ -12,7 +13,14 @@ from testsupport.perturb_support import (
     verdict,
 )
 
-from pruefstand.core.errors import ConfigError
+from pruefstand.core.config import LLMPolicyConfig
+from pruefstand.core.errors import ConfigError, PolicyViolation
+from pruefstand.core.models.attacks import CanaryRegistry
+from pruefstand.llm.backends.litellm import LiteLLMBackend
+from pruefstand.llm.budget import Budget
+from pruefstand.llm.client import LLMClient
+from pruefstand.llm.policy import LLMPolicy
+from pruefstand.llm.recorder import CallRecorder
 from pruefstand.perturb.draft import Draft
 from pruefstand.perturb.validate import RewriteValidator, static_check
 
@@ -156,3 +164,24 @@ def test_law_abbreviation_must_stay() -> None:
         static_check("colloquial", src, _draft("Gilt § 622 HGB für kleine Läden?"))
         == "number_changed"
     )
+
+
+async def test_only_data_guard_refusals_become_no_independent_validator() -> None:
+
+    d = _draft(
+        "Gilt das Gesetz zum Schutz vor Kündigungen für Kleinbetriebe?",
+        name_model=LOCAL_REWRITER,
+        local=True,
+    )
+    with serve_script(answers(verdict(1))) as (sbase, _):
+        denied = LLMPolicyConfig(allowed_providers=("ollama",))
+        second = LLMClient(
+            LiteLLMBackend(SECOND, api_base=f"{sbase}/v1", api_key_env=KEY_ENV, timeout_s=30),
+            None,
+            Budget(None, None),
+            CallRecorder(),
+            LLMPolicy(denied, CanaryRegistry(canaries=())),
+        )
+        v = RewriteValidator(client(sbase, JUDGE), JUDGE, second=(second, SECOND))
+        with pytest.raises(PolicyViolation):
+            await v.judge("compound_split", SRC, d)

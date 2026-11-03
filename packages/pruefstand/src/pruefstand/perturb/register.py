@@ -26,7 +26,12 @@ _ACC = _ACC_PREP.split("|")
 _FORMAL = re.compile(r"\b(?:Sie|Ihnen|Ihr(?:e|en|em|er|es)?)\b")
 _INFORMAL = re.compile(r"\b(?:du|dich|dir|dein(?:e|en|em|er|es)?)\b", re.IGNORECASE)
 _SENTENCE_START = re.compile(r"(?:^|[.?!]\s+)$")
-_AMBIGUOUS = re.compile(r"\b(?:sich|sie|ihnen|ihr(?:e|en|em|er|es)?)\b")  # they / her / reflexive
+_AMBIGUOUS = re.compile(
+    r"\b(?:sich|sie|ihnen|ihr(?:e|en|em|er|es)?)\b"  # they / her / reflexive
+    r"|(?:^|[.?!]\s+)Ihnen\b"  # sentence-initial: "to them" or "to you"
+    r"|\b(?:Sie|du) (?:und|oder|sowie)\b|\b(?:und|oder|sowie) (?:Sie|du)\b"  # joint subject
+    r"|[\"\u201e\u201c\u201d\u00bb\u00ab]"  # quoted speech
+)
 
 
 @cache

@@ -30,7 +30,7 @@ from pruefstand.perturb.batch import (
 )
 from pruefstand.perturb.llm_base import LLMRewritePerturbation
 from pruefstand.perturb.llm_registry import build_llm_perturbation
-from pruefstand.perturb.rewriter import LocalTarget, Rewriter
+from pruefstand.perturb.rewriter import LocalTarget, Rewriter, private_text
 from pruefstand.perturb.validate import RewriteValidator
 
 ClientFactory = Callable[[str, int | None], LLMClient]
@@ -44,6 +44,11 @@ def add_arguments(parser: argparse.ArgumentParser) -> None:
     )
     g.add_argument(
         "--questions", type=Path, help="file with one question per line (instead of QUESTION)"
+    )
+    g.add_argument(
+        "--public",
+        action="store_true",
+        help="questions without a tenant are public (default: private, local model only)",
     )
     g.add_argument("--model", help="rewrite model, github/<pinned datagen model>")
     g.add_argument("--judge-model", help="local judge for the equivalence check, ollama/<tag>")
@@ -114,7 +119,7 @@ def _line(name: str, source: str, text: str, *, valid: bool, reason: str) -> str
 
 
 async def run(
-    questions: Sequence[str],
+    questions: Sequence[tuple[str, bool]],
     names: Sequence[str],
     args: argparse.Namespace,
     factory: ClientFactory,
@@ -122,6 +127,7 @@ async def run(
 ) -> int:
     """Run the chosen pass for the questions.
 
+    ``questions`` are ``(text, private)``: a private question is only ever sent to the local model.
     With ``--questions`` every line starts with the item id (``q`` + content hash).
 
     Returns:
@@ -132,7 +138,7 @@ async def run(
     """
     _quiet_provider_logs()
     perturbations = _build(names, args, factory)
-    items = [Item(id=item_id(q), text=q) for q in questions]
+    items = [Item(id=item_id(q), text=q, private=private) for q, private in questions]
     texts = {it.id: it.text for it in items}
 
     def emit(item_id: str, line: str) -> None:
@@ -142,7 +148,8 @@ async def run(
         llm = factory(args.model, args.max_requests)
         for item in items:
             for p in perturbations:
-                res = await p.aapply(item.text, llm, item_rng(item, p, args.seed))
+                with private_text(private=item.private):
+                    res = await p.aapply(item.text, llm, item_rng(item, p, args.seed))
                 emit(
                     item.id, _line(p.name, item.text, res.text, valid=res.changed, reason=res.notes)
                 )

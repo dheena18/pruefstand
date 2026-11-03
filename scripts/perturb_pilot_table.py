@@ -1,7 +1,7 @@
 r"""Render the T4.5 pilot table from the output of ``python -m pruefstand.perturb --questions``.
 
     python -m pruefstand.perturb --questions datasets/fixtures/perturb_pilot_questions.txt \
-        --name compound_split,register,gender,colloquial --model ... --judge-model ... \
+        --public --name compound_split,register,gender,colloquial --model ... --judge-model ... \
         --pass both > pilot.tsv
     python scripts/perturb_pilot_table.py datasets/fixtures/perturb_pilot_questions.txt pilot.tsv
 

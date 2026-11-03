@@ -32,6 +32,7 @@ def test_four_lines_with_valid_or_reason(
 
         argv = [
             Q,
+            "--public",
             "--name",
             "register,compound_split,gender,colloquial",
             "--model",
@@ -56,7 +57,7 @@ def test_four_lines_with_valid_or_reason(
 
 
 def test_llm_name_without_model_is_exit_2(capsys: pytest.CaptureFixture[str]) -> None:
-    assert main([Q, "--name", "colloquial"]) == 2
+    assert main([Q, "--public", "--name", "colloquial"]) == 2
     assert "--model" in capsys.readouterr().err
 
 
@@ -70,6 +71,7 @@ def test_pass_rewrite_then_validate(capsys: pytest.CaptureFixture[str], tmp_path
 
         base = [
             q,
+            "--public",
             "--name",
             "colloquial",
             "--model",
@@ -104,7 +106,7 @@ def test_questions_file_prefixes_the_item_id(
     file = tmp_path / "q.txt"
     file.write_text("# pilot\nKönnen Sie mir helfen?\n\nHaben Sie Urlaub?\n", encoding="utf-8")
 
-    argv = ["--questions", str(file), "--name", "register", "--model", REWRITER]
+    argv = ["--questions", str(file), "--public", "--name", "register", "--model", REWRITER]
     with serve_script([]) as (base, state):
 
         def factory(model: str, max_requests: int | None) -> LLMClient:
@@ -122,3 +124,43 @@ def test_questions_file_prefixes_the_item_id(
 def test_no_question_is_exit_2(capsys: pytest.CaptureFixture[str]) -> None:
     assert main(["--name", "dates"]) == 2
     assert "QUESTION" in capsys.readouterr().err
+
+
+@pytest.mark.parametrize("phase", ["rewrite", "both", "validate"])
+@pytest.mark.parametrize("flags", [[], ["--no-canaries"]])
+def test_question_without_tenant_is_private_and_never_reaches_the_external_model(
+    phase: str, flags: list[str], tmp_path: Path
+) -> None:
+    q = "Unter welchen Voraussetzungen ist eine ordentliche Kündigung zulässig?"
+    argv = [q, "--name", "colloquial", "--model", REWRITER, "--judge-model", JUDGE]
+    argv += ["--store", str(tmp_path), "--pass", phase, *flags]
+    with (
+        serve_script(answers("Wann darf er?")) as (rb, rs),
+        serve_script(answers(verdict(1))) as (jb, _),
+    ):
+        bases = {REWRITER: rb, JUDGE: jb}
+
+        def factory(model: str, max_requests: int | None) -> LLMClient:
+            return client(bases[model], model, max_requests=max_requests)
+
+        main(argv, client_factory=factory)
+    assert rs.posts() == 0
+
+
+def test_tenant_column_marks_only_non_public_questions_private(
+    capsys: pytest.CaptureFixture[str], tmp_path: Path
+) -> None:
+    file = tmp_path / "q.txt"
+    file.write_text(
+        "shared_public\tWann darf er?\nkanzlei_mueller\tWann darf sie?\nWann darf es?\n",
+        encoding="utf-8",
+    )
+    argv = ["--questions", str(file), "--name", "colloquial", "--model", REWRITER]
+    argv += ["--store", str(tmp_path), "--pass", "rewrite"]
+    with serve_script(answers("Wann endet es?")) as (rb, rs):
+
+        def factory(model: str, max_requests: int | None) -> LLMClient:
+            return client(rb, model, max_requests=max_requests)
+
+        main(argv, client_factory=factory)
+    assert rs.posts() == 1

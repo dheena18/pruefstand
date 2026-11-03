@@ -108,3 +108,49 @@ def test_adjective_before_a_plural_noun_is_still_rule_converted() -> None:
     got = rule_gender("Haben die neuen Mitarbeiter Anspruch?", np.random.default_rng(0))
     assert got is not None
     assert not got.needs_llm
+
+
+@pytest.mark.parametrize(
+    "q",
+    [
+        "Welche Rechte hat ein sehr guter neuer Arbeitgeber?",
+        "Kann mein langjähriger, erfahrener Arbeitgeber kündigen?",
+        "Muss der für die Lohnzahlung zuständige Arbeitgeber zahlen?",
+        "Darf Arbeitgeber Müller kündigen?",
+        "Wer ist Arbeitgeber, wenn der Vertrag ruht?",
+        "Gilt das für Mitarbeiter?",
+    ],
+)
+def test_ambiguous_noun_is_never_rule_only_without_a_direct_plural_determiner(q: str) -> None:
+    got = rule_gender(q, np.random.default_rng(0))
+    assert got is None or got.needs_llm
+
+
+def _partizip(q: str) -> str | None:
+    for seed in range(80):
+        got = rule_gender(q, np.random.default_rng(seed))
+        if got is not None and got.variant == "partizip" and not got.needs_llm:
+            return got.text
+    return None
+
+
+@pytest.mark.parametrize(
+    ("q", "out"),
+    [
+        ("Dürfen die Mitarbeiter streiken?", "Dürfen die Mitarbeitenden streiken?"),
+        ("Haben alle Mitarbeiter Urlaub?", "Haben alle Mitarbeitenden Urlaub?"),
+        ("Gibt es keine Mitarbeiter?", "Gibt es keine Mitarbeitenden?"),
+        ("Dürfen die neuen Mitarbeiter streiken?", "Dürfen die neuen Mitarbeitenden streiken?"),
+        (
+            "Wie viele Mitarbeiter braucht der Betrieb?",
+            "Wie viele Mitarbeitende braucht der Betrieb?",
+        ),
+        ("Gilt das für zwei Mitarbeiter?", "Gilt das für zwei Mitarbeitende?"),
+    ],
+)
+def test_participle_takes_the_declension_of_its_context(q: str, out: str) -> None:
+    assert _partizip(q) == out
+
+
+def test_participle_is_not_used_after_an_unclear_determiner() -> None:
+    assert _partizip("Welche Mitarbeiter dürfen streiken?") is None
