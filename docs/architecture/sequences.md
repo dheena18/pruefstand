@@ -515,7 +515,7 @@ sequenceDiagram
     alt hit
         K-->>C: response (cached=True, cost 0, no quota charged)
     else miss
-        C->>C: budget.check(); model exhausted? QuotaExhausted or fallback
+        C->>C: budget.check, then QuotaExhausted or fallback when the model is exhausted
         loop up to 1 + max_retries
             C->>B: acomplete(req)
             B-->>C: response or LLMError (429/5xx/timeout are transient)
