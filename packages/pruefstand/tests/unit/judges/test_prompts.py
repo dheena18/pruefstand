@@ -21,20 +21,20 @@ REGISTRY = PromptRegistry([DE_ROOT])
 
 
 def _text(metric: str) -> str:
-    template = REGISTRY.get(SPECS[metric].prompt_id, "v1")
+    template = REGISTRY.get(SPECS[metric].prompt_id, SPECS[metric].version)
     return f"{template.system}\n{template.user}"
 
 
 @pytest.mark.parametrize("metric", METRICS)
 def test_every_prompt_loads_and_declares_exactly_its_variables(metric: str) -> None:
-    template = REGISTRY.get(SPECS[metric].prompt_id, "v1")
+    template = REGISTRY.get(SPECS[metric].prompt_id, SPECS[metric].version)
     assert template.variables() == frozenset(SPECS[metric].variables)
-    assert (DE_ROOT / f"{metric}_de_v1.txt").is_file()
+    assert (DE_ROOT / f"{metric}_de_{SPECS[metric].version}.txt").is_file()
 
 
 @pytest.mark.parametrize("metric", METRICS)
 def test_missing_and_extra_variables_are_errors(metric: str) -> None:
-    template = REGISTRY.get(SPECS[metric].prompt_id, "v1")
+    template = REGISTRY.get(SPECS[metric].prompt_id, SPECS[metric].version)
     values = dict.fromkeys(SPECS[metric].variables, "x")
     assert template.render(**values)
     with pytest.raises(PromptError):
@@ -69,7 +69,7 @@ def test_each_prompt_defines_its_scale_and_has_two_examples(metric: str) -> None
 
 
 def test_the_refusal_prompt_has_no_expected_answer() -> None:
-    template = REGISTRY.get("refusal_judged_de", "v1")
+    template = REGISTRY.get("refusal_judged_de", SPECS["refusal_judged"].version)
     assert template.variables() == {"frage", "antwort"}
     assert "erwartet" not in _text("refusal_judged").lower()
 
@@ -79,15 +79,30 @@ def test_faithfulness_renders_every_given_chunk_without_a_top_n_cut() -> None:
     inputs = {"frage": "F?", "kontext": format_chunks(chunks), "antwort": "A"}
     nonce = make_nonce(b"k", "faithfulness_de", inputs)
     wrapped = {k: wrap(k, v, nonce) for k, v in inputs.items()}
-    rendered = REGISTRY.get("faithfulness_de", "v1").render(**wrapped)[-1].content
+    rendered = (
+        REGISTRY.get("faithfulness_de", SPECS["faithfulness"].version).render(**wrapped)[-1].content
+    )
     assert all(chunk in rendered for chunk in chunks)
 
 
 def test_the_rendered_user_message_holds_the_blocks_in_a_fixed_order() -> None:
     wrapped = {k: wrap(k, f"<{k}>", "7f3a") for k in SPECS["faithfulness"].variables}
-    user = REGISTRY.get("faithfulness_de", "v1").render(**wrapped)[-1].content
+    user = (
+        REGISTRY.get("faithfulness_de", SPECS["faithfulness"].version).render(**wrapped)[-1].content
+    )
     positions = [user.index(f"<{k}-7f3a>") for k in ("frage", "kontext", "antwort")]
     assert positions == sorted(positions)
+
+
+def test_the_injected_few_shot_example_and_the_reminder_are_in_the_v2_prompts() -> None:
+    for metric in ("faithfulness", "answer_correctness"):
+        assert SPECS[metric].version == "v2"
+        text = _text(metric)
+        assert "Erinnerung:" in REGISTRY.get(SPECS[metric].prompt_id, "v2").user
+        assert "Rangfolge:" in text
+        assert "Vorgehen:" in text
+        assert re.search(r"^Antwort: .*(score 2|mit 2)", text, re.MULTILINE)  # an injected example
+        assert REGISTRY.get(SPECS[metric].prompt_id, "v1").user  # v1 stays loadable
 
 
 def test_no_german_prompt_text_in_python_sources() -> None:
@@ -116,10 +131,11 @@ def test_the_few_shot_questions_are_not_in_any_dataset() -> None:
     assert [q for q in questions if q.casefold() in corpus] == []
 
 
-def test_v1_files_are_immutable() -> None:
-    pinned = Path(__file__).with_name("prompts_v1.sha256").read_text(encoding="utf-8").split("\n")
+def test_released_prompt_files_are_immutable() -> None:
+    pinned = Path(__file__).with_name("prompts.sha256").read_text(encoding="utf-8").split("\n")
     expected = {line.split()[1]: line.split()[0] for line in pinned if line.strip()}
     actual = {
-        p.name: hashlib.sha256(p.read_bytes()).hexdigest() for p in sorted(DE_ROOT.glob("*_v1.txt"))
+        p.name: hashlib.sha256(p.read_bytes()).hexdigest()
+        for p in sorted(DE_ROOT.glob("*_v[0-9]*.txt"))
     }
     assert actual == expected

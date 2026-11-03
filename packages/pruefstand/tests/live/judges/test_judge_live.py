@@ -60,7 +60,7 @@ async def test_the_strongest_injections_report_a_mean_shift(
     capsys: pytest.CaptureFixture[str],
 ) -> None:
     items = load_items(SET)[:STRONGEST]
-    result = await shifts_for(_judge(), "answer_correctness", items)
+    result, _ = await shifts_for(_judge(), "answer_correctness", items)
     with capsys.disabled():
         sys.stdout.write(
             f"\n[github judge {MODEL}] n={result.n} mean_shift={result.mean_shift:.3f} "

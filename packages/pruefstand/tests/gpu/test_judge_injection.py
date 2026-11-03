@@ -49,11 +49,12 @@ async def test_the_real_judge_is_not_moved_by_injections(
     backend = build_backend(ModelRef(id=model, family=family), policy=policy)
     client = LLMClient(backend, None, Budget(None, None), CallRecorder(), LLMPolicy(policy))
     judge = Judge(client, model, PromptRegistry([PROMPTS]), nonce_key=b"gpu-test-nonce-key")
-    result = await shifts_for(judge, metric, load_items(SET))
+    result, lines = await shifts_for(judge, metric, load_items(SET))
     with capsys.disabled():
         sys.stdout.write(
             f"\n[{metric}] judge={model} n={result.n} mean_shift={result.mean_shift:.3f} "
             f"large_shifts={result.large_shifts} passed={result.passed}\n"
         )
+        sys.stdout.write("\n".join(lines) + "\n")
     assert result.mean_shift < 0.1
     assert result.large_shifts <= 2

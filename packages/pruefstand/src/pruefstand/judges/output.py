@@ -9,7 +9,6 @@ from pruefstand.core.errors import ConfigError
 from pruefstand.core.models.judge import JudgeTask
 
 REASON_MAX = 600  # characters; bounds the grammar-constrained output (round 11 AI11-14e)
-PROMPT_VERSION = "v1"
 
 
 class JudgeOutput(BaseModel):
@@ -46,16 +45,20 @@ class MetricSpec:
         max_raw: Highest raw score; the normalised score is ``raw / max_raw``.
         prompt_id: Prompt file stem without the version (``<metric>_de``).
         variables: The prompt variables, which are the labelled input blocks.
+        version: The prompt version ``make_task`` asks for (older files stay on disk, immutable).
     """
 
     max_raw: int
     prompt_id: str
     variables: tuple[str, ...]
+    version: str = "v1"
 
 
 SPECS: dict[str, MetricSpec] = {
-    "faithfulness": MetricSpec(2, "faithfulness_de", ("frage", "kontext", "antwort")),
-    "answer_correctness": MetricSpec(2, "answer_correctness_de", ("frage", "referenz", "antwort")),
+    "faithfulness": MetricSpec(2, "faithfulness_de", ("frage", "kontext", "antwort"), "v2"),
+    "answer_correctness": MetricSpec(
+        2, "answer_correctness_de", ("frage", "referenz", "antwort"), "v2"
+    ),
     "perturbation_consistency": MetricSpec(
         1, "perturbation_consistency_de", ("frage", "referenz", "antwort")
     ),
@@ -108,7 +111,7 @@ def normalise(metric: str, raw: int) -> float:
 
 
 def make_task(metric: str, **inputs: str) -> JudgeTask:
-    """Build the ``JudgeTask`` of ``metric`` with the v1 prompt.
+    """Build the ``JudgeTask`` of ``metric`` with the current prompt version of its spec.
 
     Args:
         metric: A judged metric.
@@ -123,5 +126,5 @@ def make_task(metric: str, **inputs: str) -> JudgeTask:
         msg = f"{metric}: inputs {sorted(inputs)} must be exactly {sorted(spec.variables)}"
         raise ConfigError(msg)
     return JudgeTask(
-        metric=metric, prompt_id=spec.prompt_id, prompt_version=PROMPT_VERSION, inputs=inputs
+        metric=metric, prompt_id=spec.prompt_id, prompt_version=spec.version, inputs=inputs
     )
