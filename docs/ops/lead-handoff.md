@@ -11,7 +11,7 @@ T3.2-T3.5, T4.1, T4.4, T6.1, plus the T3.1b phase 1 (resident set; partial, the 
 public; the ruleset on `main` is active (PR required, 0 approvals, linear history). Required checks: `check`, `scan`,
 `images-gate`, `docs-gate`.
 
-Open work: T5.1, T6.4, the wrapper load-log PR (T3.1e, owner merge, D584) and the rest of T3.1b (embedding/reranker
+Open work: T5.1, T6.4, the wrapper load-log PR (T3.1e; its own PR adds the TASKS.md row; owner merge, D584) and the rest of T3.1b (embedding/reranker
 benchmark, budget, candidate swaps by the lead, pins). Check live PR state with the API, not this file. Take the next free
 decision number when adding a row (rows D580-D586 are the 2026-11-03 owner decisions) and renumber on collision.
 
@@ -28,7 +28,7 @@ decision number when adding a row (rows D580-D586 are the 2026-11-03 owner decis
 
 ## 3. What is next (order from `tasks/PARALLEL-PLAN.md`)
 
-- Open: T5.1 (starts with the provisional pins, D580), T6.4, T3.1e (wrapper load-log, owner merge), T3.1b rest (D583).
+- Open: T5.1 (starts with the provisional pins, D580), T6.4, T3.1e (the wrapper load-log PR; its own PR adds the TASKS.md row; owner merge), T3.1b rest (D583), T0.5 leftovers (the `pruefstand-bot` App and the `gate-router` environment, still open).
   Then the Wave 9/10 leftovers (T2.6, T5.2a, T4.5, T4.6, T5.2b, T5.3 PR 1, T4.2). Check each task's `Depends` cell in
   `tasks/TASKS.md` is merged before starting it; one task = one worktree = one branch = one PR.
 - Follow-up task rows recorded in `tasks/TASKS.md` (not started): T1.7a, T1.7b, T1.8a, T1.9a, T1.13a, T2.3a, T2.4a, T4.4a.
@@ -108,6 +108,8 @@ Step S6 of `prompts/T3.1b-model-benchmark.md` is no longer a HUMAN step. The gen
 (`GENERATOR_TAG`) is NEVER removed, not even to free space.
 
 ## 7. Full-speed mode (2026-11-03, time-boxed to about 2 hours, D586)
+
+Reserved decision ranges (2026-11-03): the lead assigned disjoint ranges per agent to avoid merge collisions, so gaps between D-numbers are intentional and rows are not renumbered: D520 T5.1, D540 T6.4, D560 wrapper PR, D580 checkpoint (this PR), D600 T3.1b prep, D620 T3.6.
 
 - Up to 5 Sonnet task agents in parallel when their files do not overlap.
 - Docs-only and test-only PRs get one review round, then merge on green. Code PRs get at most 2 review rounds.
