@@ -17,7 +17,9 @@ from pruefstand.core.errors import ConfigError
 
 KINDS: tuple[str, ...] = ("frage", "antwort", "kontext", "referenz")
 NONCE_CHARS = 8
-_TAG_START = re.compile(r"[<\uff1c\ufe64\u2039\u3008\u27e8]\s*/?\s*(?=[A-Za-z!?])")
+_TAG_START = re.compile(
+    r"[<\uff1c\ufe64\u2039\u3008\u27e8]\s*[/\uff0f\u2215\u2044\u29f8]?\s*(?=[A-Za-z!?])"
+)
 
 
 def make_nonce(key: bytes, prompt_id: str, inputs: Mapping[str, str]) -> str:

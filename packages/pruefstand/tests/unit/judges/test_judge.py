@@ -14,13 +14,21 @@ from testsupport.judge_support import (
     make_judge,
 )
 from testsupport.llm_scenarios import DictCache
+from testsupport.loopback import completion_json
 from testsupport.loopback_script import Seen, Step, ollama_body, serve_script
 
+from pruefstand.core.config import LLMPolicyConfig
 from pruefstand.core.errors import ConfigError
 from pruefstand.core.protocols import JudgePoolLike
 from pruefstand.judges.judge import Judge, JudgePool
 from pruefstand.judges.output import make_task
+from pruefstand.llm import retry
+from pruefstand.llm.backends.litellm import LiteLLMBackend
+from pruefstand.llm.budget import Budget
+from pruefstand.llm.client import LLMClient
+from pruefstand.llm.policy import LLMPolicy
 from pruefstand.llm.prompts import PromptRegistry
+from pruefstand.llm.recorder import CallRecorder
 
 ANSWER = {"frage": "Wie lange läuft die Frist?", "referenz": "Drei Monate.", "antwort": "Sechs."}
 
@@ -188,3 +196,46 @@ def test_a_pool_whose_default_is_missing_is_a_config_error(
     jd, _ = make_judge()
     with pytest.raises(ConfigError, match="'x'"):
         JudgePool({"default": jd}, default="x")
+
+
+async def test_a_task_with_another_metrics_prompt_is_refused(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    with serve_script(tags=TAGS) as (o, state):
+        configure(tmp_path, monkeypatch, o)
+        judge, _ = make_judge()
+        task = make_task("answer_correctness", **ANSWER)
+        wrong = task.model_copy(update={"prompt_id": "faithfulness_de"})
+        with pytest.raises(ConfigError, match="faithfulness_de"):
+            await judge.score(wrong)
+    assert _posts(state.seen) == []
+
+
+async def test_a_fallback_answer_reports_the_id_of_the_fallback_model(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    async def no_wait(seconds: float) -> None:
+        del seconds
+
+    monkeypatch.setattr(retry, "pause", no_wait)
+    monkeypatch.setenv("T_KEY", "synthetic-test-value")
+    primary_model = "github/test/model"
+    text = '{"reason": "vom Ersatz", "score": 2}'
+    quota = [Step(429, {"Retry-After": "120"})] * 4
+    with (
+        serve_script(quota) as (primary, _),
+        serve_script(content=text) as (second, _),
+    ):
+        backend = LiteLLMBackend(primary_model, f"{primary}/v1", "T_KEY", 30)
+        fallback = LiteLLMBackend("openai_compatible_local/fb", f"{second}/v1", None, 30)
+        policy = LLMPolicyConfig()
+        client = LLMClient(
+            backend, None, Budget(None, None), CallRecorder(), LLMPolicy(policy), fallback=fallback
+        )
+        judge = Judge(client, primary_model, PromptRegistry([DE_ROOT]), nonce_key=NONCE_KEY)
+        verdict = await judge.score(make_task("answer_correctness", **ANSWER))
+    assert completion_json(text)
+    assert (verdict.score, verdict.raw_score) == (1.0, 2)
+    assert (
+        verdict.judge_model == "openai_compatible_local/fb"
+    )  # the fallback's id, not the primary's

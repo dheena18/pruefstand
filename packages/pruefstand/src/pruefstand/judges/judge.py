@@ -35,7 +35,9 @@ class Judge:
     Args:
         llm: The client of the judge's provider (policy, cache, retries, budget).
         model: The catalogue id (``ollama/<tag>``) or provider id of the judge; it is the
-            ``judge_model`` of every verdict (a fallback answer reports the fallback's model).
+            ``judge_model`` of every verdict. A fallback answer (``LLMResponse.fallback``) reports
+            ``resp.model`` instead: the provider-qualified id of the configured fallback model
+            (``cfg.llm.fallback_judge``), for example ``github/openai/gpt-4.1-mini``.
         registry: Where the judge prompts are loaded from (``judges/prompts``).
         nonce_key: HMAC key of the block nonces; default ``PRUEFSTAND_NONCE_KEY``.
 
@@ -72,7 +74,8 @@ class Judge:
             whether the answer came from the cache.
 
         Raises:
-            ConfigError: Unknown metric, or inputs that do not fit the prompt (no call is made).
+            ConfigError: Unknown metric, a prompt id that is not the metric's, or inputs that do not
+                fit the prompt (no call is made).
             PromptError: The prompt file is missing or malformed.
             LLMError: The answer is invalid or out of range after one repair.
             PolicyViolation: The provider policy refuses the call.
@@ -82,6 +85,9 @@ class Judge:
         spec = spec_of(task.metric)
         if set(task.inputs) != set(spec.variables):
             msg = f"{task.metric}: inputs {sorted(task.inputs)} must be {sorted(spec.variables)}"
+            raise ConfigError(msg)
+        if task.prompt_id != spec.prompt_id:
+            msg = f"{task.metric}: prompt_id '{task.prompt_id}' must be '{spec.prompt_id}'"
             raise ConfigError(msg)
         template = self._registry.get(task.prompt_id, task.prompt_version)
         nonce = make_nonce(self._key, task.prompt_id, task.inputs)

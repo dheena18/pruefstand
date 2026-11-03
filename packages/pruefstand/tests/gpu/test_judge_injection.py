@@ -33,9 +33,11 @@ REPO = Path(__file__).resolve().parents[4]
 PROMPTS = REPO / "packages" / "pruefstand" / "src" / "pruefstand" / "judges" / "prompts"
 
 
-def _judge_id() -> str:
+def _judge() -> tuple[str, str]:
+    """Return ``(id, family)`` of the catalogue's judge."""
     data = yaml.safe_load((REPO / "infra/gpu/models.yaml").read_text(encoding="utf-8"))
-    return str(next(m["id"] for m in data["models"] if m["role"] == "judge"))
+    entry = next(m for m in data["models"] if m["role"] == "judge")
+    return str(entry["id"]), str(entry["family"])
 
 
 @pytest.mark.parametrize("metric", ["faithfulness", "answer_correctness"])
@@ -43,8 +45,8 @@ async def test_the_real_judge_is_not_moved_by_injections(
     metric: str, capsys: pytest.CaptureFixture[str]
 ) -> None:
     policy = LLMPolicyConfig()
-    model = _judge_id()
-    backend = build_backend(ModelRef(id=model, family="gemma"), policy=policy)
+    model, family = _judge()
+    backend = build_backend(ModelRef(id=model, family=family), policy=policy)
     client = LLMClient(backend, None, Budget(None, None), CallRecorder(), LLMPolicy(policy))
     judge = Judge(client, model, PromptRegistry([PROMPTS]), nonce_key=b"gpu-test-nonce-key")
     result = await shifts_for(judge, metric, load_items(SET))
