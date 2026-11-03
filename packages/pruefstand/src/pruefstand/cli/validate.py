@@ -1,4 +1,4 @@
-"""``pruefstand validate config|dataset <path>``."""
+"""``pruefstand validate config|dataset <path>`` (dataset: ``dataset.validate``, T4.1)."""
 
 from enum import StrEnum
 from pathlib import Path
@@ -8,8 +8,7 @@ import typer
 
 from pruefstand.cli._common import EXIT_USAGE, fail, guarded
 from pruefstand.core.config_loader import load_config
-from pruefstand.core.errors import DatasetError
-from pruefstand.pipeline.datasets import check_dataset
+from pruefstand.dataset.validate import validate_dataset
 
 
 class Kind(StrEnum):
@@ -34,8 +33,11 @@ def register(app: typer.Typer) -> None:
                 load_config(path)
                 typer.echo(f"ok: {path} is a valid config")
                 return
-            try:
-                dataset = check_dataset(str(path))
-            except DatasetError as exc:
-                fail(f"error: {exc}", EXIT_USAGE)
-            typer.echo(f"ok: {path} holds {len(dataset.cases)} valid cases")
+            if str(path).startswith("hf://"):
+                fail("error: hf:// datasets arrive in T4.7b", EXIT_USAGE)
+            problems = validate_dataset(path)
+            if problems:
+                for problem in problems:
+                    typer.echo(f"error: {problem}", err=True)
+                fail(f"FAILED: {len(problems)} problems", EXIT_USAGE)
+            typer.echo("OK: 0 problems")
