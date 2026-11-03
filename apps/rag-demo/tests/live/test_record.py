@@ -10,8 +10,8 @@ import pytest
 from rd_support import CONFIGS, hit
 
 from rag_demo.config import load_config
-from rag_demo.dense import TeiDenseEncoder
 from rag_demo.generate import OpenAICompatGenerator
+from rag_demo.index.encoders import TeiDenseEncoder
 from rag_demo.models import Stats
 
 pytestmark = [

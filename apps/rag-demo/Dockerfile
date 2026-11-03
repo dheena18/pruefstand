@@ -20,12 +20,16 @@ COPY packages packages
 COPY apps apps
 COPY infra/gpu/models.yaml infra/gpu/models.yaml
 RUN uv sync --frozen --no-dev --no-editable --package rag-demo
+# T3.4 (DEV11-21): the embedding model's tokenizer.json, pinned by sha256 in the catalogue, baked at build time
+# (the candidate has no internet at runtime); it only serves the truncated_chunks count.
+RUN /app/.venv/bin/python -m rag_demo.index.fetch_tokenizer --catalogue infra/gpu/models.yaml --out /app/tokenizers/bge-m3.json
 
 FROM base AS runtime
 RUN groupadd --system --gid 10001 app \
     && useradd --system --uid 10001 --gid app --no-create-home --home-dir /nonexistent app
 COPY --from=builder /app/.venv /app/.venv
 COPY --from=builder /app/apps/rag-demo/configs /app/configs
+COPY --from=builder /app/tokenizers /app/tokenizers
 # The model catalogue the gpu profile is validated against (T3.2, D221); ignored by the live profile.
 COPY --from=builder /app/infra/gpu/models.yaml /app/catalogue/models.yaml
 # GIT_SHA changes on every commit: declared after the expensive layers so it never invalidates them.
@@ -37,7 +41,8 @@ ENV PATH="/app/.venv/bin:$PATH" \
     PYTHONUNBUFFERED=1 \
     GIT_SHA=${GIT_SHA} \
     RAG_CONFIG=/app/configs/rag.yaml \
-    RAG_MODEL_CATALOGUE=/app/catalogue/models.yaml
+    RAG_MODEL_CATALOGUE=/app/catalogue/models.yaml \
+    RAG_EMBED_TOKENIZER=/app/tokenizers/bge-m3.json
 USER 10001
 EXPOSE 8000
 HEALTHCHECK --interval=10s --timeout=3s --start-period=10s --retries=5 \

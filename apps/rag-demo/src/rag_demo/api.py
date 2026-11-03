@@ -117,13 +117,14 @@ def _build_parts(cfg: RagConfig, s: Settings) -> _Parts:
     """Wire one instance; a ``gpu`` config is checked here (catalogue, endpoint variables)."""
     stats = Stats()
     urls = resolve_urls(cfg, s)
+    catalogue = build_catalogue(cfg, s)
     return _Parts(
         stats=stats,
-        retriever=build_retriever(cfg, s, urls.embed),
+        retriever=build_retriever(cfg, s, urls.embed, catalogue),
         generator=build_generator(cfg, urls.llm, stats),
         corpus=_CorpusMeta(s.qdrant_url, s.collection, expected_fingerprint(cfg)),
         env=info_env(s),
-        catalogue=build_catalogue(cfg, s),
+        catalogue=catalogue,
     )
 
 

@@ -17,6 +17,10 @@ class EmbeddingError(RagDemoError):
     """The embedding service failed or answered in an unexpected shape."""
 
 
+class EncoderError(EmbeddingError):
+    """A dense encoder failed after its retries or got an unusable answer (never holds the key)."""
+
+
 class RetrievalError(RagDemoError):
     """The vector store failed or answered in an unexpected shape."""
 

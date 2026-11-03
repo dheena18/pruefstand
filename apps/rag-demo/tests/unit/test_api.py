@@ -143,6 +143,7 @@ def test_gpu_info_serving_comes_from_the_catalogue_and_env(
     respx.get("http://qdrant.test:6333/collections/slice_v2").mock(
         return_value=httpx.Response(200, json=COLLECTION)
     )
+    respx.post("http://127.0.0.1:11434/api/embed").mock(return_value=httpx.Response(404))
     before = client.get("/v1/info")
     stats_before = client.get("/v1/health").json()["stats"]["requests"]
     for _ in range(3):

@@ -1,22 +1,19 @@
-"""Index ``corpus/slice_v1`` into the running Qdrant and write the snapshot (T1.13 S6).
+"""Write the Qdrant snapshot of the indexed slice collection (T1.13 S6, T3.4 S4c).
 
-``make index-slice`` calls this with ``QDRANT_URL`` and ``EMBED_URL`` of the local stack. The
-snapshot (``.cache/pruefstand/qdrant/slice_v2.snapshot``) holds only document vectors; T1.12 and the
-integration tests restore it instead of re-embedding.
+``make index-slice`` first runs ``rag-demo index --corpus corpus/slice_v1 --encoder tei
+--collection slice_v2`` and then calls this with ``QDRANT_URL`` of the local stack. The snapshot
+(``.cache/pruefstand/qdrant/slice_v2.snapshot``) holds only document vectors; T1.12 and the
+integration tests restore it instead of re-embedding. Qdrant snapshots carry no aliases, so a
+restore must re-create ``chunks_active`` (``tests/integration/conftest.py`` does).
 """
 
 import argparse
-import time
 from collections.abc import Sequence
 from pathlib import Path
 
 import httpx
 
-from rag_demo.analysis.analyzer import GermanAnalyzer
-from rag_demo.analysis.sparse import SparseEncoder
-from rag_demo.config import Settings, load_config
-from rag_demo.dense import TeiDenseEncoder
-from rag_demo.index import Indexer
+from rag_demo.config import Settings
 
 ROOT = Path(__file__).resolve().parents[2]
 SNAPSHOT = ROOT / ".cache" / "pruefstand" / "qdrant" / "slice_v2.snapshot"
@@ -38,28 +35,13 @@ def write_snapshot(qdrant_url: str, collection: str, dest: Path) -> int:
 
 
 def main(argv: Sequence[str] | None = None) -> int:
-    """Index the slice with the tier-1 profile's embedding model; print the timing."""
+    """Snapshot the collection named by ``RAG_COLLECTION`` (default ``slice_v2``)."""
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--corpus", type=Path, default=ROOT / "corpus" / "slice_v1")
-    parser.add_argument(
-        "--config", type=Path, default=ROOT / "apps" / "rag-demo" / "configs" / "rag.yaml"
-    )
+    parser.add_argument("--out", type=Path, default=SNAPSHOT)
     args = parser.parse_args(argv)
     settings = Settings()
-    cfg = load_config(args.config)
-    started = time.monotonic()
-    indexer = Indexer(
-        settings.qdrant_url,
-        TeiDenseEncoder(cfg.embed, settings.embed_url),
-        GermanAnalyzer(
-            cfg.analyzer.compound_split, cfg.analyzer.stemmer, cfg.analyzer.fold_umlauts
-        ),
-        SparseEncoder(),
-        collection=settings.collection,
-    )
-    indexer.index(args.corpus)
-    size = write_snapshot(settings.qdrant_url, settings.collection, SNAPSHOT)
-    print(f"index-slice: indexed in {time.monotonic() - started:.1f} s, snapshot {size} bytes")
+    size = write_snapshot(settings.qdrant_url, settings.collection, args.out)
+    print(f"index-slice: snapshot {size} bytes")
     return 0
 
 

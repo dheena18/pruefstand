@@ -1,4 +1,5 @@
-"""D216 bearer header for the generator and the embedding client (pure builders + respx)."""
+"""D216 bearer header for the generator client (pure builder + respx); the embedding half lives in
+index/test_encoders.py (T3.4, N6.2)."""
 
 import json
 import logging
@@ -10,7 +11,6 @@ from rd_support import CONFIGS, hit
 
 from rag_demo.auth import auth_headers
 from rag_demo.config import load_config
-from rag_demo.dense import TeiDenseEncoder
 from rag_demo.errors import GenerationError
 from rag_demo.generate import OpenAICompatGenerator
 from rag_demo.models import Stats
@@ -28,17 +28,6 @@ def test_header_builder_cases() -> None:
     assert auth_headers(ENV, {}) == {}
     assert auth_headers(ENV, {ENV: ""}) == {}
     assert auth_headers(None, {ENV: "k1"}) == {}
-
-
-@respx.mock
-def test_embedding_request_carries_the_bearer_key(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv(ENV, "k1")
-    cfg = load_config(CONFIGS / "rag.yaml")
-    route = respx.post("http://embed.test/embed").mock(
-        return_value=httpx.Response(200, json=[[0.0] * cfg.embed.dim])
-    )
-    TeiDenseEncoder(cfg.embed, "http://embed.test").encode(["x"])
-    assert route.calls.last.request.headers["Authorization"] == "Bearer k1"
 
 
 @respx.mock
@@ -68,15 +57,10 @@ async def test_no_header_when_unset_or_empty(
     gen_route = respx.post("http://llm.test/v1/chat/completions").mock(
         return_value=httpx.Response(200, json=CHAT)
     )
-    emb_route = respx.post("http://embed.test/embed").mock(
-        return_value=httpx.Response(200, json=[[0.0] * cfg.embed.dim])
-    )
     await OpenAICompatGenerator(cfg, "http://llm.test", stats=Stats()).answer(
         "Frage?", [hit("gii-bgb-622#0")]
     )
-    TeiDenseEncoder(cfg.embed, "http://embed.test").encode(["x"])
     assert "Authorization" not in gen_route.calls.last.request.headers
-    assert "Authorization" not in emb_route.calls.last.request.headers
 
 
 @respx.mock
