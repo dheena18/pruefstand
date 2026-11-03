@@ -266,7 +266,7 @@ jobs:
           rc=0
           uv run pytest -m "live and not e2e and not gpu and not network" -s "$QUALITY_TEST" > probe.log 2>&1 || rc=$?
           tail -n 15 probe.log
-          measured="$(grep -m1 '^smoke: cited' probe.log || echo 'no measurement')"
+          measured="$(grep -om1 "smoke: cited.*" probe.log || echo 'no measurement')"
           if [ "$rc" -eq 0 ]; then verdict="passed"; else verdict="FAILED"; fi
           line="Generator quality probe (reported, not gating, tracked as T1.13b): ${verdict} - ${measured}"
           echo "$line" >> "$GITHUB_STEP_SUMMARY"
