@@ -178,6 +178,7 @@ case "$*" in
   *ollama-op.sh*) echo ok; exit {ops_rc};;
   *start-ollama.sh*) echo started; exit {ops_rc};;
   *stop-ollama.sh*) echo stopped; exit {ops_rc};;
+  *log-tail.sh*) echo log; exit {ops_rc};;
   *) echo "UNEXPECTED ssh $*" >&2; exit 99;;
 esac
 """
