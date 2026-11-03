@@ -5,7 +5,7 @@ from pathlib import Path
 
 import pytest
 import yaml
-from model_selection import client, pins, stats
+from model_selection import bench, bench_runs, client, pins, stats
 from model_selection.bench_cases import CASES_PATH, load_cases, score_case
 from model_selection.vram import parse_status
 
@@ -163,3 +163,14 @@ def test_lowercase_ihr_is_not_a_sie_form() -> None:
         score_case(reg, "Du bekommst ein Schreiben, und ihr Inhalt ist ernst, das erkläre ich dir.")
         == 2
     )
+
+
+def test_flatten_labels_rows_with_run_id_and_kv_slot_dependence() -> None:
+    rows = list(bench.flatten("r9", "2026-11-03", "kv", {"model": "m", "x": 1}))
+    assert rows == [("r9", "2026-11-03", "kv", "m", "", "x", 1)]
+    pts = [
+        {"num_ctx": 4096, "size_bytes": 1000},
+        {"num_ctx": 8192, "size_bytes": 1000 + 4096 * 4 * 10},
+    ]
+    assert bench_runs.kv_bytes_per_token(pts, 4) == pytest.approx(10.0)
+    assert bench_runs.kv_bytes_per_token(pts, 1) == pytest.approx(40.0)

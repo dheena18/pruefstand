@@ -224,30 +224,29 @@ def kv_bytes_per_token(rows: list[Row], slots: int = NUM_PARALLEL) -> float:
 def longctx_run(client: OllamaClient, entry: Entry, pool: list[str], n: int = 20) -> list[Row]:
     """Long faithfulness inputs (about 9 500 tokens) at the catalogue ``num_ctx`` and at 16 384.
 
-    Compare counts and verdicts.
+    All pinned calls run first, then all wide calls (one context switch each way); reloads are
+    counted and the catalogue ``num_ctx`` is restored at the end.
     """
-    rows: list[Row] = []
-    for i in range(n):
-        msgs = judge_messages(
-            long_text(i, 34000, pool),
-            "Was gilt für die Arbeitszeit?",
-            "Die Arbeitszeit beträgt acht Stunden.",
-        )
-        pinned = client.chat(entry, msgs, fmt=JUDGE_SCHEMA)
-        wide = client.chat(
-            entry, msgs, fmt=JUDGE_SCHEMA, options={**entry.options, "num_ctx": 16384}
-        )
-        rows.append(
-            {
-                "model": entry.id,
-                "i": i,
-                "pinned_prompt_tokens": pinned.prompt_eval_count,
-                "wide_prompt_tokens": wide.prompt_eval_count,
-                "pinned_verdict": _score(pinned.content),
-                "wide_verdict": _score(wide.content),
-            }
-        )
-    return rows
+    wide_opts = {**entry.options, "num_ctx": 16384}
+    question, answer = "Was gilt für die Arbeitszeit?", "Die Arbeitszeit beträgt acht Stunden."
+    inputs = [judge_messages(long_text(i, 34000, pool), question, answer) for i in range(n)]
+    try:
+        pinned = [client.chat(entry, m, fmt=JUDGE_SCHEMA) for m in inputs]
+        wide = [client.chat(entry, m, fmt=JUDGE_SCHEMA, options=wide_opts) for m in inputs]
+    finally:
+        warm_up(client, entry)  # reloads with exactly the catalogue options
+    return [
+        {
+            "model": entry.id,
+            "i": i,
+            "pinned_prompt_tokens": p.prompt_eval_count,
+            "wide_prompt_tokens": w.prompt_eval_count,
+            "pinned_verdict": _score(p.content),
+            "wide_verdict": _score(w.content),
+            "reloads": int(p.load_duration_s > RELOAD_S) + int(w.load_duration_s > RELOAD_S),
+        }
+        for i, (p, w) in enumerate(zip(pinned, wide, strict=True))
+    ]
 
 
 def _score(text: str) -> int | None:

@@ -26,8 +26,8 @@ from model_selection.client import BenchError, OllamaClient, load_entry
 RESULTS = Path(__file__).resolve().parent / "results"
 GEN_ID, JUDGE_ID, EMBED_ID = "ollama/qwen3.8:27b-q8_0", "ollama/gemma3:12b", "ollama/bge-m3"
 DAY_SET = {"qwen3.8:27b-q8_0", "bge-m3", "gemma3:12b"}
-PHASES = ("quality", "throughput", "parallel", "json", "kv", "longctx", "vram")
-FIELDS = ("date", "phase", "model", "concurrency", "metric", "value")
+PHASES = ("quality", "throughput", "parallel", "json", "vram", "kv", "longctx")
+FIELDS = ("run_id", "date", "phase", "model", "concurrency", "metric", "value")
 
 
 def long_pool(cases: list[Case]) -> list[str]:
@@ -35,11 +35,11 @@ def long_pool(cases: list[Case]) -> list[str]:
     return sorted({c.context for c in cases if c.context and c.kind == "law_qa"})
 
 
-def flatten(day: str, phase: str, row: dict[str, Any]) -> Iterable[tuple[Any, ...]]:
+def flatten(run_id: str, day: str, phase: str, row: dict[str, Any]) -> Iterable[tuple[Any, ...]]:
     """One CSV tuple per metric of a result row; ``model`` and ``concurrency`` are columns."""
     for key, val in row.items():
         if key not in ("model", "concurrency"):
-            yield (day, phase, row.get("model", ""), row.get("concurrency", ""), key, val)
+            yield (run_id, day, phase, row.get("model", ""), row.get("concurrency", ""), key, val)
 
 
 def preflight(c0: OllamaClient) -> None:
@@ -65,6 +65,7 @@ def phase_quality(ctx: dict[str, Any]) -> tuple[list[dict[str, Any]], list[dict[
             {
                 "model": entry.id,
                 "n": len(rows),
+                "reloads": sum(r["load_s"] > runs.RELOAD_S for r in rows),
                 "score_mean": round(mean, 3),
                 "ci_lo": round(lo, 3),
                 "ci_hi": round(hi, 3),
@@ -125,7 +126,9 @@ def phase_kv(ctx: dict[str, Any]) -> list[dict[str, Any]]:
         out.append(
             {
                 "model": entry.id,
-                "kv_bytes_per_token_measured": round(runs.kv_bytes_per_token(rows)),
+                "kv_bytes_per_token_if_4_slots": round(runs.kv_bytes_per_token(rows, 4)),
+                "kv_bytes_per_token_if_1_slot": round(runs.kv_bytes_per_token(rows, 1)),
+                "kv_reliable": 0,
                 "restored_num_ctx": runs.ps_entry(client, entry.tag).get("context_length", 0),
             }
         )
@@ -149,6 +152,7 @@ def run(phases: list[str], day: str, out_dir: Path) -> None:
 
     (redacted) into ``out_dir``.
     """
+    run_id = datetime.now().astimezone().strftime("%Y-%m-%dT%H%M")
     cases = load_cases(CASES_PATH)
     c0, c1 = OllamaClient(lane="GPU0"), OllamaClient(lane="GPU1")
     preflight(c0)
@@ -177,7 +181,7 @@ def run(phases: list[str], day: str, out_dir: Path) -> None:
                 "json": phase_json,
             }[name](ctx)
         for row in summary:
-            rows += flatten(day, name, row)
+            rows += flatten(run_id, day, name, row)
         print(f"phase {name}: {len(summary)} rows")
     out_dir.mkdir(exist_ok=True)
     write_outputs(out_dir, day, rows, answers)
