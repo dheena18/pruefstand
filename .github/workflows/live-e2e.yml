@@ -4,7 +4,7 @@ name: live-e2e
 # live      = the 20-case smoke_live run gated against the latest successful main push run; one PR comment.
 # scenarios = the five deterministic bug-switch scenarios of T1.11 (nightly, dispatch, PRs touching rag-demo).
 # gate      = the aggregate and the required check `live-e2e / gate`. No job here sets a commit status.
-# No repository secrets: the judge token is the job's own GITHUB_TOKEN (`models: read`), forks get none (D333).
+# No repository secrets: the judge token is the job's own GITHUB_TOKEN (`models: read`), the platform's read-only fork token is the boundary, forks get no `models` access (D333).
 on:
   pull_request:
   push:
@@ -127,11 +127,10 @@ jobs:
     permissions:
       contents: read
       actions: read  # download the main baseline artefact by run id
-      models: read  # GitHub Models judge through GITHUB_TOKEN (forks get none)
+      models: read  # GitHub Models judge through GITHUB_TOKEN (a fork PR's token is capped by the platform)
     env:
       # Fork PRs have no `models` permission: judged metrics are skipped there (no CPU fallback judge).
       IS_FORK: ${{ github.event.pull_request.head.repo.full_name != github.repository && github.event_name == 'pull_request' }}
-      PRUEFSTAND_GH_MODELS_TOKEN: ${{ github.token }}
       PRUEFSTAND_STACK: live
     steps:
       - name: Start time
@@ -166,7 +165,9 @@ jobs:
           if [ -z "$id" ]; then echo "no successful push run on main yet: no tier-1 baseline"; exit 0; fi
           tmp="$(mktemp -d)"
           if ! gh run download "$id" --repo "$REPO" --name live-baseline --dir "$tmp"; then
-            echo "run $id has no live-baseline artefact (expired?): no tier-1 baseline"; exit 0
+            echo "::warning::run $id exists but its live-baseline artefact could not be downloaded (expired?)"
+            echo "note=baseline run $id exists but its artefact could not be downloaded" >> "$GITHUB_OUTPUT"
+            exit 0
           fi
           rid="$(jq -r '.run_id' "$tmp/run.json")"
           [[ "$rid" =~ ^[0-9A-Za-z_.-]+$ ]] || { echo "unexpected run id in the baseline"; exit 1; }
@@ -185,7 +186,9 @@ jobs:
           if [ -z "$id" ]; then echo "no successful nightly run yet: no baseline"; exit 0; fi
           tmp="$(mktemp -d)"
           if ! gh run download "$id" --repo "$REPO" --name live-baseline-nightly --dir "$tmp"; then
-            echo "run $id has no live-baseline-nightly artefact (expired?): no baseline"; exit 0
+            echo "::warning::run $id exists but its live-baseline-nightly artefact could not be downloaded (expired?)"
+            echo "note=baseline run $id exists but its artefact could not be downloaded" >> "$GITHUB_OUTPUT"
+            exit 0
           fi
           rid="$(jq -r '.run_id' "$tmp/run.json")"
           [[ "$rid" =~ ^[0-9A-Za-z_.-]+$ ]] || { echo "unexpected run id in the baseline"; exit 1; }
@@ -199,6 +202,8 @@ jobs:
           CONFIG: ${{ github.event_name == 'schedule' && 'examples/live/pruefstand.nightly.yaml' || 'examples/live/pruefstand.yaml' }}
           TIER: ${{ github.event_name == 'schedule' && 'nightly' || 'pr' }}
           BASELINE_DIR: ${{ steps.baseline_pr.outputs.dir || steps.baseline_nightly.outputs.dir }}
+          BASELINE_NOTE: ${{ steps.baseline_pr.outputs.note || steps.baseline_nightly.outputs.note }}
+          PRUEFSTAND_GH_MODELS_TOKEN: ${{ github.token }}  # only this step judges (D333)
         run: |
           mkdir -p runs
           run_one() {
@@ -210,7 +215,7 @@ jobs:
           if [ -z "$base" ]; then
             # First run: no main baseline exists yet. Gate against a second run of this same commit; the hard
             # fails are decided by the candidate alone, the paired deltas are noise. The comment says so.
-            base="$(run_one)" || exit $?
+            base="$(PRUEFSTAND_JUDGE_MODE=skipped run_one)" || exit $?  # no judge calls for the throw-away run
             self=true
           else
             self=false
@@ -231,7 +236,11 @@ jobs:
           {
             head -n 1 comment.md
             if [ "$self" = "true" ]; then
-              echo "> No tier-1 baseline on main yet: gated against a second run of this commit (no paired signal)."
+              if [ -n "$BASELINE_NOTE" ]; then
+                echo "> Tier-1 baseline of main not loaded ($BASELINE_NOTE): gated against a second run of this commit (no paired signal)."
+              else
+                echo "> No tier-1 baseline on main yet: gated against a second run of this commit (no paired signal)."
+              fi
             fi
             echo "> Judge (informational): ${judge} - ${calls} calls"
             tail -n +2 comment.md
@@ -246,15 +255,23 @@ jobs:
         run: |
           uv run pytest -m "live and not e2e and not gpu and not network" packages/pruefstand/tests apps/rag-demo/tests/live --deselect "$QUALITY_TEST"
       # T1.13's generator-quality probe (cites >= 6/10, p95 <= 15 s) was calibrated on the VM's 4 threads; the 0.5B
-      # fallback model scores 5/10 with p95 21 s on the hosted runner. It is reported, not gating, until T1.13
-      # recalibrates it for the hosted runner (D505). The gate is decided by the deterministic checks above.
-      - name: Generator quality probe (informational)
+      # fallback model scores 5/10 with p95 21 s on the hosted runner. It is reported, not gating, until T1.13b
+      # recalibrates it and moves it back into the gating step above (D505). Result: job summary and comment.md.
+      - name: Generator quality probe (reported, not gating; T1.13b)
         continue-on-error: true
         env:
           PRUEFSTAND_TARGET_URL: http://localhost:8000
           QUALITY_TEST: apps/rag-demo/tests/live/test_live_app.py::test_smoke_questions_cite_the_expected_norm_within_the_latency_budget
         run: |
-          uv run pytest -m "live and not e2e and not gpu and not network" -s "$QUALITY_TEST"
+          rc=0
+          uv run pytest -m "live and not e2e and not gpu and not network" -s "$QUALITY_TEST" > probe.log 2>&1 || rc=$?
+          tail -n 15 probe.log
+          measured="$(grep -m1 '^smoke: cited' probe.log || echo 'no measurement')"
+          if [ "$rc" -eq 0 ]; then verdict="passed"; else verdict="FAILED"; fi
+          line="Generator quality probe (reported, not gating, tracked as T1.13b): ${verdict} - ${measured}"
+          echo "$line" >> "$GITHUB_STEP_SUMMARY"
+          if [ -f comment.md ]; then sed -i "1a > ${line}" comment.md; fi
+          exit "$rc"
       - name: Wall time and judge calls
         if: always() && steps.gate.outputs.run_dir != ''
         env:
@@ -443,7 +460,7 @@ jobs:
               issue_number: context.issue.number,
               per_page: 100,
             });
-            const mine = comments.find((c) => c.user.type === 'Bot' && c.body.startsWith(marker));
+            const mine = comments.find((c) => c.user.login === 'github-actions[bot]' && c.body.startsWith(marker));
             if (mine) {
               await github.rest.issues.updateComment({ ...context.repo, comment_id: mine.id, body });
             } else {
