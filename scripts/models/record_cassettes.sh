@@ -106,6 +106,14 @@ if [ "${1:-}" = "--dataset" ]; then
   dataset_stage
   exit $?
 fi
+if [ "${1:-}" = "--judges" ]; then
+  # T5.2a: real answers of the A40 judge for packages/pruefstand/tests/unit/judges/test_judge_cassette.py.
+  # Run on the VM under the GPU lock with the judge loaded: pruefstand-lock bash scripts/models/record_cassettes.sh --judges
+  rm -f packages/pruefstand/tests/cassettes/judges/*.json
+  PRUEFSTAND_RECORD_JUDGES=1 uv run pytest packages/pruefstand/tests/live/judges/test_record_judges.py -m "live and gpu" -q -p no:cacheprovider
+  uv run pytest packages/pruefstand/tests/unit/judges/test_judge_cassette.py -q -p no:cacheprovider
+  exit $?
+fi
 if [ "${1:-}" = "--inner" ]; then
   inner
   exit $?

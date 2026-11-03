@@ -4,6 +4,7 @@
 - Amended by: [ADR-0018](0018-single-ollama-server.md) (2026-10-31: one Ollama server for both GPUs, port 11434 only)
 - Amended by: [ADR-0019](0019-local-model-storage-small-disk.md) (2026-10-31: one judge `gemma3:12b`, public-text datagen on GitHub Models, private-doc datagen on the local judge model, models on the cluster disk)
 - Amended by: T5.1 addendum below (D520-D527: retries, quota exhaustion, cache epochs)
+- Amended by: T5.2a addendum below (D700: schema-guided JSON, `complete_json_meta`)
 - Date: 2026-10-27
 - Tasks: T1.2, T1.4, T1.13, T3.1a, T3.1b, T5.1
 
@@ -137,3 +138,14 @@ and no systemd linger, so the planned vLLM + TEI containers cannot run there.
   `cache_epochs.json` and is bumped by `invalidate_judge`; it is not `judge_epoch` and not in `eval_fingerprint`.
 - Interface change: `LLMClient.__init__` gains the keyword-only `retry` and `epochs` (additive, defaults keep
   T1.4 behaviour); `build_client` and `LiteLLMBackend.resolve_version` are new.
+
+## Addendum T5.2a (2026-11-03): schema-guided JSON and the response of a JSON call
+
+- `LLMRequest` gains the optional `json_schema` (default None). For `ollama/` models it is sent as the native `format`
+  (grammar-constrained decoding); other providers keep `json_object` mode. It is in the cache key only when set, and
+  left out of `model_dump` when None, so existing cassette hashes and cache keys are unchanged.
+- `LLMClient.complete_json_meta(req, schema)` returns `(object, LLMResponse)`; `complete_json` is its first element.
+  The judge needs `cached` and `fallback` of the answer it parsed. The JSON-call logic lives in `llm/json_call.py`.
+- Why: the judge output must stop at 600 characters of `reason` without a free-running generation (AI11-14e), and the
+  benchmark showed the judge model wraps JSON in code fences without a schema (`experiments/model_selection/REPORT.md`).
+- Impact: additive; D526 follow-up closed (D700).

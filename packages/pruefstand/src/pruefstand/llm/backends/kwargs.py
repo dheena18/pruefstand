@@ -127,6 +127,12 @@ def completion_kwargs(
         kwargs["api_base"] = api_base
     if req.response_format == "json":
         kwargs["response_format"] = {"type": "json_object"}
+    if provider == "ollama" and req.json_schema is not None:
+        # LiteLLM's ollama_chat turns json_schema into the native `format` (grammar-constrained)
+        kwargs["response_format"] = {
+            "type": "json_schema",
+            "json_schema": {"name": req.prompt_id, "schema": req.json_schema},
+        }
     if provider == "ollama":
         if options is None:
             msg = f"model '{req.model}': Ollama options from the catalogue are required"
