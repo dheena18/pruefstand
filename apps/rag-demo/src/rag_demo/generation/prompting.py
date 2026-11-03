@@ -75,8 +75,9 @@ def truncate_to_tokens(text: str, limit: int) -> str:
 
 
 def prompt_hits(hits: list[Hit], cfg: RagConfig) -> list[Hit]:
-    """The hits as the prompt holds them: cut to ``chunk_prompt_tokens`` and, with the guard on,
-    without instruction-like lines (X3.14: the judge sees what the model saw).
+    """The hits as the prompt holds them (X3.14: the judge sees what the model saw).
+
+    Texts are cut to ``chunk_prompt_tokens`` and, with the guard on, lose instruction-like lines.
     """
     out = []
     for h in hits:
