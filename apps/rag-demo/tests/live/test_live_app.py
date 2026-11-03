@@ -101,3 +101,20 @@ def test_responses_validate_against_the_target_api_schema() -> None:
     assert "RetrievedChunk" in schemas
     assert all(c["used_in_prompt"] is True for c in body["chunks"])  # type: ignore[attr-defined]
     json.dumps(body)
+
+
+def test_retrieve_returns_only_chunks_and_makes_no_generator_call() -> None:
+    """D218: `/v1/retrieve` has the chunks `/v1/query` returns, no answer, no generation."""
+    tenant, question = "kanzlei_mueller", QUESTIONS["smoke"][0]["question"]
+    payload = {"tenant_id": tenant, "question": question, "request_id": uuid.uuid4().hex}
+    resp = httpx.post(f"{URL}/v1/retrieve", json=payload, timeout=60)
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    assert list(body) == ["chunks"]
+    assert body["chunks"]
+    assert all("used_in_prompt" not in c for c in body["chunks"])
+    assert {c["tenant_id"] for c in body["chunks"]} <= {tenant, "shared_public"}
+    schema = {"$ref": "#/components/schemas/RetrieveResponse", "components": OPENAPI["components"]}
+    Draft202012Validator(schema).validate(body)
+    queried, _ = ask(tenant, question)
+    assert [c["chunk_id"] for c in body["chunks"]] == [c["chunk_id"] for c in queried["chunks"]]  # type: ignore[attr-defined]  # json dict

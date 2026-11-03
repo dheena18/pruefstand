@@ -125,7 +125,8 @@ def test_a_configured_tokenizer_is_loaded_and_a_bad_one_fails_at_start(tmp_path:
         build_dense(cfg, "http://localhost:11434", tokenizer=tmp_path / "missing.json")
 
 
-def test_retriever_gets_the_real_encoder_for_tier_2() -> None:
+def test_retriever_gets_the_real_encoder_for_tier_2(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("RERANK_URL", "http://rerank-cpu:8201")
     cfg = load_config(CONFIGS / "rag.gpu.yaml", CATALOGUE)
     settings = Settings(rag_model_catalogue=CATALOGUE)
     retriever = build_retriever(cfg, settings, "http://localhost:11434", load_catalogue(CATALOGUE))

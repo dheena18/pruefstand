@@ -27,3 +27,14 @@ class Generator(Protocol):
     async def answer(self, question: str, hits: list[Hit]) -> GenOutput:
         """Return the answer and the chunk ids that entered the prompt."""
         ...
+
+
+class Reranker(Protocol):
+    """Reorders the first ``top_n`` hits by relevance to the query (interfaces §16)."""
+
+    def rerank(self, query: str, hits: list[Hit], top_n: int) -> list[Hit]:
+        """Return the first ``top_n`` hits re-scored and reordered, then the rest unchanged.
+
+        Ranks of the result are 1..n without gaps.
+        """
+        ...

@@ -259,3 +259,13 @@ def test_the_committed_files_sit_where_the_package_setting_expects(tmp_path: Pat
     assert (REPO / "infra" / "gpu" / "models.yaml").is_file()
     assert (REPO / "infra" / "gpu" / "endpoints.yaml").is_file()
     assert tmp_path.exists()
+
+
+def test_the_reranker_entry_carries_the_passage_limit_and_a_cpu_sized_timeout(
+    cat: Catalogue,
+) -> None:
+    """T3.5: rag-demo reads both from the catalogue instead of hard-coding them (D222)."""
+    entry = next(e for e in cat.models if e.role == "rerank")
+    assert entry.max_input_tokens == 256
+    assert entry.request_timeout_s is not None
+    assert 10 <= entry.request_timeout_s <= 300

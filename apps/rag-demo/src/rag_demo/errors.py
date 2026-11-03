@@ -29,5 +29,21 @@ class IndexMismatchError(RetrievalError):
     """The Qdrant collection was built with another analyzer or hash scheme than the running app."""
 
 
+class IndexUnavailableError(RetrievalError):
+    """The collection metadata cannot be read, is incomplete or is not a Prüfstand index."""
+
+
+class RerankError(RetrievalError):
+    """The reranker service failed or answered in an unexpected shape (never holds a body)."""
+
+
+class TenantIsolationError(RetrievalError):
+    """A retrieved chunk belongs to a tenant the caller may not see (post-condition guard)."""
+
+
+class UnknownTenantError(RagDemoError, ValueError):
+    """The tenant id is malformed or not in the index; the API answers 422."""
+
+
 class GenerationError(RagDemoError):
     """The generator failed; the message never contains credentials or response bodies."""

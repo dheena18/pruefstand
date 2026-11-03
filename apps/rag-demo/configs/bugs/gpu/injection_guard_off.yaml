@@ -3,8 +3,10 @@
 # (native /api/chat and /api/embed only, D219), reached through RAG_MODEL_CATALOGUE-checked ids (D221). The URLs
 # come from the environment at app start (OLLAMA_GPU0_URL on the dev stack, LLM_PROXY_URL in gate runs), never from
 # this file. Qwen3 thinking is off (think: false). Values are provisional until T3.1b pins them. Every bug switch is
-# at its correct value; configs/bugs/gpu/*.yaml differ from this file in exactly one line. The reranker arrives with
-# T3.5 (reranker: "off" and rerank.enabled: false until then).
+# at its correct value; configs/bugs/gpu/*.yaml differ from this file in exactly one line. The reranker (T3.5) is
+# rerank-cpu at RERANK_URL (bge-reranker-v2-m3 on the VM CPU, no auth): top 10 fused hits, passages cut to 256 tokens,
+# one batched request; rerank.on_retrieve: true keeps it on for POST /v1/retrieve too (false only when T3.1b records
+# the D222 fallback).
 profile: gpu
 generator:
   model: qwen3.8:27b-q8_0
@@ -27,8 +29,9 @@ embed:
   dim: 1024
   options: {num_ctx: 1024}
 rerank:
-  enabled: false
   endpoint_env: RERANK_URL
+  top_n: 10
+  on_retrieve: true
 generation:
   temperature: 0.0
   seed: 1234
@@ -36,7 +39,7 @@ generation:
 top_k: 8
 chunk_prompt_tokens: 256
 max_tokens: 256
-reranker: "off"
+reranker: "on"
 tenant_filter: inside
 shared_public_merge: filtered
 prompt_file: prompts/answer_de_v1.txt

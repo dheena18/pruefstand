@@ -30,7 +30,7 @@ def _gpu_blocks(
         "generator": gen.id,
         "generator_family": gen.family,
         "embed": cfg.embed.catalogue_id or cfg.embed.model,
-        "rerank": rerank if cfg.reranker == "on" or cfg.rerank.enabled else "none",
+        "rerank": rerank if cfg.reranker == "on" else "none",
     }
     serving = {
         "engine": gen.engine,
@@ -68,7 +68,7 @@ def build_info(
             "generator": cfg.generator.model,
             "generator_family": cfg.generator.family,
             "embed": cfg.embed.model,
-            "rerank": "none",
+            "rerank": "rerank-cpu" if cfg.reranker == "on" else "none",
         }
         serving = {
             "engine": "llama.cpp",

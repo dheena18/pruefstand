@@ -1,8 +1,4 @@
-"""The app's generated OpenAPI equals schemas/target-api-v1.openapi.yaml (descriptions ignored).
-
-`/v1/retrieve` and `RetrieveResponse` belong to T3.5 and are left out of the comparison here;
-T3.5 removes the exclusion when it adds the endpoint.
-"""
+"""The app's generated OpenAPI equals schemas/target-api-v1.openapi.yaml (descriptions ignored)."""
 
 from typing import Any
 
@@ -12,7 +8,6 @@ from rd_support import CONFIGS, REPO
 from rag_demo.api import create_app
 from rag_demo.config import Settings, load_config
 
-T3_5 = {"/v1/retrieve", "RetrieveResponse"}
 SETTINGS = Settings(qdrant_url="http://q.test", llm_url="http://llm", embed_url="http://embed")
 
 
@@ -53,13 +48,12 @@ def _project(spec: dict[str, Any]) -> dict[str, Any]:
             "response": _body_ref(op["responses"]["200"]),
         }
         for path, ops in spec["paths"].items()
-        if path not in T3_5
         for method, op in ops.items()
     }
     schemas = {
         name: _component(s)
         for name, s in spec["components"]["schemas"].items()
-        if name not in T3_5 and not name.startswith(("HTTPValidation", "ValidationError"))
+        if not name.startswith(("HTTPValidation", "ValidationError"))
     }
     return {"paths": paths, "schemas": schemas}
 

@@ -1,0 +1,83 @@
+interactions:
+- request:
+    body: "{\"query\":\"K\xFCndigungsfrist nach zwei Jahren\",\"texts\":[\"(1) Das
+      Dienstverh\xE4ltnis endigt mit dem Ablauf der Zeit, f\xFCr die es eingegangen
+      ist.\\n(2) Ist die Dauer des Dienstverh\xE4ltnisses weder bestimmt noch aus
+      der Beschaffenheit oder dem Zwecke der Dienste zu entnehmen, so kann jeder Teil
+      das Dienstverh\xE4ltnis nach Ma\xDFgabe der \xA7\xA7 621 bis 623 k\xFCndigen.\\n(3)
+      F\xFCr Arbeitsvertr\xE4ge, die auf bestimmte Zeit abgeschlossen werden, gilt
+      das Teilzeit- und Befristungsgesetz.\\n(4) Ein Verbrauchervertrag \xFCber eine
+      digitale Dienstleistung kann auch nach Ma\xDFgabe der \xA7\xA7 327c, 327m und
+      327r Absatz 3 und 4 beendet werden.\",\"(1) Die K\xFCndigung des Arbeitsverh\xE4ltnisses
+      gegen\xFCber einem Arbeitnehmer, dessen Arbeitsverh\xE4ltnis in demselben Betrieb
+      oder Unternehmen ohne Unterbrechung l\xE4nger als sechs Monate bestanden hat,
+      ist rechtsunwirksam, wenn sie sozial ungerechtfertigt ist.\",\"Die Beendigung
+      von Arbeitsverh\xE4ltnissen durch K\xFCndigung oder Aufl\xF6sungsvertrag bed\xFCrfen
+      zu ihrer Wirksamkeit der Schriftform; die elektronische Form ist ausgeschlossen.\",\"(1)
+      Das Dienstverh\xE4ltnis kann von jedem Vertragsteil aus wichtigem Grund ohne
+      Einhaltung einer K\xFCndigungsfrist gek\xFCndigt werden, wenn Tatsachen vorliegen,
+      auf Grund derer dem K\xFCndigenden unter Ber\xFCcksichtigung aller Umst\xE4nde
+      des Einzelfalles und unter Abw\xE4gung der Interessen beider Vertragsteile die
+      Fortsetzung des Dienstverh\xE4ltnisses bis zum Ablauf der K\xFCndigungsfrist
+      oder bis zu der vereinbarten Beendigung des Dienstverh\xE4ltnisses nicht zugemutet
+      werden kann.\\n(2) Die K\xFCndigung kann nur innerhalb von zwei Wochen erfolgen.
+      Die Frist beginnt mit dem Zeitpunkt, in dem der K\xFCndigungsberechtigte von
+      den f\xFCr die K\xFCndigung ma\xDFgebenden Tatsachen Kenntnis erlangt. Der K\xFCndigende
+      muss dem anderen Teil auf Verlangen den K\xFCndigungsgrund unverz\xFCglich schriftlich
+      mitteilen.\",\"Ist das Dienstverh\xE4ltnis f\xFCr die Lebenszeit einer Person
+      oder f\xFCr l\xE4ngere Zeit als f\xFCnf Jahre eingegangen, so kann es von dem
+      Verpflichteten nach dem Ablauf von f\xFCnf Jahren gek\xFCndigt werden. Die K\xFCndigungsfrist
+      betr\xE4gt sechs Monate.\",\"Wird das Dienstverh\xE4ltnis nach dem Ablauf der
+      Dienstzeit von dem Verpflichteten mit Wissen des anderen Teiles fortgesetzt,
+      so gilt es als auf unbestimmte Zeit verl\xE4ngert, sofern nicht der andere Teil
+      unverz\xFCglich widerspricht.\",\"H\xE4lt der Arbeitnehmer eine K\xFCndigung
+      f\xFCr sozial ungerechtfertigt, so kann er binnen einer Woche nach der K\xFCndigung
+      Einspruch beim Betriebsrat einlegen. Erachtet der Betriebsrat den Einspruch
+      f\xFCr begr\xFCndet, so hat er zu versuchen, eine Verst\xE4ndigung mit dem Arbeitgeber
+      herbeizuf\xFChren. Er hat seine Stellungnahme zu dem Einspruch dem Arbeitnehmer
+      und dem Arbeitgeber auf Verlangen schriftlich mitzuteilen.\",\"Die werkt\xE4gliche
+      Arbeitszeit der Arbeitnehmer darf acht Stunden nicht \xFCberschreiten. Sie kann
+      auf bis zu zehn Stunden nur verl\xE4ngert werden, wenn innerhalb von sechs Kalendermonaten
+      oder innerhalb von 24 Wochen im Durchschnitt acht Stunden werkt\xE4glich nicht
+      \xFCberschritten werden.\",\"Bei einem Dienstverh\xE4ltnis, das kein Arbeitsverh\xE4ltnis
+      im Sinne des \xA7 622 ist, ist die K\xFCndigung zul\xE4ssig,\\n1. wenn die Verg\xFCtung
+      nach Tagen bemessen ist, an jedem Tag f\xFCr den Ablauf des folgenden Tages;\\n2.
+      wenn die Verg\xFCtung nach Wochen bemessen ist, sp\xE4testens am ersten Werktag
+      einer Woche f\xFCr den Ablauf des folgenden Sonnabends;\\n3. wenn die Verg\xFCtung
+      nach Monaten bemessen ist, sp\xE4testens am 15. eines Monats f\xFCr den Schluss
+      des Kalendermonats;\\n4. wenn die Verg\xFCtung nach Vierteljahren oder l\xE4ngeren
+      Zeitabschnitten bemessen ist, unter Einhaltung einer K\xFCndigungsfrist von
+      sechs Wochen f\xFCr den Schluss eines Kalendervierteljahrs;\\n5. wenn die Verg\xFCtung
+      nicht nach Zeitabschnitten bemessen ist, jederzeit; bei einem die Erwerbst\xE4tigkeit
+      des Verpflichteten vollst\xE4ndig oder haupts\xE4chlich in Anspruch nehmenden
+      Dienstverh\xE4ltnis ist jedoch eine K\xFCndigungsfrist von zwei Wochen einzuhalten.\",\"(2)
+      F\xFCr eine K\xFCndigung durch den Arbeitgeber betr\xE4gt die K\xFCndigungsfrist,
+      wenn das Arbeitsverh\xE4ltnis in dem Betrieb oder Unternehmen\\n1. zwei Jahre
+      bestanden hat, einen Monat zum Ende eines Kalendermonats,\\n2. f\xFCnf Jahre
+      bestanden hat, zwei Monate zum Ende eines Kalendermonats,\\n3. acht Jahre bestanden
+      hat, drei Monate zum Ende eines Kalendermonats,\\n4. zehn Jahre bestanden hat,
+      vier Monate zum Ende eines Kalendermonats,\\n5. zw\xF6lf Jahre bestanden hat,
+      f\xFCnf Monate zum Ende eines Kalendermonats,\\n6. 15 Jahre bestanden hat, sechs
+      Monate zum Ende eines Kalendermonats,\\n7. 20 Jahre bestanden hat, sieben Monate
+      zum Ende eines Kalendermonats.\"],\"truncate\":true}"
+    headers:
+      accept:
+      - '*/*'
+      content-type:
+      - application/json
+    method: POST
+    uri: http://127.0.0.1:18291/rerank
+  response:
+    body:
+      string: '[{"index": 9, "score": 0.9553213715553284}, {"index": 8, "score": 0.5279869437217712},
+        {"index": 4, "score": 0.3145137429237366}, {"index": 3, "score": 0.17818284034729004},
+        {"index": 1, "score": 0.021116653457283974}, {"index": 6, "score": 0.01381094940006733},
+        {"index": 0, "score": 0.008491748943924904}, {"index": 2, "score": 0.006847476586699486},
+        {"index": 5, "score": 0.0032219714485108852}, {"index": 7, "score": 0.0006541848997585475}]'
+    headers:
+      content-type:
+      - application/json
+    status:
+      code: 200
+      message: OK
+version: 1

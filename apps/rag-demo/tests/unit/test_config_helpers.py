@@ -19,14 +19,14 @@ def test_config_must_be_a_mapping() -> None:
         parse_config("- a\n- b\n")
 
 
-def test_reranker_on_is_rejected_until_t3_5() -> None:
+def test_reranker_on_is_accepted_and_the_default_stays_off() -> None:
     text = (
         (CONFIGS / "rag.yaml")
         .read_text(encoding="utf-8")
         .replace('reranker: "off"', 'reranker: "on"')
     )
-    with pytest.raises(ValueError, match=r"T3\.5"):
-        parse_config(text)
+    assert parse_config(text).reranker == "on"
+    assert parse_config((CONFIGS / "rag.yaml").read_text(encoding="utf-8")).reranker == "off"
 
 
 def test_settings_read_the_environment(monkeypatch: pytest.MonkeyPatch) -> None:

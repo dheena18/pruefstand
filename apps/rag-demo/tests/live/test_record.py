@@ -1,18 +1,20 @@
 """Recording scenarios for `make cassettes-contract` (`--record-mode=rewrite`): REAL exchanges only.
 
 Skipped unless ``RAG_RECORD=1``; ``scripts/models/record_cassettes.sh`` runs them against the live
-stack (llama.cpp generator and TEI), then the unit tests replay the cassettes.
+stack (llama.cpp generator and TEI), then the unit tests replay the cassettes. The reranker
+cassette needs a running ``rerank-cpu`` (``RECORD_RERANK_URL``; ``make cassettes-rerank``).
 """
 
 import os
 
 import pytest
-from rd_support import CONFIGS, hit
+from rd_support import CONFIGS, RERANK_QUERY, hit, rerank_input
 
 from rag_demo.config import load_config
 from rag_demo.generate import OpenAICompatGenerator
 from rag_demo.index.encoders import TeiDenseEncoder
 from rag_demo.models import Stats
+from rag_demo.retrieval.rerank import CrossEncoderReranker
 
 pytestmark = [
     pytest.mark.live,
@@ -20,6 +22,7 @@ pytestmark = [
 ]
 LLM = os.environ.get("RECORD_LLM_URL", "http://127.0.0.1:8080")
 EMBED = os.environ.get("RECORD_EMBED_URL", "http://127.0.0.1:8090")
+RERANK = os.environ.get("RECORD_RERANK_URL", "http://127.0.0.1:18201")
 QUESTION = "Welche Kündigungsfrist gilt nach zwei Jahren Betriebszugehörigkeit?"
 
 
@@ -39,3 +42,12 @@ def test_record_tei_query() -> None:
     cfg = load_config(CONFIGS / "rag.yaml")
     vectors = TeiDenseEncoder(cfg.embed, EMBED).encode([QUESTION], kind="query")
     assert vectors.shape == (1, cfg.embed.dim)
+
+
+@pytest.mark.default_cassette("rerank_622.yaml")
+@pytest.mark.vcr
+def test_record_rerank_scores() -> None:
+    """The real ``rerank-cpu`` (no auth) scoring the ten fused hits of ``rerank_input``."""
+    reranker = CrossEncoderReranker(RERANK, max_passage_tokens=256, timeout_s=300.0)
+    out = reranker.rerank(RERANK_QUERY, rerank_input(), top_n=10)
+    assert out[0].chunk_id == "gii-bgb-622#1"

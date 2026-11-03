@@ -39,6 +39,8 @@ def test_tier1_profile_values() -> None:
     assert cfg.chunk_prompt_tokens == 256
     assert cfg.max_tokens == 256
     assert cfg.reranker == "off"
+    assert (cfg.retrieval.hybrid, cfg.retrieval.prefetch_k, cfg.retrieval.rrf_k) == (True, 50, 60)
+    assert (cfg.rerank.top_n, cfg.rerank.on_retrieve) == (10, True)
     assert cfg.generator.enable_thinking is False
     assert cfg.tenant_filter == "inside"
     assert cfg.shared_public_merge == "filtered"

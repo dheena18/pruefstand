@@ -28,6 +28,7 @@ BUG_FIELDS = {
     "injection_guard_off": "injection_guard",
     "system_prompt_guard_off": "system_prompt_guard",
     "top_k_1": "top_k",
+    "reranker_off": "reranker",
 }
 
 
@@ -65,8 +66,9 @@ def test_gpu_profile_loads_with_the_catalogue() -> None:
     assert cfg.generator.enable_thinking is False
     assert cfg.embed.engine == "ollama"
     assert cfg.embed.catalogue_id == "ollama/bge-m3"
-    assert cfg.rerank.enabled is False
+    assert cfg.reranker == "on"
     assert cfg.rerank.endpoint_env == "RERANK_URL"
+    assert (cfg.rerank.top_n, cfg.rerank.on_retrieve) == (10, True)
 
 
 def test_gpu_profile_loads_with_the_endpoint_variables_unset(
@@ -285,3 +287,11 @@ def test_tier_profiles_have_different_hashes() -> None:
     assert config_hash(load_config(CONFIGS / "rag.yaml")) != config_hash(
         load_config(GPU, catalogue_path=CATALOGUE)
     )
+
+
+def test_a_gpu_config_must_set_reranker_explicitly() -> None:
+    """The default `off` is the M1 bug value: a gpu config that omits it must not load."""
+    data = _data()
+    del data["reranker"]
+    with pytest.raises(ValidationError, match="reranker"):
+        _parse(data)

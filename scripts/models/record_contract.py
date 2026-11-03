@@ -5,9 +5,9 @@
 Replaces the answerable-by-the-app examples of ``packages/pruefstand/tests/contract/examples`` with
 recordings and writes ``_meta.json`` (``source: recorded``, app git SHA, model pins). The examples a
 third-party target would send but rag-demo never does (``query_no_chunks``,
-``query_chunks_no_tenant``) and ``retrieve_ok`` (``/v1/retrieve`` is T3.5) keep their
-``openapi-example`` origin. Nothing is edited by hand: a response that does not show the
-intended behaviour fails the run.
+``query_chunks_no_tenant``) keep their ``openapi-example`` origin. ``retrieve_ok`` is recorded
+from ``POST /v1/retrieve`` (T3.5, D218). Nothing is edited by hand: a response that does not
+show the intended behaviour fails the run.
 """
 
 import argparse
@@ -59,6 +59,18 @@ def query(base: str, tenant: str, question: str) -> dict[str, Any]:
     return body
 
 
+def retrieve(base: str, tenant: str, question: str) -> dict[str, Any]:
+    """POST one question to ``base``'s ``/v1/retrieve`` and return the JSON body."""
+    resp = httpx.post(
+        f"{base}/v1/retrieve",
+        json={"tenant_id": tenant, "question": question, "request_id": uuid.uuid4().hex},
+        timeout=180,
+    )
+    resp.raise_for_status()
+    body: dict[str, Any] = resp.json()
+    return body
+
+
 def _write(name: str, body: dict[str, Any]) -> None:
     text = json.dumps(body, ensure_ascii=False, indent=2) + "\n"
     (EXAMPLES / name).write_text(text, encoding="utf-8")
@@ -76,6 +88,9 @@ def main(argv: Sequence[str] | None = None) -> int:
         (b for q in OUT_OF_SCOPE[1] if (b := query(args.url, OUT_OF_SCOPE[0], q))["refused"]), None
     )
     _require(refused is not None, "no out-of-scope question was refused")
+    chunks_only = retrieve(args.url, *ANSWERABLE)
+    _require(list(chunks_only) == ["chunks"], "/v1/retrieve answered with more than chunks")
+    _require(bool(chunks_only["chunks"]), "/v1/retrieve returned no chunks")
     leak = query(args.bug_url, *BERGMANN)
     _require(
         any(c["tenant_id"] == "versicherung_nord" for c in leak["chunks"]),
@@ -87,6 +102,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         "query_ok.json": ok,
         "query_refused.json": refused,
         "query_other_tenant.json": leak,
+        "retrieve_ok.json": chunks_only,
         "info.json": info,
         "health.json": health,
     }
