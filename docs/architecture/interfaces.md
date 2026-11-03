@@ -177,11 +177,11 @@ VM identity and coordination files (R11 Y1, D211-D213)
   lock              /var/lib/pruefstand/gpu.lock (0660, group pruefstand); owner user is in group pruefstand
   owner GPU work    pruefstand-lock <cmd>  (flock on the same file, exports PRUEFSTAND_LOCK_HELD=1, runs <cmd>)
   owner cluster ops only through the wrapper: sudo -n -u pruefstand /usr/local/bin/pruefstand-cluster <op> [args]
-                    (T3.1a; ops start-ollama, stop-ollama, status, pull|rm|show <tag> (ADR-0018: no mode or GPU args);
+                    (T3.1a; ops start-ollama, stop-ollama, status, log [N] (T3.1e, D560: redacted log tail, N 1..1000), pull|rm|show <tag> (ADR-0018: no mode or GPU args);
                     anything else exit 64); the owner never holds the cluster key, never runs ssh to the cluster.
                     R12 (A12-M5, D276): the mutating ops (start-ollama, stop-ollama, pull, rm) run only when the
                     caller holds gpu.lock: sudoers keeps PRUEFSTAND_LOCK_HELD (env_keep) and the wrapper checks that
-                    `flock -n /var/lib/pruefstand/gpu.lock true` FAILS (lock held), else exit 2; status/show need no lock
+                    `flock -n /var/lib/pruefstand/gpu.lock true` FAILS (lock held), else exit 2; status/show/log need no lock
   GitHub token      R12 (N4.4, D257): gh/git on the VM use a fine-grained token limited to the PUBLIC repo (contents +
                     pull requests + workflows write, Workflows being required to push .github/workflows/**, D284; no
                     administration, no access to pruefstand-gate or pruefstand-dashboard-data); admin actions (ruleset bypass,
@@ -338,6 +338,8 @@ cluster scripts (infra/cluster/, copied over SSH to /data/dheena/pruefstand-bin/
                                    R12 (A12-M3, D276): before acting on a pid stop-ollama.sh and status.sh check
                                    that /proc/<pid>/cmdline is `ollama serve` and that :11434 is listening
                                    (no pid file since ADR-0019)
+  log-tail.sh [N]                  (T3.1e, D561/D562) read-only: last N (1..1000, default 200) lines of the Ollama log,
+                                   redacted on the cluster (paths, login, host, addresses, secrets); fails closed
   ollama-op.sh pull|rm|show <tag>  (T3.1a, D414) the only way the wrapper and the VM scripts run `ollama` on the
                                    cluster: takes the binary from the process that serves :11434, tag regex
                                    ^[a-z0-9._:/-]+$, `rm` of the generator tag -> exit 64, `pull` with less than
@@ -1235,6 +1237,21 @@ def write_gate_json(report: GateReport, path: Path) -> None
     # report/json_report.py (T1.9): sorted keys, 2-space indent, UTF-8, trailing newline; round-trips through
     # GateReport.model_validate_json
 def build_evidence_record(report: GateReport, base: RunManifest | None, cand: RunManifest, reviewer: str | None) -> EvidenceRecord
+    # T6.4 (D540, ADR-0021): EvidenceRecord lives in core.models.evidence, schema `evidence_record` (make schemas). Fields:
+    # schema_version "1", statement ("supports documentation for accuracy, robustness and record-keeping ... not a
+    # compliance certificate"), created_at (= candidate RunManifest.created_at: the builder reads no clock), gate_status,
+    # no_baseline, reviewer | None, dataset_name, dataset_version, corpus_version | None (target info), splits, n_cases,
+    # stack, workload, eval_fingerprint, target_fingerprint, config_hash, seed, candidate: EvidenceRun,
+    # baseline: EvidenceRun | None, baseline_run_id | None, gate_json_sha256 | None, model_ids, judge_mode, judge_models,
+    # judge_prompt_versions, metric_versions, thresholds: GatePolicy | None, results: tuple[EvidenceMetric, ...]
+    # (one per decision / absolute check / notable slice with its `table` per ui-spec 11.1, means, CI, p, MDE, max_drop,
+    # max_value, n_clusters, reason), likely_cause, not_applicable_counts, n_unmatched, n_excluded, security: EvidenceSecurity (hard_fail_count, redacted hard_fails,
+    # leak_metrics = rule hard_fail only, unverifiable = rule hard_fail_unverifiable,
+    # injection_success | None). EvidenceRun = run_id, created_at, git_sha, git_ref, pr_number, pruefstand_version,
+    # eval_fingerprint, target_fingerprint, config_hash, complete, stop_reason, run_json_sha256 | None.
+    # The builder only sees manifests: the three artefact hashes (run.json of both runs, gate.json of the candidate)
+    # and `thresholds` are None there and filled by cli/report.py (model_copy). base None (no baseline, or its manifest
+    # is not available) -> baseline None, baseline_run_id keeps the id of the GateReport.
 class GitHubPublisher:
     def __init__(self, token: str, repo: str, api_url: str = "https://api.github.com",
                  *, bot_login: str | None = None, enterprise_host: str | None = None) -> None
@@ -1625,6 +1642,10 @@ pruefstand gate       --candidate runs/<id> [--baseline runs/<id> | --from-store
                       # the executor then posts `failure` "no baseline for <fp>; run baseline-promote" via
                       # set_check(..., no_baseline=True) (D103, §10); it never passes and never runs main's image ad hoc
 pruefstand report     --run runs/<id> --format md|html|json|evidence [--config pruefstand.yaml] [--publish-pr N]   (--config required for evidence: T6.4)
+                      # T6.4 (D541): html / evidence write runs/<id>/report.html / evidence.json atomically (full private
+                      # render, chunk text included) and print the path; evidence without --config -> exit 2, a config whose
+                      # stable_hash differs from RunManifest.config_hash -> exit 2 (same function as pipeline/run.py);
+                      # the baseline run is read from the sibling directory <baseline_run_id>, absent -> base=None
 pruefstand baseline   promote --run runs/<id> --ref main|nightly-b0|nightly-b1|nightly-b2|release-b0|release-b1|release-b2   ·   export-public --run runs/<id> --out <dir>   (T6.1)
                       # R12: --ref nightly-b<k> requires RunManifest.block == k (else exit 2); R13 (D321): --ref
                       # release-b<k> requires block None + stratum "all" (the release run) and writes its block-k

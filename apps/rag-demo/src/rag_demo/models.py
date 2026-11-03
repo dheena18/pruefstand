@@ -219,3 +219,4 @@ class Stats:
     think_stripped: int = 0
     truncated_chunks: int = 0
     requests: int = 0
+    prompt_overflow: int = 0

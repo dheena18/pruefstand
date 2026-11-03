@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # cluster_op <op> [tag [bytes]]: the ONE way the VM scripts reach the cluster (T3.1a, Y1.1, D211). Sourced, never run.
 #
-# ops (nothing else, fail closed with 64): start-ollama | stop-ollama | status | rm <tag> | show <tag> |
+# ops (nothing else, fail closed with 64): start-ollama | stop-ollama | status | rm <tag> | show <tag> | log [N] |
 #   pull <tag> <bytes>   (<bytes> = the catalogue size; the cluster re-checks it against the free space, exit 17)
 #   tag matches ^[a-z0-9._:/-]+$, does not start with "-" and contains no "..".
 # As the service user (PRUEFSTAND_SERVICE_USER, default pruefstand: the only holder of the cluster key) the op
@@ -13,6 +13,7 @@
 
 CLUSTER_BIN_BASE="/data/dheena/pruefstand-bin"
 _CLUSTER_TAG_RE='^[a-z0-9._:/-]+$'
+_CLUSTER_LOG_N_RE='^[1-9][0-9]{0,3}$'
 _CLUSTER_BYTES_RE='^[1-9][0-9]{0,14}$'
 
 _cluster_tag_ok() { # tag
@@ -27,6 +28,14 @@ cluster_op() { # op [tag [bytes]]
   case "$op" in
     start-ollama | stop-ollama | status)
       if [ "$#" -ne 1 ]; then return 64; fi
+      ;;
+    log)
+      if [ "$#" -gt 2 ]; then return 64; fi
+      if [ "$#" -eq 2 ]; then
+        [[ $tag =~ $_CLUSTER_LOG_N_RE ]] || return 64
+        [ "$tag" -le 1000 ] || return 64
+        args+=("$tag")
+      fi
       ;;
     rm | show)
       if [ "$#" -ne 2 ]; then return 64; fi
@@ -48,6 +57,7 @@ cluster_op() { # op [tag [bytes]]
         [[ $bytes =~ $_CLUSTER_BYTES_RE ]] || return 64
         remote="bash $dir/ollama-op.sh pull $tag $bytes"
         ;;
+      log) remote="bash $dir/log-tail.sh ${tag:-200}" ;;
       rm | show) remote="bash $dir/ollama-op.sh $op $tag" ;;
       *) remote="bash $dir/$op.sh" ;;
     esac

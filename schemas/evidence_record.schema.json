@@ -1,0 +1,767 @@
+{
+  "$defs": {
+    "EvidenceMetric": {
+      "additionalProperties": false,
+      "description": "The result of one (metric, slice) pair or absolute check, copied from ``gate.json``.",
+      "properties": {
+        "baseline_mean": {
+          "title": "Baseline Mean",
+          "type": "number"
+        },
+        "candidate_mean": {
+          "title": "Candidate Mean",
+          "type": "number"
+        },
+        "ci_high": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Ci High"
+        },
+        "ci_low": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Ci Low"
+        },
+        "confidence": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Confidence"
+        },
+        "dimension": {
+          "title": "Dimension",
+          "type": "string"
+        },
+        "informational_reason": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Informational Reason"
+        },
+        "max_drop": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Max Drop"
+        },
+        "max_value": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Max Value"
+        },
+        "mde": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Mde"
+        },
+        "mean_diff": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Mean Diff"
+        },
+        "metric": {
+          "title": "Metric",
+          "type": "string"
+        },
+        "n_clusters": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "N Clusters"
+        },
+        "p_adjusted": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "P Adjusted"
+        },
+        "status": {
+          "$ref": "#/$defs/GateStatus"
+        },
+        "table": {
+          "title": "Table",
+          "type": "string"
+        },
+        "value": {
+          "title": "Value",
+          "type": "string"
+        }
+      },
+      "required": [
+        "metric",
+        "dimension",
+        "value",
+        "table",
+        "status",
+        "informational_reason",
+        "baseline_mean",
+        "candidate_mean",
+        "mean_diff",
+        "ci_low",
+        "ci_high",
+        "confidence",
+        "p_adjusted",
+        "mde",
+        "max_drop",
+        "max_value",
+        "n_clusters"
+      ],
+      "title": "EvidenceMetric",
+      "type": "object"
+    },
+    "EvidenceRun": {
+      "additionalProperties": false,
+      "description": "One of the two runs behind a gate decision.\n\n``run_json_sha256`` is empty (``None``) when the builder only saw the manifest; the CLI fills\nit from the file.",
+      "properties": {
+        "complete": {
+          "title": "Complete",
+          "type": "boolean"
+        },
+        "config_hash": {
+          "title": "Config Hash",
+          "type": "string"
+        },
+        "created_at": {
+          "format": "date-time",
+          "title": "Created At",
+          "type": "string"
+        },
+        "eval_fingerprint": {
+          "title": "Eval Fingerprint",
+          "type": "string"
+        },
+        "git_ref": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Git Ref"
+        },
+        "git_sha": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Git Sha"
+        },
+        "pr_number": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Pr Number"
+        },
+        "pruefstand_version": {
+          "title": "Pruefstand Version",
+          "type": "string"
+        },
+        "run_id": {
+          "title": "Run Id",
+          "type": "string"
+        },
+        "run_json_sha256": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Run Json Sha256"
+        },
+        "stop_reason": {
+          "enum": [
+            "completed",
+            "budget_exceeded",
+            "aborted"
+          ],
+          "title": "Stop Reason",
+          "type": "string"
+        },
+        "target_fingerprint": {
+          "title": "Target Fingerprint",
+          "type": "string"
+        }
+      },
+      "required": [
+        "run_id",
+        "created_at",
+        "git_sha",
+        "git_ref",
+        "pr_number",
+        "pruefstand_version",
+        "eval_fingerprint",
+        "target_fingerprint",
+        "config_hash",
+        "complete",
+        "stop_reason"
+      ],
+      "title": "EvidenceRun",
+      "type": "object"
+    },
+    "EvidenceSecurity": {
+      "additionalProperties": false,
+      "description": "Security results: the (redacted) hard fails and the injection success rate.",
+      "properties": {
+        "hard_fail_count": {
+          "title": "Hard Fail Count",
+          "type": "integer"
+        },
+        "hard_fails": {
+          "items": {
+            "$ref": "#/$defs/HardFailFinding"
+          },
+          "title": "Hard Fails",
+          "type": "array"
+        },
+        "injection_success": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Injection Success"
+        },
+        "leak_metrics": {
+          "additionalProperties": {
+            "type": "integer"
+          },
+          "title": "Leak Metrics",
+          "type": "object"
+        },
+        "unverifiable": {
+          "additionalProperties": {
+            "type": "integer"
+          },
+          "title": "Unverifiable",
+          "type": "object"
+        }
+      },
+      "required": [
+        "hard_fail_count",
+        "hard_fails",
+        "leak_metrics",
+        "unverifiable",
+        "injection_success"
+      ],
+      "title": "EvidenceSecurity",
+      "type": "object"
+    },
+    "GatePolicy": {
+      "additionalProperties": false,
+      "description": "Gate settings (interfaces §9, decisions D51-D59).\n\nRaises:\n    ConfigError: unknown or misplaced metric, ``alpha >= warn_p``, or a gated slice that is\n        neither ``overall``, ``perturbed_all`` nor in ``slices``.\n\nWhen ``gated_slices`` is omitted (or ``None``) it is derived from ``slices``: ``overall`` and\n``perturbed_all`` always, ``tenant`` and ``lang`` only if they are in ``slices``. The stored\nvalue is always a tuple, so ``model_validate(model_dump())`` round-trips and\n``GatePolicy(metrics={}, slices=())`` is valid. Derivation happens at validation time only:\n``model_copy(update={\"slices\": ...})`` does not re-derive ``gated_slices``.",
+      "properties": {
+        "alpha": {
+          "default": 0.025,
+          "exclusiveMaximum": 1,
+          "exclusiveMinimum": 0,
+          "title": "Alpha",
+          "type": "number"
+        },
+        "correction": {
+          "default": "holm",
+          "enum": [
+            "holm",
+            "none"
+          ],
+          "title": "Correction",
+          "type": "string"
+        },
+        "gated_slices": {
+          "default": [
+            "overall",
+            "tenant",
+            "lang",
+            "perturbed_all"
+          ],
+          "items": {
+            "type": "string"
+          },
+          "title": "Gated Slices",
+          "type": "array"
+        },
+        "hard_fail": {
+          "default": [
+            "canary_leak",
+            "tenant_leak",
+            "system_prompt_leak"
+          ],
+          "items": {
+            "type": "string"
+          },
+          "title": "Hard Fail",
+          "type": "array"
+        },
+        "max_error_rate": {
+          "default": 0.02,
+          "exclusiveMaximum": 1,
+          "minimum": 0,
+          "title": "Max Error Rate",
+          "type": "number"
+        },
+        "metrics": {
+          "additionalProperties": {
+            "$ref": "#/$defs/MetricPolicy"
+          },
+          "title": "Metrics",
+          "type": "object"
+        },
+        "min_clusters": {
+          "default": 30,
+          "minimum": 1,
+          "title": "Min Clusters",
+          "type": "integer"
+        },
+        "n_resamples": {
+          "default": 10000,
+          "maximum": 10000000,
+          "minimum": 1,
+          "title": "N Resamples",
+          "type": "integer"
+        },
+        "slices": {
+          "default": [
+            "category",
+            "perturbation",
+            "tenant",
+            "lang",
+            "tags"
+          ],
+          "items": {
+            "type": "string"
+          },
+          "title": "Slices",
+          "type": "array"
+        },
+        "warn_p": {
+          "default": 0.1,
+          "exclusiveMaximum": 1,
+          "exclusiveMinimum": 0,
+          "title": "Warn P",
+          "type": "number"
+        }
+      },
+      "required": [
+        "metrics"
+      ],
+      "title": "GatePolicy",
+      "type": "object"
+    },
+    "GateStatus": {
+      "description": "Decision of the gate; ``UNSUPPORTED_CONFIG`` counts as ``WARN``.",
+      "enum": [
+        "pass",
+        "warn",
+        "fail",
+        "insufficient_data",
+        "unsupported_config"
+      ],
+      "title": "GateStatus",
+      "type": "string"
+    },
+    "HardFailFinding": {
+      "additionalProperties": false,
+      "description": "One hard fail (no statistics): a leak on a case, or a leak check that could not run.\n\n``rule`` is ``\"hard_fail\"`` (the metric is 1 on the case) or ``\"hard_fail_unverifiable\"``\n(the metric is ``error``/``not_applicable`` on a case of a target that declares chunk\nsupport, so the leak could not be ruled out). ``evidence`` is redacted: at most 200\ncharacters, canary tokens masked, never chunk text.\n\nRaises:\n    ValidationError: ``evidence`` is longer than 200 characters.",
+      "properties": {
+        "case_id": {
+          "title": "Case Id",
+          "type": "string"
+        },
+        "evidence": {
+          "maxLength": 200,
+          "title": "Evidence",
+          "type": "string"
+        },
+        "metric": {
+          "title": "Metric",
+          "type": "string"
+        },
+        "rule": {
+          "title": "Rule",
+          "type": "string"
+        }
+      },
+      "required": [
+        "rule",
+        "case_id",
+        "metric",
+        "evidence"
+      ],
+      "title": "HardFailFinding",
+      "type": "object"
+    },
+    "MetricPolicy": {
+      "additionalProperties": false,
+      "description": "Threshold of one gated metric; the direction comes from ``Metric.higher_is_better``.\n\nAttributes:\n    max_drop: Smallest paired drop versus the baseline that matters.\n    max_value: Absolute upper bound (Wilson lower bound rule, SPEC §7.2).\n    confidence: Confidence of the *displayed* CI only; never changes the decision.\n\nRaises:\n    ConfigError: neither ``max_drop`` nor ``max_value`` is set.",
+      "properties": {
+        "confidence": {
+          "default": 0.95,
+          "exclusiveMaximum": 1,
+          "exclusiveMinimum": 0,
+          "title": "Confidence",
+          "type": "number"
+        },
+        "max_drop": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Max Drop"
+        },
+        "max_value": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Max Value"
+        }
+      },
+      "title": "MetricPolicy",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "description": "Release evidence record (``evidence.json``, ``pruefstand report --format evidence``).\n\n``created_at`` is the creation time of the candidate run (the builder is pure and reads no\nclock). ``baseline`` is ``None`` when there is no baseline or its manifest is not available;\n``baseline_run_id`` keeps the id from ``gate.json`` in that case. ``thresholds`` is filled by\nthe CLI from the loaded config (neither ``GateReport`` nor ``RunManifest`` carries the policy).",
+  "properties": {
+    "baseline": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/EvidenceRun"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "baseline_run_id": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "title": "Baseline Run Id"
+    },
+    "candidate": {
+      "$ref": "#/$defs/EvidenceRun"
+    },
+    "config_hash": {
+      "title": "Config Hash",
+      "type": "string"
+    },
+    "corpus_version": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "title": "Corpus Version"
+    },
+    "created_at": {
+      "format": "date-time",
+      "title": "Created At",
+      "type": "string"
+    },
+    "dataset_name": {
+      "title": "Dataset Name",
+      "type": "string"
+    },
+    "dataset_version": {
+      "title": "Dataset Version",
+      "type": "string"
+    },
+    "eval_fingerprint": {
+      "title": "Eval Fingerprint",
+      "type": "string"
+    },
+    "gate_json_sha256": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Gate Json Sha256"
+    },
+    "gate_status": {
+      "$ref": "#/$defs/GateStatus"
+    },
+    "judge_mode": {
+      "enum": [
+        "github",
+        "local",
+        "skipped"
+      ],
+      "title": "Judge Mode",
+      "type": "string"
+    },
+    "judge_models": {
+      "additionalProperties": {
+        "type": "string"
+      },
+      "title": "Judge Models",
+      "type": "object"
+    },
+    "judge_prompt_versions": {
+      "additionalProperties": {
+        "type": "string"
+      },
+      "title": "Judge Prompt Versions",
+      "type": "object"
+    },
+    "likely_cause": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "title": "Likely Cause"
+    },
+    "metric_versions": {
+      "additionalProperties": {
+        "type": "string"
+      },
+      "title": "Metric Versions",
+      "type": "object"
+    },
+    "model_ids": {
+      "additionalProperties": {
+        "type": "string"
+      },
+      "title": "Model Ids",
+      "type": "object"
+    },
+    "n_cases": {
+      "title": "N Cases",
+      "type": "integer"
+    },
+    "n_excluded": {
+      "additionalProperties": {
+        "type": "integer"
+      },
+      "title": "N Excluded",
+      "type": "object"
+    },
+    "n_unmatched": {
+      "additionalProperties": {
+        "type": "integer"
+      },
+      "title": "N Unmatched",
+      "type": "object"
+    },
+    "no_baseline": {
+      "title": "No Baseline",
+      "type": "boolean"
+    },
+    "not_applicable_counts": {
+      "additionalProperties": {
+        "type": "integer"
+      },
+      "title": "Not Applicable Counts",
+      "type": "object"
+    },
+    "results": {
+      "items": {
+        "$ref": "#/$defs/EvidenceMetric"
+      },
+      "title": "Results",
+      "type": "array"
+    },
+    "reviewer": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "title": "Reviewer"
+    },
+    "schema_version": {
+      "const": "1",
+      "default": "1",
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "security": {
+      "$ref": "#/$defs/EvidenceSecurity"
+    },
+    "seed": {
+      "title": "Seed",
+      "type": "integer"
+    },
+    "splits": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Splits",
+      "type": "array"
+    },
+    "stack": {
+      "enum": [
+        "live",
+        "a40"
+      ],
+      "title": "Stack",
+      "type": "string"
+    },
+    "statement": {
+      "default": "This record supports documentation for accuracy, robustness and record-keeping. It is not a compliance certificate.",
+      "title": "Statement",
+      "type": "string"
+    },
+    "target_fingerprint": {
+      "title": "Target Fingerprint",
+      "type": "string"
+    },
+    "thresholds": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/GatePolicy"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    },
+    "workload": {
+      "enum": [
+        "pr",
+        "nightly",
+        "bench"
+      ],
+      "title": "Workload",
+      "type": "string"
+    }
+  },
+  "required": [
+    "created_at",
+    "gate_status",
+    "no_baseline",
+    "reviewer",
+    "dataset_name",
+    "dataset_version",
+    "corpus_version",
+    "splits",
+    "n_cases",
+    "stack",
+    "workload",
+    "eval_fingerprint",
+    "target_fingerprint",
+    "config_hash",
+    "seed",
+    "candidate",
+    "baseline",
+    "baseline_run_id",
+    "model_ids",
+    "judge_mode",
+    "judge_models",
+    "judge_prompt_versions",
+    "metric_versions",
+    "likely_cause",
+    "not_applicable_counts",
+    "n_unmatched",
+    "n_excluded",
+    "results",
+    "security"
+  ],
+  "title": "EvidenceRecord",
+  "type": "object"
+}

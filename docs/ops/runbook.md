@@ -16,10 +16,10 @@ login user (groups `pruefstand`, `docker`), **[pruefstand]** = the executor's sy
 `pruefstand-lock <cmd>` (lock `/var/lib/pruefstand/gpu.lock`). You never hold the cluster key: **every
 command of yours that needs the cluster goes through the sudo wrapper** (T3.1a, D247)
 `sudo -n -u pruefstand /usr/local/bin/pruefstand-cluster <op>` (ops `start-ollama`,
-`stop-ollama`, `status`, `pull|rm|show <tag>`; anything else exits 64). The cluster
+`stop-ollama`, `status`, `log [N]`, `pull|rm|show <tag>`; anything else exits 64). The cluster
 `cairo-s101lp` runs only **one** Ollama server for both GPUs (ADR-0018; `127.0.0.1:11434`); it is reached from the VM by key-only SSH as
 `pruefstand`, which calls the scripts as `ssh "$CLUSTER_SSH_HOST" bash /data/dheena/pruefstand-bin/<script>.sh`
-(the wrapper does exactly that for you). On the cluster only the models (`/data/dheena/Models`), these scripts and
+(the wrapper does exactly that for you). `pruefstand-cluster log [N]` prints the last N (default 200, max 1000) lines of the Ollama log, redacted on the cluster and read-only (no lock); it is how you read the model load lines (slots, KV cache, offload). On the cluster only the models (`/data/dheena/Models`), these scripts and
 `/data/dheena/ollama.log` are stored (ADR-0019); the server is started by your `~/start-ollama.sh` (setup log §7).
 **Owner step:** the start script of record must exist at `~/start-ollama.sh` on the cluster (a link to your real script is
 fine) and must set every value of `cluster.env`; `status.sh` and `health.sh` report a missing or non-executable one as a
