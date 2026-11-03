@@ -4,13 +4,13 @@ import pytest
 from rd_support import CONFIGS, hit
 
 from rag_demo.config import load_config
-from rag_demo.generate import (
+from rag_demo.generation import (
     OpenAICompatGenerator,
-    build_chat_request,
     build_prompt,
     strip_think,
     truncate_to_tokens,
 )
+from rag_demo.generation.llm_client import build_chat_request
 from rag_demo.models import Stats
 
 CFG = load_config(CONFIGS / "rag.yaml")

@@ -23,6 +23,9 @@ RUN uv sync --frozen --no-dev --no-editable --package rag-demo
 # T3.4 (DEV11-21): the embedding model's tokenizer.json, pinned by sha256 in the catalogue, baked at build time
 # (the candidate has no internet at runtime); it only serves the truncated_chunks count.
 RUN /app/.venv/bin/python -m rag_demo.index.fetch_tokenizer --catalogue infra/gpu/models.yaml --out /app/tokenizers/bge-m3.json
+# T3.6 (AI13-05): the generator's own tokenizer.json (the id comes from rag.gpu.yaml, so a re-pin in the catalogue needs no
+# change here), sha256 checked: a wrong pin fails the build. It counts the prompt budget; the bge-m3 one is never used for it.
+RUN /app/.venv/bin/python -m rag_demo.index.fetch_tokenizer --catalogue infra/gpu/models.yaml --config apps/rag-demo/configs/rag.gpu.yaml --out /app/tokenizers/generator.json
 
 FROM base AS runtime
 RUN groupadd --system --gid 10001 app \
@@ -42,7 +45,8 @@ ENV PATH="/app/.venv/bin:$PATH" \
     GIT_SHA=${GIT_SHA} \
     RAG_CONFIG=/app/configs/rag.yaml \
     RAG_MODEL_CATALOGUE=/app/catalogue/models.yaml \
-    RAG_EMBED_TOKENIZER=/app/tokenizers/bge-m3.json
+    RAG_EMBED_TOKENIZER=/app/tokenizers/bge-m3.json \
+    RAG_GENERATOR_TOKENIZER=/app/tokenizers/generator.json
 USER 10001
 EXPOSE 8000
 HEALTHCHECK --interval=10s --timeout=3s --start-period=10s --retries=5 \
