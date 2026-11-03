@@ -73,3 +73,13 @@ paths = [
 regexes = [
   '''Zq9Xk2LmN4pR7sT1vW3y''',
 ]
+
+[[allowlists]]
+description = "T2.6 validate_canaries test (early commit): the synthetic canary CANARY-VN-7f3a9c assigned to a variable named token (CLAUDE.md section 9: canary tokens are test data, not credentials)"
+condition = "AND"
+paths = [
+  '''scripts/tests/test_validate_canaries\.py''',
+]
+regexes = [
+  '''CANARY-VN-7f3a9c''',
+]
