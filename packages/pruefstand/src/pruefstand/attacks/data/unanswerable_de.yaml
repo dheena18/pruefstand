@@ -15,7 +15,7 @@ kanzlei_mueller:
     - {kind: repealed, cite: "§ 1 RabattG", q: "Welchen Rabatt erlaubte § 1 des Rabattgesetzes bei Barzahlung im Einzelhandel?"}
     - {kind: repealed, cite: "§ 2 ArbZO", q: "Wie lang durfte die tägliche Arbeitszeit nach § 2 der Arbeitszeitordnung von 1938 höchstens sein?"}
     - {kind: repealed, cite: "§ 1 BeschFG 1985", q: "Welche Befristungsdauer erlaubte § 1 des Beschäftigungsförderungsgesetzes 1985 ohne sachlichen Grund?"}
-    - {kind: unstated, cite: null, q: "Wie viele Tage Sonderurlaub bei der eigenen Hochzeit gewährt § 3 BUrlG?"}
+    - {kind: unstated, cite: null, q: "Wie viele Tage Bildungsurlaub gewährt § 3 BUrlG jährlich?"}
     - {kind: unstated, cite: null, q: "Wie viel Euro Weihnachtsgeld muss der Arbeitgeber nach § 3 EntgFG zahlen?"}
     - {kind: unstated, cite: null, q: "Welchen Stundenlohn für Überstunden legt § 3 ArbZG fest?"}
     - {kind: unstated, cite: null, q: "Welche Gerichtsgebühr in Euro fällt für die Erhebung einer Klage nach § 4 KSchG an?"}
@@ -33,13 +33,12 @@ versicherung_nord:
     - {kind: missing_section, cite: "§ 150 KWG", q: "Wie hoch ist die Einlagensicherung nach § 150 KWG je Kunde?"}
     - {kind: missing_section, cite: "§ 250 VVG", q: "Was regelt § 250 VVG zur Tierkrankenversicherung?"}
     - {kind: missing_section, cite: "§ 500 VAG", q: "Welche Berichtspflichten enthält § 500 VAG für Versicherungsvermittler?"}
-    - {kind: repealed, cite: "§ 6 VVG a. F.", q: "Welche Anzeigefrist sah § 6 des Versicherungsvertragsgesetzes in der bis 2007 geltenden Fassung bei Gefahrerhöhung vor?"}
     - {kind: repealed, cite: "§ 1 ZugabeVO", q: "Welche Zugaben erlaubte § 1 der Zugabeverordnung beim Abschluss eines Versicherungsvertrags?"}
     - {kind: unstated, cite: null, q: "Wie viel Euro beträgt die Mindestprämie, die § 33 VVG für einen Versicherungsvertrag vorschreibt?"}
     - {kind: unstated, cite: null, q: "Welchen Prämienrabatt in Prozent gewährt § 8 VVG bei einem Widerruf?"}
     - {kind: unstated, cite: null, q: "Welchen Selbstbehalt in Euro schreibt § 28 VVG für eine Hausratversicherung vor?"}
     - {kind: unstated, cite: null, q: "Welche Vertragsstrafe in Euro legt § 38 VVG bei verspäteter Folgeprämie fest?"}
-    - {kind: unstated, cite: null, q: "Wie viele Euro darf der Versicherer nach § 14 VVG als Abschlagszahlung höchstens leisten?"}
+    - {kind: unstated, cite: null, q: "Welchen Selbstbehalt in Prozent nennt § 86 VVG?"}
   off_topic:
     - "Welche Fristen gelten für die Anfechtung eines Testaments nach dem Erbschaftsteuergesetz?"
     - "Wie hoch ist der aktuelle Leitzins der Europäischen Zentralbank?"

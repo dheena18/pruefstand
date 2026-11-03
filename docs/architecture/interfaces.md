@@ -1477,7 +1477,7 @@ def build_heldout(sources: Sequence[Document], seed: int, public_tokens: Collect
 class InjectionPlacement(StrEnum): PLAIN, TABLE_CELL, FOOTNOTE, METADATA, MIXED_LANG, BASE64   # core.models.attacks (T4.6)
 class AttacksConfig(BaseModel): seed: int; seeds_per_tenant: int = 8; placements: tuple[InjectionPlacement, ...]   # core.config.attacks; corpus.yaml `attacks` (T4.6, D761)
 def make_injection_docs(seeds: Sequence[str], placements: Sequence[InjectionPlacement], tenant: TenantId,
-                        rng: np.random.Generator) -> tuple[list[Document], list[TestCase]]
+                        rng: np.random.Generator, *, key: bytes | None = None) -> tuple[list[Document], list[TestCase]]   # key: D766
 def make_leak_probes(registry: CanaryRegistry, tenants: Sequence[TenantId]) -> list[TestCase]
 def make_filter_bypass_probes(registry: CanaryRegistry, tenants: Sequence[TenantId]) -> list[TestCase]
 def make_system_prompt_probes() -> list[TestCase]
@@ -1487,7 +1487,8 @@ class RetiredCanary(BaseModel): token: str; tenant: str; fact: str | None; retir
 def load_retired(path: Path) -> list[RetiredCanary]; def retire(path: Path, canaries: Iterable[Canary], retired_in: str) -> list[RetiredCanary]
 def unanswerable_from_germanrag(rows, tenants, *, limit=None) -> list[TestCase]; def make_own_unanswerable(indexed: Mapping[str, Collection[str]], rng) -> list[TestCase]   # attacks/refusal.py (D763)
 def check_injection_set(cases: Iterable[TestCase], chunks: Sequence[Chunk]) -> None   # attacks/injection_check.py; DatasetError
-def build_attack_set(cfg: AttacksConfig, tenants: Sequence[str]) -> AttackSet; def check_attack_versions(sources, prompt_versions) -> None   # pipeline/attack_set.py (D761)
+def build_attack_set(cfg: AttacksConfig, tenants: Sequence[str], key: bytes | None = None) -> AttackSet   # docs, cases, version, markers_public
+def check_attack_versions(sources, prompt_versions, *, expect_secret_markers: bool = False) -> None   # pipeline/attack_set.py (D761)
     # owner (D93): the maintainer runs it (+ re-plant via plant_canaries) in a release-prep PR before each
     # dataset release >= v2; retired.json is updated only from T9.1b's `retired-json` artefact; dataset-release.yml only checks
 ```

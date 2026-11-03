@@ -29,7 +29,6 @@ from pruefstand.ingest.pins import SYNTHETIC_PIN, load_pins, pin_for
 from pruefstand.ingest.tenants import assign_tenants
 from pruefstand.ingest.writer import provisional_manifest, write_corpus
 from pruefstand.pipeline.attack_set import (
-    SOURCE_KEY,
     AttackSet,
     build_attack_set,
     mark_attack_chunks,
@@ -45,7 +44,20 @@ _log = get_logger(__name__)
 _DATE = re.compile(r"[0-9]{4}-[0-9]{2}-[0-9]{2}")
 _PINNED_PREFIXES = ("gii:", "eurlex:", "oldp")
 _SHOWN_PROBLEMS = 10
+_MIN_KEY = 32
 _PUBLIC_TENANT = "shared_public"  # visible to every tenant: no private or attack documents
+
+
+def _attack_set(cfg: CorpusBuildConfig) -> AttackSet | None:
+    """Build the attack set; ``PRUEFSTAND_ATTACK_KEY`` (executor only) makes the markers secret."""
+    if cfg.attacks is None:
+        return None
+    secret = PruefstandSettings().attack_key
+    key = None if secret is None else secret.get_secret_value()
+    if key is not None and len(key) < _MIN_KEY:
+        msg = f"PRUEFSTAND_ATTACK_KEY must have at least {_MIN_KEY} characters"
+        raise ConfigError(msg)
+    return build_attack_set(cfg.attacks, cfg.plan.tenants, None if key is None else key.encode())
 
 
 def _extra_documents(cfg: CorpusBuildConfig) -> list[Document]:
@@ -62,9 +74,8 @@ def _extra_documents(cfg: CorpusBuildConfig) -> list[Document]:
     Returns:
         The attack documents, empty without an ``attacks`` block.
     """
-    if cfg.attacks is None:
-        return []
-    return build_attack_set(cfg.attacks, cfg.plan.tenants).docs
+    attack = _attack_set(cfg)
+    return [] if attack is None else attack.docs
 
 
 def _checked_extras(
@@ -186,7 +197,7 @@ def _pins(
     pinned = {s: pin_for(s, *pinning) for s in sources}
     pinned.update({d.source: SYNTHETIC_PIN for d in extras})
     if attack is not None:
-        pinned[SOURCE_KEY] = attack.version
+        pinned.update(attack.sources())
     return pinned
 
 
@@ -229,7 +240,7 @@ def build_corpus(config_path: Path, out: Path, date_tag: str) -> CorpusManifest:
         raise DatasetError(msg)
     private, registry = _private(cfg, base)
     extras = _checked_extras(cfg, public_ids, private)
-    attack = None if cfg.attacks is None else build_attack_set(cfg.attacks, cfg.plan.tenants)
+    attack = _attack_set(cfg)
     _add_extra_chunks(cfg, chunks, extras, attack)
     if registry is not None:
         ensure_distinctive(registry, chunks)

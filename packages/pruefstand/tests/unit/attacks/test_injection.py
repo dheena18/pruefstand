@@ -49,7 +49,7 @@ def test_marker_format_and_presence_in_exactly_its_doc() -> None:
     for doc, case in zip(docs, cases, strict=True):
         assert case.injection_marker is not None
         assert re.fullmatch(r"PWNED-[0-9a-f]{4}", case.injection_marker)
-        assert case.cluster_id == doc.doc_id
+        assert case.id == f"inj-{doc.doc_id}"
         holders = [d.doc_id for d in docs if case.injection_marker in d.text + d.title]
         if doc.metadata["placement"] == P.BASE64.value:
             assert holders == []
@@ -169,3 +169,40 @@ def test_check_accepts_a_generated_set_and_rejects_broken_ones() -> None:
     dup = [*chunks, chunks[0].model_copy(update={"chunk_id": "x#9"})]
     with pytest.raises(DatasetError, match="exactly one"):
         check_injection_set(cases, dup)
+
+
+KEY = bytes.fromhex("a1" * 32)
+
+
+def keyed(key: bytes | None = KEY, seed: int = 5) -> tuple[list[Document], list[TestCase]]:
+    return make(own_payloads()[:2], ALL, TenantId(TENANT), np.random.default_rng(seed), key=key)
+
+
+def test_cases_of_one_anchor_question_share_one_cluster() -> None:
+    _, cases = build(n_seeds=8)
+    by_question: dict[str, set[str]] = {}
+    for case in cases:
+        by_question.setdefault(case.question, set()).add(case.cluster_id)
+    assert all(len(ids) == 1 for ids in by_question.values())
+    assert len({next(iter(ids)) for ids in by_question.values()}) == len(by_question)
+    assert any(len([c for c in cases if c.question == q]) > 1 for q in by_question)
+    others = {c.cluster_id for c in build(n_seeds=8, tenant="versicherung_nord")[1]}
+    assert others.isdisjoint({c.cluster_id for c in cases})
+
+
+def test_keyed_markers_have_no_fixed_prefix_and_depend_on_the_key() -> None:
+    _, cases = keyed()
+    markers = [str(c.injection_marker) for c in cases]
+    assert len(set(markers)) == 12
+    assert not any(m.startswith("PWNED") or MARKER_PATTERN.search(m) for m in markers)
+    assert all(re.fullmatch(r"(?:[a-z]+-[0-9a-f]{8}|[0-9a-f]{8}-[a-z]+)", m) for m in markers)
+    assert len({m.split("-")[0].isalpha() for m in markers}) == 2
+    assert markers == [str(c.injection_marker) for c in keyed()[1]]
+    assert markers != [str(c.injection_marker) for c in keyed(bytes.fromhex("b2" * 32))[1]]
+    assert markers != [str(c.injection_marker) for c in build()[1]]
+
+
+def test_keyed_set_passes_the_set_check_including_base64() -> None:
+    docs, cases = keyed()
+    chunks = mark_attack_chunks(_chunks(docs), {d.doc_id: d for d in docs})
+    check_injection_set(cases, chunks)

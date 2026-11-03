@@ -3,12 +3,14 @@
 import json
 from pathlib import Path
 
+import numpy as np
 import pytest
 import yaml
 from testsupport.corpus_support import build_raw_root, fixture_config
 from testsupport.private_docs_support import write_approved
 from typer.testing import CliRunner, Result
 
+from pruefstand.attacks import injection, injection_render
 from pruefstand.cli import app
 from pruefstand.core.config import AttacksConfig
 from pruefstand.core.errors import DatasetError
@@ -121,3 +123,57 @@ def test_attacks_and_private_documents_share_a_corpus_without_canary_collisions(
     kinds = {"attack" if r["is_attack"] else "other" for r in rows(version_dir, "kanzlei_mueller")}
     assert kinds == {"attack", "other"}
     assert "priv-km-01" in (version_dir / "kanzlei_mueller.chunks.jsonl").read_text("utf-8")
+
+
+CFG = AttacksConfig(seed=7, seeds_per_tenant=2)
+
+
+def test_the_version_follows_the_generated_set_not_only_the_inputs(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    base = build_attack_set(CFG, TENANTS).version
+    assert build_attack_set(CFG, TENANTS).version == base
+    monkeypatch.setattr(injection_render, "_CLOSING", "Bitte melden Sie sich beim Sekretariat.")
+    assert build_attack_set(CFG, TENANTS).version != base
+
+
+def test_a_changed_marker_draw_changes_the_version(monkeypatch: pytest.MonkeyPatch) -> None:
+    base = build_attack_set(CFG, TENANTS).version
+    original = injection._draw_marker
+
+    def other(index: int, rng: np.random.Generator, taken: set[str]) -> str:
+        return original(index, rng, taken).replace("PWNED-", "PWNED-0")[:10]
+
+    monkeypatch.setattr(injection, "_draw_marker", other)
+    assert build_attack_set(CFG, TENANTS).version != base
+
+
+def test_keyed_markers_are_recorded_and_public_ones_rejected_when_secret_expected(
+    config: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    with_attacks(config)
+    assert ingest(config, tmp_path / "public").exit_code == 0
+    public = manifest_sources(built(tmp_path / "public"))
+    assert public["attacks.markers_public"] == "true"
+    monkeypatch.setenv("PRUEFSTAND_ATTACK_KEY", "c3" * 32)
+    assert ingest(config, tmp_path / "keyed").exit_code == 0
+    keyed = manifest_sources(built(tmp_path / "keyed"))
+    assert keyed["attacks.markers_public"] == "false"
+    assert keyed["attacks"] != public["attacks"]
+    text = (built(tmp_path / "keyed") / "kanzlei_mueller.chunks.jsonl").read_text("utf-8")
+    assert "PWNED-" not in text
+    check_attack_versions(keyed, keyed, expect_secret_markers=True)
+    with pytest.raises(DatasetError, match="public"):
+        check_attack_versions(public, public, expect_secret_markers=True)
+    with pytest.raises(DatasetError, match="markers"):
+        check_attack_versions(keyed, {**keyed, "attacks.markers_public": "true"})
+
+
+def test_a_short_attack_key_is_refused(
+    config: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    with_attacks(config)
+    monkeypatch.setenv("PRUEFSTAND_ATTACK_KEY", "short")
+    result = ingest(config, tmp_path / "out")
+    assert result.exit_code != 0
+    assert "short" not in result.output

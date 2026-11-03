@@ -3,9 +3,11 @@
 from collections.abc import Mapping
 
 import numpy as np
+import pytest
 
 from pruefstand.attacks.refusal import make_own_unanswerable, unanswerable_from_germanrag
 from pruefstand.core.enums import Category
+from pruefstand.core.errors import DatasetError
 from pruefstand.core.ids import TenantId
 
 TENANTS = (TenantId("kanzlei_mueller"), TenantId("versicherung_nord"), TenantId("stadtwerke_sued"))
@@ -27,7 +29,7 @@ def test_germanrag_row_without_answer_is_a_calibration_refusal_case() -> None:
     for case in cases:
         assert case.expect_refusal
         assert case.category is Category.UNANSWERABLE
-        assert case.license_config == "germanquad_derived"
+        assert case.license_config == "germanrag_derived"
         assert case.reference_answer is None
         assert case.cluster_id == case.id
     assert {c.tenant for c in cases} == set(TENANTS)
@@ -45,3 +47,15 @@ def test_own_templates_are_licensed_own_and_refusals() -> None:
     assert all(c.expect_refusal and c.category is Category.UNANSWERABLE for c in cases)
     assert {c.tenant for c in cases} == set(TENANTS)
     assert len({c.id for c in cases}) == len(cases)
+
+
+def test_germanrag_rows_carry_the_share_alike_licence_config() -> None:
+    cases = unanswerable_from_germanrag(ROWS, TENANTS)
+    assert {c.license_config for c in cases} == {"germanrag_derived"}
+
+
+def test_rows_that_all_have_answers_raise_instead_of_returning_nothing() -> None:
+    answered: list[Mapping[str, object]] = [{"question": "Wer?", "answer": "Er."}]
+    with pytest.raises(DatasetError, match="no unanswerable"):
+        unanswerable_from_germanrag(answered, TENANTS)
+    assert unanswerable_from_germanrag([], TENANTS) == []

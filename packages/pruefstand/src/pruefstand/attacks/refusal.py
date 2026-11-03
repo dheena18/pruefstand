@@ -7,6 +7,7 @@ open-domain unanswerables are for judge calibration only (T5.3).
 """
 
 import hashlib
+import re
 from collections.abc import Collection, Iterable, Mapping, Sequence
 from functools import cache
 from typing import Any
@@ -68,12 +69,14 @@ def unanswerable_from_germanrag(
         limit: Keep at most this many cases.
 
     Returns:
-        Cases with ``expect_refusal=True``, ``license_config="germanquad_derived"`` and the tag
-        ``calibration_only`` (they are not part of the gated refusal set).
+        Cases with ``expect_refusal=True``, ``license_config="germanrag_derived"`` (CC BY-SA 4.0,
+        DATA_LICENSES section 2) and the tag ``calibration_only`` (not part of the gated set).
     """
     cases: list[TestCase] = []
     seen: set[str] = set()
+    n_rows = 0
     for row in rows:
+        n_rows += 1
         answer, question = row.get("answer"), row.get("question")
         if not isinstance(question, str) or not question.strip():
             continue
@@ -87,16 +90,39 @@ def unanswerable_from_germanrag(
         cases.append(
             _case(
                 f"una-rag-{digest}", tenant, question.strip(), ("calibration_only",),
-                source="germanrag:unanswerable", license_config="germanquad_derived",
+                source="germanrag:unanswerable", license_config="germanrag_derived",
             )
         )  # fmt: skip
         if limit is not None and len(cases) >= limit:
             break
+    if n_rows and not cases:
+        msg = (
+            f"no unanswerable case among {n_rows} GermanRAG row(s): the rows need a blank "
+            "'answer' (check the column mapping of the real dataset, T5.3)"
+        )
+        raise DatasetError(msg)
     return cases
 
 
+_LAW = re.compile(r"^(?:§|Art\.) \S+ (.+)$")
+
+
+def _check_law(tenant: str, cite: str, kind: str, laws: Collection[str]) -> None:
+    match = _LAW.match(cite)
+    law = match.group(1) if match else cite
+    if kind == "missing_section" and law not in laws:
+        msg = f"{tenant}: template cites {cite}, but {law} is not a law of the tenant corpus"
+        raise DatasetError(msg)
+    if kind == "repealed" and law in laws:
+        msg = f"{tenant}: template cites the repealed {cite}, but {law} is in the tenant corpus"
+        raise DatasetError(msg)
+
+
 def make_own_unanswerable(
-    indexed: Mapping[str, Collection[str]], rng: np.random.Generator
+    indexed: Mapping[str, Collection[str]],
+    rng: np.random.Generator,
+    *,
+    laws: Mapping[str, Collection[str]] | None = None,
 ) -> list[TestCase]:
     """Make the own refusal cases for every tenant in ``indexed``.
 
@@ -104,6 +130,9 @@ def make_own_unanswerable(
         indexed: Per tenant the citation keys of everything it can retrieve (its own chunks and
             ``shared_public``), e.g. ``"§ 622 BGB"``.
         rng: Seeded generator: the choice and order of the off-topic questions.
+        laws: Optional per tenant the laws of its corpus (for example ``KSchG``). When given, a
+            ``missing_section`` template must cite one of them and a ``repealed`` template must
+            cite one that is not in it.
 
     Returns:
         Per tenant all near-miss cases (tag ``near_miss``, ``kind:<kind>`` and, for a missing or
@@ -123,6 +152,8 @@ def make_own_unanswerable(
         near = data[tenant]["near_miss"]
         for n, row in enumerate(near, start=1):
             cite = row.get("cite")
+            if laws is not None and cite and tenant in laws:
+                _check_law(tenant, cite, row["kind"], laws[tenant])
             if row["kind"] in _CITED_KINDS and cite in indexed[tenant]:
                 msg = (
                     f"{tenant}: template names {cite}, which is indexed for the tenant (answerable)"

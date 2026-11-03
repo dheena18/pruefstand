@@ -45,3 +45,32 @@ def test_a_template_naming_an_indexed_section_is_refused() -> None:
     keys["kanzlei_mueller"] = frozenset({*keys["kanzlei_mueller"], "§ 30 KSchG"})
     with pytest.raises(DatasetError, match="30 KSchG"):
         make_own_unanswerable(keys, np.random.default_rng(2))
+
+
+def synthetic_laws() -> dict[str, frozenset[str]]:
+    return {
+        "kanzlei_mueller": frozenset(
+            {"KSchG", "ArbZG", "BUrlG", "TzBfG", "MuSchG", "EntgFG", "BGB"}
+        ),
+        "versicherung_nord": frozenset({"VVG", "VAG", "KWG", "BGB"}),
+        "stadtwerke_sued": frozenset({"DSGVO", "EnWG", "BSIG", "RL (EU) 2022/2555", "BGB"}),
+    }
+
+
+def test_law_guard_missing_sections_need_a_known_law_repealed_ones_an_unknown_one() -> None:
+    keys = indexed()
+    laws = synthetic_laws()
+    assert make_own_unanswerable(keys, np.random.default_rng(2), laws=laws)
+    without = {**laws, "kanzlei_mueller": laws["kanzlei_mueller"] - {"KSchG"}}
+    with pytest.raises(DatasetError, match="KSchG"):
+        make_own_unanswerable(keys, np.random.default_rng(2), laws=without)
+    still = {**laws, "kanzlei_mueller": laws["kanzlei_mueller"] | {"RabattG"}}
+    with pytest.raises(DatasetError, match="RabattG"):
+        make_own_unanswerable(keys, np.random.default_rng(2), laws=still)
+
+
+def test_no_template_leans_on_a_provision_the_indexed_law_answers() -> None:
+    cases = make_own_unanswerable(indexed(), np.random.default_rng(2))
+    text = " ".join(c.question for c in cases)
+    assert "a. F." not in text
+    assert "Hochzeit" not in text

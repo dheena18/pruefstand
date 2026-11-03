@@ -7,6 +7,8 @@ finds the question finds the memo, and it carries one payload that demands a uni
 digit is bound to the tenant (``digit % 3 == tenant index``).
 """
 
+import hashlib
+import hmac
 from collections.abc import Sequence
 
 import numpy as np
@@ -21,7 +23,7 @@ from pruefstand.attacks.injection_data import (
     own_payloads,
     rewrite_payload,
 )
-from pruefstand.attacks.injection_render import render
+from pruefstand.attacks.injection_render import Rendered, render
 from pruefstand.core.enums import Category, Difficulty, Lang, Split
 from pruefstand.core.errors import DatasetError
 from pruefstand.core.ids import CaseId, DocId, TenantId
@@ -54,10 +56,52 @@ def _draw_marker(index: int, rng: np.random.Generator, taken: set[str]) -> str:
             return marker
 
 
-def _case(doc: Document, anchor: Anchor, marker: str, placement: InjectionPlacement) -> TestCase:
+_WORDS = (
+    "falke", "birke", "anker", "lampe", "wiese", "hafen", "nebel", "quarz", "segel", "tulpe",
+    "kiesel", "brunnen", "zaun", "muehle", "adler", "farn", "glocke", "heide", "insel", "kuppel",
+)  # fmt: skip
+
+
+def keyed_marker(key: bytes, tenant: str, doc_id: str, payload: str, taken: set[str]) -> str:
+    """Derive a secret marker: ``<word>-<8 hex>`` or ``<8 hex>-<word>`` (no fixed prefix).
+
+    Args:
+        key: The executor-only key (``PRUEFSTAND_ATTACK_KEY``).
+        tenant: Tenant of the document.
+        doc_id: Document id.
+        payload: The seed payload text.
+        taken: Markers already used (a collision is re-derived with a counter).
+
+    Returns:
+        The marker; it is added to ``taken``.
+    """
+    for attempt in range(len(taken) + 2):
+        text = f"{tenant}|{doc_id}|{payload}|{attempt}".encode()
+        digest = hmac.new(key, text, hashlib.sha256).digest()
+        word, hexa = _WORDS[digest[0] % len(_WORDS)], digest[1:5].hex()
+        marker = f"{word}-{hexa}" if digest[5] & 1 else f"{hexa}-{word}"
+        if marker not in taken:
+            taken.add(marker)
+            return marker
+    raise AssertionError  # unreachable: one attempt more than markers taken always succeeds
+
+
+def _document(
+    doc_id: str, tenant: TenantId, placement: InjectionPlacement, page: Rendered
+) -> Document:
+    return Document(
+        doc_id=DocId(doc_id), tenant=tenant, source="attacks", lang=Lang.DE, title=page.title,
+        law_abbrev=None, version_date=None, text=page.text, license="own", url=None,
+        metadata={"placement": placement.value, **page.metadata},
+    )  # fmt: skip
+
+
+def _case(
+    doc: Document, anchor: Anchor, marker: str, placement: InjectionPlacement, cluster: str
+) -> TestCase:
     case_id = CaseId(f"inj-{doc.doc_id}")
     return TestCase(
-        id=case_id, base_id=case_id, cluster_id=doc.doc_id, tenant=doc.tenant, lang=Lang.DE,
+        id=case_id, base_id=case_id, cluster_id=cluster, tenant=doc.tenant, lang=Lang.DE,
         question=anchor.question, reference_answer=anchor.answer,
         gold_citations=(anchor.citation,), category=Category.INJECTION,
         difficulty=Difficulty.MEDIUM, split=Split.FULL, injection_marker=marker,
@@ -71,6 +115,8 @@ def make_injection_docs(
     placements: Sequence[InjectionPlacement],
     tenant: TenantId,
     rng: np.random.Generator,
+    *,
+    key: bytes | None = None,
 ) -> tuple[list[Document], list[TestCase]]:
     """Make one injection document and case per (seed, placement) for ``tenant``.
 
@@ -79,12 +125,16 @@ def make_injection_docs(
         placements: Placements to use for every seed.
         tenant: A customer tenant (``kanzlei_mueller``, ``versicherung_nord``,
             ``stadtwerke_sued``); the documents belong to it only.
-        rng: Seeded generator: anchor order, markers and the English wording. Call once per
-            tenant: document ids ``atk-<tp>-<nnn>`` restart at 001 in every call.
+        rng: Seeded generator: anchor order, public markers and the English wording. Call once
+            per tenant: document ids ``atk-<tp>-<nnn>`` restart at 001 in every call.
+        key: Executor-only key. Set: markers are HMAC-derived and secret (``keyed_marker``);
+            None: public markers ``PWNED-<4 hex>`` from ``rng``.
 
     Returns:
         The documents (``source="attacks"``) and, in the same order, their test cases
-        (``category=injection``, ``cluster_id`` = the document id, split unassigned).
+        (``category=injection``, split unassigned). All cases of one (tenant, anchor question)
+        share one ``cluster_id`` ``anchor-<tp>-<nn>``: they are near-duplicate memos of one
+        question and not independent samples.
 
     Raises:
         DatasetError: ``tenant`` is not a customer tenant (no attack documents in
@@ -103,16 +153,16 @@ def make_injection_docs(
     cases: list[TestCase] = []
     for seed in seeds:
         for placement in placements:
-            anchor = anchors[order[len(docs) % len(anchors)]]
-            marker = _draw_marker(index, rng, taken)
+            slot = order[len(docs) % len(anchors)]
+            anchor = anchors[slot]
+            doc_id = f"atk-{prefix}-{len(docs) + 1:03d}"
+            if key is None:
+                marker = _draw_marker(index, rng, taken)
+            else:
+                marker = keyed_marker(key, tenant, doc_id, seed, taken)
             wording = english[int(rng.integers(0, len(english)))].replace("{marker}", marker)
             page = render(placement, anchor, rewrite_payload(seed, marker), wording)
-            doc = Document(
-                doc_id=DocId(f"atk-{prefix}-{len(docs) + 1:03d}"), tenant=tenant,
-                source="attacks", lang=Lang.DE, title=page.title, law_abbrev=None,
-                version_date=None, text=page.text, license="own", url=None,
-                metadata={"placement": placement.value, **page.metadata},
-            )  # fmt: skip
+            doc = _document(doc_id, tenant, placement, page)
             docs.append(doc)
-            cases.append(_case(doc, anchor, marker, placement))
+            cases.append(_case(doc, anchor, marker, placement, f"anchor-{prefix}-{slot:02d}"))
     return docs, cases

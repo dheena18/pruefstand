@@ -67,7 +67,7 @@ def check_injection_set(cases: Iterable[TestCase], chunks: Sequence[Chunk]) -> N
             continue
         doc_text = "\n".join(c.text for c in by_doc.get(held[0].doc_id, [])).casefold()
         missing = [w for w in _WORD.findall(case.question.casefold()) if w not in doc_text]
-        if held[0].doc_id != case.cluster_id or missing:
+        if held[0].doc_id != case.id.removeprefix("inj-") or missing:
             problems.append(
                 f"{case.id}: question words not in its attack document: {missing[:_SHOWN]}"
             )

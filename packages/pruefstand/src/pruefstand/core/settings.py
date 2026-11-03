@@ -25,6 +25,7 @@ class PruefstandSettings(BaseSettings):
         hf_token: ``HF_TOKEN``, else the alias ``PRUEFSTAND_HF_TOKEN``.
         judge_base_url: ``PRUEFSTAND_JUDGE_BASE_URL``; OpenAI-compatible local judge endpoint.
         nonce_key: ``PRUEFSTAND_NONCE_KEY``; HMAC key of the judge-prompt nonces (T5.2a).
+        attack_key: ``PRUEFSTAND_ATTACK_KEY``; executor-only HMAC key of injection markers (T4.6).
         log_json: ``PRUEFSTAND_LOG_JSON``; defaults to true when ``CI`` is set.
         cache_dir: ``PRUEFSTAND_CACHE_DIR``; defaults to ``$PRUEFSTAND_HOME/cache``.
         gpu_endpoints_file: ``PRUEFSTAND_GPU_ENDPOINTS``; the endpoint map of ``build_backend``.
@@ -51,6 +52,7 @@ class PruefstandSettings(BaseSettings):
     )
     judge_base_url: str | None = None
     nonce_key: SecretStr | None = None
+    attack_key: SecretStr | None = None
     log_json: bool = Field(default_factory=_default_log_json)
     cache_dir: Path = Field(default_factory=_default_cache_dir)
     gpu_endpoints_file: Path = Field(
