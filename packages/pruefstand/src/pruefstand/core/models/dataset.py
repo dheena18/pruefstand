@@ -1,9 +1,9 @@
 """Dataset models (interfaces §14): the manifest of a dataset version and its review rounds."""
 
 import datetime as dt
-from typing import Literal
+from typing import Literal, Self
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from pruefstand.core.enums import Lang, Split
 from pruefstand.core.ids import ChunkId
@@ -66,3 +66,62 @@ class QACandidate(BaseModel):
     extra_chunk_ids: tuple[ChunkId, ...] = ()
     lang: Lang = Lang.DE
     style: Literal["laie", "fachlich"] | None = None
+
+
+FILTER_REASONS = frozenset(
+    {
+        "unsupported",
+        "ngram_overlap",
+        "long_copy",
+        "meta_reference",
+        "near_duplicate",
+        "judge_error",
+        "chunk_missing",
+        "citation_mismatch",
+        "evidence_off_paragraph",
+        "cluster_overlap",
+    }
+)
+
+
+class FilterResult(BaseModel):
+    """Verdict of one QA filter (T4.3, interfaces §14).
+
+    reasons come from the fixed vocabulary FILTER_REASONS and kept is true exactly
+    when there is none.
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    kept: bool
+    reasons: tuple[str, ...]
+
+    @model_validator(mode="after")
+    def _consistent(self) -> Self:
+        unknown = set(self.reasons) - FILTER_REASONS
+        if unknown:
+            msg = f"unknown filter reasons {sorted(unknown)}"
+            raise ValueError(msg)
+        if self.kept == bool(self.reasons):
+            msg = "kept must be true exactly when there are no reasons"
+            raise ValueError(msg)
+        return self
+
+
+class FilterConfig(BaseModel):
+    """Thresholds of the QA filters (T4.3); the defaults are the values of SPEC 3.5 step 3.
+
+    max_ngram_overlap: share of the question 6-grams that may occur in a source chunk (0.0 =
+    none); long_copy_words: a shared run of this many words is a copy; max_sim: cosine
+    from which a question is a near-duplicate; min_laie_share / style_min_n: report-level
+    check of the layperson share (evaluated from style_min_n candidates on).
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    max_ngram_overlap: float = Field(default=0.0, ge=0.0, le=1.0)
+    long_copy_words: int = Field(default=8, ge=2)
+    max_sim: float = Field(default=0.9, gt=0.0, le=1.0)
+    min_laie_share: float = Field(default=0.6, ge=0.0, le=1.0)
+    style_min_n: int = Field(default=20, ge=1)
+    concurrency: int = Field(default=4, ge=1)
