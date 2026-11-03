@@ -213,6 +213,7 @@ class JudgeStage:
                 # the candidate's text overran the window (the estimate missed it): candidate-side
                 # like judge_input_too_long, never a judge error (cannot set judge_degraded)
                 outcome.counts["judge_truncated"] += 1
+                outcome.attempted = True  # a cut case is a judged case: it keeps the denominator
                 return not_applicable(m, "judge_input_too_long")
             except LLMError as exc:  # incl. PolicyViolation; BudgetExceeded is not an LLMError
                 outcome.counts["judge_error"] += 1
@@ -227,7 +228,10 @@ class JudgeStage:
             finally:
                 await self._release(tally.requests)
         # a value that needed no judge (not applicable) does not make this a judged case
-        decided_without_judge = value.status is MetricStatus.NOT_APPLICABLE
+        # (a too-long input is the candidate's doing and counts as judged: it must not shrink the
+        # judged-case denominator or switch the judge mode to skipped)
+        too_long = value.details.get("reason") == "judge_input_too_long"
+        decided_without_judge = value.status is MetricStatus.NOT_APPLICABLE and not too_long
         outcome.attempted = outcome.attempted or not decided_without_judge
         return value
 

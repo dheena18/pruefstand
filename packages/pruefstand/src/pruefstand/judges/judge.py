@@ -137,9 +137,9 @@ class Judge:
             ConfigError: Unknown metric, a prompt id that is not the metric's, or inputs that do not
                 fit the prompt (no call is made).
             PromptError: The prompt file is missing or malformed.
-            LLMError: The rendered prompt is over the input cap (no call is made; the metrics
-                truncate before they ask), or the answer is invalid or out of range after one
-                repair.
+            JudgeInputTruncated: The rendered prompt is over the input cap (no call is made; the
+                metrics truncate before they ask), or the provider reported a cut prompt.
+            LLMError: The answer is invalid or out of range after one repair.
             PolicyViolation: The provider policy refuses the call.
             QuotaExhausted: The free quota is used up and there is no fallback.
             BudgetExceeded: The call pushed the budget over a limit.
