@@ -1,4 +1,4 @@
-# Lead-agent handoff (updated 2026-11-02)
+# Lead-agent handoff (updated 2026-11-03)
 
 Read this first if you are a new lead session. It states where the work stopped, what is open, what is needed from the
 owner, and the working rules and traps. The authority order is unchanged: `CLAUDE.md`, then `tasks/PARALLEL-PLAN.md` and
@@ -6,13 +6,14 @@ owner, and the working rules and traps. The authority order is unchanged: `CLAUD
 
 ## 1. State of main
 
-Merged (squash) and green: T0.1-T0.4, T0.7, T1.1-T1.9, T1.13, T2.1-T2.4, T4.4, plus the fixes for the `stack-run` signals
-(#23), the `vm_check.sh` false FAILs (#27), the T0.6 probe (#31), the unique aggregator job names (#32), the T0.7 evidence
-(#28) and the gitleaks canary allowlists. The repo is public; the ruleset on `main` is active (PR required, 0 approvals,
-linear history). Required checks: `check`, `scan`, `images-gate`, `docs-gate`.
+Merged (squash) and green through T3.5 (main at `df1d8f860742`): T0.1-T0.4, T0.6, T0.7, T1.1-T1.13, T2.1-T2.5, T3.1a,
+T3.2-T3.5, T4.1, T4.4, T6.1, plus the T3.1b phase 1 (resident set; partial, the rest is open) and the fix PRs. The repo is
+public; the ruleset on `main` is active (PR required, 0 approvals, linear history). Required checks: `check`, `scan`,
+`images-gate`, `docs-gate`.
 
-No PR is open at the time of writing (check live state with the API, not this file). Decision numbers in use on main run
-to D400; take the next free number when adding a row and renumber on collision.
+Open work: T5.1, T6.4, the wrapper load-log PR (T3.1e, owner merge, D584) and the rest of T3.1b (embedding/reranker
+benchmark, budget, candidate swaps by the lead, pins). Check live PR state with the API, not this file. Take the next free
+decision number when adding a row (rows D580-D586 are the 2026-11-03 owner decisions) and renumber on collision.
 
 ## 2. What is needed from the owner
 
@@ -27,11 +28,10 @@ to D400; take the next free number when adding a row and renumber on collision.
 
 ## 3. What is next (order from `tasks/PARALLEL-PLAN.md`)
 
-- Wave 6 left: T3.2 (needs T3.1a). Then Wave 7 (T1.10 pipeline+CLI, T3.3), Wave 8 (T1.11, T2.5, T5.1), Wave 9, Wave 10.
-  Check each task's `Depends` cell in `tasks/TASKS.md` is merged before starting it; one task = one worktree = one branch =
-  one PR. Work on tasks that do not need the T0.6 verdict while it is pending.
-- Follow-up task rows recorded in `tasks/TASKS.md` (not started): T1.7a, T1.7b (gate `redact_evidence` normalisation: same
-  two canary-masking fixes as the report layer), T1.8a, T1.9a, T1.13a, T2.3a, T2.4a, T4.4a.
+- Open: T5.1 (starts with the provisional pins, D580), T6.4, T3.1e (wrapper load-log, owner merge), T3.1b rest (D583).
+  Then the Wave 9/10 leftovers (T2.6, T5.2a, T4.5, T4.6, T5.2b, T5.3 PR 1, T4.2). Check each task's `Depends` cell in
+  `tasks/TASKS.md` is merged before starting it; one task = one worktree = one branch = one PR.
+- Follow-up task rows recorded in `tasks/TASKS.md` (not started): T1.7a, T1.7b, T1.8a, T1.9a, T1.13a, T2.3a, T2.4a, T4.4a.
 
 ## 4. Standing rules from the owner
 
@@ -99,3 +99,16 @@ The owner lets the lead remove and swap Ollama models without asking, under ALL 
 
 Exit 17 of `fetch-model.sh` ("not enough disk") is no longer a stop: the lead may free space by removing catalogue models
 that the current task does not need (never the generator). Ask the owner only when that is not enough. Task agents never run any of this.
+
+Amendment (owner decision 2026-11-03, D583): candidate swaps for T3.1b are done BY THE LEAD under D451. The same
+conditions apply: catalogue models only, only through the wrapper (`make gpu-pull` / `make gpu-rm`), under
+`pruefstand-lock`, only while no gate or nightly runs. The lead sets `/var/lib/pruefstand/MAINTENANCE` and ALWAYS removes
+it again, also on failure; every swap is logged in `docs/engineering/gpu-cluster.md` section 8 ("Model remove / swap log").
+Step S6 of `prompts/T3.1b-model-benchmark.md` is no longer a HUMAN step. The generator `qwen3.8:27b-q8_0`
+(`GENERATOR_TAG`) is NEVER removed, not even to free space.
+
+## 7. Full-speed mode (2026-11-03, time-boxed to about 2 hours, D586)
+
+- Up to 5 Sonnet task agents in parallel when their files do not overlap.
+- Docs-only and test-only PRs get one review round, then merge on green. Code PRs get at most 2 review rounds.
+- Owner steps are collected in one list and sent once at the end; they never block work. A task that needs the owner is parked.
