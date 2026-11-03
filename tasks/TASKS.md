@@ -246,19 +246,19 @@ Ticked only by the wave checkpoint PR (`chore/wave-<N>-checkpoint`, `tasks/PARAL
 task's PR is merged and the checkpoint is green; nothing else in this file changes in that PR. Wave numbers
 follow `tasks/PARALLEL-PLAN.md` §2.
 
-| Wave | Tasks (`[x]` = merged and checkpoint green) | Milestone |
+| Wave | Tasks (`[x]` = merged and checkpoint green, `[~]` = partly merged) | Milestone |
 | --- | --- | --- |
 | 0 | [ ] T0.7 S1–S2 (human) · [ ] T0.0 | – |
 | 1 | [x] T0.1 (2026-10-31, direct push e885fda) | – |
-| 2 | [ ] T0.2 · [ ] T0.3 · [ ] T1.1 · [ ] T2.1 · [ ] T0.7 | – |
-| 3 | [ ] T1.2 · [ ] T1.5a · [ ] T0.4 · [ ] T0.6 (+ S7 quota follow-up) · [ ] T0.5 | – |
-| 4 | [ ] T1.6 · [ ] T1.5b · [ ] T1.3 · [ ] T1.4 · [ ] T2.2 · [ ] T3.1a | – |
-| 5 | [ ] T1.7 · [ ] T1.8 · [ ] T2.3 · [ ] T2.4 · [ ] T1.13 · [ ] T3.1b | – |
-| 6 | [ ] T1.9 · [ ] T4.4 · [ ] T3.2 | – |
-| 7 | [ ] T1.10 · [ ] T3.3 | – |
-| 8 | [ ] T1.11 · [ ] T2.5 · [ ] T5.1 | – |
-| 9 | [ ] T6.1 · [ ] T1.12 · [ ] T4.1 · [ ] T5.2a · [ ] T3.4 · [ ] T2.6 | [ ] M1 |
-| 10 | [ ] T3.5 · [ ] T4.6 · [ ] T4.5 · [ ] T5.2b · [ ] T5.3 PR 1 · [ ] T4.2 | – |
+| 2 | [x] T0.2 · [x] T0.3 · [x] T1.1 · [x] T2.1 · [x] T0.7 | – |
+| 3 | [x] T1.2 · [x] T1.5a · [x] T0.4 · [x] T0.6 (+ S7 quota follow-up) · [ ] T0.5 | – |
+| 4 | [x] T1.6 · [x] T1.5b · [x] T1.3 · [x] T1.4 · [x] T2.2 · [x] T3.1a | – |
+| 5 | [x] T1.7 · [x] T1.8 · [x] T2.3 · [x] T2.4 · [x] T1.13 · [~] T3.1b (phase 1 merged, partial; rest open) | – |
+| 6 | [x] T1.9 · [x] T4.4 · [x] T3.2 | – |
+| 7 | [x] T1.10 · [x] T3.3 | – |
+| 8 | [x] T1.11 · [x] T2.5 · [ ] T5.1 | – |
+| 9 | [x] T6.1 · [x] T1.12 · [x] T4.1 · [ ] T5.2a · [x] T3.4 · [ ] T2.6 | [ ] M1 |
+| 10 | [x] T3.5 · [ ] T4.6 · [ ] T4.5 · [ ] T5.2b · [ ] T5.3 PR 1 · [ ] T4.2 | – |
 | 11 | [ ] T6.4 · [ ] T4.3 · [ ] T3.6 | – |
 | 12 | [ ] T3.7 · [ ] T4.7a · [ ] T8.1 | [ ] M2 |
 | 13 | [ ] T4.7b · [ ] T8.2a | [ ] M3 |
