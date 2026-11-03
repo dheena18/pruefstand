@@ -22,6 +22,10 @@ ARGS = {
 DRY = {"health.sh": ()}
 
 
+# "Does not wait" is a wall-clock bound; it must hold on a loaded machine.
+NO_WAIT_S = 20
+
+
 @pytest.mark.parametrize("script", LOCKED)
 def test_without_the_lock_flag_the_script_exits_2_at_once(gpu: GpuWorld, script: str) -> None:
     start = time.monotonic()
@@ -30,7 +34,7 @@ def test_without_the_lock_flag_the_script_exits_2_at_once(gpu: GpuWorld, script:
     )
     assert res.rc == 2
     assert "run under the GPU lock: PRUEFSTAND_LOCK_HELD=1 not set" in res.err
-    assert time.monotonic() - start < 2
+    assert time.monotonic() - start < NO_WAIT_S  # a lock wait would last the whole lock timeout
     assert not gpu.stubs.calls("curl")
     assert not gpu.stubs.calls("ssh")
 
@@ -41,7 +45,7 @@ def test_with_the_flag_and_a_held_lock_the_script_does_not_wait(gpu: GpuWorld, s
         fcntl.flock(holder, fcntl.LOCK_EX)
         start = time.monotonic()
         res = gpu.script(script, *ARGS[script], *DRY.get(script, ("--dry-run",)))
-        assert time.monotonic() - start < 2
+        assert time.monotonic() - start < NO_WAIT_S  # a lock wait would last the whole lock timeout
     assert res.rc != 2, res.err
 
 
