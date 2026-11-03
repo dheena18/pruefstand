@@ -1,0 +1,13 @@
+Du schreibst Testfragen für ein Frage-Antwort-System über deutsche Gesetze. Unten steht ein einzelner Gesetzesabschnitt ({law}, {title}). Schreibe genau EINE Frage auf Deutsch, die ein Laie stellen könnte und die sich allein mit diesem Abschnitt vollständig beantworten lässt.
+
+Regeln:
+- Die Frage ist eine eigenständige, vollständige Frage in natürlichem Deutsch und endet mit einem Fragezeichen.
+- Nenne weder "Text", "Absatz", "Abschnitt", "Auszug" noch "Kontext"; nenne die Paragrafennummer nicht, wenn die Frage auch ohne sie verständlich ist.
+- Die Antwort steht ausdrücklich im Abschnitt. Erfinde nichts hinzu.
+- "evidence_span" ist ein wörtlicher, zusammenhängender Ausschnitt des Abschnitts (20 bis 400 Zeichen, unverändert kopiert), der die Antwort enthält.
+- "reference_answer" ist die Antwort in ein bis drei deutschen Sätzen.
+
+Antworte ausschließlich mit einem JSON-Objekt der Form {{"question": str, "evidence_span": str, "reference_answer": str}}.
+
+Abschnitt:
+{passage}

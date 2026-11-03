@@ -89,6 +89,7 @@ the private gate executor on the A40s (end P6, ~week 12–14) · **M5** experime
 | ID | Task | Depends | Who | Est. | Model | Env | Tier |
 | --- | --- | --- | --- | --- | --- | --- | --- |
 | T2.1 | Data download scripts: `data/sources.yaml`, pinned versions + checksums, `data/raw/` (git-ignored), manifests; incl. **MEMERAG** (download-only, CC BY-NC 4.0); records each HF card's license field and fails on mismatch with DATA_LICENSES.md; **runs early** (needed by T1.13); **R9:** `check_no_raw_data.py` allowlist exactly D148 | T0.1 | AI | 3 | Sonnet | NET | core |
+| T2.1b | Refresh the stale `gii:uwg` pin: the pinned `xml.zip` SHA-256 in `data/sources.yaml` (~lines 180-185) no longer matches the upstream archive (checksum mismatch 2026-11-03); re-download, review the diff, `--update-pins` for that source only; `corpus.yaml:77` still needs `gii:uwg`. T3.1b leaves UWG out of the in-domain dev set because of this (D602) | T2.1 | AI | 1 | Sonnet | NET | core |
 | T2.2 | GII XML loader + ParagraphChunker + shared `ingest/text.py` | T2.1, T1.1, T1.5a | AI | 4 | Sonnet | – | core |
 | T2.3 | OLDP decisions loader + DecisionSectionChunker | T2.1, T1.1, T2.2 | AI | 3 | Sonnet | – | core |
 | T2.3a | OLDP loader: remaining hardening (T2.3 round-3 review follow-up; loader robustness on checksum-pinned data, no silent corruption). (a) an out-of-range parquet date (`pa.array([0, 2**60, 0], pa.timestamp("ms"))`) raises `OverflowError` past `_parquet_rows`, which catches only `(ArrowException, OSError, ValueError)`, so the CLI dies with a traceback (exit 120): convert per row and count a bad row as `bad_record`; a `ValueError` such as `timestamp[ns, tz]` must not drop the rest of the file silently; tz-aware timestamps always fail because tzdata is missing. (b) `Problem.detail` is unbounded (`lone surrogate in <key>` embeds the JSON key verbatim: 4x30 lines with 15 MiB keys keep 1.57 GB in `ProblemLog` and print 315 MB to stderr): truncate and `ascii()` every detail in `ProblemLog.append`. (c) the per-directory `max_rows` cap ignores bad rows (`bad_json`, `record_too_large`, skipped row groups), so 20 files of 99 999 bad lines are 2M lines examined without `too_many_rows`, and the file count is uncapped: share one examined-line budget across files, cap the file count, add a test that fails when the directory-cap block is removed. Minors: `_BATCH_ROWS=1` costs about 1 ms/row (larger batches, check `nbytes` per batch); `_check_outcome` must snapshot `problems.total` at the start (a reused `ProblemLog` makes an empty graph raise); `bad_date` is narrower than its decisions row (int dates and NaN dropped silently, `"2020-01-01garbage"` accepted); `bad_record` for a bad id lacks the `:line` source; core follow-up for `core.citations`: `parse_one("§ 519 ZPO")` returns `None` and ZPO / VwGO / SGG / EStG are unknown laws on the real graph (add aliases, owner T1.5a code, T2.3a does the change) | T2.3 | AI | 3 | Sonnet | – | core |
@@ -247,19 +248,19 @@ Ticked only by the wave checkpoint PR (`chore/wave-<N>-checkpoint`, `tasks/PARAL
 task's PR is merged and the checkpoint is green; nothing else in this file changes in that PR. Wave numbers
 follow `tasks/PARALLEL-PLAN.md` §2.
 
-| Wave | Tasks (`[x]` = merged and checkpoint green) | Milestone |
+| Wave | Tasks (`[x]` = merged and checkpoint green, `[~]` = partly merged) | Milestone |
 | --- | --- | --- |
 | 0 | [ ] T0.7 S1–S2 (human) · [ ] T0.0 | – |
 | 1 | [x] T0.1 (2026-10-31, direct push e885fda) | – |
-| 2 | [ ] T0.2 · [ ] T0.3 · [ ] T1.1 · [ ] T2.1 · [ ] T0.7 | – |
-| 3 | [ ] T1.2 · [ ] T1.5a · [ ] T0.4 · [ ] T0.6 (+ S7 quota follow-up) · [ ] T0.5 | – |
-| 4 | [ ] T1.6 · [ ] T1.5b · [ ] T1.3 · [ ] T1.4 · [ ] T2.2 · [ ] T3.1a | – |
-| 5 | [ ] T1.7 · [ ] T1.8 · [ ] T2.3 · [ ] T2.4 · [ ] T1.13 · [ ] T3.1b | – |
-| 6 | [ ] T1.9 · [ ] T4.4 · [ ] T3.2 | – |
-| 7 | [ ] T1.10 · [ ] T3.3 | – |
-| 8 | [ ] T1.11 · [ ] T2.5 · [ ] T5.1 | – |
-| 9 | [ ] T6.1 · [ ] T1.12 · [ ] T4.1 · [ ] T5.2a · [ ] T3.4 · [ ] T2.6 | [ ] M1 |
-| 10 | [ ] T3.5 · [ ] T4.6 · [ ] T4.5 · [ ] T5.2b · [ ] T5.3 PR 1 · [ ] T4.2 | – |
+| 2 | [x] T0.2 · [x] T0.3 · [x] T1.1 · [x] T2.1 · [x] T0.7 | – |
+| 3 | [x] T1.2 · [x] T1.5a · [x] T0.4 · [x] T0.6 (+ S7 quota follow-up) · [ ] T0.5 | – |
+| 4 | [x] T1.6 · [x] T1.5b · [x] T1.3 · [x] T1.4 · [x] T2.2 · [x] T3.1a | – |
+| 5 | [x] T1.7 · [x] T1.8 · [x] T2.3 · [x] T2.4 · [x] T1.13 · [~] T3.1b (phase 1 merged, partial; rest open) | – |
+| 6 | [x] T1.9 · [x] T4.4 · [x] T3.2 | – |
+| 7 | [x] T1.10 · [x] T3.3 | – |
+| 8 | [x] T1.11 · [x] T2.5 · [ ] T5.1 | – |
+| 9 | [x] T6.1 · [x] T1.12 · [x] T4.1 · [ ] T5.2a · [x] T3.4 · [ ] T2.6 | [ ] M1 |
+| 10 | [x] T3.5 · [ ] T4.6 · [ ] T4.5 · [ ] T5.2b · [ ] T5.3 PR 1 · [ ] T4.2 | – |
 | 11 | [ ] T6.4 · [ ] T4.3 · [ ] T3.6 | – |
 | 12 | [ ] T3.7 · [ ] T4.7a · [ ] T8.1 | [ ] M2 |
 | 13 | [ ] T4.7b · [ ] T8.2a | [ ] M3 |
