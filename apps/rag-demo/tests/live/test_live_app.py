@@ -40,7 +40,7 @@ def ask(tenant: str, question: str) -> tuple[dict[str, object], float]:
 
 def cites(body: dict[str, object], expect: str) -> bool:
     pattern = re.escape(expect).replace(r"\ ", r"\s+") + r"(?!\d)"
-    text = f"{body['answer']} {' '.join(map(str, body['citations']))}"  # type: ignore[call-overload]
+    text = f"{body['answer']} {' '.join(map(str, body['citations']))}"  # type: ignore[call-overload]  # body is a JSON dict[str, object]; citations is a list
     return re.search(pattern, text) is not None
 
 

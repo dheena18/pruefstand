@@ -99,7 +99,7 @@ POST /v1/retrieve                                     # R11 Y2.3 / D218, owner T
                                                       # the order equals /v1/query only while on_retrieve is true
 GET  /v1/info   -> {"app_version": str, "git_sha": str, "image_digest": str | null,
                     "config_hash": str, "corpus_version": str,
-                    "models": {str: str},                     # role -> model id, e.g. {"generator": "...", "embedding": "..."}
+                    "models": {str: str},                     # role -> model id, e.g. {"generator", "generator_family", "embed", "rerank"} (T3.2, D455)
                     "serving": {str: str}}                    # R9 X3.13: STATIC fields only: engine, engine_version,
                                                               # quantization, gpu (GPU model; tier 1: "cpu:<cpu model>"),
                                                               # model_sha256 (generator model file). No counters.

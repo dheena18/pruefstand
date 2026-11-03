@@ -5,7 +5,7 @@ class RagDemoError(Exception):
     """Base class of every error raised by ``rag_demo``."""
 
 
-class ConfigError(RagDemoError):
+class ConfigError(RagDemoError, ValueError):
     """The configuration is invalid or points at something that does not exist."""
 
 

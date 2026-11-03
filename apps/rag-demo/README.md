@@ -13,8 +13,9 @@ against it; T3.x extends the same app to the A40 stack.
 | Dense | `dense.py` | `TeiDenseEncoder` (TEI CPU, e5 `query: ` / `passage: ` prefixes, `truncate: true`) |
 | Index | `index.py` | corpus reader validated by `schemas/chunk.schema.json`; one Qdrant collection, `tenant_id` payload index |
 | Retrieval | `retrieve.py` | Query API, dense + sparse prefetch, tenant filter inside **every** prefetch, RRF |
-| Generation | `generate.py`, `prompts/*.txt` | llama.cpp client, prompt building, injection guard, output guard, `<think>` strip |
-| API | `api.py`, `schemas.py` | `create_app`, response mapping, `/v1/info`, `/v1/health` |
+| Generation | `generate.py`, `prompts/*.txt` | OpenAI-compatible (llama.cpp) client `OpenAICompatGenerator`, prompt building, injection guard, output guard, `<think>` strip |
+| API | `api.py`, `schemas.py`, `info.py`, `wiring.py` | `create_app`, response mapping, `/v1/info` (`info.py`), the collaborators per profile (`wiring.py`), `/v1/health` |
+| Tier 2 | `catalogue.py`, `endpoints.py`, `generate_ollama.py` | catalogue validation (D453), endpoint rules (D454), `OllamaChatGenerator` on native `/api/chat` |
 
 ## Bug switches (all in `configs/rag.yaml`; default = correct behaviour)
 
@@ -50,16 +51,38 @@ curl -s -X POST 127.0.0.1:$(make -s ports | awk '/^rag-demo /{print $2}')/v1/que
 
 Environment (`config.Settings`): `RAG_CONFIG` (path of the YAML inside the container, default
 `/app/configs/rag.yaml`), `QDRANT_URL`, `LLM_URL`, `EMBED_URL`, `RAG_COLLECTION`, `GIT_SHA`, `IMAGE_DIGEST`,
-`LLAMA_CPP_VERSION`, `MODEL_SHA256`. None of them is part of `config_hash`.
+`LLAMA_CPP_VERSION`, `MODEL_SHA256`, `RAG_MODEL_CATALOGUE`, `SERVING_ENGINE_VERSION`, `SERVING_GPU`. None of them is part of `config_hash`.
+
+## Profiles: live (tier 1) and gpu (tier 2)
+
+The same app runs two profiles, chosen by `RAG_CONFIG` (`profile:` in the file).
+
+| | `configs/rag.yaml` (`live`) | `configs/rag.gpu.yaml` (`gpu`) |
+| --- | --- | --- |
+| Generator | `qwen2.5-0.5b` on llama.cpp (CPU), OpenAI-compatible `/v1` | `ollama/qwen3.8:27b-q8_0` on the A40s, native `/api/chat`, `think: false` |
+| Embeddings | TEI CPU, e5-small | `ollama/bge-m3` via `/api/embed` (encoder: T3.4; until then queries answer 503) |
+| Models | pinned in `infra/models/live-models.yaml` | resolved from `infra/gpu/models.yaml` (`RAG_MODEL_CATALOGUE`), checked at config load |
+| URLs | `LLM_URL`, `EMBED_URL` | env named by `endpoint_env` (`OLLAMA_GPU0_URL` on the dev stack, `LLM_PROXY_URL` in gate runs), checked at app start |
+| Bug configs | `configs/bugs/*.yaml` | `configs/bugs/gpu/*.yaml` (the same eight switches on top of `rag.gpu.yaml`) |
+
+`/v1/info.serving` is static: tier 2 reports the catalogue engine, quantisation and manifest digest plus
+`SERVING_ENGINE_VERSION` and `SERVING_GPU` from the environment. Dev stack on the VM (no GPU device in the
+container, host network, `127.0.0.1:18000`):
+
+```bash
+make up COMPOSE_FILES="infra/gpu/compose.gpu.yml infra/gpu/compose.rag-demo.yml" PROFILES="gpu dev" SERVICES=rag-demo-dev
+curl -s 127.0.0.1:18000/v1/info
+```
 
 ## Tests
 
 `tests/unit` (pure functions on real slice text, respx for HTTP plumbing, vcr cassettes recorded from the real
 llama.cpp and TEI servers by `make cassettes`), `tests/contract` (OpenAPI), `tests/integration`
-(Testcontainers Qdrant + TEI), `tests/live` (the running `live` stack).
+(Testcontainers Qdrant + TEI), `tests/live` (the running `live` stack), `tests/gpu` (the tier-2 dev stack, marker `gpu`).
 
 ## Open follow-ups
 
+- Ollama embeddings (`OllamaDenseEncoder`, `/api/embed`) and the bge-m3 index: T3.4. Finishing `OllamaChatGenerator` (tokenizer budget, citations): T3.6.
 - Build and Trivy-scan the rag-demo image in `build-images.yml`, push and sign it: T6.2b (`push-sign`).
 - Check the TEI weights SHA-256 (`live-models.yaml` `weights_sha256`) in the live stack, not only in the integration fixture: T1.12.
 - Measure the p95 margin (14.2 s against 15 s on the VM) and the guard-on injection result on the hosted runner: T1.12.

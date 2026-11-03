@@ -196,7 +196,7 @@ components:
           type: object
           additionalProperties:
             type: string
-          description: Role to model id, for example generator and embedding.
+          description: Role to model id, for example generator and embed.
         serving:
           type: object
           additionalProperties:
@@ -205,7 +205,7 @@ components:
             Static fields only (engine, engine_version, quantization, gpu, model_sha256);
             counters live in /v1/health stats (X3.13).
       examples:
-        - {"app_version": "0.1.0", "git_sha": "0000000000000000000000000000000000000000", "image_digest": null, "config_hash": "sha256:example", "corpus_version": "example-2026-01", "models": {"generator": "qwen3-1.7b-q4_k_m", "embedding": "bge-m3"}, "serving": {"engine": "llama.cpp", "engine_version": "b4000", "quantization": "Q4_K_M", "gpu": "cpu:example", "model_sha256": "0000000000000000000000000000000000000000000000000000000000000000"}}
+        - {"app_version": "0.1.0", "git_sha": "0000000000000000000000000000000000000000", "image_digest": null, "config_hash": "sha256:example", "corpus_version": "example-2026-01", "models": {"generator": "qwen3-1.7b-q4_k_m", "embed": "bge-m3"}, "serving": {"engine": "llama.cpp", "engine_version": "b4000", "quantization": "Q4_K_M", "gpu": "cpu:example", "model_sha256": "0000000000000000000000000000000000000000000000000000000000000000"}}
     Stats:
       type: object
       additionalProperties:
