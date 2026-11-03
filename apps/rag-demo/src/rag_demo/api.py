@@ -2,6 +2,7 @@
 
 import asyncio
 import logging
+import time
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from typing import Any
@@ -73,32 +74,44 @@ def build_health(stats: Stats) -> dict[str, Any]:
 
 
 class _CorpusMeta:
-    """Corpus version and tenants from the collection metadata, read once.
+    """Corpus version and tenants from the collection metadata, re-read every ``TTL_S`` seconds.
 
-    Only a collection whose analyzer fingerprint matches is accepted; a stale or differently
-    analysed index is refused with 503.
+    Only a collection that is ``complete`` and whose analyzer fingerprint matches is accepted; an
+    unfinished, stale or differently analysed index is refused with 503. The re-read follows an
+    alias swap (``chunks_active``) to the new collection within ``TTL_S``.
     """
+
+    TTL_S = 10.0
 
     def __init__(self, qdrant_url: str, collection: str, expected: dict[str, Any]) -> None:
         self._url = f"{qdrant_url.rstrip('/')}/collections/{collection}"
         self._expected = expected
         self._value: dict[str, Any] | None = None
+        self._read_at = 0.0
 
     def get(self) -> dict[str, Any]:
-        if self._value is None:
-            try:
-                resp = httpx.get(self._url, timeout=10)
-                meta = resp.json()["result"]["config"]["metadata"]
-                if resp.status_code != 200 or not {"corpus_version", "tenants"} <= meta.keys():
-                    raise KeyError("metadata")  # noqa: EM101, TRY301
-            except (httpx.HTTPError, KeyError, TypeError, ValueError):
-                raise HTTPException(503, "index unavailable") from None
-            try:
-                check_fingerprint(meta.get("analyzer"), self._expected)
-            except IndexMismatchError as err:
-                raise HTTPException(503, str(err)) from None
-            self._value = meta
+        now = time.monotonic()
+        if self._value is None or now - self._read_at >= self.TTL_S:
+            self._value = self._read()
+            self._read_at = now
         return self._value
+
+    def _read(self) -> dict[str, Any]:
+        try:
+            resp = httpx.get(self._url, timeout=10)
+            meta = resp.json()["result"]["config"]["metadata"]
+            if resp.status_code != 200 or not {"corpus_version", "tenants"} <= meta.keys():
+                raise KeyError("metadata")  # noqa: EM101, TRY301
+        except (httpx.HTTPError, KeyError, TypeError, ValueError):
+            raise HTTPException(503, "index unavailable") from None
+        if meta.get("complete") is not True:
+            raise HTTPException(503, "index build is not complete; re-index")
+        try:
+            check_fingerprint(meta.get("analyzer"), self._expected)
+        except IndexMismatchError as err:
+            raise HTTPException(503, str(err)) from None
+        result: dict[str, Any] = meta
+        return result
 
 
 @dataclass(frozen=True)
@@ -117,13 +130,14 @@ def _build_parts(cfg: RagConfig, s: Settings) -> _Parts:
     """Wire one instance; a ``gpu`` config is checked here (catalogue, endpoint variables)."""
     stats = Stats()
     urls = resolve_urls(cfg, s)
+    catalogue = build_catalogue(cfg, s)
     return _Parts(
         stats=stats,
-        retriever=build_retriever(cfg, s, urls.embed),
+        retriever=build_retriever(cfg, s, urls.embed, catalogue),
         generator=build_generator(cfg, urls.llm, stats),
         corpus=_CorpusMeta(s.qdrant_url, s.collection, expected_fingerprint(cfg)),
         env=info_env(s),
-        catalogue=build_catalogue(cfg, s),
+        catalogue=catalogue,
     )
 
 

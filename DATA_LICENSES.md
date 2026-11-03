@@ -136,7 +136,7 @@ Apache-2.0; `unsloth/Qwen3-1.7B-GGUF`, Apache-2.0) are listed in `scripts/models
 
 **Tokenizers (round 13, AI13-05).** Every catalogue chat entry carries `tokenizer: {source, sha256}`; the
 generator's tokenizer is baked into the rag-demo image next to `bge-m3`'s so prompt budgets are counted with
-the right vocabulary. Tokenizer files follow the licence of their model: Qwen from its HF repo
+the right vocabulary. The `BAAI/bge-m3` `tokenizer.json` (MIT, sha256 pinned in `infra/gpu/models.yaml`, T3.4) is downloaded at image build time by `rag_demo.index.fetch_tokenizer` and by `make fetch-tokenizer`, never committed. Tokenizer files follow the licence of their model: Qwen from its HF repo
 (Apache-2.0, **verify**); Gemma's HF tokenizer is behind the Gemma Terms gate, so it is used only after the owner
 accepts those terms (`[HUMAN]`), or it is extracted from the pinned GGUF's vocabulary with the `gguf` reader,
 which carries the same Gemma Terms. Tokenizer files are never redistributed outside the images that use them.

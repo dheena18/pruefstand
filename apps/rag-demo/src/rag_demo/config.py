@@ -5,7 +5,7 @@ import json
 from pathlib import Path
 
 import yaml
-from pydantic import AliasChoices, Field
+from pydantic import AliasChoices, Field, SecretStr
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from rag_demo.catalogue import check_against_catalogue, load_catalogue
@@ -22,10 +22,11 @@ class Settings(BaseSettings):
 
     rag_config: Path = Path("configs/rag.yaml")
     qdrant_url: str = "http://localhost:6333"
+    qdrant_api_key: SecretStr | None = None
     llm_url: str = "http://localhost:8080"
     embed_url: str = "http://localhost:8090"
     collection: str = Field(
-        default="slice_v2", validation_alias=AliasChoices("RAG_COLLECTION", "collection")
+        default="chunks_active", validation_alias=AliasChoices("RAG_COLLECTION", "collection")
     )
     git_sha: str = "unknown"
     image_digest: str | None = None
@@ -34,6 +35,9 @@ class Settings(BaseSettings):
     model_file: str = ""
     model_pin: str = ""
     rag_model_catalogue: Path | None = None
+    embed_tokenizer: Path | None = Field(
+        default=None, validation_alias=AliasChoices("RAG_EMBED_TOKENIZER", "embed_tokenizer")
+    )
     serving_engine_version: str = "unknown"
     serving_gpu: str = "unknown"
 

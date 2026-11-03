@@ -1,44 +1,27 @@
 """Testcontainers fixtures: real Qdrant (slice snapshot or fresh index) and real TEI."""
 
 import json
-import time
 from collections.abc import Iterator
 
 import httpx
 import pytest
 import yaml
-from rd_support import CONFIGS, MODEL_DIR, REPO, SLICE
+from rd_support import CONFIGS, MODEL_DIR, REPO, SLICE, compose_image, wait_http
 from testcontainers.core.container import DockerContainer
 from testcontainers.core.waiting_utils import wait_for_logs
 
 from rag_demo.analysis.analyzer import GermanAnalyzer
 from rag_demo.analysis.sparse import SparseEncoder
 from rag_demo.config import load_config
-from rag_demo.dense import TeiDenseEncoder
-from rag_demo.index import Indexer
+from rag_demo.index.encoders import TeiDenseEncoder
+from rag_demo.index.indexer import Indexer, IndexTarget, alias_actions
+from rag_demo.index.naming import ALIAS
+from rag_demo.index.qdrant_admin import QdrantAdmin
 from rag_demo.models import RagConfig
 from rag_demo.retrieve import Retriever
 
-COLLECTION = "slice_v2"
+COLLECTION = "slice_v2"  # the restored snapshot; the app and the retriever use the alias ALIAS
 SNAPSHOT = REPO / ".cache" / "pruefstand" / "qdrant" / "slice_v2.snapshot"
-
-
-def _compose_image(service: str) -> str:
-    data = yaml.safe_load((REPO / "docker-compose.yml").read_text(encoding="utf-8"))
-    return str(data["services"][service]["image"])
-
-
-def _wait_http(url: str, timeout_s: float = 240.0) -> None:
-    deadline = time.monotonic() + timeout_s
-    while time.monotonic() < deadline:
-        try:
-            if httpx.get(url, timeout=3).is_success:
-                return
-        except httpx.HTTPError:
-            pass
-        time.sleep(1)
-    msg = f"{url} did not become ready"
-    raise TimeoutError(msg)
 
 
 @pytest.fixture(scope="session")
@@ -49,7 +32,7 @@ def tei_url() -> Iterator[str]:
     cache = MODEL_DIR / "tei"
     cache.mkdir(parents=True, exist_ok=True)
     container = (
-        DockerContainer(_compose_image("embed"))
+        DockerContainer(compose_image("embed"))
         .with_command(f"--model-id {emb['repo']} --revision {emb['revision']} --port 80")
         .with_volume_mapping(str(cache), "/data", "rw")
         .with_env("HF_HUB_ENABLE_HF_TRANSFER", "0")
@@ -58,28 +41,40 @@ def tei_url() -> Iterator[str]:
     with container:
         wait_for_logs(container, "Ready", timeout=300)
         url = f"http://127.0.0.1:{container.get_exposed_port(80)}"
-        _wait_http(f"{url}/health")
+        wait_http(f"{url}/health")
         yield url
 
 
 @pytest.fixture(scope="session")
 def qdrant_url(tei_url: str) -> Iterator[str]:
     """Pinned Qdrant with the slice index: snapshot if present, else built with the real TEI."""
-    container = DockerContainer(_compose_image("qdrant")).with_exposed_ports(6333)
+    container = DockerContainer(compose_image("qdrant")).with_exposed_ports(6333)
     with container:
         url = f"http://127.0.0.1:{container.get_exposed_port(6333)}"
-        _wait_http(f"{url}/readyz")
+        wait_http(f"{url}/readyz")
         if SNAPSHOT.is_file() and _restore(url):
             yield url
             return
         cfg = load_config(CONFIGS / "rag.yaml")
         Indexer(
-            url, _dense(cfg, tei_url), _analyzer(cfg), SparseEncoder(), collection=COLLECTION
+            url,
+            _dense(cfg, tei_url),
+            _analyzer(cfg),
+            SparseEncoder(),
+            target=IndexTarget(cfg.embed.model),
         ).index(SLICE)
         yield url
 
 
 def _restore(url: str) -> bool:
+    """Restore the snapshot and re-create the ``chunks_active`` alias (snapshots carry none)."""
+    ok = _upload(url)
+    if ok:
+        QdrantAdmin(url).apply_aliases(alias_actions(ALIAS, None, COLLECTION))
+    return ok
+
+
+def _upload(url: str) -> bool:
     with SNAPSHOT.open("rb") as handle:
         resp = httpx.post(
             f"{url}/collections/{COLLECTION}/snapshots/upload",
@@ -123,7 +118,7 @@ def make_retriever(qdrant_url: str, tei_url: str):  # type: ignore[no-untyped-de
             _dense(cfg, tei_url),
             _analyzer(cfg),
             SparseEncoder(),
-            collection=COLLECTION,
+            collection=ALIAS,
             client=httpx.Client(transport=transport, timeout=30),
         )
         return retriever, transport

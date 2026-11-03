@@ -9,6 +9,15 @@ from rag_demo.errors import ConfigError
 from rag_demo.models import RagConfig
 
 
+class TokenizerRef(BaseModel):
+    """The pinned tokenizer file of a model: Hugging Face source and sha256 (AI13-05)."""
+
+    model_config = ConfigDict(frozen=True, extra="ignore")
+
+    source: str
+    sha256: str
+
+
 class CatalogueEntry(BaseModel):
     """The fields of one catalogue entry rag-demo uses; the file has more (``extra="ignore"``)."""
 
@@ -23,6 +32,7 @@ class CatalogueEntry(BaseModel):
     role: str
     options: dict[str, float] = {}
     option_bounds: dict[str, tuple[float, float]] = {}
+    tokenizer: TokenizerRef | None = None
 
 
 def load_catalogue(path: Path) -> dict[str, CatalogueEntry]:
