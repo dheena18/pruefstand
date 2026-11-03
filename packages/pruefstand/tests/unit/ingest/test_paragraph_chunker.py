@@ -1,12 +1,12 @@
 """ParagraphChunker (T2.2): one chunk per § / Artikel, long §§ split by Absatz."""
 
-import time
 from datetime import date
 from pathlib import Path
 
 import pytest
 from hypothesis import HealthCheck, given, settings
 from hypothesis import strategies as st
+from testsupport.timing import assert_scales_linearly
 
 from pruefstand.core.enums import Lang
 from pruefstand.core.ids import DocId, TenantId
@@ -153,16 +153,10 @@ def test_chunk_texts_concatenate_to_the_document_text(parts: list[str], limit: i
 def test_chunker_is_linear_on_pathological_text(unit: str) -> None:
     chunker = ParagraphChunker(max_tokens=50)
 
-    def run(n: int) -> float:
-        doc = make_doc(unit * n)
-        start = time.perf_counter()
-        chunker.chunk(doc)
-        return time.perf_counter() - start
-
-    small = min(run(5_000) for _ in range(3))
-    large = min(run(40_000) for _ in range(3))
-    assert large < 3.0
-    assert large < 8 * 6 * max(small, 0.002)
+    small, large = make_doc(unit * 5_000), make_doc(unit * 40_000)
+    assert_scales_linearly(
+        lambda: chunker.chunk(small), lambda: chunker.chunk(large), scale=8, floor_s=2e-3
+    )
 
 
 PATHOLOGICAL_UNITS = [

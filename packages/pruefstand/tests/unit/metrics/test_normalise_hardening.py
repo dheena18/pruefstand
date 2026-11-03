@@ -1,10 +1,10 @@
 """Hardening of the leak matcher: canary swallowing, ReDoS, formatting and homoglyph evasion."""
 
 import sys
-import time
 import unicodedata
 
 import pytest
+from testsupport.timing import cpu_budget
 
 from pruefstand.metrics.deterministic import normalise
 from pruefstand.metrics.deterministic.normalise import (
@@ -49,10 +49,8 @@ def test_the_semantic_canary_pattern_of_the_dataset_is_accepted() -> None:
 
 
 def test_rejected_pattern_never_gets_to_run_on_a_hostile_answer() -> None:
-    start = time.perf_counter()
-    with pytest.raises(ValueError, match="unsafe"):
+    with cpu_budget(3.0), pytest.raises(ValueError, match="unsafe"):
         contains_forbidden("a" * 60_000 + "b", "re:(a+)+$")
-    assert time.perf_counter() - start < 3.0
 
 
 def test_a_pattern_passing_the_structural_check_still_hits_the_timeout(
@@ -60,10 +58,8 @@ def test_a_pattern_passing_the_structural_check_still_hits_the_timeout(
 ) -> None:
     monkeypatch.setattr(normalise, "REGEX_TIMEOUT_S", 0.05)
     matcher = compile_forbidden("re:.*a.*a.*a.*a.*a.*b")
-    start = time.perf_counter()
-    with pytest.raises(TimeoutError):
+    with cpu_budget(3.0), pytest.raises(TimeoutError):
         matcher.matches("a" * 3_000)
-    assert time.perf_counter() - start < 3.0
 
 
 INVISIBLES = [

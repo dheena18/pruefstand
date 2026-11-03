@@ -1,12 +1,12 @@
 """DecisionSectionChunker (T2.3): section detection, Gründe alias, Randnummer split, fallback."""
 
 import re
-import time
 from datetime import date
 from itertools import pairwise
 from pathlib import Path
 
 import pytest
+from testsupport.timing import assert_scales_linearly, cpu_budget
 
 from pruefstand.core.enums import Lang
 from pruefstand.core.ids import DocId, TenantId
@@ -214,28 +214,19 @@ def test_real_fixtures_through_the_loader(oldp_raw: Path) -> None:
     assert all(c.license == "ODbL-1.0" for c in labour + insurance)
 
 
-def best_of(runs: int, text: str) -> float:
-    chunker = DecisionSectionChunker()
-    best = float("inf")
-    for _ in range(runs):
-        start = time.perf_counter()
-        chunker.chunk(make_doc(text))
-        best = min(best, time.perf_counter() - start)
-    return best
-
-
 def test_time_grows_linearly_with_many_headings_and_randnummern() -> None:
     def build(n: int) -> str:
         return "\n".join(f"Tenor\nText {i}\n{i}\nGründe\nWort Wort Wort" for i in range(n))
 
-    small, large = best_of(3, build(2_000)), best_of(3, build(16_000))
-    assert large / small < 20  # linear = 8, quadratic = 64
+    chunker = DecisionSectionChunker()
+    small, large = make_doc(build(2_000)), make_doc(build(16_000))
+    # linear = 8, quadratic = 64
+    assert_scales_linearly(lambda: chunker.chunk(small), lambda: chunker.chunk(large), scale=8)
 
 
 def test_long_non_heading_lines_are_cheap() -> None:
-    start = time.perf_counter()
-    DecisionSectionChunker().chunk(make_doc(("G r ü n d e " * 20_000) + "\nTenor\nx"))
-    assert time.perf_counter() - start < 5
+    with cpu_budget(5):
+        DecisionSectionChunker().chunk(make_doc(("G r ü n d e " * 20_000) + "\nTenor\nx"))
 
 
 def test_randnummer_gap_of_ten_is_a_marker_eleven_is_not() -> None:

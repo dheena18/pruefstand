@@ -3,11 +3,11 @@
 import copy
 import json
 import socket
-import time
 from collections.abc import Callable, Mapping, Sequence
 from pathlib import Path
 
 import pytest
+from testsupport.timing import assert_scales_linearly, cpu_budget
 
 from pruefstand.core.models.corpus import Document
 from pruefstand.ingest.oldp import OldpLimits, OldpLoader
@@ -135,26 +135,25 @@ def test_html_bombs_are_bounded(tmp_path: Path, oldp_record: Rec, write_jsonl: W
         record(base, id=3, content="<p>" * 100_000 + "x"),
     ]
     write_jsonl(tmp_path / "a.jsonl", rows)
-    start = time.perf_counter()
-    docs, loader = docs_of(tmp_path)
-    assert time.perf_counter() - start < 20
+    with cpu_budget(20):
+        docs, loader = docs_of(tmp_path)
     assert len(docs) + len(loader.stats.problems) == 3
+
+
+def _load_all(directory: Path) -> Callable[[], object]:
+    return lambda: list(OldpLoader().load(directory))
 
 
 def test_loader_time_is_linear(tmp_path: Path, oldp_record: Rec, write_jsonl: Writer) -> None:
     base = oldp_record("labour_lag_hessen")
-    times: dict[int, float] = {}
+    loaders: dict[int, Callable[[], object]] = {}
     for paragraphs in (2_000, 16_000):
         html = "<p>Die Kündigung &uuml;ber § 622 BGB wurde erklärt.</p>" * paragraphs
         directory = tmp_path / str(paragraphs)
         write_jsonl(directory / "a.jsonl", [record(base, content=html)])
-        best = float("inf")
-        for _ in range(3):
-            start = time.perf_counter()
-            list(OldpLoader().load(directory))
-            best = min(best, time.perf_counter() - start)
-        times[paragraphs] = best
-    assert times[16_000] / times[2_000] < 20  # linear = 8, quadratic = 64
+        loaders[paragraphs] = _load_all(directory)
+    # linear = 8, quadratic = 64
+    assert_scales_linearly(loaders[2_000], loaders[16_000], scale=8)
 
 
 def test_boolean_ids_are_rejected(tmp_path: Path, oldp_record: Rec, write_jsonl: Writer) -> None:

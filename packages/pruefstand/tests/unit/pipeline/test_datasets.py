@@ -1,11 +1,12 @@
 """``load_cases``: local dataset directories, validated row by row (T1.10 S1)."""
 
-import time
+from collections.abc import Callable
 from pathlib import Path
 
 import pytest
 from testsupport.pipeline_support import MINI_DATASET, case_rows, write_dataset
 from testsupport.run_builders import make_case, make_cases
+from testsupport.timing import assert_scales_linearly
 
 from pruefstand.core.enums import Split
 from pruefstand.core.errors import ConfigError, DatasetError
@@ -115,16 +116,13 @@ def test_an_oversized_line_is_refused_without_reading_it_all(tmp_path: Path) -> 
         load_cases(str(directory), (Split.SMOKE,))
 
 
-def _timed(tmp_path: Path, count: int) -> float:
+def _loader(tmp_path: Path, count: int) -> Callable[[], object]:
     rows = case_rows(make_cases(count, split="smoke"))
     directory = write_dataset(tmp_path / str(count), {"smoke": rows})
-    start = time.perf_counter()
-    load_cases(str(directory), (Split.SMOKE,))
-    return time.perf_counter() - start
+    return lambda: load_cases(str(directory), (Split.SMOKE,))
 
 
 def test_loading_time_grows_linearly(tmp_path: Path) -> None:
-    _timed(tmp_path, 100)  # warm-up
-    small = min(_timed(tmp_path / "a", 400), _timed(tmp_path / "b", 400))
-    large = min(_timed(tmp_path / "c", 1600), _timed(tmp_path / "d", 1600))
-    assert large / small < 10  # 4x the rows: linear is ~4, quadratic would be ~16
+    _loader(tmp_path / "warm", 100)()
+    # 4x the rows: linear is ~4, quadratic would be ~16 (CPU-time ratio, limit 10)
+    assert_scales_linearly(_loader(tmp_path / "a", 400), _loader(tmp_path / "c", 1600), scale=4)

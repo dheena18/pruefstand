@@ -1,13 +1,14 @@
 """Canary tokens never reach the comment, whatever invisible characters or separators hide them."""
 
 import re
-import time
+from collections.abc import Callable
 
 import pytest
 from hypothesis import given
 from hypothesis import strategies as st
 from testsupport.report_builders import decision, gate_report, hard_fail
 from testsupport.report_render import render
+from testsupport.timing import assert_scales_linearly
 
 from pruefstand.metrics.deterministic.normalise import security_normalise
 from pruefstand.report.format import md_code, md_escape
@@ -67,16 +68,11 @@ def test_legitimate_canary_words_survive() -> None:
 
 
 def test_masking_is_linear() -> None:
-    def cost(n: int) -> float:
+    def masker(n: int) -> Callable[[], object]:
         text = "CAN\u200bARY-VN-7f3a9cCANARY-KM-0d1e2f x " * n
-        best = float("inf")
-        for _ in range(3):
-            t0 = time.perf_counter()
-            md_code(text, limit=len(text))
-            best = min(best, time.perf_counter() - t0)
-        return best
+        return lambda: md_code(text, limit=len(text))
 
-    assert cost(1_600) <= 8 * max(cost(400), 1e-4)
+    assert_scales_linearly(masker(400), masker(1_600), scale=4, floor_s=1e-4)
 
 
 @pytest.mark.parametrize("joiner", [" ", ", ", "\n", "", "12", "\u200b", " und "])

@@ -1,11 +1,11 @@
 """Property tests for the deterministic metrics (T1.5b): value ranges, determinism, linear time."""
 
-import time
 from typing import Any
 
 import pytest
 from hypothesis import given, settings
 from hypothesis import strategies as st
+from testsupport.timing import cpu_budget
 
 from pruefstand.core.ids import ChunkId, DocId, TenantId
 from pruefstand.core.models.metric import MetricStatus, MetricValue
@@ -175,16 +175,13 @@ def test_pathological_inputs_stay_linear(fragments: list[str], category: str) ->
         rank=1,
     )
     resp = TargetResponse(answer=answer, citations=(answer[:200],), chunks=(chunk,))
-    start = time.perf_counter()
-    values = evaluate_deterministic(case, resp, MetricRegistry.default().all())
-    elapsed = time.perf_counter() - start
+    with cpu_budget(10.0):
+        values = evaluate_deterministic(case, resp, MetricRegistry.default().all())
     assert all(_consistent(v) for v in values)
-    assert elapsed < 10.0, f"{elapsed:.1f}s for {len(answer)} chars of {fragments!r}"
 
 
 @pytest.mark.parametrize("n", [50_000, 400_000])
 def test_normalise_scales_linearly(n: int) -> None:
     text = "canary vn " + "a" * n + " siebenund" * (n // 10) + " " * n
-    start = time.perf_counter()
-    security_normalise(text)
-    assert time.perf_counter() - start < 5.0
+    with cpu_budget(5.0):
+        security_normalise(text)

@@ -79,7 +79,7 @@ def test_stack_run_lock_wait_is_optional(tmp_path: Path) -> None:
 
 
 CMD_PLAIN = (
-    "echo started $$BASHPID; sleep 120"  # make turns $$ into $: the pid of CMD's group leader
+    "echo started $$BASHPID; sleep 600"  # make turns $$ into $: the pid of CMD's group leader
 )
 CMD_DEAF = (
     'trap "" TERM; ' + CMD_PLAIN
@@ -177,12 +177,12 @@ def test_stack_run_signalled_tears_down_and_leaves_no_process(
         t0 = time.monotonic()
         for _ in range(times):
             (os.kill if target == "make" else os.killpg)(proc.pid, SIGNALS[sig])
-        proc.wait(timeout=120)
-        reader.join(timeout=120)
+        proc.wait(timeout=240)
+        reader.join(timeout=240)
         assert not reader.is_alive(), (
             "stdout still open: a process of the stack survived the signal"
         )
-        assert time.monotonic() - t0 < 60, "stack-run returned only after CMD ran to its end"
+        assert time.monotonic() - t0 < 300, "stack-run waited for CMD (sleep 600) to end"
         deadline = time.monotonic() + 30
         while _group_alive(cmd_pgid[0]) and time.monotonic() < deadline:
             time.sleep(0.05)

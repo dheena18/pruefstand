@@ -9,7 +9,6 @@ import json
 import os
 import subprocess
 import threading
-import time
 from collections.abc import Iterator
 from pathlib import Path
 from typing import ClassVar
@@ -17,6 +16,9 @@ from typing import ClassVar
 import pytest
 
 SCRIPT = Path(__file__).resolve().parents[1] / "feasibility" / "probe.sh"
+
+
+_RELEASE = threading.Event()  # set when a test ends: frees handlers that wait for it
 
 
 class _Handler(http.server.BaseHTTPRequestHandler):
@@ -53,7 +55,7 @@ class _Handler(http.server.BaseHTTPRequestHandler):
             cls.loaded = False
             self._reply(b"{}")
             return
-        time.sleep(cls.gen_delay)
+        _RELEASE.wait(cls.gen_delay)  # blocks until the fixture ends: no race with the timeout
         if cls.gen_drop:
             self.close_connection = True
             return
@@ -67,6 +69,7 @@ class _Handler(http.server.BaseHTTPRequestHandler):
 
 @pytest.fixture
 def server() -> Iterator[tuple[str, type[_Handler]]]:
+    _RELEASE.clear()
     _Handler.seen = []
     _Handler.ps_body = b'{"models":[]}'
     _Handler.ps_status = 200
@@ -81,6 +84,7 @@ def server() -> Iterator[tuple[str, type[_Handler]]]:
     thread = threading.Thread(target=httpd.serve_forever, daemon=True)
     thread.start()
     yield f"http://127.0.0.1:{httpd.server_port}", _Handler
+    _RELEASE.set()
     httpd.shutdown()
 
 
@@ -204,7 +208,7 @@ def test_measure_load_fails_when_the_connection_drops(server: tuple[str, type[_H
 
 def test_measure_load_fails_on_timeout(server: tuple[str, type[_Handler]]) -> None:
     url, handler = server
-    handler.gen_delay = 4.0
+    handler.gen_delay = 60.0  # the server never answers within the 1 s curl timeout (load-proof)
     lines = _probe(url, MEASURE_LOAD="1", LOAD_TIMEOUT_S="1")
     assert lines[0].startswith("CHECK model-load FAIL")
     assert "cold load" not in lines[0]

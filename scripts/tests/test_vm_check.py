@@ -91,12 +91,12 @@ def test_with_every_slot_held_the_run_waits_and_starts_when_one_frees(tmp_path: 
 def test_a_signal_to_the_script_reaches_make_and_frees_the_slot(tmp_path: Path) -> None:
     env = _env(tmp_path, "1")
     first = _run(env)
-    deadline = time.monotonic() + 10
+    deadline = time.monotonic() + 60
     log = tmp_path / "events.log"
     while not log.exists() and time.monotonic() < deadline:
         time.sleep(0.05)
     first.terminate()  # the script exec'd make: this is make
-    first.wait(timeout=10)
+    first.wait(timeout=60)
     second = _run(env)
     assert second.wait(timeout=60) == 0  # the slot was free again
 

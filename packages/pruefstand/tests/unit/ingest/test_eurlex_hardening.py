@@ -3,11 +3,11 @@
 import contextlib
 import socket
 import threading
-import time
 from collections.abc import Callable
 from pathlib import Path
 
 import pytest
+from testsupport.timing import assert_scales_linearly, cpu_budget
 
 from pruefstand.core.enums import Lang
 from pruefstand.core.ids import DocId, TenantId
@@ -108,9 +108,8 @@ def test_internal_entity_declarations_are_not_expanded(tmp_path: Path) -> None:
     bomb = gdpr("en").replace(b"<html", decl.encode() + b"<html", 1)
     bomb = bomb.replace(b"Lawfulness of processing", b"Lawfulness &a;&a;&a; of processing")
     loader = EurLexLoader()
-    start = time.perf_counter()
-    docs = list(loader.load(raw_with(tmp_path, gdpr("de"), bomb)))
-    assert time.perf_counter() - start < 5
+    with cpu_budget(5):
+        docs = list(loader.load(raw_with(tmp_path, gdpr("de"), bomb)))
     assert "xxxx" not in docs[1].text
 
 
@@ -155,19 +154,8 @@ def test_one_bad_act_does_not_stop_the_next(tmp_path: Path) -> None:
 # --- linear time: 4x the input must take at most 8x the time ------------------------------------
 
 
-def best_of(fn: Callable[[], object], runs: int = 3) -> float:
-    times = []
-    for _ in range(runs):
-        start = time.perf_counter()
-        fn()
-        times.append(time.perf_counter() - start)
-    return min(times)
-
-
 def assert_linear(make: Callable[[int], Callable[[], object]], n: int) -> None:
-    small, large = make(n), make(4 * n)
-    ratio = best_of(large) / max(best_of(small), 1e-6)
-    assert ratio <= 8, f"4x input took {ratio:.1f}x the time"
+    assert_scales_linearly(make(n), make(4 * n), scale=4, floor_s=1e-4)
 
 
 def test_parsing_is_linear_in_the_number_of_articles() -> None:

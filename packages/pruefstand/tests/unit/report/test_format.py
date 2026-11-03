@@ -1,10 +1,11 @@
 """Number and string formats of the PR comment (ui-spec §10.2) and the Markdown escaping."""
 
 import re
-import time
+from collections.abc import Callable
 
 import pytest
 from testsupport.report_builders import manifest
+from testsupport.timing import assert_scales_linearly
 
 from pruefstand.core.models.run import CostSummary
 from pruefstand.report.format import (
@@ -141,17 +142,11 @@ def test_safe_url_accepts_https_and_http() -> None:
 
 
 def test_md_escape_is_linear() -> None:
-    def cost(n: int) -> float:
+    def escaper(n: int) -> Callable[[], object]:
         text = ("@a|<b>[c](http://d) `e` #1 " * n)[:200_000]
-        best = float("inf")
-        for _ in range(3):
-            t0 = time.perf_counter()
-            md_escape(text, limit=len(text))
-            best = min(best, time.perf_counter() - t0)
-        return best
+        return lambda: md_escape(text, limit=len(text))
 
-    small, large = cost(2_000), cost(8_000)
-    assert large <= 8 * max(small, 1e-4)
+    assert_scales_linearly(escaper(2_000), escaper(8_000), scale=4, floor_s=1e-4)
 
 
 @pytest.mark.parametrize("text", ["GH-123", "gh-9 x", "see Gh-42"])

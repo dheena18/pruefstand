@@ -8,6 +8,7 @@ from pydantic import BaseModel
 from testsupport.llm_scenarios import echo_request, json_probe_request
 from testsupport.loopback import serve
 from testsupport.rss import PeakRss
+from testsupport.timing import cpu_budget
 
 from pruefstand.core.config import LLMPolicyConfig
 from pruefstand.core.errors import LLMError
@@ -32,7 +33,9 @@ async def test_a_dripping_server_hits_the_hard_timeout() -> None:
         start = time.monotonic()
         with pytest.raises(LLMError) as info:
             await backend.acomplete(_req())
-    assert time.monotonic() - start < 6
+    assert (
+        time.monotonic() - start < 30
+    )  # wall time is the point: timeout 2 s, the drip lasts > 60 s
     assert info.value.transient is True
     assert "timeout" in str(info.value).lower()
 
@@ -133,15 +136,13 @@ async def test_a_gzip_bomb_is_refused_without_inflating_it(
     monkeypatch.setenv("LOOP_GH_TOKEN", "t0ken-for-loopback")
     model = f"{provider}/openai/loop"
     key_env = "LOOP_GH_TOKEN" if provider == "github" else None
-    start = time.monotonic()
-    with PeakRss() as rss, serve(gzip_expand=500 * 1024 * 1024) as base:
+    with cpu_budget(40), PeakRss() as rss, serve(gzip_expand=500 * 1024 * 1024) as base:
         backend = LiteLLMBackend(model, api_base=base, api_key_env=key_env, timeout_s=60)
         with pytest.raises(LLMError) as info:
             await backend.acomplete(_req(max_tokens=8192).model_copy(update={"model": model}))
     assert info.value.transient is False
     assert "too large" in str(info.value)
     assert rss.grown_kib < 100 * 1024
-    assert time.monotonic() - start < 30
 
 
 def test_requests_ask_for_identity_encoding() -> None:

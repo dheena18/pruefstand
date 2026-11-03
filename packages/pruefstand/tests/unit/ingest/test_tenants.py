@@ -1,13 +1,13 @@
 """assign_tenants (T2.5): rules from the committed corpus.yaml applied to real loader output."""
 
-import time
-from collections import Counter
-from collections.abc import Iterator
+from collections import Counter, deque
+from collections.abc import Callable, Iterator
 from pathlib import Path
 
 import pytest
 import yaml
 from testsupport.corpus_support import REPO_ROOT, build_raw_root
+from testsupport.timing import assert_scales_linearly
 
 from pruefstand.core.config import CorpusBuildConfig, TenantPlan, TenantRule
 from pruefstand.core.config_loader import load_model
@@ -232,18 +232,12 @@ def test_the_rules_encode_the_spec_tenant_table() -> None:
 
 
 def test_assignment_time_is_linear_in_the_number_of_documents() -> None:
-    def timed(n: int) -> float:
+    def assigner(n: int) -> Callable[[], object]:
         docs = [make_doc(f"gii-kschg-{i}", "gii:kschg") for i in range(n)]
-        best = float("inf")
-        for _ in range(3):
-            start = time.perf_counter()
-            for _doc in assign_tenants(docs, REPO_PLAN):
-                pass
-            best = min(best, time.perf_counter() - start)
-        return best
+        return lambda: deque(assign_tenants(docs, REPO_PLAN), maxlen=0)
 
-    small, large = timed(5_000), timed(20_000)
-    assert large / max(small, 1e-6) < 12  # 4x the input; quadratic would be ~16x
+    # 4x the input: linear ~4x, quadratic ~16x
+    assert_scales_linearly(assigner(5_000), assigner(20_000), scale=4)
 
 
 def test_rules_are_matched_by_dictionary_not_by_scanning_all_rules(

@@ -1,6 +1,5 @@
-import time
-
 import pytest
+from testsupport.timing import assert_scales_linearly, cpu_budget
 
 from pruefstand.llm.json_extract import extract_json_object
 
@@ -36,21 +35,18 @@ def test_only_valid_json_is_returned() -> None:
     assert extract_json_object('{a: 1} {"b": [1, 2]}') == '{"b": [1, 2]}'
 
 
-def _seconds(text: str) -> float:
-    start = time.perf_counter()
+def _extract_none(text: str) -> None:
     assert extract_json_object(text) is None
-    return time.perf_counter() - start
 
 
 def test_many_opening_braces_scale_linearly() -> None:
-    small = min(_seconds("{" * 50_000) for _ in range(3))
-    large = min(_seconds("{" * 200_000) for _ in range(3))
-    assert large < 2.0
-    assert large <= 8 * max(small, 0.005)  # 4x the input, at most 8x the time
+    small, large = "{" * 50_000, "{" * 200_000
+    assert_scales_linearly(lambda: _extract_none(small), lambda: _extract_none(large), scale=4)
 
 
 def test_a_megabyte_of_braces_returns_quickly() -> None:
-    assert _seconds("{" * 1_000_000) < 2.0
+    with cpu_budget(2.0):
+        _extract_none("{" * 1_000_000)
 
 
 def test_input_beyond_the_cap_is_not_scanned() -> None:
