@@ -6,11 +6,11 @@ from private_doc_plan import plan_all, plan_documents
 
 from pruefstand.attacks import facts
 from pruefstand.attacks.canary import TENANT_PREFIX, semantic_variants
-from pruefstand.attacks.collision import public_collisions
 from pruefstand.attacks.facts import MIN_VALUE, check_templates, fact_templates, make_semantic_fact
 from pruefstand.core.errors import DatasetError
 from pruefstand.core.ids import DocId, TenantId
 from pruefstand.core.models.attacks import Canary
+from pruefstand.pipeline.canary_collision import public_collisions
 
 
 def canary(number: int, unit: str) -> Canary:

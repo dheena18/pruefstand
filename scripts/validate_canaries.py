@@ -20,11 +20,11 @@ from pathlib import Path
 
 from pydantic import ValidationError
 
-from pruefstand.attacks.collision import public_collisions
 from pruefstand.core.errors import DatasetError
 from pruefstand.core.models.attacks import Canary, CanaryRegistry
 from pruefstand.ingest.corpus_files import FILE_SUFFIX, iter_lines
 from pruefstand.metrics.deterministic.normalise import contains_forbidden
+from pruefstand.pipeline.canary_collision import public_collisions
 
 REPO = Path(__file__).resolve().parents[1]
 MAX_PROBLEMS = 50

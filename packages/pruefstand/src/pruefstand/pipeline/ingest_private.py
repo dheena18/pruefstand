@@ -13,13 +13,13 @@ from pathlib import Path
 import numpy as np
 
 from pruefstand.attacks.canary import TENANT_PREFIX, plant_canaries
-from pruefstand.attacks.collision import public_collisions
 from pruefstand.core.config import PrivateDocsConfig
 from pruefstand.core.errors import DatasetError
 from pruefstand.core.logging import get_logger
 from pruefstand.core.models.attacks import CanaryRegistry
 from pruefstand.core.models.corpus import Chunk, Document
 from pruefstand.ingest.private_docs import PrivateDocsLoader
+from pruefstand.pipeline.canary_collision import public_collisions
 
 _log = get_logger(__name__)
 REGISTRY_FILE = "canaries.json"
