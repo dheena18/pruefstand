@@ -4,6 +4,7 @@ from pruefstand.core.ids import DocId, TenantId
 from pruefstand.core.models.attacks import Canary, CanaryRegistry
 from pruefstand.metrics.judged.correctness import AnswerCorrectness
 from pruefstand.metrics.judged.faithfulness import Faithfulness
+from pruefstand.metrics.judged.refusal import RefusalJudged
 from pruefstand.metrics.judged.routing import (
     case_holds_canary,
     planned_calls,
@@ -63,7 +64,5 @@ def test_probe_cases_are_never_selected() -> None:
 
 
 def test_metrics_whose_meaning_changed_have_a_new_version() -> None:
-    from pruefstand.metrics.judged.refusal import RefusalJudged
-
     assert (Faithfulness().version, RefusalJudged().version) == ("2", "2")
     assert AnswerCorrectness().version == "1"  # unchanged meaning, old baselines stay comparable
