@@ -12,6 +12,8 @@ dependencies = [
   "pydantic-settings",
   "pyyaml",
   "numpy",
+  "xxhash>=4.0.2",
+  "snowballstemmer>=3.1.1",
 ]
 
 [project.optional-dependencies]

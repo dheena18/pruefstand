@@ -10,10 +10,10 @@ from typing import Any
 import httpx
 from jsonschema import Draft202012Validator
 
-from rag_demo.analysis import GermanAnalyzer
+from rag_demo.analysis.analyzer import GermanAnalyzer
+from rag_demo.analysis.sparse import SparseEncoder
 from rag_demo.errors import CorpusError, RetrievalError
 from rag_demo.protocols import DenseEncoder
-from rag_demo.sparse import SparseEncoder
 
 _log = logging.getLogger(__name__)
 NAMESPACE = uuid.UUID("6f1a8f64-3c1e-4b0e-9d52-5f0b7b1c2a10")

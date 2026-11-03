@@ -12,11 +12,11 @@ from pathlib import Path
 
 import httpx
 
-from rag_demo.analysis import GermanAnalyzer
+from rag_demo.analysis.analyzer import GermanAnalyzer
+from rag_demo.analysis.sparse import SparseEncoder
 from rag_demo.config import Settings, load_config
 from rag_demo.dense import TeiDenseEncoder
 from rag_demo.index import Indexer
-from rag_demo.sparse import SparseEncoder
 
 ROOT = Path(__file__).resolve().parents[2]
 SNAPSHOT = ROOT / ".cache" / "pruefstand" / "qdrant" / "slice_v1.snapshot"
@@ -51,7 +51,9 @@ def main(argv: Sequence[str] | None = None) -> int:
     indexer = Indexer(
         settings.qdrant_url,
         TeiDenseEncoder(cfg.embed, settings.embed_url),
-        GermanAnalyzer(compound_split=False, stemmer="none"),
+        GermanAnalyzer(
+            cfg.analyzer.compound_split, cfg.analyzer.stemmer, cfg.analyzer.fold_umlauts
+        ),
         SparseEncoder(),
         collection=settings.collection,
     )

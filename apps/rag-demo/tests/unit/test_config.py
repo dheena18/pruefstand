@@ -9,7 +9,7 @@ from pydantic import ValidationError
 from rd_support import CONFIGS
 
 from rag_demo.config import PACKAGE_DIR, config_hash, load_config, parse_config
-from rag_demo.models import RagConfig
+from rag_demo.models import AnalyzerCfg, RagConfig
 
 BUG_FIELDS = {
     "tenant_filter_post_topk": "tenant_filter",
@@ -111,3 +111,18 @@ def test_one_changed_character_in_the_prompt_changes_the_hash(tmp_path: Path) ->
     target = tmp_path / "prompts" / "answer_de_v1.txt"
     target.write_text(target.read_text(encoding="utf-8") + ".", encoding="utf-8")
     assert config_hash(cfg, prompts_root=tmp_path) != before
+
+
+def test_analyzer_section_defaults_to_the_full_german_pipeline() -> None:
+    cfg = load_config(CONFIGS / "rag.yaml")
+    assert cfg.analyzer.compound_split is True
+    assert cfg.analyzer.stemmer == "snowball_de"
+    assert cfg.analyzer.fold_umlauts is True
+
+
+def test_analyzer_switches_change_the_hash_and_reject_unknown_keys() -> None:
+    cfg = load_config(CONFIGS / "rag.yaml")
+    off = cfg.model_copy(update={"analyzer": AnalyzerCfg(compound_split=False)})
+    assert config_hash(off) != config_hash(cfg)  # M4 re-keys the index
+    with pytest.raises(ValidationError):
+        AnalyzerCfg.model_validate({"compound_split": True, "stem": "x"})

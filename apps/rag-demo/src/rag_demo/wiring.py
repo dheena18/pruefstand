@@ -7,7 +7,8 @@ from typing import Literal
 import numpy as np
 from numpy.typing import NDArray
 
-from rag_demo.analysis import GermanAnalyzer
+from rag_demo.analysis.analyzer import GermanAnalyzer
+from rag_demo.analysis.sparse import SparseEncoder
 from rag_demo.catalogue import CatalogueEntry, check_against_catalogue, load_catalogue
 from rag_demo.config import Settings, resolve_model_sha
 from rag_demo.dense import TeiDenseEncoder
@@ -18,7 +19,6 @@ from rag_demo.generate_ollama import OllamaChatGenerator
 from rag_demo.models import RagConfig, Stats
 from rag_demo.protocols import DenseEncoder, Generator
 from rag_demo.retrieve import Retriever
-from rag_demo.sparse import SparseEncoder
 
 
 class PendingOllamaEncoder:
@@ -104,7 +104,11 @@ def build_retriever(cfg: RagConfig, settings: Settings, embed_url: str) -> Retri
         cfg,
         settings.qdrant_url,
         encoder,
-        GermanAnalyzer(compound_split=False, stemmer="none"),
+        GermanAnalyzer(
+            compound_split=cfg.analyzer.compound_split,
+            stemmer=cfg.analyzer.stemmer,
+            fold_umlauts=cfg.analyzer.fold_umlauts,
+        ),
         SparseEncoder(),
         collection=settings.collection,
     )

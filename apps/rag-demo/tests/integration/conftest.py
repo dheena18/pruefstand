@@ -11,16 +11,16 @@ from rd_support import CONFIGS, MODEL_DIR, REPO, SLICE
 from testcontainers.core.container import DockerContainer
 from testcontainers.core.waiting_utils import wait_for_logs
 
-from rag_demo.analysis import GermanAnalyzer
+from rag_demo.analysis.analyzer import GermanAnalyzer
+from rag_demo.analysis.sparse import SparseEncoder
 from rag_demo.config import load_config
 from rag_demo.dense import TeiDenseEncoder
 from rag_demo.index import Indexer
 from rag_demo.models import RagConfig
 from rag_demo.retrieve import Retriever
-from rag_demo.sparse import SparseEncoder
 
-COLLECTION = "slice_v1"
-SNAPSHOT = REPO / ".cache" / "pruefstand" / "qdrant" / "slice_v1.snapshot"
+COLLECTION = "slice_v2"
+SNAPSHOT = REPO / ".cache" / "pruefstand" / "qdrant" / "slice_v2.snapshot"
 
 
 def _compose_image(service: str) -> str:
@@ -74,7 +74,7 @@ def qdrant_url(tei_url: str) -> Iterator[str]:
             return
         cfg = load_config(CONFIGS / "rag.yaml")
         Indexer(
-            url, _dense(cfg, tei_url), _analyzer(), SparseEncoder(), collection=COLLECTION
+            url, _dense(cfg, tei_url), _analyzer(cfg), SparseEncoder(), collection=COLLECTION
         ).index(SLICE)
         yield url
 
@@ -90,8 +90,9 @@ def _restore(url: str) -> bool:
     return resp.is_success
 
 
-def _analyzer() -> GermanAnalyzer:
-    return GermanAnalyzer(compound_split=False, stemmer="none")
+def _analyzer(cfg: RagConfig) -> GermanAnalyzer:
+    a = cfg.analyzer
+    return GermanAnalyzer(a.compound_split, a.stemmer, a.fold_umlauts)
 
 
 def _dense(cfg: RagConfig, tei_url: str) -> TeiDenseEncoder:
@@ -120,7 +121,7 @@ def make_retriever(qdrant_url: str, tei_url: str):  # type: ignore[no-untyped-de
             cfg,
             qdrant_url,
             _dense(cfg, tei_url),
-            _analyzer(),
+            _analyzer(cfg),
             SparseEncoder(),
             collection=COLLECTION,
             client=httpx.Client(transport=transport, timeout=30),

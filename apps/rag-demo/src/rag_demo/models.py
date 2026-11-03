@@ -101,6 +101,17 @@ class GenerationCfg(_Frozen):
     max_tokens: int = Field(ge=1)
 
 
+class AnalyzerCfg(_Frozen):
+    """The German analyzer switches (T3.3); part of ``config_hash``, so a change re-keys the index.
+
+    ``compound_split: false`` is mutation M4 (compound words stay one token).
+    """
+
+    compound_split: bool = True
+    fold_umlauts: bool = True
+    stemmer: Literal["snowball_de", "none"] = "snowball_de"
+
+
 class RagConfig(_Frozen):
     """``configs/rag.yaml``; the bug switches default to the correct behaviour (interfaces §16)."""
 
@@ -108,6 +119,7 @@ class RagConfig(_Frozen):
     generator: GeneratorCfg
     embed: EmbedCfg
     rerank: RerankCfg = Field(default_factory=RerankCfg)
+    analyzer: AnalyzerCfg = Field(default_factory=AnalyzerCfg)
     generation: GenerationCfg | None = None
     top_k: int = Field(default=8, ge=1, le=50)
     chunk_prompt_tokens: int = Field(default=256, ge=16)

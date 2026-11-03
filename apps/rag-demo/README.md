@@ -9,7 +9,7 @@ against it; T3.x extends the same app to the A40 stack.
 | Part | Module | What it is |
 | --- | --- | --- |
 | Config | `config.py`, `models.py` | `RagConfig` (frozen, `extra=forbid`), `config_hash` (config + prompt bytes), `Settings` from the environment |
-| Analysis | `analysis.py`, `sparse.py` | NFC, lowercase, umlaut and ß folding; hashed BM25 vocabulary (Qdrant applies IDF) |
+| Analysis | `analysis/` (`normalise`, `abbreviations`, `compound`, `analyzer`, `sparse`) | `GermanAnalyzer` and `SparseEncoder`, see "Analyzer" below |
 | Dense | `dense.py` | `TeiDenseEncoder` (TEI CPU, e5 `query: ` / `passage: ` prefixes, `truncate: true`) |
 | Index | `index.py` | corpus reader validated by `schemas/chunk.schema.json`; one Qdrant collection, `tenant_id` payload index |
 | Retrieval | `retrieve.py` | Query API, dense + sparse prefetch, tenant filter inside **every** prefetch, RRF |
@@ -86,3 +86,21 @@ llama.cpp and TEI servers by `make cassettes`), `tests/contract` (OpenAPI), `tes
 - Build and Trivy-scan the rag-demo image in `build-images.yml`, push and sign it: T6.2b (`push-sign`).
 - Check the TEI weights SHA-256 (`live-models.yaml` `weights_sha256`) in the live stack, not only in the integration fixture: T1.12.
 - Measure the p95 margin (14.2 s against 15 s on the VM) and the guard-on injection result on the hosted runner: T1.12.
+
+## Analyzer (T3.3)
+
+`rag_demo.analysis.analyzer.GermanAnalyzer` is used identically at index and query time. Pipeline: NFC and
+lowercase, function abbreviations (`Abs.` -> `absatz`, `Nr.`, `ggf.`, `i.V.m.`; law abbreviations such as `BGB`
+stay), German numbers (`1.000,50 €` -> `1000.50`, `eur`), tokeniser (keeps `§`, `622`, `626a`), Snowball
+German stopwords, compound split (the compound **and** its parts; only words of 10 to 60 letters that the
+shipped lexicon `analysis/lexicon_de.txt` covers completely, linking elements `s es n en e er ens`), ä/ö/ü/ß
+folding, Snowball German stemming. The three switches live in the `analyzer:` section of `rag.yaml`
+(`compound_split`, `fold_umlauts`, `stemmer`; defaults `true`, `true`, `snowball_de`) and are part of
+`config_hash`; `compound_split: false` is mutation M4. `SparseEncoder` hashes a token to
+`xxhash64(token) mod 2**31` and weights it with BM25 term-frequency saturation (k1 1.2, b 0.75); Qdrant applies
+the IDF. Changing the analyzer or the hash changes the index: re-index (the integration slice is now
+`slice_v2`).
+
+`uv run python -m rag_demo.analysis.analyzer "Kündigungsschutzgesetz"` prints the token list.
+Benchmark (`uv run pytest -m slow apps/rag-demo/tests/unit/analysis/test_benchmark.py -s`): 10 000 chunks
+tokenised and encoded in well under the 20 s limit on CPU.
