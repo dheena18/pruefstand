@@ -122,4 +122,10 @@ Reserved decision ranges (2026-11-03): the lead assigned disjoint ranges per age
 - Never take a timing measurement for a budget (rerank latency, tok/s, TTFT, load times) while other checks run; repeat any
   measurement that was taken under load.
 - At most 3 task agents at once (the full-speed window of D586 is over).
+- Every watcher or waiter you start ends itself when its PR is merged or closed (a `gh pr checks --watch`, or a loop that tests
+  the PR state); never leave one running. No agent kills a process it did not start (no `pkill -f` patterns); only the lead does
+  that, during a cleanup, by exact PID. (2026-11-03: ten orphaned waiters, the oldest 35 hours, were stopped; one `pkill -f` by a
+  reviewer had killed another session's polling loop.)
+- No `git stash` in worktrees: the stash list is shared across all worktrees, so a `stash pop` can apply another session's
+  entry. Use a WIP commit on your own branch, or `git diff > patch`. Old stash entries (T1.13) stay untouched.
 

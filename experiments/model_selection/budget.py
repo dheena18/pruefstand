@@ -254,4 +254,7 @@ def report() -> str:
 
 
 if __name__ == "__main__":
+    from model_selection.scenarios import scenarios_report
+
     print(report())
+    print(scenarios_report())

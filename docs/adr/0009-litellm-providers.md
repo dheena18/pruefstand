@@ -3,6 +3,7 @@
 - Status: Accepted (revised 2026-10-28: free providers only, external-provider data guard; revised 2026-10-31: round 8 family plan, no hosted generator, no CPU judge; round 9 judge pass rule, reviewer roles, input cap, weekend datagen; revised round 10 (D198, D204, D209): all tier-2 serving is Ollama, provider `ollama` replaces `hosted_vllm`, vLLM and TEI rejected; revised round 11 (D219–D221, D224): native Ollama API only, catalogue options enforced, fallback judge informational)
 - Amended by: [ADR-0018](0018-single-ollama-server.md) (2026-10-31: one Ollama server for both GPUs, port 11434 only)
 - Amended by: [ADR-0019](0019-local-model-storage-small-disk.md) (2026-10-31: one judge `gemma3:12b`, public-text datagen on GitHub Models, private-doc datagen on the local judge model, models on the cluster disk)
+- Amended by: T5.1 addendum below (D520-D527: retries, quota exhaustion, cache epochs)
 - Date: 2026-10-27
 - Tasks: T1.2, T1.4, T1.13, T3.1a, T3.1b, T5.1
 
@@ -121,3 +122,18 @@ and no systemd linger, so the planned vLLM + TEI containers cannot run there.
   before; Ollama has fewer serving knobs than vLLM (no guided-decoding backends, no Prometheus
   metrics), and parallel slots are not bit-deterministic. The first model load per mode comes from the
   cluster's own disk (ADR-0019) and is excluded from timing budgets.
+
+## Addendum T5.1 (2026-11-03): retries, quota exhaustion, cache key and epochs
+
+- `LLMClient` retries 429, 5xx, timeouts and connection loss with exponential backoff and seeded jitter
+  (`RetryPolicy`, defaults 3 retries, 1 s base, 30 s cap), honours `Retry-After`, never retries other 4xx and
+  records every attempt. A `Retry-After` above 60 s is a daily limit, not a pause.
+- An external provider's 429 after the retries (or a long `Retry-After`) raises `QuotaExhausted`; the model is
+  exhausted for the rest of the run and later calls fail without a network call. A configured fallback judge is
+  policy-checked first (data guard, allowed providers) and answers with `fallback=True`.
+- The cache key is `stable_hash(model, "<provider version>#e<epoch>", prompt id, prompt version, messages,
+  temperature, max_tokens, seed, response_format)` (interfaces §8). The version is probed once per model and run
+  (Ollama tag + digest, llama.cpp `/props`) or taken from the first GitHub Models response. The epoch comes from
+  `cache_epochs.json` and is bumped by `invalidate_judge`; it is not `judge_epoch` and not in `eval_fingerprint`.
+- Interface change: `LLMClient.__init__` gains the keyword-only `retry` and `epochs` (additive, defaults keep
+  T1.4 behaviour); `build_client` and `LiteLLMBackend.resolve_version` are new.

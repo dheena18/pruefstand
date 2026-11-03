@@ -26,6 +26,8 @@ patterns:
   - {pattern: "deepseek", family: deepseek}
   - {pattern: "phi", family: phi}
   - {pattern: "command", family: command}
+  - {pattern: "bge", family: bge}          # embedding / reranker models of infra/gpu/models.yaml (T5.1)
+  - {pattern: "e5", family: e5}
 
 # Family plan (round-8 W3.1, binding; ADR-0019, D329, D330): the single machine-readable record of the
 # role -> family plan. Exact model versions are pinned later (T1.13, T3.1b); gpu-cluster.md mirrors this block.

@@ -1,0 +1,10 @@
+# Free-tier limits of GitHub Models per model (T5.1 S7). These are the limits GitHub documents for
+# the "low" tier; T0.6's quota probe (docs/engineering/ci-cd.md, "GitHub Models quotas") replaces
+# them with measured values and sets measured_at. Until then measured_at is null and the numbers
+# are an assumption, not a measurement.
+measured_at: null
+models:
+  openai/gpt-4.1-mini:
+    requests_per_minute: 15
+    requests_per_day: 150
+    tokens_per_request: 8000

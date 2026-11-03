@@ -2,8 +2,8 @@
 
 Run it under the GPU lock with day mode loaded and the stack up on the dev ports (Y6.5):
 
-    make up COMPOSE_FILES="infra/gpu/compose.gpu.yml infra/gpu/compose.rag-demo.yml" \
-        PROFILES="gpu dev" SERVICES=rag-demo-dev
+    make up COMPOSE_FILES="infra/gpu/compose.rag-demo.yml" \
+        PROFILES="gpu dev" SERVICES="rag-demo-dev rerank-cpu"
     uv run pytest -m gpu apps/rag-demo/tests/gpu -v
 
 The app URL comes from ``RAG_DEMO_URL`` (default: ``127.0.0.1:$RAG_DEMO_HOST_PORT``, 18000 with

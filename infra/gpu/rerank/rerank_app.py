@@ -16,6 +16,7 @@ once the weights are cached.
 import hashlib
 import importlib
 import json
+import math
 import os
 import sys
 import threading
@@ -79,6 +80,43 @@ def verify_sha256(path: Path, expected: str) -> None:
         raise ValueError(message)
 
 
+def _quota_cpus(root: Path) -> float | None:
+    """CPUs granted by the cgroup quota (v2 ``cpu.max``, v1 ``cpu.cfs_*``); None = unlimited."""
+    try:
+        quota, period = (root / "cpu.max").read_text(encoding="utf-8").split()
+        return None if quota == "max" else int(quota) / int(period)
+    except (OSError, ValueError, ZeroDivisionError):
+        pass
+    try:
+        v1 = root / "cpu"
+        quota_us = int((v1 / "cpu.cfs_quota_us").read_text(encoding="utf-8"))
+        period_us = int((v1 / "cpu.cfs_period_us").read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return None
+    return quota_us / period_us if quota_us > 0 and period_us > 0 else None
+
+
+def cpu_limit(root: Path = Path("/sys/fs/cgroup"), cores: int | None = None) -> int:
+    """Threads torch may use: the cgroup CPU quota, capped by the visible cores, at least 1.
+
+    The host has many cores but the container runs under a CFS quota (``cpus:`` in compose); one
+    thread per host core is throttled and a two-text rerank took 24 s instead of 0.2 s (D650).
+    ``RERANK_THREADS`` overrides the detection.
+
+    >>> cpu_limit(Path("/nonexistent"), cores=160) >= 1
+    True
+    """
+    visible = cores if cores is not None else len(os.sched_getaffinity(0))
+    try:
+        override = int(os.environ.get("RERANK_THREADS", ""))
+    except ValueError:
+        override = 0
+    if override > 0:
+        return min(override, visible)
+    quota = _quota_cpus(root)
+    return max(1, visible if quota is None else min(visible, math.ceil(quota)))
+
+
 class CrossEncoderScorer:
     """The real model (sentence-transformers CrossEncoder, CPU, sigmoid scores like TEI)."""
 
@@ -89,7 +127,12 @@ class CrossEncoderScorer:
             hub = importlib.import_module("huggingface_hub")
             weights = hub.hf_hub_download(model_id, "model.safetensors", revision=revision)
             verify_sha256(Path(weights), pinned)
+        threads = str(cpu_limit())
+        os.environ["OMP_NUM_THREADS"] = os.environ["MKL_NUM_THREADS"] = (
+            threads  # before torch loads
+        )
         module = importlib.import_module("sentence_transformers")
+        importlib.import_module("torch").set_num_threads(int(threads))
         self._model: Any = module.CrossEncoder(
             model_id, revision=revision, device="cpu", max_length=MAX_TOKENS_FULL
         )

@@ -1,0 +1,11 @@
+# USD per 1000 tokens (prompt + completion) by provider (T5.1 S7, ADR-0009). Every provider the
+# project may use is free; the file exists so that a future paid provider has to be priced here
+# explicitly (cost_usd raises for a provider without an entry) and enabled with allow_paid.
+usd_per_1k_tokens:
+  openai_compatible_local: 0.0   # llama.cpp on CPU
+  ollama: 0.0                    # A40 cluster, GPU seconds are tracked separately
+  github: 0.0                    # GitHub Models free tier
+  mistral: 0.0                   # opt-in free tiers
+  gemini: 0.0
+  groq: 0.0
+  openrouter: 0.0                # only ids ending in :free

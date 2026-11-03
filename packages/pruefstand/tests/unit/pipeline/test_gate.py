@@ -68,6 +68,17 @@ def test_a_degraded_baseline_judge_makes_judged_metrics_informational() -> None:
     assert "context_recall" not in info
 
 
+def test_a_judge_fallback_on_either_run_makes_every_judged_metric_informational() -> None:
+    base, cand = manifests(stack="a40")
+    info = informational_mapping(base, cand.model_copy(update={"judge_fallback": True}), POLICY)
+    assert info["faithfulness"] == "judge_fallback"
+    assert "context_recall" not in info  # deterministic metrics still gate
+    info = informational_mapping(base.model_copy(update={"judge_fallback": True}), cand, POLICY)
+    assert info["faithfulness"] == "judge_fallback"
+    both = cand.model_copy(update={"judge_fallback": True, "judge_degraded": True})
+    assert informational_mapping(base, both, POLICY)["faithfulness"] == "judge_fallback"
+
+
 def test_degraded_wins_over_drift_and_drift_over_truncation() -> None:
     base, cand = manifests(stack="a40")
     drift = cand.model_copy(update={"judge_drift": True, "counts": {"judge_truncated": 9}})
