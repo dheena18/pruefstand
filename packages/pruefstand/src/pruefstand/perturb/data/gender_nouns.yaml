@@ -1,0 +1,53 @@
+# Frequent generic masculines (T4.5). m = singular, pl = plural, f_pl = feminine plural, stem = part before
+# the star/colon suffix (default pl), part = participle plural (omitted when there is no natural one). Own list.
+nouns:
+  - {m: Mitarbeiter, pl: Mitarbeiter, f_pl: Mitarbeiterinnen, part: Mitarbeitende}
+  - {m: Arbeitnehmer, pl: Arbeitnehmer, f_pl: Arbeitnehmerinnen, part: Arbeitnehmende}
+  - {m: Arbeitgeber, pl: Arbeitgeber, f_pl: Arbeitgeberinnen, part: Arbeitgebende}
+  - {m: Verbraucher, pl: Verbraucher, f_pl: Verbraucherinnen, part: Verbrauchende}
+  - {m: Mieter, pl: Mieter, f_pl: Mieterinnen, part: Mietende}
+  - {m: Vermieter, pl: Vermieter, f_pl: Vermieterinnen, part: Vermietende}
+  - {m: Käufer, pl: Käufer, f_pl: Käuferinnen, part: Kaufende}
+  - {m: Verkäufer, pl: Verkäufer, f_pl: Verkäuferinnen, part: Verkaufende}
+  - {m: Kunde, pl: Kunden, f_pl: Kundinnen, stem: Kund}
+  - {m: Lieferant, pl: Lieferanten, f_pl: Lieferantinnen, stem: Lieferant}
+  - {m: Kläger, pl: Kläger, f_pl: Klägerinnen, part: Klagende}
+  - {m: Gläubiger, pl: Gläubiger, f_pl: Gläubigerinnen}
+  - {m: Schuldner, pl: Schuldner, f_pl: Schuldnerinnen}
+  - {m: Student, pl: Studenten, f_pl: Studentinnen, stem: Student, part: Studierende}
+  - {m: Schüler, pl: Schüler, f_pl: Schülerinnen}
+  - {m: Lehrer, pl: Lehrer, f_pl: Lehrerinnen, part: Lehrende}
+  - {m: Berater, pl: Berater, f_pl: Beraterinnen, part: Beratende}
+  - {m: Anwalt, pl: Anwälte, f_pl: Anwältinnen, stem: Anwält}
+  - {m: Arzt, pl: Ärzte, f_pl: Ärztinnen, stem: Ärzt}
+  - {m: Richter, pl: Richter, f_pl: Richterinnen}
+  - {m: Gutachter, pl: Gutachter, f_pl: Gutachterinnen}
+  - {m: Geschäftsführer, pl: Geschäftsführer, f_pl: Geschäftsführerinnen}
+  - {m: Gesellschafter, pl: Gesellschafter, f_pl: Gesellschafterinnen}
+  - {m: Vermittler, pl: Vermittler, f_pl: Vermittlerinnen}
+  - {m: Anbieter, pl: Anbieter, f_pl: Anbieterinnen, part: Anbietende}
+  - {m: Nutzer, pl: Nutzer, f_pl: Nutzerinnen, part: Nutzende}
+  - {m: Besucher, pl: Besucher, f_pl: Besucherinnen, part: Besuchende}
+  - {m: Teilnehmer, pl: Teilnehmer, f_pl: Teilnehmerinnen, part: Teilnehmende}
+  - {m: Antragsteller, pl: Antragsteller, f_pl: Antragstellerinnen}
+  - {m: Bewerber, pl: Bewerber, f_pl: Bewerberinnen}
+  - {m: Eigentümer, pl: Eigentümer, f_pl: Eigentümerinnen}
+  - {m: Besitzer, pl: Besitzer, f_pl: Besitzerinnen}
+  - {m: Erbe, pl: Erben, f_pl: Erbinnen, stem: Erb}
+  - {m: Pächter, pl: Pächter, f_pl: Pächterinnen}
+  - {m: Verpächter, pl: Verpächter, f_pl: Verpächterinnen}
+  - {m: Darlehensnehmer, pl: Darlehensnehmer, f_pl: Darlehensnehmerinnen}
+  - {m: Darlehensgeber, pl: Darlehensgeber, f_pl: Darlehensgeberinnen}
+  - {m: Versicherungsnehmer, pl: Versicherungsnehmer, f_pl: Versicherungsnehmerinnen}
+  - {m: Patient, pl: Patienten, f_pl: Patientinnen, stem: Patient}
+  - {m: Bürger, pl: Bürger, f_pl: Bürgerinnen}
+  - {m: Einwohner, pl: Einwohner, f_pl: Einwohnerinnen}
+  - {m: Zeuge, pl: Zeugen, f_pl: Zeuginnen, stem: Zeug}
+  - {m: Praktikant, pl: Praktikanten, f_pl: Praktikantinnen, stem: Praktikant}
+  - {m: Kollege, pl: Kollegen, f_pl: Kolleginnen, stem: Kolleg}
+  - {m: Gast, pl: Gäste, f_pl: Gästinnen, stem: Gäst}
+  - {m: Händler, pl: Händler, f_pl: Händlerinnen}
+  - {m: Hersteller, pl: Hersteller, f_pl: Herstellerinnen}
+  - {m: Betreiber, pl: Betreiber, f_pl: Betreiberinnen}
+  - {m: Verwalter, pl: Verwalter, f_pl: Verwalterinnen}
+  - {m: Prüfer, pl: Prüfer, f_pl: Prüferinnen}
