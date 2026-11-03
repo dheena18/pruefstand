@@ -177,11 +177,11 @@ VM identity and coordination files (R11 Y1, D211-D213)
   lock              /var/lib/pruefstand/gpu.lock (0660, group pruefstand); owner user is in group pruefstand
   owner GPU work    pruefstand-lock <cmd>  (flock on the same file, exports PRUEFSTAND_LOCK_HELD=1, runs <cmd>)
   owner cluster ops only through the wrapper: sudo -n -u pruefstand /usr/local/bin/pruefstand-cluster <op> [args]
-                    (T3.1a; ops start-ollama, stop-ollama, status, pull|rm|show <tag> (ADR-0018: no mode or GPU args);
+                    (T3.1a; ops start-ollama, stop-ollama, status, log [N] (T3.1e, D560: redacted log tail, N 1..1000), pull|rm|show <tag> (ADR-0018: no mode or GPU args);
                     anything else exit 64); the owner never holds the cluster key, never runs ssh to the cluster.
                     R12 (A12-M5, D276): the mutating ops (start-ollama, stop-ollama, pull, rm) run only when the
                     caller holds gpu.lock: sudoers keeps PRUEFSTAND_LOCK_HELD (env_keep) and the wrapper checks that
-                    `flock -n /var/lib/pruefstand/gpu.lock true` FAILS (lock held), else exit 2; status/show need no lock
+                    `flock -n /var/lib/pruefstand/gpu.lock true` FAILS (lock held), else exit 2; status/show/log need no lock
   GitHub token      R12 (N4.4, D257): gh/git on the VM use a fine-grained token limited to the PUBLIC repo (contents +
                     pull requests + workflows write, Workflows being required to push .github/workflows/**, D284; no
                     administration, no access to pruefstand-gate or pruefstand-dashboard-data); admin actions (ruleset bypass,
@@ -338,6 +338,8 @@ cluster scripts (infra/cluster/, copied over SSH to /data/dheena/pruefstand-bin/
                                    R12 (A12-M3, D276): before acting on a pid stop-ollama.sh and status.sh check
                                    that /proc/<pid>/cmdline is `ollama serve` and that :11434 is listening
                                    (no pid file since ADR-0019)
+  log-tail.sh [N]                  (T3.1e, D561/D562) read-only: last N (1..1000, default 200) lines of the Ollama log,
+                                   redacted on the cluster (paths, login, host, addresses, secrets); fails closed
   ollama-op.sh pull|rm|show <tag>  (T3.1a, D414) the only way the wrapper and the VM scripts run `ollama` on the
                                    cluster: takes the binary from the process that serves :11434, tag regex
                                    ^[a-z0-9._:/-]+$, `rm` of the generator tag -> exit 64, `pull` with less than
