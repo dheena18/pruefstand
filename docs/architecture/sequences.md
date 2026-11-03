@@ -494,3 +494,36 @@ sequenceDiagram
 
 The seeded bugs change only step 6 (`tenant_filter: post_topk` sends no filter and filters in Python after
 the cut, `shared_public_merge: unfiltered` adds a second unfiltered query) and switch the guard off.
+
+## 10. One LLM call (T5.1)
+
+`LLMClient.complete` is the only door to a model: policy, cache, quota, budget, backend, recorder (interfaces §3, §8).
+
+```mermaid
+sequenceDiagram
+    participant M as Metric / script
+    participant C as LLMClient
+    participant P as LLMPolicy
+    participant K as KVCache (llm)
+    participant B as LiteLLMBackend
+    participant R as CallRecorder
+    M->>C: complete(req)
+    C->>P: check(req, provider)  (allow-list, paid block, data guard)
+    P-->>C: ok or PolicyViolation (recorded, no call)
+    C->>B: resolve_version(model) once per model and run
+    C->>K: get(key = hash(model, version#epoch, prompt, messages, temperature, ...))
+    alt hit
+        K-->>C: response (cached=True, cost 0, no quota charged)
+    else miss
+        C->>C: budget.check(); model exhausted? QuotaExhausted or fallback
+        loop up to 1 + max_retries
+            C->>B: acomplete(req)
+            B-->>C: response or LLMError (429/5xx/timeout are transient)
+            C->>R: record(attempt)
+        end
+        Note over C: external 429 after the retries, or Retry-After above the cap: QuotaExhausted, model exhausted for the run
+        C->>K: set(key) when temperature == 0
+        C->>C: budget.charge(response)
+    end
+    C-->>M: LLMResponse (fallback=True when the fallback judge answered)
+```
