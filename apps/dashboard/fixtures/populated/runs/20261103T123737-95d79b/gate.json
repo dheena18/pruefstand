@@ -1,0 +1,17 @@
+{
+  "absolute_checks": [],
+  "baseline_run_id": null,
+  "candidate_run_id": "20261103T123737-95d79b",
+  "decisions": [],
+  "eval_fingerprint": "e89502fea03860ed",
+  "hard_fails": [],
+  "likely_cause": null,
+  "n_excluded": {},
+  "n_unmatched": {},
+  "no_baseline": true,
+  "not_applicable_counts": {},
+  "notable_slices": [],
+  "schema_version": "1",
+  "status": "insufficient_data",
+  "top_failing_cases": []
+}

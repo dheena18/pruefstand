@@ -1,0 +1,178 @@
+name: ui
+
+# Dashboard (ci-cd.md section 1.1, ui-spec 14.3): hosted runners only, no secrets, no path filters (every job
+# here is part of the required check `ui-check` (D647)). T8.3 adds `playwright` and `basepath-smoke` to the aggregate.
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+  push:
+    branches: [main]
+
+permissions: {}
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || format('{0}-{1}', github.event_name, github.ref) }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  ui-lint:
+    name: ui-lint
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: "22"
+      - name: Install
+        run: corepack enable && pnpm -C apps/dashboard install --frozen-lockfile
+      - name: lint
+        run: pnpm -C apps/dashboard lint
+
+  ui-typecheck:
+    name: ui-typecheck
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: "22"
+      - name: Install
+        run: corepack enable && pnpm -C apps/dashboard install --frozen-lockfile
+      - name: typecheck
+        run: pnpm -C apps/dashboard typecheck
+
+  ui-unit:
+    name: ui-unit
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: "22"
+      - name: Install
+        run: corepack enable && pnpm -C apps/dashboard install --frozen-lockfile
+      - name: Build both fixture sets
+        run: |
+          scripts/dashboard/build_set.sh populated
+          scripts/dashboard/build_set.sh empty
+      - name: Vitest with coverage (src/lib >= 80 %)
+        env:
+          DASHBOARD_SETS_PREBUILT: "1"
+        run: pnpm -C apps/dashboard test:coverage
+
+  types-fresh:
+    name: types-fresh
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: "22"
+      - name: Install
+        run: corepack enable && pnpm -C apps/dashboard install --frozen-lockfile
+      - name: Regenerate types, licences and report tokens
+        run: |
+          pnpm -C apps/dashboard gen:types
+          pnpm -C apps/dashboard gen:licences
+          pnpm -C apps/dashboard gen:report-tokens
+      - name: No drift
+        run: |
+          git diff --exit-code -- \
+            apps/dashboard/src/types/generated apps/dashboard/src/content \
+            packages/pruefstand/src/pruefstand/report/templates/_tokens.css \
+            packages/pruefstand/src/pruefstand/report/templates/_licences.json
+
+  fixtures:
+    name: fixtures
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: "22"
+      - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
+        with:
+          version: "0.13.6"
+          enable-cache: true
+      - name: Install
+        run: |
+          corepack enable
+          pnpm -C apps/dashboard install --frozen-lockfile
+          uv sync --frozen --all-packages --all-extras
+      - name: Both sets pass validate_data.mjs
+        run: |
+          node scripts/dashboard/validate_data.mjs apps/dashboard/fixtures/populated
+          node scripts/dashboard/validate_data.mjs apps/dashboard/fixtures/empty
+      - name: State coverage (ui-spec 14.1)
+        run: node scripts/dashboard/check_fixture_states.mjs
+      - name: derive.py is reproducible
+        run: |
+          uv run python scripts/dashboard/derive.py
+          git diff --exit-code -- apps/dashboard/fixtures/raw
+      - name: SOURCE.md is at most 30 days old (informational until M7)
+        continue-on-error: true
+        run: |
+          date_line="$(sed -n 's/^Date: //p' apps/dashboard/fixtures/populated/SOURCE.md | head -n 1)"
+          age=$(( ( $(date +%s) - $(date -d "$date_line" +%s) ) / 86400 ))
+          echo "fixture snapshot is $age days old"
+          test "$age" -le 30
+
+  build:
+    name: build
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: "22"
+      - name: Install
+        run: corepack enable && pnpm -C apps/dashboard install --frozen-lockfile
+      - name: Build both sets
+        run: |
+          scripts/dashboard/build_set.sh populated
+          scripts/dashboard/build_set.sh empty
+
+  check:
+    name: ui-check
+    if: always()
+    needs: [ui-lint, ui-typecheck, ui-unit, types-fresh, fixtures, build]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions: {}
+    steps:
+      - name: Every needed job succeeded
+        env:
+          NEEDS: ${{ toJSON(needs) }}
+        run: |
+          echo "$NEEDS" | jq -r 'to_entries[] | "\(.key): \(.value.result)"'
+          echo "$NEEDS" | jq -e 'all(.[]; .result == "success")' > /dev/null

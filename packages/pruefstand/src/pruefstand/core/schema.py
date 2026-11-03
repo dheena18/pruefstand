@@ -8,7 +8,12 @@ from pydantic import BaseModel
 from pruefstand.core.config import PruefstandConfig
 from pruefstand.core.models.attacks import CanaryRegistry
 from pruefstand.core.models.corpus import Chunk, CorpusManifest
-from pruefstand.core.models.dashboard import LabelsDocument
+from pruefstand.core.models.dashboard import (
+    DashboardCases,
+    DashboardRunIndex,
+    DashboardSlices,
+    LabelsDocument,
+)
 from pruefstand.core.models.dataset import DatasetManifest
 from pruefstand.core.models.evidence import EvidenceRecord
 from pruefstand.core.models.gate import GateReport
@@ -66,5 +71,8 @@ register_schema("canary_registry", CanaryRegistry)
 register_schema("pruefstand_config", PruefstandConfig)
 register_schema("gate_report", GateReport)
 register_schema("labels", LabelsDocument)
+register_schema("dashboard_run_index", DashboardRunIndex)
+register_schema("dashboard_slices", DashboardSlices)
+register_schema("dashboard_cases", DashboardCases)
 register_schema("dataset_manifest", DatasetManifest)
 register_schema("evidence_record", EvidenceRecord)

@@ -159,6 +159,8 @@ flowchart LR
     p4 --> demo
 ```
 
+Data flow (T8.1): `pruefstand export-dashboard` sanitises the run directories and writes the data tree; `pnpm build` validates it (`scripts/dashboard/validate_data.mjs`), copies it to `public/data/` and exports the site with per-page CSP `<meta>` tags (`apps/dashboard/README.md`).
+
 The dashboard is a static export: all data comes from published artefact JSON (the public
 dashboard-data repo, D108) validated against the generated TypeScript types; the only runtime call is
 the "Try it" page to the demo API. Routes carry a locale prefix (`LOCALE` = `de`, the default, or `en`,

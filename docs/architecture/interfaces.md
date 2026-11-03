@@ -1360,6 +1360,12 @@ has `gate.json`). The published copy of this tree in `pruefstand-dashboard-data`
 `MAX_CASE_RUNS`. Individual case pages exist only for failing and top-N cases. The fixture snapshot covers pass,
 warn, fail, hard fail, insufficient data, partial/incomplete and judge skipped (D139).
 
+Export details (T8.1, D643-D644): `MAX_SHARD_CASES = 500` lives next to the two caps in `core.models.dashboard`; a run without
+cases still writes an empty shard `0`; `DashboardCase.error` is a class name (`TimeoutError`, `TargetError`, ...), never the message;
+a chunk without a reported tenant gives `""` in `retrieved_chunk_tenant_ids`; `RunIndexEntry.n_cases` is the sanitised case
+count of the exported `run.json`. `export-dashboard` masks and cleans hard-fail `evidence` in `gate.json` (D542). Interface
+change by T8.1 (UI13-19): `RunIndexEntry.block` and `.judged_subset` (already listed above).
+
 **Fixture sets and build-time validation (R9 X1.2).** One static dashboard build **per fixture set**:
 `apps/dashboard/fixtures/{populated,empty}/`, each a complete data tree in the layout above, each built and tested as
 its own Playwright project. Every JSON file is validated against its exported schema at build time; invalid data fails

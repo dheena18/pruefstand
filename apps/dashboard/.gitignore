@@ -1,0 +1,9 @@
+node_modules/
+.next/
+out/
+.sets/
+coverage/
+next-env.d.ts
+*.tsbuildinfo
+# the data tree of the current build (copied from DASHBOARD_DATA_DIR by `pnpm build`)
+public/data/

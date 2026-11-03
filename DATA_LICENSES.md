@@ -196,3 +196,59 @@ attribution of section 8.
 | --- | --- | --- | --- |
 | 24 answerable cases (factual, multi-hop, comparison, cross-lingual), config `laws_eurlex` | questions and answers hand-written; evidence spans from the Gesetze im Internet text (KSchG, ArbZG, BGB, BDSG) and the EUR-Lex text of the DSGVO Art. 5-6 (DE and EN) | CC BY 4.0 for our text; the quoted law text is an official work (§ 5 UrhG) or EUR-Lex reuse | "Gesetzestexte: Bundesministerium der Justiz / juris GmbH, www.gesetze-im-internet.de. Amtliche Werke gemäß § 5 UrhG." and "Source: EUR-Lex, © European Union, https://eur-lex.europa.eu. Reuse authorised under the EUR-Lex legal notice and Commission Decision 2011/833/EU. Consolidated versions are not authentic. The excerpts are shortened and not authentic." |
 | 16 other cases (5 unanswerable, 4 injection, 4 leak probes, 2 system-prompt probes, 1 filter bypass), config `own` | hand-written; the markers, the Bergmann and Hartmann facts and the prompt sentences come from our own synthetic documents and prompt | CC BY 4.0 | none; fictitious names, never real personal data |
+
+## 10. Dashboard attribution (machine-readable, T8.1)
+
+`scripts/dashboard/gen_licences.mjs` turns the block below into `apps/dashboard/src/content/licences.json`
+(footer and `/licences/` page) and into `packages/pruefstand/src/pruefstand/report/templates/_licences.json`
+(the HTML report). CI regenerates both and fails on a diff. Only sources the dashboard or a report shows are
+listed (`shown_here`); MEMERAG is never listed because it is never redistributed. Edit this block when a
+shown source changes, then run `pnpm -C apps/dashboard gen:licences`.
+
+```json dashboard-licences
+{
+  "footer_line": {
+    "de": "Fragen abgeleitet aus GermanQuAD/GermanDPR (deepset, CC BY 4.0) und Open Legal Data (ODbL 1.0); Gesetzestexte: Bundesministerium der Justiz / juris GmbH, EUR-Lex.",
+    "en": "Questions derived from GermanQuAD/GermanDPR (deepset, CC BY 4.0) and Open Legal Data (ODbL 1.0); statutes: Federal Ministry of Justice / juris GmbH, EUR-Lex."
+  },
+  "odbl_offer": "Contains information from Open Legal Data (openlegaldata.io), made available under the Open Database License (ODbL) v1.0. The derived database is shared under ODbL on request.",
+  "sources": [
+    {
+      "id": "gii",
+      "name": "Gesetze im Internet (BMJ / juris)",
+      "shown_here": true,
+      "licence": "Official works, § 5 Abs. 1 UrhG",
+      "licence_url": "https://www.gesetze-im-internet.de/urhg/__5.html",
+      "attribution": "Gesetzestexte: Bundesministerium der Justiz / juris GmbH, www.gesetze-im-internet.de. Amtliche Werke gemäß § 5 UrhG.",
+      "url": "https://www.gesetze-im-internet.de/"
+    },
+    {
+      "id": "eurlex",
+      "name": "EUR-Lex (Publications Office of the EU)",
+      "shown_here": true,
+      "licence": "EUR-Lex legal notice, Commission Decision 2011/833/EU",
+      "licence_url": "https://eur-lex.europa.eu/content/legal-notice/legal-notice.html",
+      "attribution": "EUR-Lex, Publications Office of the European Union; texts adapted, consolidated texts are not authentic.",
+      "url": "https://eur-lex.europa.eu/"
+    },
+    {
+      "id": "oldp",
+      "name": "Open Legal Data",
+      "shown_here": true,
+      "licence": "ODbL v1.0",
+      "licence_url": "https://opendatacommons.org/licenses/odbl/1-0/",
+      "attribution": "Contains information from Open Legal Data (openlegaldata.io), made available under the Open Database License (ODbL) v1.0.",
+      "url": "https://openlegaldata.io/"
+    },
+    {
+      "id": "germanquad",
+      "name": "GermanQuAD / GermanDPR (deepset)",
+      "shown_here": true,
+      "licence": "CC BY 4.0",
+      "licence_url": "https://creativecommons.org/licenses/by/4.0/",
+      "attribution": "Questions derived from GermanQuAD and GermanDPR by deepset (CC BY 4.0); changed.",
+      "url": "https://huggingface.co/datasets/deepset/germanquad"
+    }
+  ]
+}
+```

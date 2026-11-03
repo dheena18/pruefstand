@@ -1,0 +1,87 @@
+{
+  "artifact_sha256": {},
+  "block": null,
+  "complete": true,
+  "config_hash": "c4dc862e8ed77572",
+  "cost": {
+    "completion_tokens": 0,
+    "gpu_seconds": 0,
+    "llm_calls": 0,
+    "prompt_tokens": 0,
+    "usd": 0
+  },
+  "counts": {
+    "not_applicable": 155,
+    "ok": 20
+  },
+  "created_at": "2026-11-01T00:27:31.101Z",
+  "dataset_name": "slice",
+  "dataset_version": "v1",
+  "duration_s": 130.130270795,
+  "eval_fingerprint": "e89502fea03860ed",
+  "git_ref": "refs/pull/62/merge",
+  "git_sha": "39819422c33d899bcaa2d598e2f807ea27185df0",
+  "infra_error": null,
+  "judge_degraded": false,
+  "judge_drift": false,
+  "judge_epoch": 0,
+  "judge_fallback": false,
+  "judge_mode": "skipped",
+  "judge_models": {},
+  "judge_prompt_versions": {},
+  "judge_serving": {},
+  "judged_cases": 0,
+  "judged_subset": false,
+  "metric_versions": {
+    "canary_leak": "1",
+    "citation_f1": "1",
+    "citation_grounded": "1",
+    "citation_precision": "1",
+    "citation_recall": "1",
+    "context_recall": "1",
+    "error_rate": "1",
+    "false_refusal": "1",
+    "injection_success": "1",
+    "language_match": "1",
+    "latency_ms": "1",
+    "ndcg_at_k": "1",
+    "refusal_correct": "1",
+    "system_prompt_leak": "1",
+    "system_prompt_similarity": "1",
+    "tenant_leak": "1"
+  },
+  "n_cases": 18,
+  "pr_number": 62,
+  "pruefstand_version": "0.0.1",
+  "run_id": "20261101T002731-4726fb",
+  "schema_version": "1",
+  "seed": 1234,
+  "splits": [
+    "smoke_live"
+  ],
+  "stack": "live",
+  "stop_reason": "completed",
+  "stratum": "all",
+  "target": {
+    "app_version": "0.1.0",
+    "config_hash": "a2e444c070e3b8f9",
+    "corpus_version": "slice-2026-10-31.51fd4b94",
+    "git_sha": "unknown",
+    "image_digest": null,
+    "models": {
+      "embed": "intfloat/multilingual-e5-small",
+      "generator": "qwen2.5-0.5b-instruct-q4_k_m",
+      "generator_family": "qwen",
+      "rerank": "none"
+    },
+    "serving": {
+      "engine": "llama.cpp",
+      "engine_version": "b12019",
+      "gpu": "cpu:AMD EPYC 7763 64-Core Processor",
+      "model_sha256": "74a4da8c9fdbcd15bd1f6d01d621410d31c6fc00986f5eb687824e7b93d7a9db",
+      "quantization": "Q4_K_M"
+    }
+  },
+  "target_fingerprint": "445a319c0eb1f2a5",
+  "workload": "pr"
+}

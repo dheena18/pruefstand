@@ -43,3 +43,6 @@ mutants/
 
 # T4.1: dry-run HF export layout (D9-33)
 **/hf_export/
+
+# T8.1: dashboard fixture sets hold runs/ directories (real run dirs and the exported data trees)
+!apps/dashboard/fixtures/**/runs/
