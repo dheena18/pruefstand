@@ -55,6 +55,16 @@ regexes = [
 ]
 
 [[allowlists]]
+description = "T2.6 validator test: one synthetic canary token assigned to an argument named token (CLAUDE.md section 9: test data, not a credential)"
+condition = "AND"
+paths = [
+  '''^scripts/tests/test_validate_canaries\.py$''',
+]
+regexes = [
+  '''CANARY-VN-7f3a9c''',
+]
+
+[[allowlists]]
 description = "T3.1e log-tail redaction test: a made-up key=value secret that the redaction must mask (synthetic sample, not a credential)"
 condition = "AND"
 paths = [

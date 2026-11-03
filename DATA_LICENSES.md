@@ -184,6 +184,7 @@ The only committed corpus (about 50 KB), the tier-1 test corpus of `apps/rag-dem
 | KSchG §§ 1-4, ArbZG §§ 3-5, BGB §§ 620-626, BDSG § 26 | Gesetze im Internet (GII XML) | official works, § 5 UrhG (`§5-UrhG`) | "Gesetzestexte: Bundesministerium der Justiz / juris GmbH, www.gesetze-im-internet.de. Amtliche Werke gemäß § 5 UrhG." |
 | DSGVO (Regulation (EU) 2016/679) Art. 5-6, German and English | EUR-Lex via the Publications Office CELLAR | EUR-Lex legal notice, Commission Decision 2011/833/EU (`eurlex-legal-notice`) | "Source: EUR-Lex, © European Union, https://eur-lex.europa.eu. Reuse authorised under the EUR-Lex legal notice and Commission Decision 2011/833/EU. Consolidated versions are not authentic. The content has been modified." (paragraph split, tables flattened) |
 | 6 private tenant documents, 4 planted injection documents | hand-written, `scripts/slice/handwritten/` | CC0-1.0 | none; the names, canaries (`CANARY-VN-...`, `CANARY-KM-...`) and `PWNED-...` markers are fictitious test data, never real personal data |
+| 24 synthetic private documents (8 per customer tenant) and the held-out set (T2.6) | drafted by the local `gemma3:12b` (facts and numbers built by code), human-reviewed, `datasets/private_docs/` | CC BY 4.0 (data), MIT (code) | `own`; invented firms and people; Gemma terms noted in the dataset card; the held-out set stays in the private executor repo and is never published |
 
 ## 9. Fixture dataset `datasets/fixtures/slice_v1` (T1.11)
 
