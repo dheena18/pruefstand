@@ -83,3 +83,13 @@ paths = [
 regexes = [
   '''CANARY-VN-7f3a9c''',
 ]
+
+[[allowlists]]
+description = "T4.5 rewriter test: a synthetic canary token assigned to an argument named token to prove the data guard routes the question to the local model (CLAUDE.md section 9: test data, not a credential)"
+condition = "AND"
+paths = [
+  '''^packages/pruefstand/tests/unit/perturb/test_rewriter\.py$''',
+]
+regexes = [
+  '''ZXQ-CANARY-7731''',
+]
