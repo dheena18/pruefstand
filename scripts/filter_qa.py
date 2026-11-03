@@ -97,7 +97,7 @@ def _support(
         ref.id,
         generator_model(args.generator_model, run_dir),
         known=read_verdicts(out_dir, ref.id),
-        on_verdict=lambda c, v: append_verdict(out_dir, c, ref.id, v),
+        on_verdict=lambda key, v: append_verdict(out_dir, key, ref.id, v),
     )
 
 

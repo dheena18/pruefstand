@@ -192,3 +192,9 @@ def test_norm_citations_and_law_names_are_not_copying() -> None:
 
 def chunk_with(text: str) -> Chunk:
     return as_chunk(CHUNK, text=text)
+
+
+def test_an_all_caps_copy_is_still_caught_and_only_known_law_names_are_dropped() -> None:
+    shout = "FRIST VON VIER WOCHEN ZUM FÜNFZEHNTEN ODER ZUM ENDE EINES KALENDERMONATS"
+    assert "ngram_overlap" in check_overlap(_cand(shout), CHUNK, 0.0).reasons
+    assert copy_words("BGB und KSchG und ARBEITSZEIT") == ["und", "und", "arbeitszeit"]

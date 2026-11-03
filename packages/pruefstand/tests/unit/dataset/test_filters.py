@@ -19,7 +19,7 @@ from pruefstand.core.models.dataset import FilterConfig, FilterResult, QACandida
 from pruefstand.dataset import filters
 from pruefstand.dataset.filters import check_support
 from pruefstand.dataset.filters_run import SupportSetup, filter_candidates
-from pruefstand.dataset.to_case import case_id_of
+from pruefstand.dataset.filters_support import support_key
 
 G1 = chunk("gii-bgb-622#1")
 ARB = chunk("gii-arbzg-3#0")
@@ -253,15 +253,14 @@ async def test_unjudged_candidates_are_returned_and_verdicts_are_streamed() -> N
     seen: list[str] = []
     with datagen_server(_verdict(1)) as (base, _):
         client, _ = make_client(base, model=SECOND)
-        setup = SupportSetup(
-            client, SECOND, DATAGEN, on_verdict=lambda c, v: seen.append(c.question)
-        )
+        setup = SupportSetup(client, SECOND, DATAGEN, on_verdict=lambda key, v: seen.append(key))
         out = await filter_candidates(
             cands, CHUNKS, lambda t: np.eye(len(t), dtype=np.float32), support=setup
         )
-    assert sorted(seen) == sorted(c.question for c in cands)
+    keys = [support_key(c, [CHUNKS[c.chunk_id]], SECOND) for c in cands]
+    assert sorted(seen) == sorted(keys)
     assert out.unjudged == []
-    known = {str(case_id_of(cands[0])): FilterResult(kept=False, reasons=("unsupported",))}
+    known = {keys[0]: FilterResult(kept=False, reasons=("unsupported",))}
     with datagen_server(_verdict(1)) as (base, state):
         client, _ = make_client(base, model=SECOND)
         setup = SupportSetup(client, SECOND, DATAGEN, known=known)

@@ -6,12 +6,12 @@ from pathlib import Path
 from generate_qa_ledger import dump_line, read_ledger, write_lines
 
 from pruefstand.core.errors import ConfigError
-from pruefstand.core.models.dataset import FilterResult, QACandidate
+from pruefstand.core.models.dataset import FilterResult
 from pruefstand.dataset.filters import FilterOutcome
-from pruefstand.dataset.to_case import case_id_of
 
 VERDICTS = "support_verdicts.jsonl"
 REPORT = "filter_report.json"
+KEPT_NAMES = frozenset({"filtered.jsonl", "filtered_partial.jsonl", "filtered_nosupport.jsonl"})
 
 
 def read_verdicts(out_dir: Path, model: str) -> dict[str, FilterResult]:
@@ -32,9 +32,9 @@ def read_verdicts(out_dir: Path, model: str) -> dict[str, FilterResult]:
     return known
 
 
-def append_verdict(out_dir: Path, c: QACandidate, model: str, verdict: FilterResult) -> None:
+def append_verdict(out_dir: Path, key: str, model: str, verdict: FilterResult) -> None:
     """Append one fresh verdict to the log and flush it, so a later failure does not lose it."""
-    row = {"id": case_id_of(c), "model": model, "kept": verdict.kept, "reasons": verdict.reasons}
+    row = {"id": key, "model": model, "kept": verdict.kept, "reasons": verdict.reasons}
     out_dir.mkdir(parents=True, exist_ok=True)
     with (out_dir / VERDICTS).open("a", encoding="utf-8", newline="\n") as handle:
         handle.write(json.dumps(row, sort_keys=True) + "\n")
@@ -65,14 +65,14 @@ def kept_name(outcome: FilterOutcome) -> str:
     report = outcome.report
     if report.support == "skipped":
         return "filtered_nosupport.jsonl"
-    if report.not_checked or report.reasons.get("judge_error"):
-        return "filtered_partial.jsonl"
-    return "filtered.jsonl"
+    return "filtered.jsonl" if report.complete else "filtered_partial.jsonl"
 
 
 def write_outputs(out_dir: Path, run_dir: Path, outcome: FilterOutcome) -> str:
     """Write kept / dropped / unjudged files, the report and the ``filter`` part of summary.json."""
     name = kept_name(outcome)
+    for other in KEPT_NAMES - {name}:  # an older run must not leave a misleading sibling behind
+        (out_dir / other).unlink(missing_ok=True)
     write_lines(out_dir / name, [dump_line(c) for c in outcome.kept])
     write_lines(out_dir / "filtered_out.jsonl", [dump_line(d) for d in outcome.dropped])
     write_lines(out_dir / "filtered_unjudged.jsonl", [dump_line(c) for c in outcome.unjudged])
@@ -87,7 +87,7 @@ def write_outputs(out_dir: Path, run_dir: Path, outcome: FilterOutcome) -> str:
             "support": report.support,
             "support_model": report.support_model,
             "generator_model": report.generator_model,
-            "complete": name == "filtered.jsonl",
+            "complete": report.complete,
             "not_checked": report.not_checked,
         }
         summary.write_text(json.dumps(data, indent=1, sort_keys=True) + "\n", encoding="utf-8")

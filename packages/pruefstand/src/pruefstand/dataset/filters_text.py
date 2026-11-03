@@ -41,9 +41,13 @@ _NORM_REF = re.compile(
     r"(?:§§?|\b(?:Artikel|Art|Absatz|Abs|Satz|S|Nr|Nummer|Buchstabe|lit)\b\.?)\s*\d+[a-z]?(?![a-z])",
     re.IGNORECASE,
 )
+_LAWS = (
+    "BGB|KSchG|ArbZG|DSGVO|BDSG|ZPO|StGB|StPO|HGB|BetrVG|MuSchG|BUrlG|TzBfG|EntgFG|AGG|GG|SGB|UrhG"
+    "|UStG|EStG|VVG|VAG|GmbHG|AktG|InsO|WEG|GVG|TTDSG|AO|ArbSchG|NachwG|MiLoG|BEEG|SGG|VwGO"
+)
 _LAW_NAME = re.compile(
-    r"\b(?:Bürgerliche[nms]?\s+Gesetzbuch\w*|[A-ZÄÖÜ][A-Za-zÄÖÜäöü-]*(?:gesetz|gesetzbuch|verordnung)\w*"
-    r"|(?=[A-Za-zÄÖÜäöü]{2,9}\b)[A-ZÄÖÜ][a-zäöü]*[A-ZÄÖÜ][A-Za-zÄÖÜäöü]*)\b"
+    rf"\b(?:Bürgerliche[nms]?\s+Gesetzbuch\w*|[A-ZÄÖÜ][A-Za-zÄÖÜäöü-]*(?:gesetz|gesetzbuch|verordnung)\w*"
+    rf"|(?:{_LAWS}))\b"
 )
 _FOLD = str.maketrans({"ä": "ae", "ö": "oe", "ü": "ue", "ß": "ss"})
 

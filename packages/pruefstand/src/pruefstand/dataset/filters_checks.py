@@ -6,7 +6,6 @@ the second document of a pair must not be the cluster of another case (leakage b
 ``style_report``: the layperson share of the kept set (report level, nothing is dropped for it).
 """
 
-import re
 import unicodedata
 from collections import Counter
 from collections.abc import Mapping, Sequence
@@ -20,10 +19,16 @@ from pruefstand.core.models.corpus import Chunk
 from pruefstand.core.models.dataset import FilterResult, QACandidate
 from pruefstand.dataset.evidence import (
     MAX_EVIDENCE_TOKENS,
-    cited_absatz,
     cites_chunk,
     count_tokens,
     normalise_text,
+)
+from pruefstand.dataset.filters_scope import (
+    cited_absaetze,
+    contains_words,
+    content_words,
+    scopes,
+    whole_text,
 )
 from pruefstand.dataset.to_case import case_id_of
 
@@ -36,87 +41,30 @@ def sources_of(c: QACandidate, chunks: Mapping[ChunkId, Chunk]) -> list[Chunk] |
     return [chunks[i] for i in ids]
 
 
-_MARKER = re.compile(r"(?<!\w)\((\d+[a-z]?)\)\s")
-_ABSATZ = re.compile(
-    r"(?i:Absatz|Abs\.?)\s*\(?\s*\d+[a-z]?\)?(?:\s*(?:,|und|bis|[–—-])\s*\(?\d+[a-z]?\)?)*"
-)
-_NUMBER = re.compile(r"\d+[a-z]?")
-_RANGE = re.compile(r"bis|[–—-]")
-MIN_EVIDENCE_WORDS = 3
-_MAX_RANGE = 30
-
-
-def absaetze_of(citation: str) -> list[str]:
-    """All Absatz numbers a citation names, ranges expanded (``Abs. 1 bis 3`` -> 1, 2, 3).
-
-    Examples:
-        >>> absaetze_of("Art. 5 Abs. 1 bis 3 DSGVO")
-        ['1', '2', '3']
-        >>> absaetze_of("§ 622 Abs. 2 und 3 BGB")
-        ['2', '3']
-    """
-    found: list[str] = []
-    for match in _ABSATZ.finditer(citation):
-        numbers = _NUMBER.findall(match.group(0))
-        first, last = numbers[0], numbers[-1]
-        spans = _RANGE.search(match.group(0)) and first.isdigit() and last.isdigit()
-        if spans and 0 <= int(last) - int(first) <= _MAX_RANGE:
-            numbers = [str(n) for n in range(int(first), int(last) + 1)]
-        found += numbers
-    return found
-
-
-def _lead(number: str) -> int:
-    return int("".join(ch for ch in number if ch.isdigit()))
-
-
-def _scope(source: Chunk, absaetze: set[str] | None) -> str | None:
-    """The text of ``source`` in which evidence for the cited Absätze may lie (None: nowhere)."""
-    body = unicodedata.normalize("NFC", normalise_text(source.text))
-    if absaetze is None:
-        return body
-    later = int(source.chunk_id.rsplit("#", 1)[-1] or 0) > 0
-    markers = list(_MARKER.finditer(body))
-    if not markers:  # no Absätze: a lone Absatz 1, or the continuation of a long Absatz
-        return body if later or absaetze <= {"1"} else None
-    parts = [
-        body[m.start() : markers[n + 1].start() if n + 1 < len(markers) else len(body)]
-        for n, m in enumerate(markers)
-        if m.group(1) in absaetze
-    ]
-    first = _lead(markers[0].group(1))
-    # the text before the first marker is a continuation only in a later chunk, and only of an
-    # Absatz that comes before that marker; in the first chunk it is the heading (never evidence)
-    if not parts and later and all(a[:1].isdigit() and _lead(a) < first for a in absaetze):
-        parts.append(body[: markers[0].start()])
-    return " ".join(parts) if parts else None
-
-
-def _cited_absaetze(c: QACandidate, source: Chunk) -> set[str] | None:
-    first = cited_absatz(c.citation, source)
-    if first is None:
-        return None
-    if len(extract_citations(c.citation or "")) == 1:
-        return {first, *absaetze_of(c.citation or "")}
-    return {first}
-
-
-def _evidence_reason(c: QACandidate, cited: Sequence[Chunk]) -> str | None:
+def _evidence_reason(
+    c: QACandidate, cited: Sequence[Chunk], chunks: Mapping[ChunkId, Chunk]
+) -> str | None:
     span = unicodedata.normalize("NFC", normalise_text(c.evidence_span or ""))
-    if len(span.split()) < MIN_EVIDENCE_WORDS:
+    if content_words(span) < MIN_EVIDENCE_WORDS:
         return "evidence_too_short"
     if count_tokens(span) > MAX_EVIDENCE_TOKENS:
         return "evidence_off_paragraph"
-    anywhere = False
     for source in cited:
-        scope = _scope(source, _cited_absaetze(c, source))
-        if scope is not None and span in scope:
+        found = scopes(source, cited_absaetze(c.citation, source), chunks)
+        if any(contains_words(scope, span) for scope in found or ()):
             return None
-        anywhere = anywhere or span in unicodedata.normalize("NFC", normalise_text(source.text))
+    anywhere = any(contains_words(text, span) for text in whole_text(cited))
     return "evidence_not_in_cited_absatz" if anywhere else "evidence_off_paragraph"
 
 
-def check_evidence(c: QACandidate, sources: Sequence[Chunk]) -> FilterResult:
+MIN_EVIDENCE_WORDS = 3
+
+
+def check_evidence(
+    c: QACandidate,
+    sources: Sequence[Chunk],
+    chunks: Mapping[ChunkId, Chunk] | None = None,
+) -> FilterResult:
     r"""Check citation and evidence against the chunks the citation names.
 
     Reasons: ``citation_missing``, ``citation_unparsed``, ``citation_mismatch`` (it parses but
@@ -130,6 +78,8 @@ def check_evidence(c: QACandidate, sources: Sequence[Chunk]) -> FilterResult:
     Args:
         c: The candidate.
         sources: Its chunks (gold chunk first).
+        chunks: All chunks by id; the previous chunk of a later chunk tells which Absatz its lead
+            text continues (without it, lead text is never evidence).
 
     Returns:
         The verdict; several reasons can apply.
@@ -157,7 +107,7 @@ def check_evidence(c: QACandidate, sources: Sequence[Chunk]) -> FilterResult:
             return FilterResult(kept=False, reasons=("citation_mismatch",))
     if c.evidence_span is None:
         reasons.append("evidence_missing")
-    elif (reason := _evidence_reason(c, cited)) is not None:
+    elif (reason := _evidence_reason(c, cited, chunks or {})) is not None:
         reasons.append(reason)
     return FilterResult(kept=not reasons, reasons=tuple(reasons))
 

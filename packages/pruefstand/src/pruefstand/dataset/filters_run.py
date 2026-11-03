@@ -31,9 +31,9 @@ from pruefstand.dataset.filters_support import (
     check_support,
     check_support_family,
     dedupe_report,
+    support_key,
 )
 from pruefstand.dataset.filters_text import check_overlap
-from pruefstand.dataset.to_case import case_id_of
 from pruefstand.llm.client import LLMClient
 
 
@@ -61,6 +61,7 @@ class FilterReport(BaseModel):
     not_checked: int
     reasons: dict[str, int]
     support: Literal["checked", "skipped"]
+    complete: bool
     support_model: str | None
     generator_model: str | None = None
     style: StyleReport
@@ -71,8 +72,9 @@ class FilterReport(BaseModel):
 class SupportSetup:
     """The support model: its client, its id and the generator model it must differ from.
 
-    ``known`` holds verdicts of an earlier run (by ``case_id_of``; no request is made for them);
-    ``on_verdict`` is called with every fresh verdict as soon as it arrives, so a caller can
+    ``known`` holds verdicts of an earlier run by ``support_key`` (no request is made for them);
+    ``on_verdict(key, verdict)`` is called with every fresh verdict as soon as it arrives, so a
+    caller can
     persist it before a later failure.
     """
 
@@ -80,7 +82,7 @@ class SupportSetup:
     model: str
     generator_model: str
     known: Mapping[str, FilterResult] = field(default_factory=dict)
-    on_verdict: Callable[[QACandidate, FilterResult], None] | None = None
+    on_verdict: Callable[[str, FilterResult], None] | None = None
 
 
 @dataclass(frozen=True)
@@ -99,7 +101,7 @@ def _static_reasons(
     sources = sources_of(c, chunks)
     if sources is None:
         return ["chunk_missing"]
-    reasons = list(check_evidence(c, sources).reasons)
+    reasons = list(check_evidence(c, sources, chunks).reasons)
     for source in sources:
         verdict = check_overlap(
             c, source, config.max_ngram_overlap, long_copy_words=config.long_copy_words
@@ -113,7 +115,7 @@ async def _support_stage(
     chunks: Mapping[ChunkId, Chunk],
     setup: SupportSetup,
     concurrency: int,
-) -> dict[str, FilterResult | None]:
+) -> list[FilterResult | None]:
     """Run the support check; a candidate that was not judged (quota, cap) maps to None."""
     gate = asyncio.Semaphore(max(1, concurrency))
     stop = asyncio.Event()
@@ -122,37 +124,38 @@ async def _support_stage(
         async with gate:
             if stop.is_set():
                 return None
-            if (prior := setup.known.get(case_id_of(c))) is not None:
+            sources = [chunks[c.chunk_id], *(chunks[i] for i in c.extra_chunk_ids)]
+            key = support_key(c, sources, setup.model)
+            if (prior := setup.known.get(key)) is not None:
                 return prior
             try:
                 verdict = await check_support(
                     c,
-                    chunks[c.chunk_id],
+                    sources[0],
                     setup.llm,
                     setup.model,
-                    extra=[chunks[i] for i in c.extra_chunk_ids],
+                    extra=sources[1:],
                 )
             except (QuotaExhausted, BudgetExceeded):
                 stop.set()
                 return None
             if setup.on_verdict is not None:
-                setup.on_verdict(c, verdict)
+                setup.on_verdict(key, verdict)
             return verdict
 
     results = await asyncio.gather(*(one(c) for c in cands))
-    return {case_id_of(c): r for c, r in zip(cands, results, strict=True)}
+    return list(results)
 
 
 def _split_verdicts(
     live: Sequence[QACandidate],
-    verdicts: Mapping[str, FilterResult | None],
+    verdicts: Sequence[FilterResult | None],
     dropped: list[Dropped],
 ) -> tuple[list[QACandidate], list[QACandidate]]:
     """Keep the supported candidates, add the rejected to ``dropped``, return the unjudged."""
     checked: list[QACandidate] = []
     unjudged: list[QACandidate] = []
-    for c in live:
-        verdict = verdicts[case_id_of(c)]
+    for c, verdict in zip(live, verdicts, strict=True):
         if verdict is None:
             unjudged.append(c)
         elif verdict.kept:
@@ -230,6 +233,7 @@ def _report(
         not_checked=not_checked,
         reasons=dict(sorted(reasons.items())),
         support="checked" if support is not None else "skipped",
+        complete=support is not None and not_checked == 0 and "judge_error" not in reasons,
         support_model=support.model if support is not None else None,
         generator_model=support.generator_model if support is not None else None,
         style=style_report(kept, config.min_laie_share, config.style_min_n),

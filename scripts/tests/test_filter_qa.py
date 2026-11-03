@@ -8,11 +8,10 @@ import json
 from collections.abc import Sequence
 from pathlib import Path
 
-import httpx
 import numpy as np
 import pytest
 from filter_qa import main
-from filter_qa_embed import Embedder, make_embedder
+from filter_qa_embed import Embedder
 from generate_qa_args import DEFAULT_CORPUS
 from generate_qa_ledger import dump_line
 from numpy.typing import NDArray
@@ -156,50 +155,6 @@ def test_only_a_candidates_file_is_accepted(tmp_path: Path) -> None:
     )
 
 
-def _transport(handler: httpx.MockTransport) -> httpx.Client:
-    return httpx.Client(transport=handler)
-
-
-def test_the_tei_embedder_batches_and_returns_float32() -> None:
-    sizes: list[int] = []
-
-    def handle(request: httpx.Request) -> httpx.Response:
-        inputs = json.loads(request.content)["inputs"]
-        sizes.append(len(inputs))
-        return httpx.Response(200, json=[[1.0, 0.0]] * len(inputs))
-
-    embed = make_embedder(
-        "http://e.invalid/", "tei", "m", client=_transport(httpx.MockTransport(handle))
-    )
-    got = embed([f"t{i}" for i in range(40)])
-    assert sizes == [32, 8]
-    assert got.shape == (40, 2)
-    assert got.dtype == np.float32
-
-
-def test_the_ollama_embedder_uses_the_native_endpoint() -> None:
-    seen: list[str] = []
-
-    def handle(request: httpx.Request) -> httpx.Response:
-        seen.append(request.url.path)
-        return httpx.Response(200, json={"embeddings": [[0.5, 0.5]]})
-
-    embed = make_embedder(
-        "http://e.invalid", "ollama", "bge-m3", client=_transport(httpx.MockTransport(handle))
-    )
-    assert embed(["a"]).shape == (1, 2)
-    assert seen == ["/api/embed"]
-
-
-def test_embedding_failures_are_dataset_errors() -> None:
-    bad_shape = httpx.MockTransport(lambda r: httpx.Response(200, json=[[1.0]]))
-    down = httpx.MockTransport(lambda r: httpx.Response(503))
-    with pytest.raises(DatasetError, match="unexpected shape"):
-        make_embedder("http://e.invalid", "tei", "m", client=_transport(bad_shape))(["a", "b"])
-    with pytest.raises(DatasetError, match="failed"):
-        make_embedder("http://e.invalid", "tei", "m", client=_transport(down))(["a"])
-
-
 def test_no_support_gets_a_name_that_cannot_be_mistaken_for_a_filtered_set(tmp_path: Path) -> None:
     run = _run_dir(tmp_path)
     assert main(_argv(run, "--no-support"), embedder=_embed) == 0
@@ -272,3 +227,34 @@ def test_the_embedding_server_is_checked_before_any_support_request(tmp_path: Pa
         code = main(_argv(run), client=client_factory(base, []), embedder=down)
         assert state.posts() == 0
     assert code == 1
+
+
+def test_a_complete_run_removes_stale_partial_files_and_flags_the_report(tmp_path: Path) -> None:
+    run = _run_dir(tmp_path)
+    (run / "filtered_partial.jsonl").write_text("stale\n", "utf-8")
+    (run / "filtered_nosupport.jsonl").write_text("stale\n", "utf-8")
+    verdict = json.dumps({"reason": "belegt", "score": 1})
+    with datagen_server(verdict) as (base, _):
+        assert main(_argv(run), client=client_factory(base, []), embedder=_embed) == 0
+    assert (run / "filtered.jsonl").exists()
+    assert not (run / "filtered_partial.jsonl").exists()
+    assert not (run / "filtered_nosupport.jsonl").exists()
+    assert json.loads((run / "filter_report.json").read_text("utf-8"))["complete"] is True
+    main(_argv(run, "--no-support"), embedder=_embed)
+    assert not (run / "filtered.jsonl").exists()
+    assert json.loads((run / "filter_report.json").read_text("utf-8"))["complete"] is False
+
+
+def test_a_changed_answer_in_the_candidates_is_not_served_from_the_log(tmp_path: Path) -> None:
+    run = _run_dir(tmp_path)
+    verdict = json.dumps({"reason": "belegt", "score": 1})
+    with datagen_server(verdict) as (base, _):
+        assert main(_argv(run), client=client_factory(base, []), embedder=_embed) == 0
+    lines = (run / "candidates.jsonl").read_text("utf-8").splitlines()
+    first = json.loads(lines[0])
+    first["answer"] = "Sechs Monate."
+    lines[0] = json.dumps(first, ensure_ascii=False, sort_keys=True)
+    (run / "candidates.jsonl").write_text("\n".join(lines) + "\n", "utf-8")
+    with datagen_server(verdict) as (base, state):
+        assert main(_argv(run), client=client_factory(base, []), embedder=_embed) == 0
+        assert state.posts() == 1

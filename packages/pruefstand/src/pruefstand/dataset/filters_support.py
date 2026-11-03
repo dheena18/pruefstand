@@ -5,6 +5,8 @@ whether the source chunk supports the reference answer; ``dedupe`` removes quest
 embeddings are near-identical. ``dataset.filters`` re-exports all public filters.
 """
 
+import hashlib
+import json
 import re
 from collections.abc import Callable, Sequence
 from typing import Literal
@@ -63,6 +65,26 @@ def check_support_family(support_model: str, generator_model: str) -> None:
     if family_of(support_model) == family_of(generator_model):
         msg = f"support model {support_model} has the family of the generator {generator_model}"
         raise ConfigError(msg)
+
+
+def prompt_fingerprint() -> str:
+    """Name and sha256 of the support prompt text (part of the verdict key)."""
+    path = PROMPT_ROOT / f"{SUPPORT_PROMPT[0]}_{SUPPORT_PROMPT[1]}.txt"
+    text = path.read_text(encoding="utf-8")
+    return f"{path.stem}:{hashlib.sha256(text.encode('utf-8')).hexdigest()}"
+
+
+def support_key(c: QACandidate, chunks: Sequence[Chunk], model: str) -> str:
+    """Key of a support verdict: everything the verdict depends on.
+
+    A hash of the candidate id, question, answer, the texts of all its chunks, the support prompt
+    (name and text hash) and the support model, so a verdict is reused only for the very same
+    question.
+    """
+    payload = [
+        case_id_of(c), c.question, c.answer, [x.text for x in chunks], prompt_fingerprint(), model,
+    ]  # fmt: skip
+    return hashlib.sha256(json.dumps(payload, ensure_ascii=False).encode("utf-8")).hexdigest()
 
 
 def _wrap(chunks: Sequence[Chunk]) -> str:

@@ -2,17 +2,18 @@
 
 import unicodedata
 
-from testsupport.qa_support import as_chunk, chunk
+from testsupport.qa_support import as_chunk, chunk, slice_chunks
 
 from pruefstand.core.enums import Lang
 from pruefstand.core.ids import ChunkId
+from pruefstand.core.models.corpus import Chunk
 from pruefstand.core.models.dataset import QACandidate
 from pruefstand.dataset.filters_checks import (
-    absaetze_of,
     check_evidence,
     drop_cluster_overlap,
     style_report,
 )
+from pruefstand.dataset.filters_scope import absaetze_of
 
 G1 = chunk("gii-bgb-622#1")
 G0 = chunk("gii-bgb-622#0")
@@ -164,21 +165,6 @@ def test_ranges_of_absaetze_are_expanded() -> None:
     assert not check_evidence(_dsgvo("Art. 5 Abs. 1 DSGVO", evidence), [ART5_0, ART5_1]).kept
 
 
-def test_text_before_the_first_marker_of_a_later_chunk_is_a_continuation() -> None:
-    tail = ART6_1.text[4:]
-    later = as_chunk(
-        ART6_1,
-        chunk_id="eurlex-32016r0679-art-6-de#9",
-        text=tail + "\n" + chunk("eurlex-32016r0679-art-6-de#2").text,
-    )
-    evidence = tail.split(".")[0][:60]
-    ok = check_evidence(_dsgvo("Art. 6 Abs. 1 DSGVO", evidence, later.chunk_id), [later])
-    assert ok.kept
-    assert not check_evidence(_dsgvo("Art. 6 Abs. 9 DSGVO", evidence, later.chunk_id), [later]).kept
-    first = as_chunk(later, chunk_id="eurlex-32016r0679-art-6-de#0")
-    assert not check_evidence(_dsgvo("Art. 6 Abs. 1 DSGVO", evidence, first.chunk_id), [first]).kept
-
-
 def test_short_evidence_is_rejected_and_nfd_evidence_is_compared_as_nfc() -> None:
     assert check_evidence(_dsgvo("Art. 5 Abs. 1 DSGVO", "Daten müssen"), [ART5_0]).reasons == (
         "evidence_too_short",
@@ -194,3 +180,109 @@ def test_a_missing_or_unparsable_citation_is_a_reason() -> None:
     )
     got = check_evidence(_cand(citation=None, evidence_span=None), [G1])
     assert got.reasons == ("citation_missing", "evidence_missing")
+
+
+ALL = {c.chunk_id: c for c in slice_chunks().values()}
+EN5_0 = ALL[ChunkId("eurlex-32016r0679-art-5-en#0")]
+EN5_1 = ALL[ChunkId("eurlex-32016r0679-art-5-en#1")]
+EN6_2 = ALL[ChunkId("eurlex-32016r0679-art-6-en#2")]
+B620 = ALL[ChunkId("gii-bgb-620#0")]
+B622_2 = ALL[ChunkId("gii-bgb-622#2")]
+
+
+def test_english_paragraph_markers_are_known() -> None:
+    # regression (round 2): "2. " is a marker, so a later English chunk is no free continuation
+    pair = _dsgvo("Art. 5 Abs. 9 DSGVO", "The controller shall be responsible")
+    pair = pair.model_copy(update={"extra_chunk_ids": (EN5_1.chunk_id,)})
+    assert not check_evidence(pair, [ART5_0, EN5_1], ALL).kept
+    ok = _dsgvo("Art. 5 Abs. 2 DSGVO", "The controller shall be responsible", EN5_1.chunk_id)
+    assert check_evidence(ok, [EN5_1], ALL).kept
+    wrong = _dsgvo(
+        "Art. 6 Abs. 1 DSGVO", "The basis for the processing referred to", EN6_2.chunk_id
+    )
+    assert not check_evidence(wrong, [EN6_2], ALL).kept
+    right = _dsgvo(
+        "Art. 6 Abs. 3 DSGVO", "The basis for the processing referred to", EN6_2.chunk_id
+    )
+    assert check_evidence(right, [EN6_2], ALL).kept
+
+
+def test_the_english_heading_is_no_evidence() -> None:
+    heading = "Principles relating to processing of personal data"
+    for citation in ("Art. 5 Abs. 1 DSGVO", "Art. 5 DSGVO"):
+        assert not check_evidence(_dsgvo(citation, heading, EN5_0.chunk_id), [EN5_0], ALL).kept
+    assert check_evidence(
+        _dsgvo("Art. 5 Abs. 1 DSGVO", "Personal data shall be", EN5_0.chunk_id), [EN5_0], ALL
+    ).kept
+
+
+def test_a_citation_without_absatz_does_not_accept_the_heading_of_a_first_chunk() -> None:
+    got = check_evidence(_dsgvo("Art. 5 DSGVO", HEADING), [ART5_0], ALL)
+    assert got.reasons == ("evidence_not_in_cited_absatz",)
+    assert check_evidence(_dsgvo("Art. 5 DSGVO", ART5_SENTENCE), [ART5_0], ALL).kept
+
+
+def _continuation(text: str) -> tuple[Chunk, dict[ChunkId, Chunk]]:
+    """A later chunk without markers that continues Absatz 2 of art-6-de#1 (real text)."""
+    later = as_chunk(ART6_1, chunk_id=ChunkId("eurlex-32016r0679-art-6-de#2"), text=text)
+    return later, {**ALL, later.chunk_id: later}
+
+
+def test_a_continuation_chunk_accepts_only_the_absatz_it_continues() -> None:
+    tail = ART6_1.text[4:200]
+    later, chunks = _continuation(tail)
+    evidence = " ".join(tail.split()[:8])
+    assert check_evidence(
+        _dsgvo("Art. 6 Abs. 2 DSGVO", evidence, later.chunk_id), [later], chunks
+    ).kept
+    for bad in ("Art. 6 Abs. 9 DSGVO", "Art. 6 Abs. 1 DSGVO", "Art. 6 Abs. 0 DSGVO"):
+        assert not check_evidence(_dsgvo(bad, evidence, later.chunk_id), [later], chunks).kept
+    assert not check_evidence(_dsgvo("Art. 6 Abs. 2 DSGVO", evidence, later.chunk_id), [later]).kept
+
+
+def test_lead_text_before_a_marker_belongs_to_the_previous_absatz() -> None:
+    tail = ART6_1.text[4:200]
+    later, chunks = _continuation(tail + "\n" + chunk("eurlex-32016r0679-art-6-de#2").text)
+    evidence = " ".join(tail.split()[:8])
+    assert check_evidence(
+        _dsgvo("Art. 6 Abs. 2 DSGVO", evidence, later.chunk_id), [later], chunks
+    ).kept
+    assert not check_evidence(
+        _dsgvo("Art. 6 Abs. 9 DSGVO", evidence, later.chunk_id), [later], chunks
+    ).kept
+    first = as_chunk(later, chunk_id=ChunkId("eurlex-32016r0679-art-6-de#0"))
+    assert not check_evidence(
+        _dsgvo("Art. 6 Abs. 2 DSGVO", evidence, first.chunk_id), [first], chunks
+    ).kept
+
+
+def test_evidence_may_span_two_cited_absaetze_and_must_not_leave_them() -> None:
+    span = "Ablauf der Zeit, für die es eingegangen ist.\n(2) Ist die Dauer des Dienstverhältnisses"
+
+    def cand(citation: str) -> QACandidate:
+        return _dsgvo(citation, span, B620.chunk_id)
+
+    assert check_evidence(cand("§ 620 Abs. 1 und 2 BGB"), [B620], ALL).kept
+    assert check_evidence(cand("§ 620 Abs. 1 bis 2 BGB"), [B620], ALL).kept
+    assert not check_evidence(cand("§ 620 Abs. 1 BGB"), [B620], ALL).kept
+    assert not check_evidence(cand("§ 620 Abs. 0 BGB"), [B620], ALL).kept
+
+
+def test_a_range_applies_to_its_own_norm_in_a_two_norm_citation() -> None:
+    evidence = "Der Verantwortliche ist für die Einhaltung des Absatzes 1 verantwortlich"
+    cand = _dsgvo("Art. 5 Abs. 1 bis 2 DSGVO; § 623 BGB", evidence)
+    assert check_evidence(cand, [ART5_0, ART5_1], ALL).kept
+    cand = _dsgvo("§ 623 BGB; Art. 5 Abs. 1 bis 2 DSGVO", evidence)
+    assert check_evidence(cand, [ART5_0, ART5_1], ALL).kept
+
+
+def test_evidence_must_match_whole_words_and_markers_do_not_count() -> None:
+
+    def cand(evidence: str) -> QACandidate:
+        return _dsgvo("§ 622 Abs. 3 BGB", evidence, B622_2.chunk_id)
+
+    assert check_evidence(cand("Während einer vereinbarten Probezeit"), [B622_2], ALL).kept
+    assert not check_evidence(cand("ährend einer vereinbarten Pro"), [B622_2], ALL).kept
+    assert check_evidence(cand("(3) Während einer"), [B622_2], ALL).reasons == (
+        "evidence_too_short",
+    )
