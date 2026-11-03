@@ -21,17 +21,20 @@ from contextlib import contextmanager
 HANG_GUARD_S = 120.0  # a cost this high is a hang whatever the ratio says
 
 
-def cpu_seconds(fn: Callable[[], object]) -> float:
+def cpu_seconds(fn: Callable[[], object], *, collect: bool = True) -> float:
     """Run ``fn`` once and return the CPU seconds this process used.
 
     Args:
         fn: The call to measure.
+        collect: Run a full garbage collection first. On a big test process that costs 0.1 s or
+            more, so a caller that measures many runs collects once and passes ``False``.
 
     Returns:
         ``time.process_time`` delta; it does not grow when other processes compete for the CPU.
         The cyclic garbage collector is off during the call.
     """
-    gc.collect()
+    if collect:
+        gc.collect()
     collecting = gc.isenabled()
     gc.disable()  # a full collection grows with the heap: not the algorithm under test
     try:
@@ -89,9 +92,10 @@ def assert_scales_linearly(
     """
     allowed = linear_ratio_limit(scale) if limit is None else limit
     best_small = best_big = float("inf")
+    gc.collect()  # once: a full collection per run would dominate the test time
     for _ in range(reps):
-        best_small = min(best_small, cpu_seconds(small))
-        best_big = min(best_big, cpu_seconds(big))
+        best_small = min(best_small, cpu_seconds(small, collect=False))
+        best_big = min(best_big, cpu_seconds(big, collect=False))
     assert best_big < HANG_GUARD_S, f"{best_big:.1f} CPU s"
     ratio = best_big / max(best_small, floor_s)
     assert ratio <= allowed, f"{scale:g}x input cost {ratio:.1f}x (limit {allowed:.1f}x)"

@@ -88,4 +88,4 @@ def test_linear_time_on_adversarial_input() -> None:
     for name, build in ADVERSARIAL.items():
         small, large = _applier(name, build(20_000)), _applier(name, build(80_000))
         small()  # warm up caches (law regex compile)
-        assert_scales_linearly(small, large, scale=4, floor_s=1e-4)
+        assert_scales_linearly(small, large, scale=4, floor_s=1e-4, reps=3)

@@ -182,5 +182,6 @@ def test_refresh_cost_is_linear_in_the_number_of_runs(tmp_path: Path) -> None:
     def refresher(runs: str) -> Callable[[], object]:
         return lambda: RunIndex(tmp_path / f"{runs}{next(fresh)}.duckdb", tmp_path / runs).refresh()
 
-    # 6x the runs: linear ~6x, a quadratic rebuild ~36x
+    # 6x the runs. The fixed cost of opening the index dominates (measured ratio ~1.5, linear
+    # would be up to 6): the limit (~18) only guards against a rebuild per run, not a tight bound.
     assert_scales_linearly(refresher("small"), refresher("big"), scale=6, reps=3)
