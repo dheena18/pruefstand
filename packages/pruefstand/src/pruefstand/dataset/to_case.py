@@ -69,7 +69,8 @@ def _cluster_doc(category: Category, chunk: Chunk, extra: Chunk | None) -> DocId
     return chunk.doc_id
 
 
-def _case_id(c: QACandidate) -> CaseId:
+def case_id_of(c: QACandidate) -> CaseId:
+    """Return the stable id of a candidate: a hash of prompt, chunks and question (T4.3 order)."""
     text = "|".join([c.prompt_version, c.chunk_id, *c.extra_chunk_ids, c.question])
     return CaseId("qa-" + hashlib.sha256(text.encode("utf-8")).hexdigest()[:16])
 
@@ -110,7 +111,7 @@ def to_test_case(
         msg = f"{c.chunk_id}: no single licence config for sources {[x.source for x in chunks]}"
         raise DatasetError(msg)
     both = category is Category.MULTI_HOP and extra_chunk is not None
-    case_id = _case_id(c)
+    case_id = case_id_of(c)
     return TestCase(
         id=case_id,
         base_id=case_id,
