@@ -35,3 +35,13 @@ def collection_name(corpus_version: str, analyzer_hash8: str, embed_model: str) 
         'chunks__2026-11-03-abcd1234__0123abcd__baai-bge-m3'
     """
     return f"chunks__{slug(corpus_version)}__{analyzer_hash8}__{slug(embed_model)}"
+
+
+def build_name(base: str, build_id: str) -> str:
+    """The name of one build: every build gets a fresh collection, the alias moves afterwards.
+
+    Examples:
+        >>> build_name("chunks__v__h__m", "ab12cd34")
+        'chunks__v__h__m__bab12cd34'
+    """
+    return f"{base}__b{build_id}"

@@ -17,11 +17,14 @@ from rag_demo.index.tokens import load_token_counter
 from rag_demo.wiring import build_dense, build_retriever, catalogue_options
 
 CATALOGUE = REPO / "infra" / "gpu" / "models.yaml"
-BGE_URL = "https://huggingface.co/BAAI/bge-m3/resolve/main/tokenizer.json"
+REV = "5617a9f61b028005a4858fdac845db406aefb181"
+SOURCE = f"hf:BAAI/bge-m3@{REV}/tokenizer.json"
+BGE_URL = f"https://huggingface.co/BAAI/bge-m3/resolve/{REV}/tokenizer.json"
 
 
 def test_source_url_maps_hf_sources_and_rejects_others() -> None:
-    assert source_url("hf:BAAI/bge-m3/tokenizer.json") == BGE_URL
+    assert source_url(SOURCE) == BGE_URL  # pinned to a commit
+    assert source_url("hf:BAAI/bge-m3/tokenizer.json").endswith("/resolve/main/tokenizer.json")
     with pytest.raises(ConfigError, match="hf:"):
         source_url("https://example.org/tokenizer.json")
 
@@ -35,7 +38,7 @@ def test_verify_accepts_the_pinned_digest_and_names_a_mismatch() -> None:
 def test_the_catalogue_pins_the_bge_m3_tokenizer() -> None:
     entry = load_catalogue(CATALOGUE)["ollama/bge-m3"]
     assert entry.tokenizer is not None
-    assert entry.tokenizer.source == "hf:BAAI/bge-m3/tokenizer.json"
+    assert entry.tokenizer.source == SOURCE
     assert len(entry.tokenizer.sha256) == 64
 
 
@@ -46,7 +49,7 @@ def test_fetch_downloads_verifies_and_writes_atomically(tmp_path: Path) -> None:
     sha = hashlib.sha256(body).hexdigest()
     catalogue.write_text(
         "models:\n  - {id: ollama/bge-m3, engine: ollama, tag: bge-m3, family: bge, role: embed,\n"
-        f"     tokenizer: {{source: 'hf:BAAI/bge-m3/tokenizer.json', sha256: {sha}}}}}\n",
+        f"     tokenizer: {{source: '{SOURCE}', sha256: {sha}}}}}\n",
         encoding="utf-8",
     )
     respx.get(BGE_URL).mock(return_value=httpx.Response(200, content=body))

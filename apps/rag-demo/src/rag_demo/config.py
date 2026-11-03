@@ -26,7 +26,7 @@ class Settings(BaseSettings):
     llm_url: str = "http://localhost:8080"
     embed_url: str = "http://localhost:8090"
     collection: str = Field(
-        default="slice_v2", validation_alias=AliasChoices("RAG_COLLECTION", "collection")
+        default="chunks_active", validation_alias=AliasChoices("RAG_COLLECTION", "collection")
     )
     git_sha: str = "unknown"
     image_digest: str | None = None

@@ -282,8 +282,8 @@ deleting them changes cost, never results (beyond LLM nondeterminism, which the 
 | Point id | UUIDv5 of `chunk_id` |
 | Payload | `chunk_id`, `doc_id`, `tenant_id`, `lang`, `citation_key`, `section`, `source`, `version_date`, `is_attack`, `text` |
 | Payload indexes | `tenant_id` keyword with `is_tenant=true`; `lang`, `doc_id` keyword; `is_attack` bool |
-| Collection metadata | `corpus_version`, `tenants`, `analyzer` (T3.3 fingerprint), `avgdl`, `embed_model`, `dim`, `truncated_chunks` (passages cut at `max_input_tokens` at index time); read by the app at startup (`/v1/info.corpus_version`) and checked against its own analyzer (D461, D491) |
-| Build | `rag-demo index --corpus <dir> [--encoder tei\|ollama] [--collection <name>] [--no-alias] \| --drop <name>`; idempotent (same point ids, stale points pruned); the alias moves in one atomic request after the full build; `--drop` refuses the active collection (D490, D491) |
+| Collection metadata | `corpus_version`, `tenants`, `analyzer` (T3.3 fingerprint), `avgdl`, `embed_model`, `dim`, `complete`, `truncated_chunks` (passages cut at `max_input_tokens` at index time); read by the app at startup (`/v1/info.corpus_version`) and checked against its own analyzer (D461, D491) |
+| Build | `rag-demo index --corpus <dir> [--encoder tei\|ollama] [--collection <name>] [--no-alias] \| --drop <name>`; every build writes a fresh collection (`<fingerprint>__b<id>`), `metadata.complete=true` is set last, then the alias moves in one atomic request and the old target is deleted; a failed build is dropped; the app serves `chunks_active` and refuses a collection that is not `complete`; `--drop` refuses the active collection (D490, D495) |
 | Query | Query API: prefetch `dense` + prefetch `sparse`, each with `filter: tenant_id in [tenant, "shared_public"]`, fusion `rrf` |
 
 `is_tenant=true` tells Qdrant to co-locate each tenant's points, which makes the in-query filter

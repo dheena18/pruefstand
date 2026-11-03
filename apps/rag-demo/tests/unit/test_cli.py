@@ -1,6 +1,7 @@
 """``rag-demo index``: options, messages and exit codes (Qdrant and the encoders over respx)."""
 
 import json
+import re
 from pathlib import Path
 
 import httpx
@@ -120,7 +121,7 @@ def test_ollama_index_with_the_gpu_config_by_default(
     _ollama()
     result = runner.invoke(app, ["index", "--corpus", str(FIXTURE_CORPUS), "--encoder", "ollama"])
     assert result.exit_code == 0, result.output
-    assert "__bge-m3, alias chunks_active switched" in result.stdout
+    assert re.search(r"__bge-m3__b[0-9a-f]{8}, alias chunks_active switched", result.stdout)
 
 
 def test_encoder_that_disagrees_with_the_config_is_refused() -> None:

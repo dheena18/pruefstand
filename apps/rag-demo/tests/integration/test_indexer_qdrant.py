@@ -82,17 +82,19 @@ def test_every_point_carries_the_tenant_of_its_source_file(qdrant: str, tei_url:
     assert {p["payload"]["chunk_id"]: p["payload"]["tenant_id"] for p in points} == expected
 
 
-def test_rerun_is_idempotent_and_keeps_the_alias(qdrant: str, tei_url: str) -> None:
+def test_rerun_builds_a_fresh_collection_swaps_the_alias_and_removes_the_old_one(
+    qdrant: str, tei_url: str
+) -> None:
     first = _indexer(qdrant, tei_url)
     first.index(FIXTURE_CORPUS)
     second = _indexer(qdrant, tei_url)
     second.index(FIXTURE_CORPUS)
     assert first.last_report is not None
     assert second.last_report is not None
-    assert second.last_report.collection == first.last_report.collection
-    assert second.last_report.alias_switched is False
-    assert _info(qdrant, first.last_report.collection)["points_count"] == 40
-    assert QdrantAdmin(qdrant).alias_target(ALIAS) == first.last_report.collection
+    assert second.last_report.collection != first.last_report.collection
+    assert _info(qdrant, ALIAS)["points_count"] == 40  # no duplicates
+    assert QdrantAdmin(qdrant).alias_target(ALIAS) == second.last_report.collection
+    assert QdrantAdmin(qdrant).collection_info(first.last_report.collection) is None
 
 
 def test_changing_compound_split_builds_a_new_collection_and_switches_the_alias(
@@ -106,7 +108,7 @@ def test_changing_compound_split_builds_a_new_collection_and_switches_the_alias(
     assert split_off.last_report is not None
     assert split_off.last_report.collection != first.last_report.collection
     assert QdrantAdmin(qdrant).alias_target(ALIAS) == split_off.last_report.collection
-    assert _info(qdrant, first.last_report.collection)["points_count"] == 40  # old one stays
+    assert _info(qdrant, ALIAS)["config"]["metadata"]["complete"] is True  # type: ignore[index]  # json
 
 
 def test_pr_collection_leaves_the_active_alias_and_can_be_dropped(

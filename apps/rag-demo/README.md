@@ -42,7 +42,7 @@ embedding service when set and non-empty (D216); it is never logged.
 ```bash
 uv run python scripts/models/fetch.py --manifest infra/models/live-models.yaml   # generator GGUF
 make up PROFILES="core live dev" WAIT=1        # Qdrant, llama.cpp, TEI, rag-demo (VM: PORT_OFFSET=10000 from .env)
-make index-slice                               # rag-demo index of corpus/slice_v1 into slice_v2, writes .cache/pruefstand/qdrant/slice_v2.snapshot
+make index-slice                               # rag-demo index of corpus/slice_v1 into a fresh collection (alias chunks_active), writes .cache/pruefstand/qdrant/slice_v2.snapshot
 make rag-demo-bug BUG=tenant_filter_post_topk  # second instance with a bug config on the next free port
 curl -s -X POST 127.0.0.1:$(make -s ports | awk '/^rag-demo /{print $2}')/v1/query \
   -H 'content-type: application/json' \
@@ -86,7 +86,7 @@ uv run rag-demo index --drop pr_7_abc1234                                       
 ```
 
 Prints `indexed N chunks into <collection>, alias chunks_active switched`. The collection is named
-`chunks__<corpus_version>__<analyzer_hash8>__<embed_slug>`; a re-run is idempotent. `QDRANT_API_KEY` is
+`chunks__<corpus_version>__<analyzer_hash8>__<embed_slug>`; an aborted build never reaches the alias. Every build writes a fresh collection and moves the alias last (the app serves the alias `chunks_active`, `RAG_COLLECTION`). `QDRANT_API_KEY` is
 sent as `api-key` when set. Without `--config` the profile of `--encoder` is used (`configs/rag.yaml` or `rag.gpu.yaml`).
 
 ## Tests
@@ -114,7 +114,7 @@ folding, Snowball German stemming. The three switches live in the `analyzer:` se
 `config_hash`; `compound_split: false` is mutation M4. `SparseEncoder` hashes a token to
 `xxhash64(token) mod 2**31` and weights it with BM25 term-frequency saturation (k1 1.2, b 0.75); Qdrant applies
 the IDF. The Indexer stores `avgdl` and an analyzer fingerprint in the collection metadata; the app refuses a
-collection with a missing or different fingerprint (503, "re-index"). Collection and snapshot are `slice_v2`.
+collection with a missing or different fingerprint (503, "re-index"). The served collection is the alias `chunks_active`; the snapshot file is named `slice_v2`.
 
 `uv run python -m rag_demo.analysis.analyzer "Kündigungsschutzgesetz"` prints the token list.
 Benchmark (`uv run pytest -m slow apps/rag-demo/tests/unit/analysis/test_benchmark.py -s`): 10 000 chunks

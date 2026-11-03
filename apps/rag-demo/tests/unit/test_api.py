@@ -1,6 +1,7 @@
 """create_app: validation, /v1/info, /v1/health (collaborators stubbed at the HTTP level)."""
 
 import json
+import time
 
 import httpx
 import pytest
@@ -26,6 +27,7 @@ COLLECTION = {
                 "corpus_version": MANIFEST["corpus_version"],
                 "tenants": sorted(MANIFEST["tenants"]),
                 "analyzer": expected_fingerprint(load_config(CONFIGS / "rag.yaml")),
+                "complete": True,
             }
         }
     }
@@ -200,3 +202,38 @@ def test_collection_built_with_another_compound_split_is_refused(client: TestCli
     resp = client.post("/v1/query", json=_request())
     assert resp.status_code == 503
     assert "compound_split" in resp.text
+
+
+@respx.mock
+@pytest.mark.parametrize("complete", [None, False])
+def test_collection_that_was_never_completed_is_refused(
+    client: TestClient, *, complete: bool | None
+) -> None:
+    meta = dict(COLLECTION["result"]["config"]["metadata"])
+    if complete is None:
+        meta.pop("complete")
+    else:
+        meta["complete"] = complete
+    respx.get("http://qdrant.test:6333/collections/slice_v2").mock(
+        return_value=httpx.Response(200, json={"result": {"config": {"metadata": meta}}})
+    )
+    resp = client.post("/v1/query", json=_request())
+    assert resp.status_code == 503
+    assert "re-index" in resp.text
+
+
+@respx.mock
+def test_metadata_is_read_again_after_the_ttl_so_an_alias_swap_is_noticed(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    route = respx.get("http://qdrant.test:6333/collections/slice_v2").mock(
+        return_value=httpx.Response(200, json=COLLECTION)
+    )
+    assert client.get("/v1/info").status_code == 200
+    assert client.get("/v1/info").status_code == 200
+    assert route.call_count == 1  # cached inside the TTL
+    real = time.monotonic
+    monkeypatch.setattr(time, "monotonic", lambda: real() + 3600)
+    meta = dict(COLLECTION["result"]["config"]["metadata"], corpus_version="slice-new")
+    route.mock(return_value=httpx.Response(200, json={"result": {"config": {"metadata": meta}}}))
+    assert client.get("/v1/info").json()["corpus_version"] == "slice-new"

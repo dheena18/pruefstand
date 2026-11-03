@@ -1,7 +1,8 @@
 """Write the Qdrant snapshot of the indexed slice collection (T1.13 S6, T3.4 S4c).
 
-``make index-slice`` first runs ``rag-demo index --corpus corpus/slice_v1 --encoder tei
---collection slice_v2`` and then calls this with ``QDRANT_URL`` of the local stack. The snapshot
+``make index-slice`` first runs ``rag-demo index --corpus corpus/slice_v1 --encoder tei`` (a fresh
+collection, alias ``chunks_active`` switched after the build) and then calls this with
+``QDRANT_URL`` of the local stack. The snapshot
 (``.cache/pruefstand/qdrant/slice_v2.snapshot``) holds only document vectors; T1.12 and the
 integration tests restore it instead of re-embedding. Qdrant snapshots carry no aliases, so a
 restore must re-create ``chunks_active`` (``tests/integration/conftest.py`` does).
@@ -14,6 +15,7 @@ from pathlib import Path
 import httpx
 
 from rag_demo.config import Settings
+from rag_demo.index.qdrant_admin import QdrantAdmin
 
 ROOT = Path(__file__).resolve().parents[2]
 SNAPSHOT = ROOT / ".cache" / "pruefstand" / "qdrant" / "slice_v2.snapshot"
@@ -35,12 +37,16 @@ def write_snapshot(qdrant_url: str, collection: str, dest: Path) -> int:
 
 
 def main(argv: Sequence[str] | None = None) -> int:
-    """Snapshot the collection named by ``RAG_COLLECTION`` (default ``slice_v2``)."""
+    """Snapshot the collection that the alias in ``RAG_COLLECTION`` points to."""
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--out", type=Path, default=SNAPSHOT)
     args = parser.parse_args(argv)
     settings = Settings()
-    size = write_snapshot(settings.qdrant_url, settings.collection, args.out)
+    admin = QdrantAdmin(settings.qdrant_url)
+    collection = (
+        admin.alias_target(settings.collection) or settings.collection
+    )  # snapshot the target
+    size = write_snapshot(settings.qdrant_url, collection, args.out)
     print(f"index-slice: snapshot {size} bytes")
     return 0
 

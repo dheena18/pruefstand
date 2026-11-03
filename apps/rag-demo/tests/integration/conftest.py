@@ -20,7 +20,7 @@ from rag_demo.index.qdrant_admin import QdrantAdmin
 from rag_demo.models import RagConfig
 from rag_demo.retrieve import Retriever
 
-COLLECTION = "slice_v2"
+COLLECTION = "slice_v2"  # the restored snapshot; the app and the retriever use the alias ALIAS
 SNAPSHOT = REPO / ".cache" / "pruefstand" / "qdrant" / "slice_v2.snapshot"
 
 
@@ -61,7 +61,7 @@ def qdrant_url(tei_url: str) -> Iterator[str]:
             _dense(cfg, tei_url),
             _analyzer(cfg),
             SparseEncoder(),
-            target=IndexTarget(cfg.embed.model, collection=COLLECTION),
+            target=IndexTarget(cfg.embed.model),
         ).index(SLICE)
         yield url
 
@@ -118,7 +118,7 @@ def make_retriever(qdrant_url: str, tei_url: str):  # type: ignore[no-untyped-de
             _dense(cfg, tei_url),
             _analyzer(cfg),
             SparseEncoder(),
-            collection=COLLECTION,
+            collection=ALIAS,
             client=httpx.Client(transport=transport, timeout=30),
         )
         return retriever, transport

@@ -20,21 +20,26 @@ TIMEOUT_S = 120
 
 
 def source_url(source: str) -> str:
-    """Map a catalogue source ``hf:<org>/<repo>/<file>`` to its Hugging Face download URL.
+    """Map a catalogue source ``hf:<org>/<repo>[@<revision>]/<file>`` to its download URL.
+
+    Without a revision the branch ``main`` is meant; the catalogue pins a commit.
 
     Raises:
         ConfigError: The source is not of that form.
 
     Examples:
+        >>> source_url("hf:BAAI/bge-m3@abc123/tokenizer.json")
+        'https://huggingface.co/BAAI/bge-m3/resolve/abc123/tokenizer.json'
         >>> source_url("hf:BAAI/bge-m3/tokenizer.json")
         'https://huggingface.co/BAAI/bge-m3/resolve/main/tokenizer.json'
     """
     prefix, _, rest = source.partition(":")
     parts = rest.split("/")
     if prefix != "hf" or len(parts) < 3:
-        msg = f"tokenizer source {source!r} must look like hf:<org>/<repo>/<file>"
+        msg = f"tokenizer source {source!r} must look like hf:<org>/<repo>[@<rev>]/<file>"
         raise ConfigError(msg)
-    return f"{HF}/{parts[0]}/{parts[1]}/resolve/main/{'/'.join(parts[2:])}"
+    repo, _, revision = parts[1].partition("@")
+    return f"{HF}/{parts[0]}/{repo}/resolve/{revision or 'main'}/{'/'.join(parts[2:])}"
 
 
 def verify(data: bytes, sha256: str) -> None:

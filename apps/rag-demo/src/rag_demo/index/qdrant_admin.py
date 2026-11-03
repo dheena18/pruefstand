@@ -92,11 +92,6 @@ class QdrantAdmin:
             "PUT", f"/collections/{name}/points", params={"wait": "true"}, json={"points": points}
         )
 
-    def prune(self, name: str, keep_ids: list[str]) -> None:
-        """Delete every point whose id is not in ``keep_ids`` (stale chunks of an older corpus)."""
-        body = {"filter": {"must_not": [{"has_id": keep_ids}]}}
-        self._call("POST", f"/collections/{name}/points/delete", params={"wait": "true"}, json=body)
-
     def set_metadata(self, name: str, metadata: dict[str, Any]) -> None:
         """Replace the collection metadata (corpus version, fingerprint, avgdl, counters)."""
         self._call("PATCH", f"/collections/{name}", json={"metadata": metadata})

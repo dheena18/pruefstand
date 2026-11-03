@@ -1,11 +1,11 @@
 # Targets of the tier-1 `live` stack (T1.13). Included by the root Makefile (-include mk/*.mk, after docker.mk).
 .PHONY: index-slice rag-demo-bug cassettes-contract cassettes-target
 
-# Builds the Qdrant collection slice_v2 (+ alias chunks_active) from corpus/slice_v1/ with `rag-demo index` and the real TEI
+# Builds a fresh collection (alias chunks_active switched after the full build) from corpus/slice_v1/ with `rag-demo index` and the real TEI
 # container, then writes the snapshot that T1.12 caches (snapshots carry no alias: a restore re-creates it). Needs a running `live` stack: make up PROFILES="core live dev" WAIT=1  (ports come from docker.mk).
 index-slice:
 	QDRANT_URL=http://127.0.0.1:$(QDRANT_HTTP_PORT) EMBED_URL=http://127.0.0.1:$(EMBED_HOST_PORT) \
-	    uv run rag-demo index --corpus corpus/slice_v1 --encoder tei --collection slice_v2
+	    uv run rag-demo index --corpus corpus/slice_v1 --encoder tei
 	QDRANT_URL=http://127.0.0.1:$(QDRANT_HTTP_PORT) uv run python scripts/slice/index_slice.py
 
 # A second rag-demo instance with a bug config (apps/rag-demo/configs/bugs/<BUG>.yaml) on BUG_PORT (default 8001

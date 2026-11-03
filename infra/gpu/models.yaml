@@ -51,7 +51,7 @@ models:
     max_input_tokens: 1024
     options: {num_ctx: 1024, num_predict: 1, temperature: 0.0, seed: 0, top_p: 1.0}
     tokenizer:
-      source: hf:BAAI/bge-m3/tokenizer.json
+      source: hf:BAAI/bge-m3@5617a9f61b028005a4858fdac845db406aefb181/tokenizer.json
       sha256: 21106b6d7dab2952c1d496fb21d5dc9db75c28ed361a05f5020bbba27810dd08
   - id: ollama/gemma3:12b
     engine: ollama
