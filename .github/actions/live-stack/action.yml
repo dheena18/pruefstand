@@ -1,0 +1,60 @@
+name: live-stack
+description: >-
+  Starts the tier-1 `live` stack (Qdrant, llama.cpp, CPU embeddings, rag-demo) on a hosted runner and indexes the
+  5-law slice (T1.12, ci-cd.md section 1.1a and 4). The caller has checked out the repository and run
+  setup-uv and `uv sync`. Caches are only restored here; the caller saves them (on main only).
+outputs:
+  models-cache-hit:
+    description: "'true' when the model files came from the cache"
+    value: ${{ steps.models.outputs.cache-hit }}
+  index-cache-hit:
+    description: "'true' when the slice snapshot came from the cache"
+    value: ${{ steps.index.outputs.cache-hit }}
+inputs:
+  cache-to:
+    description: Buildx cache-to value for the rag-demo image layers; empty on PR runs so PRs never write the cache.
+    required: false
+    default: ""
+runs:
+  using: composite
+  steps:
+    - name: Restore model files
+      id: models
+      uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      with:
+        path: ~/.cache/pruefstand/models
+        key: models-${{ hashFiles('infra/models/*.yaml') }}
+    - name: Fetch model files
+      if: steps.models.outputs.cache-hit != 'true'
+      shell: bash
+      run: |
+        for manifest in infra/models/*.yaml; do
+          uv run python scripts/models/fetch.py --manifest "$manifest"
+        done
+    - name: Restore slice index snapshot
+      id: index
+      uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      with:
+        path: .cache/pruefstand/qdrant
+        key: qdrant-slice-${{ hashFiles('corpus/slice_v1/**', 'infra/models/live-models.yaml', 'apps/rag-demo/src/rag_demo/**', 'apps/rag-demo/configs/rag.yaml') }}
+    - uses: docker/setup-buildx-action@b5ca514318bd6ebac0fb2aedd5d36ec1b5c232a2 # v3.10.0
+    # Warms the layer cache of the builder that `docker compose up` uses next (same builder, same context).
+    - name: Build the rag-demo image layers
+      uses: docker/build-push-action@471d1dc4e07e5cdedd4c2171150001c434f0b7a4 # v6.15.0
+      with:
+        context: .
+        file: apps/rag-demo/Dockerfile
+        push: false
+        cache-from: type=gha,scope=rag-demo
+        cache-to: ${{ inputs.cache-to }}
+    - name: Start the live stack
+      shell: bash
+      run: make up PROFILES="core live" WAIT=1
+    - name: Restore the cached slice index
+      if: steps.index.outputs.cache-hit == 'true'
+      shell: bash
+      run: uv run python scripts/slice/restore_snapshot.py
+    - name: Index the slice
+      if: steps.index.outputs.cache-hit != 'true'
+      shell: bash
+      run: make index-slice

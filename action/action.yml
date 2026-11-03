@@ -1,0 +1,42 @@
+name: Prüfstand release gate
+description: >-
+  Runs a Prüfstand evaluation against a RAG target, gates it against a baseline run and writes the
+  report. Linux only. Tier 1 decides on hard fails and the error-rate check; paired statistics are
+  reported at small n.
+author: dheena18
+branding:
+  icon: shield
+  color: blue
+inputs:
+  config:
+    description: Path of the pruefstand.yaml, relative to the workspace.
+    required: false
+    default: pruefstand.yaml
+  tier:
+    description: "Run tier: pr, nightly or bench."
+    required: false
+    default: pr
+  baseline-run:
+    description: >-
+      Run directory of the baseline (same config and dataset, so the same eval_fingerprint).
+      Required until the baseline store arrives (T6.1); empty exits with code 2.
+    required: false
+    default: ""
+  fail-on-warn:
+    description: "Exit 1 on a WARN result as well: true or false."
+    required: false
+    default: "false"
+  output-dir:
+    description: Directory for the run directory and comment.md.
+    required: false
+    default: .pruefstand/out
+outputs:
+  status:
+    description: Gate result, one of pass, warn, fail, insufficient_data.
+  run-dir:
+    description: Path of the candidate run directory (contains run.json and gate.json).
+  comment-path:
+    description: Path of the Markdown report (the PR comment body).
+runs:
+  using: docker
+  image: Dockerfile

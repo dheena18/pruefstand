@@ -1,7 +1,10 @@
 name: live-e2e
 
-# Tier 1 (live) SKELETON: the real stack arrives in T1.12. The permissions are fixed here so that
-# they are reviewed early (docs/engineering/ci-cd.md section 1.1). Not a required check yet.
+# Tier 1 (live), T1.12: the REAL stack on a hosted CPU runner (docs/engineering/ci-cd.md sections 1.1 and 1.1a).
+# live      = the 20-case smoke_live run gated against the latest successful main push run; one PR comment.
+# scenarios = the five deterministic bug-switch scenarios of T1.11 (nightly, dispatch, PRs touching rag-demo).
+# gate      = the aggregate and the required check `live-e2e / gate`. No job here sets a commit status.
+# No repository secrets: the judge token is the job's own GITHUB_TOKEN (`models: read`), forks get none (D333).
 on:
   pull_request:
   push:
@@ -10,6 +13,11 @@ on:
     - cron: "37 2 * * *"
   workflow_dispatch:
     inputs:
+      job:
+        description: "Which jobs run: all (live + scenarios) or scenarios only"
+        type: choice
+        options: [all, scenarios]
+        default: all
       probe_quota:
         description: "T0.6 S6: measure the GitHub Models free-tier quotas (job quota-probe)"
         type: boolean
@@ -22,8 +30,98 @@ concurrency:
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
+  prepare:
+    name: prepare
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      actions: read  # `gh cache list` for the cache-size line of the summary
+    outputs:
+      live: ${{ steps.plan.outputs.live }}
+      scenarios: ${{ steps.plan.outputs.scenarios }}
+    env:
+      # `main` and the nightly warm the caches; PR jobs only restore them (PRs cannot evict them, A8-24).
+      WARM: ${{ github.event_name != 'pull_request' && github.event_name != 'workflow_dispatch' || github.ref == 'refs/heads/main' }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 2  # a PR checkout is the merge commit: HEAD^1 is the base tip
+          persist-credentials: false
+      - name: Plan
+        id: plan
+        env:
+          EVENT: ${{ github.event_name }}
+          JOB_INPUT: ${{ inputs.job }}
+          PROBE_QUOTA: ${{ inputs.probe_quota }}
+          # Changes that cannot affect the live stack: the job exits early with success (ci-cd.md section 1).
+          DOCS_ONLY: '^(docs/|prompts/|tasks/|\.github/ISSUE_TEMPLATE/)|\.md$|^(mkdocs\.yml|\.github/(pull_request_template\.md|CODEOWNERS))$'
+          # Changes that run the scenario matrix on a PR.
+          SCENARIO_PATHS: '^(apps/rag-demo/|\.github/workflows/live-e2e\.yml$|\.github/actions/live-stack/)'
+        run: |
+          live=true
+          scenarios=false
+          case "$EVENT" in
+            pull_request)
+              changed="$(git diff --name-only HEAD^1 HEAD)"
+              if ! printf '%s\n' "$changed" | grep -Eqv "$DOCS_ONLY"; then live=false; fi
+              if printf '%s\n' "$changed" | grep -Eq "$SCENARIO_PATHS"; then scenarios=true; fi
+              ;;
+            schedule)
+              scenarios=true
+              ;;
+            workflow_dispatch)
+              scenarios=true
+              if [ "$PROBE_QUOTA" = "true" ]; then live=false; scenarios=false; fi
+              if [ "$JOB_INPUT" = "scenarios" ]; then live=false; fi
+              ;;
+          esac
+          echo "live=$live" >> "$GITHUB_OUTPUT"
+          echo "scenarios=$scenarios" >> "$GITHUB_OUTPUT"
+          echo "plan: live=$live scenarios=$scenarios" >> "$GITHUB_STEP_SUMMARY"
+      - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
+        if: env.WARM == 'true' && (steps.plan.outputs.live == 'true' || steps.plan.outputs.scenarios == 'true')
+        with:
+          version: "0.13.6"
+          enable-cache: true
+      - name: Install
+        if: env.WARM == 'true' && (steps.plan.outputs.live == 'true' || steps.plan.outputs.scenarios == 'true')
+        run: uv sync --frozen --all-packages --all-extras
+      # On main the first run after a cache miss builds the model files (incl. the TEI weights) and the slice
+      # snapshot by running the stack once, then saves them. Every other job only restores.
+      - name: Warm the caches
+        id: stack
+        if: env.WARM == 'true' && (steps.plan.outputs.live == 'true' || steps.plan.outputs.scenarios == 'true')
+        uses: ./.github/actions/live-stack
+        with:
+          cache-to: type=gha,mode=min,scope=rag-demo
+      - name: Save model files
+        if: github.ref == 'refs/heads/main' && steps.stack.outputs.models-cache-hit != 'true' && steps.stack.conclusion == 'success'
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/.cache/pruefstand/models
+          key: models-${{ hashFiles('infra/models/*.yaml') }}
+      - name: Save slice index snapshot
+        if: github.ref == 'refs/heads/main' && steps.stack.outputs.index-cache-hit != 'true' && steps.stack.conclusion == 'success'
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: .cache/pruefstand/qdrant
+          key: qdrant-slice-${{ hashFiles('corpus/slice_v1/**', 'infra/models/live-models.yaml', 'apps/rag-demo/src/rag_demo/**', 'apps/rag-demo/configs/rag.yaml') }}
+      - name: Stop the stack
+        if: always() && steps.stack.conclusion != 'skipped'
+        run: make down
+      - name: Cache sizes
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          total="$(gh cache list --limit 100 --json sizeInBytes --jq '[.[].sizeInBytes] | add // 0' || echo unknown)"
+          echo "actions cache total: ${total} bytes (target <= 7 GB, model files <= 4 GB)" >> "$GITHUB_STEP_SUMMARY"
+
   live:
     name: live
+    needs: prepare
+    if: needs.prepare.outputs.live == 'true'
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     permissions:
@@ -33,14 +131,332 @@ jobs:
     env:
       # Fork PRs have no `models` permission: judged metrics are skipped there (no CPU fallback judge).
       IS_FORK: ${{ github.event.pull_request.head.repo.full_name != github.repository && github.event_name == 'pull_request' }}
+      PRUEFSTAND_GH_MODELS_TOKEN: ${{ github.token }}
+      PRUEFSTAND_STACK: live
     steps:
+      - name: Start time
+        run: echo "JOB_START=$(date +%s)" >> "$GITHUB_ENV"
       - name: Judge mode
         run: |
           if [ "$IS_FORK" = "true" ]; then
             echo "PRUEFSTAND_JUDGE_MODE=skipped" >> "$GITHUB_ENV"
           fi
-      - name: Placeholder
-        run: echo "live-e2e arrives in T1.12"
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
+        with:
+          version: "0.13.6"
+          enable-cache: true
+      - name: Install
+        run: uv sync --frozen --all-packages --all-extras
+      - name: Live stack
+        uses: ./.github/actions/live-stack
+      # Baseline trust (X1.4): a PR compares ONLY to `live-baseline` of the latest successful PUSH run on main.
+      # Artefacts of PR runs are never used. The nightly's baseline has another eval_fingerprint (40 cases).
+      - name: Baseline (PR and main)
+        id: baseline_pr
+        if: github.event_name != 'schedule'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          id="$(gh api "repos/${REPO}/actions/workflows/live-e2e.yml/runs?branch=main&status=success&event=push&per_page=1" --jq '.workflow_runs[0].id // empty')"
+          if [ -z "$id" ]; then echo "no successful push run on main yet: no tier-1 baseline"; exit 0; fi
+          tmp="$(mktemp -d)"
+          if ! gh run download "$id" --repo "$REPO" --name live-baseline --dir "$tmp"; then
+            echo "run $id has no live-baseline artefact (expired?): no tier-1 baseline"; exit 0
+          fi
+          rid="$(jq -r '.run_id' "$tmp/run.json")"
+          [[ "$rid" =~ ^[0-9A-Za-z_.-]+$ ]] || { echo "unexpected run id in the baseline"; exit 1; }
+          mkdir -p runs && mv "$tmp" "runs/$rid"
+          echo "dir=runs/$rid" >> "$GITHUB_OUTPUT"
+          echo "baseline: run $id (live-baseline), run directory $rid" >> "$GITHUB_STEP_SUMMARY"
+      - name: Baseline (nightly)
+        id: baseline_nightly
+        if: github.event_name == 'schedule'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          id="$(gh api "repos/${REPO}/actions/workflows/live-e2e.yml/runs?branch=main&status=success&event=schedule&per_page=1" --jq '.workflow_runs[0].id // empty')"
+          if [ -z "$id" ]; then echo "no successful nightly run yet: no baseline"; exit 0; fi
+          tmp="$(mktemp -d)"
+          if ! gh run download "$id" --repo "$REPO" --name live-baseline-nightly --dir "$tmp"; then
+            echo "run $id has no live-baseline-nightly artefact (expired?): no baseline"; exit 0
+          fi
+          rid="$(jq -r '.run_id' "$tmp/run.json")"
+          [[ "$rid" =~ ^[0-9A-Za-z_.-]+$ ]] || { echo "unexpected run id in the baseline"; exit 1; }
+          mkdir -p runs && mv "$tmp" "runs/$rid"
+          echo "dir=runs/$rid" >> "$GITHUB_OUTPUT"
+          echo "baseline: run $id (live-baseline-nightly), run directory $rid" >> "$GITHUB_STEP_SUMMARY"
+      # push: main uses the PR shape (examples/live/pruefstand.yaml) so live-baseline fits every PR run.
+      - name: Run, gate, report
+        id: gate
+        env:
+          CONFIG: ${{ github.event_name == 'schedule' && 'examples/live/pruefstand.nightly.yaml' || 'examples/live/pruefstand.yaml' }}
+          TIER: ${{ github.event_name == 'schedule' && 'nightly' || 'pr' }}
+          BASELINE_DIR: ${{ steps.baseline_pr.outputs.dir || steps.baseline_nightly.outputs.dir }}
+        run: |
+          mkdir -p runs
+          run_one() {
+            local out
+            out="$(uv run pruefstand run --config "$CONFIG" --tier "$TIER" --out runs)" || return $?
+            printf '%s\n' "$out" | tail -n 1
+          }
+          base="$BASELINE_DIR"
+          if [ -z "$base" ]; then
+            # First run: no main baseline exists yet. Gate against a second run of this same commit; the hard
+            # fails are decided by the candidate alone, the paired deltas are noise. The comment says so.
+            base="$(run_one)" || exit $?
+            self=true
+          else
+            self=false
+          fi
+          cand="$(run_one)" || exit $?
+          gate_rc=0
+          uv run pruefstand gate --config "$CONFIG" --candidate "$cand" --baseline "$base" || gate_rc=$?
+          if [ "$gate_rc" -gt 1 ]; then exit "$gate_rc"; fi
+          uv run pruefstand report --run "$cand" --format md > comment.md
+          # One judge line from run.json (judged metrics never decide this gate, W1.4), after the marker line.
+          mode="$(jq -r '.judge_mode' "$cand/run.json")"
+          calls="$(jq -r '.cost.llm_calls' "$cand/run.json")"
+          if [ "$mode" != "skipped" ]; then judge="ok"
+          elif [ "$IS_FORK" = "true" ]; then judge="skipped (fork PR)"
+          else judge="skipped (quota)"; fi
+          {
+            head -n 1 comment.md
+            if [ "$self" = "true" ]; then
+              echo "> No tier-1 baseline on main yet: gated against a second run of this commit (no paired signal)."
+            fi
+            echo "> Judge (informational): ${judge} - ${calls} calls"
+            tail -n +2 comment.md
+          } > comment.new
+          mv comment.new comment.md
+          { echo "run_dir=$cand"; echo "gate_rc=$gate_rc"; echo "self_baseline=$self"; } >> "$GITHUB_OUTPUT"
+          cat comment.md >> "$GITHUB_STEP_SUMMARY"
+      - name: Live tests (stack only)
+        env:
+          PRUEFSTAND_TARGET_URL: http://localhost:8000
+        run: |
+          uv run pytest -m "live and not e2e and not gpu and not network" packages/pruefstand/tests apps/rag-demo/tests/live
+      - name: Wall time and judge calls
+        if: always() && steps.gate.outputs.run_dir != ''
+        env:
+          RUN_DIR: ${{ steps.gate.outputs.run_dir }}
+        run: |
+          {
+            echo "wall time: $(( $(date +%s) - JOB_START )) s (budget 20 min, cache-warm target 12 min)"
+            jq -r '"judge_mode=\(.judge_mode) judged_cases=\(.judged_cases) cost=\(.cost | tojson) duration_s=\(.duration_s)"' "$RUN_DIR/run.json"
+          } >> "$GITHUB_STEP_SUMMARY"
+      - name: Upload the report
+        if: always() && steps.gate.outputs.run_dir != ''
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: live-report
+          path: |
+            comment.md
+            ${{ steps.gate.outputs.run_dir }}/gate.json
+            ${{ steps.gate.outputs.run_dir }}/run.json
+          retention-days: 14
+      - name: Upload live-baseline
+        if: github.event_name == 'push' && steps.gate.outputs.run_dir != ''
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: live-baseline
+          path: ${{ steps.gate.outputs.run_dir }}
+          retention-days: 90
+      - name: Upload live-baseline-nightly
+        if: github.event_name == 'schedule' && steps.gate.outputs.run_dir != ''
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: live-baseline-nightly
+          path: ${{ steps.gate.outputs.run_dir }}
+          retention-days: 90
+      - name: Stack logs
+        if: failure()
+        run: docker compose --profile '*' logs --tail=200
+      - name: Stop the stack
+        if: always()
+        run: make down
+      - name: Gate result
+        if: steps.gate.outputs.gate_rc != '' && steps.gate.outputs.gate_rc != '0'
+        env:
+          GATE_RC: ${{ steps.gate.outputs.gate_rc }}
+        run: exit "$GATE_RC"
+
+  scenario-baseline:
+    name: scenario-baseline
+    needs: prepare
+    if: needs.prepare.outputs.scenarios == 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    permissions:
+      contents: read
+    env:
+      PRUEFSTAND_STACK: live
+      PRUEFSTAND_JUDGE_MODE: skipped  # deterministic metrics only
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
+        with:
+          version: "0.13.6"
+          enable-cache: true
+      - name: Install
+        run: uv sync --frozen --all-packages --all-extras
+      - name: Live stack
+        uses: ./.github/actions/live-stack
+      # The `good` run both splits (40 cases), made once; every scenario leg gates against it (AI-02). The config
+      # is the e2e one with the URL and the absolute dataset path filled in, as testsupport.e2e_support does.
+      - name: Baseline run
+        run: |
+          cfg="$RUNNER_TEMP/good.yaml"
+          sed -e "s#http://localhost:8000#http://127.0.0.1:8000#" \
+              -e "s#datasets/fixtures/slice_v1#$PWD/datasets/fixtures/slice_v1#" \
+              packages/pruefstand/tests/e2e/configs/good.yaml > "$cfg"
+          uv run pruefstand run --config "$cfg" --tier pr --out e2e-baseline
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: e2e-baseline
+          path: e2e-baseline
+          retention-days: 2
+      - name: Stack logs
+        if: failure()
+        run: docker compose --profile '*' logs --tail=200
+      - name: Stop the stack
+        if: always()
+        run: make down
+
+  scenarios:
+    name: scenario (${{ matrix.scenario }})
+    needs: [prepare, scenario-baseline]
+    if: needs.prepare.outputs.scenarios == 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        scenario:
+          - good
+          - tenant_filter_post_topk
+          - shared_public_unfiltered
+          - system_prompt_guard_off
+          - injection_guard_off
+    env:
+      PRUEFSTAND_E2E_SCENARIO: ${{ matrix.scenario }}
+    steps:
+      - name: Start time
+        run: echo "JOB_START=$(date +%s)" >> "$GITHUB_ENV"
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
+        with:
+          version: "0.13.6"
+          enable-cache: true
+      - name: Install
+        run: uv sync --frozen --all-packages --all-extras
+      - name: Live stack
+        uses: ./.github/actions/live-stack
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: e2e-baseline
+          path: e2e-baseline
+      - name: Scenario
+        run: |
+          baseline="$(find "$PWD/e2e-baseline" -mindepth 1 -maxdepth 1 -type d | head -n 1)"
+          PRUEFSTAND_E2E_BASELINE_RUN="$baseline" uv run pytest -m "e2e and live" packages/pruefstand/tests/e2e -v
+      - name: Wall time
+        if: always()
+        run: |
+          echo "scenario ${PRUEFSTAND_E2E_SCENARIO}: $(( $(date +%s) - JOB_START )) s (limit 20 min)" >> "$GITHUB_STEP_SUMMARY"
+      - name: Stack logs
+        if: failure()
+        run: docker compose --profile '*' logs --tail=200
+      - name: Stop the stack
+        if: always()
+        run: make down
+
+  # Same-repo PRs only: the job never builds or runs PR code. It checks comment.md with the checker from the BASE
+  # SHA and upserts it as the one bot comment. Fork PRs get the report in the job summary of `live`.
+  comment:
+    name: comment
+    needs: [prepare, live]
+    if: ${{ !cancelled() && needs.live.result != 'skipped' && github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.pull_request.base.sha }}
+          sparse-checkout: action
+          persist-credentials: false
+      - name: Download the report
+        id: download
+        continue-on-error: true  # the live job may have stopped before it wrote one
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: live-report
+          path: report
+      - name: Check the comment
+        if: steps.download.outcome == 'success'
+        run: |
+          if [ -f action/check_comment.py ]; then
+            python3 action/check_comment.py report/comment.md
+          else
+            # Bootstrap: the PR that adds action/check_comment.py has no checker in its base yet. Same rules.
+            [ "$(head -n 1 report/comment.md)" = "<!-- pruefstand:pr-comment -->" ]
+            [ "$(wc -m < report/comment.md)" -le 60000 ]
+          fi
+      - name: Post or update the comment
+        if: steps.download.outcome == 'success'
+        uses: actions/github-script@ed597411d8f924073f98dfc5c65a23a2325f34cd # v8.0.0
+        with:
+          script: |
+            const fs = require('fs');
+            const body = fs.readFileSync('report/comment.md', 'utf8');
+            const marker = body.split('\n', 1)[0];
+            const comments = await github.paginate(github.rest.issues.listComments, {
+              ...context.repo,
+              issue_number: context.issue.number,
+              per_page: 100,
+            });
+            const mine = comments.find((c) => c.user.type === 'Bot' && c.body.startsWith(marker));
+            if (mine) {
+              await github.rest.issues.updateComment({ ...context.repo, comment_id: mine.id, body });
+            } else {
+              await github.rest.issues.createComment({ ...context.repo, issue_number: context.issue.number, body });
+            }
+
+  gate:
+    name: gate
+    if: always()
+    needs: [prepare, live, scenario-baseline, scenarios]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions: {}
+    steps:
+      - name: Every needed job succeeded (or was skipped by the plan)
+        env:
+          NEEDS: ${{ toJSON(needs) }}
+        run: |
+          echo "$NEEDS" | jq -r 'to_entries[] | "\(.key): \(.value.result)"'
+          echo "$NEEDS" | jq -e '
+            .prepare.result == "success"
+            and (.live.result == "success" or (.live.result == "skipped" and .prepare.outputs.live == "false"))
+            and (.["scenario-baseline"].result == "success"
+                 or (.["scenario-baseline"].result == "skipped" and .prepare.outputs.scenarios == "false"))
+            and (.scenarios.result == "success"
+                 or (.scenarios.result == "skipped" and .prepare.outputs.scenarios == "false"))' > /dev/null
 
   # T0.6 S6 (check C9): measure the GitHub Models free quota with the workflow token. Dispatch only:
   #   gh workflow run live-e2e.yml --ref docs/T0.6-cluster-feasibility -f probe_quota=true

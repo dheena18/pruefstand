@@ -41,6 +41,7 @@ ACTIONS_READ: dict[tuple[str, str], str] = {
         "site",
     ): "downloads the dashboard-site artefact of the triggering deploy.yml run",
     ("live-e2e.yml", "live"): "downloads the main baseline artefact by run id",
+    ("live-e2e.yml", "prepare"): "`gh cache list` for the cache-size line of the job summary",
 }
 
 # (file, job) -> reason, for ``contents: write``.
