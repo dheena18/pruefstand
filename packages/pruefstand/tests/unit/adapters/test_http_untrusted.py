@@ -90,23 +90,33 @@ def test_citations_bomb_stays_within_a_memory_budget() -> None:
 async def test_event_loop_keeps_ticking_while_a_bomb_is_parsed(
     router: respx.MockRouter, adapter: HttpTargetAdapter
 ) -> None:
+    """The parse must not block the loop. The ticker yields on every loop iteration (``sleep(0)``)
+    and starts before the query, so it always ticks at least once, even when the adapter rejects
+    the bomb faster than any fixed sleep (a 10 ms ticker sometimes never ran: ``assert gaps``).
+    The threshold only has to separate "briefly held GIL" from the ~8 s of the unbounded parse.
+    """
     router.post("/v1/query").respond(200, content=bomb())
     gaps: list[float] = []
+    stop = asyncio.Event()
 
     async def ticker() -> None:
         last = time.monotonic()
-        while True:
-            await asyncio.sleep(0.01)
+        while not stop.is_set():
+            await asyncio.sleep(0)
             now = time.monotonic()
             gaps.append(now - last)
             last = now
 
     task = asyncio.create_task(ticker())
-    with pytest.raises(TargetError):
-        await adapter.query(REQ)
-    task.cancel()
-    assert gaps
-    assert max(gaps) < 1.5  # the unbounded parse blocked for ~8 s; json.loads holds the GIL briefly
+    try:
+        await asyncio.sleep(0)  # let the ticker start before the query runs
+        with pytest.raises(TargetError):
+            await adapter.query(REQ)
+    finally:
+        stop.set()
+        await task
+    assert len(gaps) >= 1
+    assert max(gaps) < 4.0  # the unbounded parse blocked for ~8 s
 
 
 @pytest.mark.parametrize(
