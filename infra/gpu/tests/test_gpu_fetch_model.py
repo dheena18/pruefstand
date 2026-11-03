@@ -146,6 +146,14 @@ def test_rm_of_the_generator_exits_64_with_or_without_maintenance(gpu: GpuWorld)
     assert not _remote(gpu, "ollama-op.sh")
 
 
+def test_rm_removes_a_candidate_generator_but_never_the_standard_one(gpu: GpuWorld) -> None:
+    """A non-standard entry with role generator (qwen3:4b) is a swap candidate."""
+    (gpu.lock_dir / "MAINTENANCE").touch()
+    res = gpu.script("fetch-model.sh", "--rm", "ollama/qwen3:4b")
+    assert res.rc == 0, res.err
+    assert len(_remote(gpu, "ollama-op.sh rm qwen3:4b")) == 1
+
+
 def test_the_generator_present_with_its_pin_needs_no_pull(gpu: GpuWorld) -> None:
     gpu.set_tags(["qwen3.8:27b-q8_0"])
     res = gpu.script("fetch-model.sh", GEN)

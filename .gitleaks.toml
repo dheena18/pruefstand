@@ -43,3 +43,23 @@ paths = [
 regexes = [
   '''CANARY-VN-7f3a9c''',
 ]
+
+[[allowlists]]
+description = "T5.1 policy-guard test: a synthetic canary token assigned to a variable named TOKEN (CLAUDE.md section 9: canary tokens are test data, not credentials)"
+condition = "AND"
+paths = [
+  '''packages/pruefstand/tests/unit/llm/test_policy_guard\.py''',
+]
+regexes = [
+  '''CANARY-VN-7f3a9c''',
+]
+
+[[allowlists]]
+description = "T3.1e log-tail redaction test: a made-up key=value secret that the redaction must mask (synthetic sample, not a credential)"
+condition = "AND"
+paths = [
+  '''infra/cluster/tests/test_cluster_log_tail\.py''',
+]
+regexes = [
+  '''Zq9Xk2LmN4pR7sT1vW3y''',
+]
