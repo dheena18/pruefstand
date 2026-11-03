@@ -4,6 +4,7 @@ import pytest
 from hypothesis import given
 from hypothesis import strategies as st
 
+from rag_demo.errors import RagDemoError
 from rag_demo.retrieval.filters import SHARED, allowed_tenants, tenant_filter
 
 SLUG = st.from_regex(r"[a-z][a-z0-9_]{0,63}", fullmatch=True)
@@ -56,3 +57,10 @@ def test_every_slug_is_allowed_with_shared_public_and_the_filter_matches_exactly
     assert SHARED in allowed
     assert tenant in allowed
     assert set(tenant_filter(tenant).must[0].match.any) == allowed
+
+
+def test_unknown_tenant_is_a_rag_demo_error_and_still_a_value_error() -> None:
+    with pytest.raises(RagDemoError):
+        allowed_tenants("Bad Tenant")
+    with pytest.raises(ValueError, match="unknown tenant"):
+        allowed_tenants("Bad Tenant")

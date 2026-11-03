@@ -208,19 +208,18 @@ def test_the_reranker_scores_the_top_n_in_one_request_and_the_query_asks_for_eno
 
 
 @respx.mock
-def test_hits_beyond_top_n_follow_the_reranked_ones_unchanged() -> None:
+def test_a_top_k_above_top_n_reranks_all_returned_hits_so_scores_are_not_mixed() -> None:
     cfg = _rerank_cfg(2)
     respx.post(f"{TEI}/embed").mock(return_value=httpx.Response(200, json=[[0.1, 0.2, 0.3]]))
     respx.get(COLL).mock(return_value=_meta(cfg))
-    respx.post(f"{COLL}/points/query").mock(return_value=_points(*CHUNKS))
-    rerank = respx.post(f"{RERANK}/rerank").mock(
-        return_value=httpx.Response(
-            200, json=[{"index": 1, "score": 0.8}, {"index": 0, "score": 0.2}]
-        )
-    )
+    query = respx.post(f"{COLL}/points/query").mock(return_value=_points(*CHUNKS))
+    scores = [{"index": 2, "score": 0.8}, {"index": 1, "score": 0.5}, {"index": 0, "score": 0.2}]
+    rerank = respx.post(f"{RERANK}/rerank").mock(return_value=httpx.Response(200, json=scores))
     hits = _retriever(cfg, reranker=_reranker()).retrieve(T, "Frist", 3)
-    assert len(json.loads(rerank.calls.last.request.content)["texts"]) == 2
-    assert [h.chunk_id for h in hits] == ["gii-kschg-1#0", "gii-bgb-622#1", "gii-bgb-620#0"]
+    assert _bodies(query)[0]["limit"] == 3
+    assert len(json.loads(rerank.calls.last.request.content)["texts"]) == 3
+    assert [h.chunk_id for h in hits] == ["gii-bgb-620#0", "gii-kschg-1#0", "gii-bgb-622#1"]
+    assert [h.score for h in hits] == [0.8, 0.5, 0.2]  # all reranker scores
     assert [h.rank for h in hits] == [1, 2, 3]
 
 

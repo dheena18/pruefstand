@@ -99,10 +99,15 @@ class QdrantRetriever:
         self._corpus.get()
         cfg = self._cfg.model_copy(update={"top_k": top_k})
         fused = self._first_stage(tenant_id, query, cfg)
-        hits = renumber(self._reranker.rerank(query, fused, cfg.rerank.top_n)[:top_k])
+        hits = renumber(self._reranker.rerank(query, fused, self._rerank_n(cfg))[:top_k])
         if self._guard and not leak_bug_active(cfg):
             self._check(hits, allowed, tenant_id)
         return hits
+
+    @staticmethod
+    def _rerank_n(cfg: RagConfig) -> int:
+        """Hits to rerank: rerank.top_n, at least top_k (no mixed score kinds)."""
+        return max(cfg.rerank.top_n, cfg.top_k)
 
     def _vectors(self, query: str) -> QueryVectors:
         dense = self._dense.encode([query], kind="query")[0].tolist()
@@ -118,7 +123,7 @@ class QdrantRetriever:
             requests = [build_query(tenant_id, vectors, cfg, limit=top_k)]
             merged = merge_by_score(self._run(requests, vectors, cfg, top_k), top_k)
             return apply_post_topk(merged, tenant_id, top_k)
-        limit = max(top_k, cfg.rerank.top_n) if cfg.reranker == "on" else top_k
+        limit = max(top_k, self._rerank_n(cfg)) if cfg.reranker == "on" else top_k
         requests = [build_query(tenant_id, vectors, cfg, limit=limit)]
         results = self._run(requests, vectors, cfg, limit)
         return merge_by_score(results, limit) if len(results) > 1 else results[0]

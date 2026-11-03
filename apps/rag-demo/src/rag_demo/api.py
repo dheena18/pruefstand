@@ -12,7 +12,12 @@ from fastapi.responses import JSONResponse
 
 from rag_demo.catalogue import CatalogueEntry
 from rag_demo.config import Settings, load_config
-from rag_demo.errors import IndexMismatchError, IndexUnavailableError, RagDemoError
+from rag_demo.errors import (
+    IndexMismatchError,
+    IndexUnavailableError,
+    RagDemoError,
+    UnknownTenantError,
+)
 from rag_demo.info import build_info, cpu_model
 from rag_demo.models import GenOutput, Hit, RagConfig, Stats
 from rag_demo.protocols import Generator
@@ -137,6 +142,14 @@ async def _meta(parts: _Parts) -> dict[str, Any]:
         raise HTTPException(503, str(err)) from None
 
 
+def _http_error(err: RagDemoError, what: str) -> HTTPException:
+    """422 for a malformed tenant of the index, else 503 without details."""
+    if isinstance(err, UnknownTenantError):
+        return HTTPException(422, "unknown tenant")
+    _log.warning("%s failed: %s", what, err)
+    return HTTPException(503, "backend unavailable")
+
+
 async def _checked_tenant(parts: _Parts, tenant_id: str) -> None:
     """Refuse an unknown tenant with 422 (after the index check)."""
     if tenant_id not in (await _meta(parts))["tenants"]:
@@ -154,8 +167,7 @@ def _add_routes(app: FastAPI, cfg: RagConfig, parts: _Parts) -> None:
             )
             gen = await parts.generator.answer(req.question, hits)
         except RagDemoError as err:
-            _log.warning("query failed: %s", err)
-            raise HTTPException(503, "backend unavailable") from None
+            raise _http_error(err, "query") from None
         prompted = [h for h in hits if h.chunk_id in set(gen.prompt_chunk_ids)]
         return to_query_response(hits, gen, prompted)
 
@@ -174,8 +186,7 @@ def _add_routes(app: FastAPI, cfg: RagConfig, parts: _Parts) -> None:
                 parts.retrieve_only.retrieve, req.tenant_id, req.question, req.top_k or cfg.top_k
             )
         except RagDemoError as err:
-            _log.warning("retrieve failed: %s", err)
-            raise HTTPException(503, "backend unavailable") from None
+            raise _http_error(err, "retrieve") from None
         return to_retrieve_response(hits)
 
     @app.get("/v1/info", operation_id="info", response_model=InfoResponse)

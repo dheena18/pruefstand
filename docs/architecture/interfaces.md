@@ -1692,7 +1692,7 @@ class Retriever:       def retrieve(self, tenant_id: str, query: str, top_k: int
                        # RRF fusion (k 60), then optional rerank. The filter is INSIDE every prefetch (never post-filter) and
                        # on the fused query too. Refuses an incomplete index or one built with another analyzer (D515).
 class Reranker(Protocol):      def rerank(self, query: str, hits: list[Hit], top_n: int) -> list[Hit]
-                       # scores the first top_n hits and reorders them; the rest follows unchanged; ranks 1..n (D513)
+                       # scores the first top_n hits and reorders them; the rest follows unchanged; ranks 1..n (D513); the retriever passes max(top_n, top_k)
                        # tier 1: no reranker; tier 2: BAAI/bge-reranker-v2-m3 on the VM CPU via RERANK_URL (rerank-cpu, §1.5; R10 D198)
                        # Retriever also backs POST /v1/retrieve (§1.1, R11 D218, T3.5): same hits, no Generator call
 class Generator:       async def answer(self, question: str, hits: list[Hit]) -> GenOutput   # prompt file, citations, refusal

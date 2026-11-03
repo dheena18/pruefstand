@@ -223,3 +223,25 @@ def test_the_response_validates_against_the_checked_in_openapi(
     body: Any = _client(_cfg(), monkeypatch).post("/v1/retrieve", json=_request()).json()
     schema = {"$ref": "#/components/schemas/RetrieveResponse", "components": OPENAPI["components"]}
     Draft202012Validator(schema).validate(json.loads(json.dumps(body)))
+
+
+@respx.mock
+def test_a_malformed_tenant_listed_in_the_index_is_422_not_500(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    routes = _mock_stack(_cfg())
+    meta = {
+        "corpus_version": "x",
+        "tenants": ["Bad Tenant"],
+        "analyzer": expected_fingerprint(_cfg()),
+        "complete": True,
+    }
+    routes["meta"].mock(
+        return_value=httpx.Response(200, json={"result": {"config": {"metadata": meta}}})
+    )
+    client = _client(_cfg(), monkeypatch)
+    for path in ("/v1/retrieve", "/v1/query"):
+        resp = client.post(path, json=_request(tenant="Bad Tenant"))
+        assert resp.status_code == 422
+        assert "unknown tenant" in resp.text
+    assert routes["query"].call_count == 0

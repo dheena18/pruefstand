@@ -152,6 +152,13 @@ class RagConfig(_Frozen):
     system_prompt_guard: Literal["on", "off"] = "on"
 
     @model_validator(mode="after")
+    def _gpu_reranker_explicit(self) -> Self:
+        if self.profile == "gpu" and "reranker" not in self.model_fields_set:
+            msg = "a gpu config must set reranker explicitly (the default off is the M1 bug value)"
+            raise ValueError(msg)
+        return self
+
+    @model_validator(mode="after")
     def _ollama_generation(self) -> Self:
         if self.generator.engine != "ollama":
             return self

@@ -41,5 +41,9 @@ class TenantIsolationError(RetrievalError):
     """A retrieved chunk belongs to a tenant the caller may not see (post-condition guard)."""
 
 
+class UnknownTenantError(RagDemoError, ValueError):
+    """The tenant id is malformed or not in the index; the API answers 422."""
+
+
 class GenerationError(RagDemoError):
     """The generator failed; the message never contains credentials or response bodies."""

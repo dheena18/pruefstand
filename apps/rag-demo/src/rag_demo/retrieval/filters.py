@@ -5,6 +5,8 @@ from collections.abc import Collection
 
 from pydantic import BaseModel, ConfigDict
 
+from rag_demo.errors import UnknownTenantError
+
 SHARED = "shared_public"
 _TENANT = re.compile(r"[a-z][a-z0-9_]{0,63}")
 
@@ -44,7 +46,7 @@ def allowed_tenants(tenant_id: str, known: Collection[str] | None = None) -> fro
         ``{tenant_id, "shared_public"}``.
 
     Raises:
-        ValueError: ``tenant_id`` is empty, not a slug, or not in ``known``.
+        UnknownTenantError: (a ``ValueError``) ``tenant_id`` is empty, not a slug, or unknown.
 
     Examples:
         >>> sorted(allowed_tenants("kanzlei_mueller"))
@@ -54,7 +56,7 @@ def allowed_tenants(tenant_id: str, known: Collection[str] | None = None) -> fro
     """
     if not _TENANT.fullmatch(tenant_id) or (known is not None and tenant_id not in known):
         msg = "unknown tenant"
-        raise ValueError(msg)
+        raise UnknownTenantError(msg)
     return frozenset({tenant_id, SHARED})
 
 

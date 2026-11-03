@@ -287,3 +287,11 @@ def test_tier_profiles_have_different_hashes() -> None:
     assert config_hash(load_config(CONFIGS / "rag.yaml")) != config_hash(
         load_config(GPU, catalogue_path=CATALOGUE)
     )
+
+
+def test_a_gpu_config_must_set_reranker_explicitly() -> None:
+    """The default `off` is the M1 bug value: a gpu config that omits it must not load."""
+    data = _data()
+    del data["reranker"]
+    with pytest.raises(ValidationError, match="reranker"):
+        _parse(data)
