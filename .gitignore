@@ -43,3 +43,6 @@ mutants/
 
 # T4.1: dry-run HF export layout (D9-33)
 **/hf_export/
+
+# T2.6: draft private documents (reviewed, then moved to datasets/private_docs/<tenant>/)
+datasets/private_docs/_drafts/

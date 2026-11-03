@@ -29,6 +29,7 @@ class PruefstandSettings(BaseSettings):
         cache_dir: ``PRUEFSTAND_CACHE_DIR``; defaults to ``$PRUEFSTAND_HOME/cache``.
         gpu_endpoints_file: ``PRUEFSTAND_GPU_ENDPOINTS``; the endpoint map of ``build_backend``.
         gpu_catalogue_file: ``PRUEFSTAND_GPU_CATALOGUE``; where T5.1 finds the per-model options.
+        heldout_dir: ``PRUEFSTAND_HELDOUT_DIR``; held-out canary set (private executor only, T2.6).
     """
 
     model_config = SettingsConfigDict(
@@ -59,4 +60,7 @@ class PruefstandSettings(BaseSettings):
     gpu_catalogue_file: Path = Field(
         default=Path("infra/gpu/models.yaml"),
         validation_alias=AliasChoices("PRUEFSTAND_GPU_CATALOGUE"),
+    )
+    heldout_dir: Path | None = Field(
+        default=None, validation_alias=AliasChoices("PRUEFSTAND_HELDOUT_DIR")
     )
