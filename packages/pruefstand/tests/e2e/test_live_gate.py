@@ -7,6 +7,8 @@ byte-deterministic).
 """
 
 import json
+import os
+import shutil
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -75,6 +77,9 @@ def _play(
             stop_bug(bug)
     assert rendered.exit_code == 0, rendered.output
     gate = json.loads((candidate / "gate.json").read_text(encoding="utf-8"))
+    keep = os.environ.get("PRUEFSTAND_E2E_KEEP")
+    if keep:  # CI uploads this run directory; the dashboard fixtures are made from it (T8.1)
+        shutil.copytree(candidate, Path(keep) / candidate.name, dirs_exist_ok=True)
     seconds = done.seconds + gated.seconds + rendered.seconds
     return Played(gated.exit_code, gate, rendered.stdout, seconds)
 
