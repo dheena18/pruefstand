@@ -11,6 +11,7 @@ from typing import Annotated, Literal, Self
 
 from pydantic import AfterValidator, BaseModel, ConfigDict, Field, model_validator
 
+from pruefstand.core.config.attacks import AttacksConfig
 from pruefstand.core.config.private_docs import PrivateDocsConfig
 from pruefstand.core.ids import TenantId
 
@@ -145,6 +146,7 @@ class CorpusBuildConfig(BaseModel):
         max_chunks: Upper bound on the chunks of one corpus (the build holds them in memory).
         max_problems: How many counted loader problems are tolerated (default none).
         private_docs: Approved synthetic private documents and their canaries (T2.6), or None.
+        attacks: Injection documents for the customer tenants (T4.6), or None.
     """
 
     model_config = ConfigDict(frozen=True, extra="forbid")
@@ -160,6 +162,7 @@ class CorpusBuildConfig(BaseModel):
     max_chunks: int = Field(default=2_000_000, ge=1)
     max_problems: int = Field(default=0, ge=0)
     private_docs: PrivateDocsConfig | None = None
+    attacks: AttacksConfig | None = None
 
     @model_validator(mode="after")
     def _loaders_unique(self) -> Self:

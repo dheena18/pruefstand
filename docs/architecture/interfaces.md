@@ -1474,14 +1474,21 @@ def number_word(n: int) -> str                         # T2.6: German word for 1
 class PrivateDocsConfig(BaseModel): dir: Path; seed: int; registry_dir: Path   # core.config.build; corpus.yaml `private_docs` (T2.6, D723)
 class PrivateDocsLoader:  def __init__(self, *, nested: bool = True); def load(self, raw_dir: Path) -> Iterator[Document]   # ingest/private_docs.py
 def build_heldout(sources: Sequence[Document], seed: int, public_tokens: Collection[str]) -> tuple[list[Document], CanaryRegistry]  # attacks/heldout.py
-class InjectionPlacement(StrEnum): PLAIN, TABLE_CELL, FOOTNOTE, METADATA, MIXED_LANG, BASE64
+class InjectionPlacement(StrEnum): PLAIN, TABLE_CELL, FOOTNOTE, METADATA, MIXED_LANG, BASE64   # core.models.attacks (T4.6)
+class AttacksConfig(BaseModel): seed: int; seeds_per_tenant: int = 8; placements: tuple[InjectionPlacement, ...]   # core.config.attacks; corpus.yaml `attacks` (T4.6, D761)
 def make_injection_docs(seeds: Sequence[str], placements: Sequence[InjectionPlacement], tenant: TenantId,
-                        rng: np.random.Generator) -> tuple[list[Document], list[TestCase]]
+                        rng: np.random.Generator, *, key: bytes | None = None) -> tuple[list[Document], list[TestCase]]   # key: marker values not recomputable from public data, shape still strippable (D766)
 def make_leak_probes(registry: CanaryRegistry, tenants: Sequence[TenantId]) -> list[TestCase]
 def make_filter_bypass_probes(registry: CanaryRegistry, tenants: Sequence[TenantId]) -> list[TestCase]
 def make_system_prompt_probes() -> list[TestCase]
 def rotate_canaries(registry: CanaryRegistry, release: str, rng: np.random.Generator) -> tuple[CanaryRegistry, list[Canary]]
     # attacks/rotation.py (T4.6); retired canaries in datasets/canaries/retired.json
+class RetiredCanary(BaseModel): token: str; tenant: str; fact: str | None; retired_in: str; probe_question: str | None; forbidden_answer: str | None   # last two additive (D764)
+def load_retired(path: Path) -> list[RetiredCanary]; def retire(path: Path, canaries: Iterable[Canary], retired_in: str) -> list[RetiredCanary]
+def unanswerable_from_germanrag(rows, tenants, *, limit=None) -> list[TestCase]; def make_own_unanswerable(indexed: Mapping[str, Collection[str]], rng) -> list[TestCase]   # attacks/refusal.py (D763)
+def check_injection_set(cases: Iterable[TestCase], chunks: Sequence[Chunk]) -> None   # attacks/injection_check.py; DatasetError
+def build_attack_set(cfg: AttacksConfig, tenants: Sequence[str], key: bytes | None = None) -> AttackSet   # docs, cases, version, markers_public
+def check_attack_versions(sources, prompt_versions, *, expect_secret_markers: bool | None = None) -> None   # None: derived from PRUEFSTAND_ATTACK_KEY
     # owner (D93): the maintainer runs it (+ re-plant via plant_canaries) in a release-prep PR before each
     # dataset release >= v2; retired.json is updated only from T9.1b's `retired-json` artefact; dataset-release.yml only checks
 ```
