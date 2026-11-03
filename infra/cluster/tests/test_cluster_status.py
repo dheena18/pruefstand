@@ -3,6 +3,7 @@
 import json
 from pathlib import Path
 
+import pytest
 from gpu_testkit import GEN_DIGEST, ClusterWorld, add_proc
 from vm_testkit import Result
 
@@ -115,6 +116,16 @@ def test_free_space_between_the_reserve_and_reserve_plus_1_gb_warns(world: Clust
 def test_free_space_above_the_early_warning_band_is_ok(world: ClusterWorld) -> None:
     _healthy(world, df=DF_OK.replace("14000000", str(int(3.5 * 1024 * 1024))))
     assert _csv(world.script("status.sh"))["disk-models"][0] == "OK"
+
+
+@pytest.mark.parametrize(
+    ("free_kb", "state"), [(3 * 1024 * 1024, "OK"), (3 * 1024 * 1024 - 1, "WARN")]
+)
+def test_the_early_warning_boundary_is_exactly_3_gb(
+    world: ClusterWorld, free_kb: int, state: str
+) -> None:
+    _healthy(world, df=DF_OK.replace("14000000", str(free_kb)))
+    assert _csv(world.script("status.sh"))["disk-models"][0] == state
 
 
 def test_the_disk_row_keeps_the_fields_fetch_model_parses(world: ClusterWorld) -> None:
