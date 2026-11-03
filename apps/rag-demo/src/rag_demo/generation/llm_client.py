@@ -3,7 +3,8 @@
 ``OpenAICompatClient`` talks to llama.cpp (tier 1, ``/v1/chat/completions``), ``OllamaChatClient``
 to Ollama's native ``/api/chat`` (tier 2; never ``/v1``, never ``keep_alive``). Both send the
 bearer key named by ``generator.api_key_env`` when it is set (read once, never logged, never part
-of an error) and retry a loading or overloaded server (HTTP 502/503/504, connection errors) twice.
+of an error) and retry a loading or full server (HTTP 503, connection errors) twice. 502/504 are
+not retried: a proxy that forwarded upstream would re-run the same generation.
 A read timeout is not retried: the generator serialises requests, so a request legitimately waits
 in a queue (TTFT p95 32 s at 4 and 70 s at 8 parallel streams) and a retry would only add load.
 """
@@ -20,7 +21,7 @@ from rag_demo.errors import GenerationError
 from rag_demo.models import RagConfig
 
 _log = logging.getLogger(__name__)
-RETRY_STATUS = frozenset({502, 503, 504})
+RETRY_STATUS = frozenset({503})
 RETRIES = 2
 BACKOFF_S = (1.0, 3.0)
 CONNECT_TIMEOUT_S = 10.0

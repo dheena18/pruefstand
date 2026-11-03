@@ -285,3 +285,12 @@ def test_citations_of_german_and_english_norm_references() -> None:
 )
 def test_refusal_detection(answer: str, expected: bool) -> None:  # noqa: FBT001
     assert is_refusal(answer) is expected
+
+
+@respx.mock
+@pytest.mark.parametrize("status", [502, 504])
+async def test_502_and_504_are_not_retried(status: int) -> None:
+    route = respx.post(OLLAMA_URL).mock(return_value=httpx.Response(status))
+    with pytest.raises(GenerationError, match=str(status)):
+        await _ask(_ollama())
+    assert route.call_count == 1

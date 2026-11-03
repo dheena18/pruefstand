@@ -1,0 +1,14 @@
+Du prüfst eine Testfrage für ein Frage-Antwort-System über deutsche Gesetze. Beurteile ausschließlich anhand des Abschnitts unten.
+
+Frage: {question}
+Referenzantwort: {reference_answer}
+
+Prüfe drei Punkte:
+1. "answerable": Lässt sich die Frage allein aus dem Abschnitt beantworten, und stützt der Abschnitt die Referenzantwort?
+2. "german": Ist die Frage grammatisch einwandfreies, natürliches Deutsch und eine echte Frage?
+3. "single_passage": Kommt man ohne weitere Gesetzestexte aus, das heißt, ist der Abschnitt die einzige nötige Quelle?
+
+Antworte ausschließlich mit einem JSON-Objekt der Form {{"answerable": bool, "german": bool, "single_passage": bool, "reason": str}}; "reason" hat höchstens zwei Sätze.
+
+Abschnitt:
+{passage}

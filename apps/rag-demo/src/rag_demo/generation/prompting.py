@@ -75,11 +75,16 @@ def truncate_to_tokens(text: str, limit: int) -> str:
 
 
 def prompt_hits(hits: list[Hit], cfg: RagConfig) -> list[Hit]:
-    """The hits as the prompt holds them: texts cut to ``chunk_prompt_tokens`` (X3.14)."""
-    return [
-        h.model_copy(update={"text": truncate_to_tokens(h.text, cfg.chunk_prompt_tokens)})
-        for h in hits
-    ]
+    """The hits as the prompt holds them: cut to ``chunk_prompt_tokens`` and, with the guard on,
+    without instruction-like lines (X3.14: the judge sees what the model saw).
+    """
+    out = []
+    for h in hits:
+        body = truncate_to_tokens(h.text, cfg.chunk_prompt_tokens)
+        out.append(
+            h.model_copy(update={"text": _guarded(body) if cfg.injection_guard == "on" else body})
+        )
+    return out
 
 
 def count_truncated(hits: list[Hit], cfg: RagConfig) -> int:

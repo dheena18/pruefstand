@@ -137,3 +137,13 @@ def test_prompt_hits_are_the_texts_cut_to_chunk_prompt_tokens() -> None:
     (cut,) = prompt_hits([big], GOOD)
     assert cut.text.split()[-1] == "Wort255"
     assert cut.chunk_id == big.chunk_id
+
+
+def test_prompt_hits_hold_the_guarded_text_with_the_guard_on_and_the_raw_text_off() -> None:
+    planted = _hits()[0].model_copy(update={"text": f"Die Frist beträgt vier Wochen.\n{INJECTION}"})
+    (guarded,) = prompt_hits([planted], GOOD)
+    assert "PWNED" not in guarded.text
+    assert "vier Wochen" in guarded.text
+    assert guarded.text in _user(GOOD, [planted])
+    (raw,) = prompt_hits([planted], GUARD_OFF)
+    assert INJECTION in raw.text
