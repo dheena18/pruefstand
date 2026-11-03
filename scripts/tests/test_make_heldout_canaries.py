@@ -78,7 +78,9 @@ def test_public_registry_tokens_are_avoided(
     assert taken.token not in {c.token for c in second.canaries}
 
 
-@pytest.mark.parametrize("value", [None, "", "abc", "-5", "123", "9" * 38, "f" * 31])
+@pytest.mark.parametrize(
+    "value", [None, "", "abc", "-5", "123", "9" * 38, "f" * 31, "1" * 32, "ab" * 16]
+)
 def test_a_missing_or_invalid_seed_is_refused_without_echoing_it(
     source: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, value: str | None,
     capsys: pytest.CaptureFixture[str],
@@ -110,7 +112,7 @@ def test_the_default_output_is_git_ignored_and_tracked_paths_are_refused(
 def test_a_128_bit_hex_seed_is_accepted(
     source: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    monkeypatch.setenv("HELDOUT_SEED", "a" * 32)
+    monkeypatch.setenv("HELDOUT_SEED", "0123456789abcdef" * 2)
     assert run(source, tmp_path / "o", "--allow-tracked") == 0
 
 
@@ -148,3 +150,27 @@ def test_every_file_of_the_output_folder_must_be_ignored(
     assert not (repo / "out" / "docs").exists()
     (repo / ".gitignore").write_text("out/\n", encoding="utf-8")
     assert run(source, repo / "out") == 0
+
+
+def test_hex_of_32_digits_is_accepted_but_a_one_digit_string_is_not(
+    source: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("HELDOUT_SEED", "1234567890" * 3 + "12")
+    assert run(source, tmp_path / "o", "--allow-tracked") == 0
+
+
+def test_a_value_that_occurs_in_the_corpus_stops_the_build(
+    source: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("HELDOUT_SEED", SEED)
+    assert run(source, tmp_path / "first", "--allow-tracked") == 0
+    registry = CanaryRegistry.model_validate_json(
+        (tmp_path / "first" / "canaries_heldout.json").read_text("utf-8")
+    )
+    fact = next(c.fact for c in registry.canaries if c.kind == "semantic")
+    corpus = tmp_path / "corpus"
+    corpus.mkdir()
+    line = {"doc_id": "gii-x", "tenant": "shared_public", "source": "gii:bgb", "text": fact}
+    (corpus / "shared_public.chunks.jsonl").write_text(json.dumps(line) + "\n", "utf-8")
+    assert run(source, tmp_path / "second", "--allow-tracked", "--corpus", str(corpus)) == 2
+    assert not (tmp_path / "second").exists()

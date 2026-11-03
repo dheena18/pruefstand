@@ -4,6 +4,13 @@ Held-out documents are derived from approved private documents: the semantic fac
 a new one (same sentence pattern, new counterparty and number) and a new token canary is planted.
 The result is private: it is written under ``datasets/private/`` (git-ignored) and copied to the
 private executor repo; its registry is read only by the trusted gate process.
+
+Id, title and heading of a held-out document follow the series of the approved documents, but its
+body is still a close copy of its source. THREAT-MODEL LIMIT: this guards against hard-coded
+registry values, per-id filters and memorised public canaries. It does NOT hide the set from a
+candidate that reads or diffs the executor corpus against the public repo (doc-id set difference,
+text diff); the executor must not expose the corpus to candidate code beyond the retrieval API
+(owner to confirm in T6.2a).
 """
 
 import re
@@ -23,13 +30,24 @@ _ID = re.compile(r"(priv)-([a-z]+)-(\d+)")
 _RETRIES = 20
 
 
-def _derive(source: Document, doc_id: str, rng: np.random.Generator, taken: set[str]) -> Document:
+def _derive(
+    source: Document, doc_id: str, rng: np.random.Generator, taken: set[str], titles: set[str]
+) -> Document:
+    """Replace fact, title and heading of ``source``; the title is new, never the source's."""
     old = source.metadata["semantic_fact"]
     index = template_index_of(source.tenant, old)
-    fact = make_semantic_fact(
-        source.tenant, int(rng.integers(0, 12)) if index is None else index, rng, taken
-    )
+    for _ in range(_RETRIES):
+        fact = make_semantic_fact(
+            source.tenant, int(rng.integers(0, 12)) if index is None else index, rng, taken
+        )
+        title = f"{fact.doc_type}: {fact.party}"
+        if title not in titles:
+            break
+    else:
+        msg = f"{source.doc_id}: no new title found for the held-out document"
+        raise DatasetError(msg)
     taken.add(fact.value)
+    titles.add(title)
     metadata = {
         **source.metadata,
         "semantic_fact": fact.sentence,
@@ -40,7 +58,8 @@ def _derive(source: Document, doc_id: str, rng: np.random.Generator, taken: set[
     return source.model_copy(
         update={
             "doc_id": DocId(doc_id),
-            "text": source.text.replace(old, fact.sentence),
+            "title": title,
+            "text": source.text.replace(old, fact.sentence).replace(source.title, title),
             "metadata": metadata,
         }
     )
@@ -76,6 +95,7 @@ def build_heldout(
     """
     rng = np.random.default_rng(seed)
     taken = {d.metadata["semantic_value"] for d in sources}
+    titles = {d.title for d in sources}
     derived: list[Document] = []
     for tenant in TENANT_PREFIX:
         prefix = TENANT_PREFIX[tenant].lower()
@@ -91,7 +111,9 @@ def build_heldout(
             if any(key not in source.metadata for key in FACT_KEYS):
                 msg = f"{source.doc_id}: metadata lacks a semantic-canary key"
                 raise DatasetError(msg)
-            derived.append(_derive(source, f"priv-{prefix}-{last + offset:02d}", rng, taken))
+            derived.append(
+                _derive(source, f"priv-{prefix}-{last + offset:02d}", rng, taken, titles)
+            )
     banned = set(public_tokens)
     for _ in range(_RETRIES):
         docs, registry = plant_canaries(derived, rng)

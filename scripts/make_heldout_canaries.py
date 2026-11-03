@@ -5,9 +5,10 @@
 Writes ``datasets/private/heldout/docs/*.md`` (6 documents, 2 per customer tenant, token already
 planted) and ``canaries_heldout.json``. The folder is git-ignored and must stay out of the public
 repository: copy it by hand to the private executor repo (``canaries/heldout/``) and keep the
-seed there as a secret (``docs/ops/secrets.md``). The registry is read only by the trusted gate
-process (round 9 X2.5). The seed is read from the environment variable named by ``--seed-env``
-and is never printed. Exit codes: 0 done, 2 refused (seed, output location, sources).
+seed there as a secret of at least 128 bits (``docs/ops/secrets.md``). The registry is read only
+by the trusted gate process (round 9 X2.5). The seed is read from the environment variable named
+by ``--seed-env`` and is never printed. Exit codes: 0 done, 2 refused (seed, output location,
+sources, a value that collides with other text).
 """
 
 import argparse
@@ -22,7 +23,9 @@ from pydantic import ValidationError
 from pruefstand.attacks.heldout import build_heldout
 from pruefstand.core.errors import DatasetError
 from pruefstand.core.models.attacks import CanaryRegistry
+from pruefstand.core.models.corpus import Document
 from pruefstand.ingest.private_docs import PrivateDocFront, PrivateDocsLoader, render_private_doc
+from pruefstand.pipeline.canary_collision import corpus_items, public_collisions
 
 REPO = Path(__file__).resolve().parents[1]
 DEFAULT_OUT = REPO / "datasets" / "private" / "heldout"
@@ -32,25 +35,28 @@ REGISTRY_FILE = "canaries_heldout.json"
 
 
 MIN_SEED_BITS = 128
+MIN_DECIMAL_DIGITS = 39
+MIN_DISTINCT = 8
 
 
 def _seed(name: str) -> int:
-    """Read the secret seed: a decimal number or hex string of at least 128 bits."""
+    """Read the secret seed: 32+ hex characters or 39+ decimal digits, with varied characters."""
     raw = os.environ.get(name, "").strip()
-    try:
-        if raw.isascii() and raw.isdigit():
-            value = int(raw)
-        elif raw.isascii() and len(raw) >= MIN_SEED_BITS // 4:
-            value = int(raw, 16)
-        else:
+    value = 0
+    if raw.isascii() and len(set(raw)) >= MIN_DISTINCT:
+        try:
+            if raw.isdigit() and len(raw) >= MIN_DECIMAL_DIGITS:
+                value = int(raw)
+            elif len(raw) >= MIN_SEED_BITS // 4:
+                value = int(raw, 16)
+        except ValueError:
             value = 0
-    except ValueError:
-        value = 0
-    if value.bit_length() < MIN_SEED_BITS:
+    if value == 0:
         msg = (
             f"environment variable {name} must hold a secret of at least {MIN_SEED_BITS} bits "
-            "(for example `openssl rand -hex 32`); a guessable seed would make the held-out "
-            "set reproducible"
+            "(32+ hex characters or 39+ decimal digits, at least 8 distinct characters; for "
+            "example `openssl rand -hex 32`); a guessable seed would make the held-out set "
+            "reproducible"
         )
         raise DatasetError(msg)
     return value
@@ -92,6 +98,19 @@ def _public_tokens(extra: Sequence[Path]) -> set[str]:
     return tokens
 
 
+def _check_collisions(
+    registry: CanaryRegistry, sources: Sequence[Document], corpus: Path | None
+) -> None:
+    """Fail when a held-out value occurs in an approved document or in the corpus."""
+    items = [(d.doc_id, d.text) for d in sources]
+    clash = public_collisions(registry.canaries, items)
+    if corpus is not None:
+        clash = sorted({*clash, *public_collisions(registry.canaries, corpus_items(corpus))})
+    if clash:
+        msg = f"held-out value(s) occur in other text (not distinctive): {', '.join(clash)}"
+        raise DatasetError(msg)
+
+
 def main(argv: Sequence[str] | None = None) -> int:
     """Build and write the held-out set; returns the exit code."""
     parser = argparse.ArgumentParser(description="Build the held-out canary set.")
@@ -100,12 +119,14 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser.add_argument("--out", type=Path, default=DEFAULT_OUT)
     parser.add_argument("--public-registry", type=Path, action="append", default=[])
     parser.add_argument("--allow-tracked", action="store_true")
+    parser.add_argument("--corpus", type=Path, help="corpus version dir to check values against")
     args = parser.parse_args(argv)
     try:
         seed = _seed(args.seed_env)
         _check_location(args.out, allow_tracked=args.allow_tracked)
         sources = list(PrivateDocsLoader().load(args.source))
         docs, registry = build_heldout(sources, seed, _public_tokens(args.public_registry))
+        _check_collisions(registry, sources, args.corpus)
     except DatasetError as exc:
         print(f"refused: {exc}", file=sys.stderr)
         return 2

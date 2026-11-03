@@ -94,11 +94,10 @@ def _scan_file(path: Path, canaries: Sequence[Canary], report: Report, found: se
     for line in iter_lines(path):
         chunk = json.loads(line)
         text = str(chunk.get("text", ""))
-        if chunk.get("source") != "private":
-            for doc_id in public_collisions(canaries, [text]):
-                report.problems.append(
-                    f"canary value of {doc_id} occurs in public text ({path.name})"
-                )
+        for doc_id in public_collisions(canaries, [(str(chunk.get("doc_id", "")), text)]):
+            problem = f"canary value of {doc_id} occurs outside its own document ({path.name})"
+            if problem not in report.problems:
+                report.problems.append(problem)
         for number, canary in enumerate(canaries):
             if not _hit(canary, text):
                 continue

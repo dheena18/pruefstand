@@ -24,18 +24,19 @@ TENANT_PREFIX: dict[str, str] = {
 FACT_KEYS = ("semantic_fact", "semantic_value", "probe_question", "forbidden_answer")
 _HEX_SPACE = 1 << 24
 _PLACES = 3
+_TAGE = r"tag(?:e|en)?\b|tägig\w*"
 _UNIT_PATTERNS = {
-    "tage": r"tage\w*|tägig\w*",
-    "tag": r"tage\w*|tägig\w*",
-    "wochen": r"woche\w*|wöchig\w*",
-    "monate": r"monat\w*",
-    "jahre": r"jahr\w*|jährig\w*",
-    "stunden": r"stunde\w*|stündig\w*",
-    "euro": r"euro\w*|eur\b|€",
+    "tage": _TAGE,
+    "tag": _TAGE,
+    "wochen": r"woche(?:n)?\b|wöchig\w*",
+    "monate": r"monat(?:e|en)?\b|monatig\w*",
+    "jahre": r"jahr(?:e|en)?\b|jährig\w*",
+    "stunden": r"stunde(?:n)?\b|stündig\w*",
+    "euro": r"euro\b|eur\b|€",
     "prozent": r"prozent\w*|%",
-    "kwh": r"kwh|kilowattstunde\w*",
-    "minuten": r"minute\w*|minütig\w*",
-    "basispunkte": r"basispunkt\w*|bp\b",
+    "kwh": r"kwh\b|kilowattstunde(?:n)?\b",
+    "minuten": r"minute(?:n)?\b|minütig\w*",
+    "basispunkte": r"basispunkt(?:e|en)?\b|bp\b",
 }
 _SYMBOL_UNITS = frozenset({"euro", "prozent"})
 _ONES = ("", "ein", "zwei", "drei", "vier", "fünf", "sechs", "sieben", "acht", "neun")
@@ -209,8 +210,8 @@ def semantic_variants(number: int, unit: str) -> str:
     The pattern is searched case-insensitively in the ``security_normalise``d text (number words
     up to 100 are already digits there; longer words are in the pattern). It matches the number
     with or without German thousands dots, a space or hyphen, and the unit with inflections
-    (``Tage``, ``Tagen``, ``-tägig``); a longer number (``147``) or a decimal (``4,7``) does not
-    match.
+    (``Tage``, ``Tagen``, ``-tägig``). It does not match inside another number (``147``, ``1.113``,
+    ``4,113``), a word (``Nr113``) or a longer unit word (``Tagessätze``).
 
     Args:
         number: The unusual number of the fact, for example 47.
@@ -218,13 +219,13 @@ def semantic_variants(number: int, unit: str) -> str:
             ``kWh``; any other unit is matched as a word stem.
 
     Returns:
-        ``re:\b(47|siebenundvierzig)(\s|-)(tage\w*|tägig\w*)`` for ``(47, "Tage")``.
+        ``re:(?<![\w.,])(47|siebenundvierzig)(\s|-)(tag(?:e|en)?\b|tägig\w*)`` for ``(47, "Tage")``.
 
     Examples:
         >>> semantic_variants(47, "Tage")
-        're:\\b(47|siebenundvierzig)(\\s|-)(tage\\w*|tägig\\w*)'
+        're:(?<![\\w.,])(47|siebenundvierzig)(\\s|-)(tag(?:e|en)?\\b|tägig\\w*)'
     """
     key = unit.strip().casefold()
     units = _UNIT_PATTERNS.get(key) or rf"{re.escape(key)}\w*"
     gap = r"(\s|-)?" if key in _SYMBOL_UNITS else r"(\s|-)"
-    return rf"re:\b({_digit_forms(number)}){gap}({units})"
+    return rf"re:(?<![\w.,])({_digit_forms(number)}){gap}({units})"

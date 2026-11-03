@@ -79,3 +79,12 @@ def test_ids_continue_the_public_numbering_and_the_shape_is_identical(
         )
         assert set(doc.metadata) == set(reference.metadata) - set(FACT_KEYS)
         assert "heldout" not in doc.model_dump_json().casefold()
+
+
+def test_heldout_titles_are_new_and_the_heading_follows(sources: list[Document]) -> None:
+    docs, _ = build_heldout(sources, seed=SEED, public_tokens=frozenset())
+    approved = {d.title for d in sources}
+    for doc in docs:
+        assert doc.title not in approved
+        assert doc.text.startswith(f"# {doc.title}")
+        assert not [t for t in approved if t in doc.text]

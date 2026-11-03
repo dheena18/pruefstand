@@ -63,19 +63,21 @@ def load_private_documents(
 
 
 def ensure_distinctive(registry: CanaryRegistry, chunks: Iterable[Chunk]) -> None:
-    """Fail when a semantic canary pattern matches any non-private chunk.
+    """Fail when a semantic canary pattern matches a chunk of another document.
 
     Args:
         registry: The public registry.
-        chunks: All chunks of the corpus (private ones are skipped).
+        chunks: All chunks of the corpus (a canary is tested against every other document).
 
     Raises:
         DatasetError: A value also occurs in public text; the message names document ids only.
     """
-    texts = (c.text for c in chunks if c.source != "private")
-    clash = public_collisions(registry.canaries, texts)
+    clash = public_collisions(registry.canaries, ((c.doc_id, c.text) for c in chunks))
     if clash:
-        msg = f"semantic canary value(s) occur in public text (not distinctive): {', '.join(clash)}"
+        msg = (
+            "semantic canary value(s) occur outside their own document (not distinctive): "
+            + ", ".join(clash)
+        )
         raise DatasetError(msg)
 
 

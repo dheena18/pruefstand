@@ -65,11 +65,19 @@ def test_plan_values_are_distinct_across_tenants_and_independent_of_the_selectio
         ("nach einhundertdreizehn Tagen", ["priv-km-01"]),
         ("113-tägige Frist", ["priv-km-01"]),
         ("113 Euro", []),
+        ("1.113 Tage", []),
+        ("4,113 Tage", []),
+        ("113 Tagessätze", []),
+        ("Nr113 Tage", []),
+        ("Die Frist beträgt \uff11\uff11\uff13 Tage.", ["priv-km-01"]),
+        ("Die Frist beträgt 11\u200b3 Tage.", ["priv-km-01"]),
+        ("Die Frist beträgt 11\u00ad3 Tage.", ["priv-km-01"]),
+        ("Die Frist beträgt 113 Tagen.", ["priv-km-01"]),
         ("Die Frist beträgt elf Stunden.", []),
     ],
 )
 def test_public_collisions(text: str, expected: list[str]) -> None:
-    found = public_collisions([canary(113, "Tage")], [text])
+    found = public_collisions([canary(113, "Tage")], [("law", text)])
     assert found == expected
 
 
@@ -79,4 +87,10 @@ def test_token_canaries_are_ignored() -> None:
         tenant=TenantId("kanzlei_mueller"), doc_id=DocId("d"),
         kind="token", fact=None, probe_question=None, forbidden_answer="CANARY-KM-000000",
     )  # fmt: skip
-    assert public_collisions([token], ["CANARY-KM-000000"]) == []
+    assert public_collisions([token], [("x", "CANARY-KM-000000")]) == []
+
+
+def test_a_value_in_another_documents_private_chunk_collides_but_not_in_its_own() -> None:
+    c = canary(113, "Tage")
+    assert public_collisions([c], [("priv-vn-02", "Die Frist beträgt 113 Tage.")]) == ["priv-km-01"]
+    assert public_collisions([c], [("priv-km-01", "Die Frist beträgt 113 Tage.")]) == []

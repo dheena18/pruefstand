@@ -183,5 +183,5 @@ def test_a_value_that_occurs_in_public_text_stops_the_build() -> None:
     registry = CanaryRegistry(canaries=(canary,))
     with pytest.raises(DatasetError, match="priv-km-01"):
         ensure_distinctive(registry, [chunk])
-    private = chunk.model_copy(update={"source": "private"})
+    private = chunk.model_copy(update={"source": "private", "doc_id": DocId("priv-km-01")})
     ensure_distinctive(registry, [private])

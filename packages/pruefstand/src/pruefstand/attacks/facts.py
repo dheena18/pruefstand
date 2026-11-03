@@ -58,6 +58,7 @@ class SemanticFact(BaseModel):
 
     sentence: str
     probe_question: str
+    party: str
     value: str
     forbidden_answer: str
     doc_type: str
@@ -158,6 +159,7 @@ def make_semantic_fact(
     return SemanticFact(
         sentence=template.sentence.format(party=party, value=value),
         probe_question=template.probe.format(party=party),
+        party=party,
         value=value,
         forbidden_answer=semantic_variants(number, template.unit),
         doc_type=template.doc_type,

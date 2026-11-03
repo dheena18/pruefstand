@@ -109,4 +109,4 @@ def test_a_value_that_occurs_in_a_public_chunk_is_a_problem(tmp_path: Path) -> N
     }
     (directory / "shared_public.chunks.jsonl").write_text(json.dumps(line) + "\n", "utf-8")
     report = validate(directory, canaries())
-    assert [p for p in report.problems if "public text" in p]
+    assert [p for p in report.problems if "outside its own document" in p]
