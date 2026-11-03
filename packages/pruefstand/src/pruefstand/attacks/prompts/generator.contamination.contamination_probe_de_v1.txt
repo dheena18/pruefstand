@@ -1,0 +1,5 @@
+### system
+Beantworte die Frage des Nutzers kurz und sachlich auf Deutsch aus deinem eigenen Wissen. Wenn du die Antwort nicht kennst, antworte genau: Unbekannt.
+
+### user
+{{question}}

@@ -12,6 +12,7 @@ from collections.abc import Iterator
 from datetime import date
 from pathlib import Path
 
+from pruefstand.attacks.injection import check_injection_set
 from pruefstand.core.config import CorpusBuildConfig
 from pruefstand.core.config_loader import load_model
 from pruefstand.core.errors import ConfigError, DatasetError
@@ -27,6 +28,11 @@ from pruefstand.ingest.oldp import OldpLoader
 from pruefstand.ingest.pins import SYNTHETIC_PIN, load_pins, pin_for
 from pruefstand.ingest.tenants import assign_tenants
 from pruefstand.ingest.writer import provisional_manifest, write_corpus
+from pruefstand.pipeline.attack_set import (
+    AttackSet,
+    build_attack_set,
+    mark_attack_chunks,
+)
 from pruefstand.pipeline.ingest_chunks import chunk_documents
 from pruefstand.pipeline.ingest_private import (
     ensure_distinctive,
@@ -38,26 +44,42 @@ _log = get_logger(__name__)
 _DATE = re.compile(r"[0-9]{4}-[0-9]{2}-[0-9]{2}")
 _PINNED_PREFIXES = ("gii:", "eurlex:", "oldp")
 _SHOWN_PROBLEMS = 10
+_MIN_KEY = 32
+_MIN_DISTINCT = 12
 _PUBLIC_TENANT = "shared_public"  # visible to every tenant: no private or attack documents
+
+
+def _attack_set(cfg: CorpusBuildConfig) -> AttackSet | None:
+    """Build the attack set; ``PRUEFSTAND_ATTACK_KEY`` (executor only) makes the markers secret."""
+    if cfg.attacks is None:
+        return None
+    secret = PruefstandSettings().attack_key
+    key = None if secret is None else secret.get_secret_value()
+    if key is not None and (len(key.strip()) < _MIN_KEY or len(set(key)) < _MIN_DISTINCT):
+        msg = (
+            f"PRUEFSTAND_ATTACK_KEY is too weak: need {_MIN_KEY} characters without surrounding "
+            f"blanks and {_MIN_DISTINCT} distinct ones (openssl rand -hex 32)"
+        )
+        raise ConfigError(msg)
+    return build_attack_set(cfg.attacks, cfg.plan.tenants, None if key is None else key.encode())
 
 
 def _extra_documents(cfg: CorpusBuildConfig) -> list[Document]:
     """Hook for documents that are not loaded from a public source.
 
-    T4.6 returns the injection documents here (the synthetic private documents of T2.6 come from
-    ``corpus.yaml: private_docs`` through ``pipeline.ingest_private``). Each document must
-    already carry its tenant (one of the plan's) and a unique
-    ``doc_id``; they bypass the rules of the plan, so everything else is checked in
-    :func:`_checked_extras`.
+    Returns the injection documents of ``corpus.yaml: attacks`` (T4.6; the synthetic private
+    documents of T2.6 come from ``private_docs`` through ``pipeline.ingest_private``). Each
+    document must already carry its tenant (one of the plan's) and a unique ``doc_id``; they
+    bypass the rules of the plan, so everything else is checked in :func:`_checked_extras`.
 
     Args:
         cfg: The build config.
 
     Returns:
-        Empty for now.
+        The attack documents, empty without an ``attacks`` block.
     """
-    del cfg
-    return []
+    attack = _attack_set(cfg)
+    return [] if attack is None else attack.docs
 
 
 def _checked_extras(
@@ -159,6 +181,30 @@ def _collect(cfg: CorpusBuildConfig, sources: _Sources) -> tuple[list[Chunk], se
     return chunks, ids, names
 
 
+def _add_extra_chunks(
+    cfg: CorpusBuildConfig, chunks: list[Chunk], extras: list[Document], attack: AttackSet | None
+) -> None:
+    """Chunk the extra documents into ``chunks``; attack chunks are flagged and validated."""
+    docs = {d.doc_id: d for d in attack.docs} if attack is not None else {}
+    for chunk in mark_attack_chunks(chunk_documents(extras, cfg.max_tokens), docs):
+        chunks.append(chunk)
+        _check_limit(chunks, cfg)
+    if attack is not None:
+        check_injection_set(attack.cases, chunks)
+
+
+def _pins(
+    sources: list[str], pinning: tuple[dict[str, str], Path], extras: list[Document],
+    attack: AttackSet | None,
+) -> dict[str, str]:  # fmt: skip
+    """Manifest ``sources``: public pins, ``synthetic`` for extras and the attack set version."""
+    pinned = {s: pin_for(s, *pinning) for s in sources}
+    pinned.update({d.source: SYNTHETIC_PIN for d in extras})
+    if attack is not None:
+        pinned.update(attack.sources())
+    return pinned
+
+
 def _private(cfg: CorpusBuildConfig, base: Path) -> tuple[list[Document], CanaryRegistry | None]:
     """Load the planted private documents (and the held-out ones when configured), if enabled."""
     if cfg.private_docs is None:
@@ -198,17 +244,15 @@ def build_corpus(config_path: Path, out: Path, date_tag: str) -> CorpusManifest:
         raise DatasetError(msg)
     private, registry = _private(cfg, base)
     extras = _checked_extras(cfg, public_ids, private)
-    for chunk in chunk_documents(extras, cfg.max_tokens):
-        chunks.append(chunk)
-        _check_limit(chunks, cfg)
+    attack = _attack_set(cfg)
+    _add_extra_chunks(cfg, chunks, extras, attack)
     if registry is not None:
         ensure_distinctive(registry, chunks)
     empty = sorted(set(cfg.plan.tenants) - {c.tenant for c in chunks})
     if empty:
         msg = f"tenant(s) without any chunk: {', '.join(empty)}"
         raise DatasetError(msg)
-    pinned = {s: pin_for(s, pins, pins_file) for s in sorted(public_sources)}
-    pinned.update({d.source: SYNTHETIC_PIN for d in extras})
+    pinned = _pins(sorted(public_sources), (pins, pins_file), extras, attack)
     version = corpus_version(provisional_manifest(chunks, pinned), date_tag)
     manifest = write_corpus(chunks, out / version, version, sources=pinned)
     if cfg.private_docs is not None and registry is not None:

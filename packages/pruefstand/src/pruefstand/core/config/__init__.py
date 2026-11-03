@@ -6,6 +6,7 @@
 - ``build.py``: build configs added by T2.5 and T4.1.
 """
 
+from pruefstand.core.config.attacks import AttacksConfig
 from pruefstand.core.config.build import (
     NUM_BLOCKS,
     PERTURBATION_TYPES,
@@ -33,6 +34,7 @@ __all__ = [
     "NUM_BLOCKS",
     "PERTURBATION_TYPES",
     "REPORT_ONLY_METRICS",
+    "AttacksConfig",
     "BaselineStoreConfig",
     "BudgetConfig",
     "CorpusBuildConfig",
