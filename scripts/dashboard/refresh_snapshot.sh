@@ -41,7 +41,7 @@ for gh_run in "$@"; do
     base="$tmp/$gh_run-$artifact"
     case "$artifact" in
       live-baseline) rm -f "$base/gate.json"; adopt F-BASE "$gh_run" "$artifact" "$base" ;;  # not gated: S-NOT-GATED
-      live-run) adopt F-T1 "$gh_run" "$artifact" "$base" ;;
+      live-run) rm -f "$base/evidence.json" "$base/report.html"; adopt F-T1 "$gh_run" "$artifact" "$base" ;;
       e2e-baseline) adopt F-E2E-BASE "$gh_run" "$artifact" "$(dirname "$(ls "$base"/*/run.json | head -n 1)")" ;;
       scenario-run-*) adopt F-HARD-FAIL "$gh_run" "$artifact" "$(dirname "$(ls "$base"/*/run.json | head -n 1)")" ;;
     esac

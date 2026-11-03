@@ -57,28 +57,67 @@ export function writeManifest(dir) {
   writeText(path.join(dir, "manifest.json"), dumps({ schema_version: "1", files }));
 }
 
-/** Clone one exported run under `newId`: ids inside the files are rewritten, `edit` may change run/gate. */
-function cloneRun(dir, source, newId, createdAt, { withCases, edit = () => {} }) {
+const KEY_METRICS = ["context_recall", "error_rate"];
+
+/**
+ * A smaller copy of a real case for the filler runs of D-MANY (pagination, shard loading, long lists): the id, tenant,
+ * language, category, question and flags are the real ones; the answer is cut to 80 characters, only the first
+ * chunk id and two metrics are kept. Nothing is invented, fields are only dropped or cut.
+ */
+export function slimCase(c) {
+  const keep = (map) => Object.fromEntries(Object.entries(map).filter(([k]) => KEY_METRICS.includes(k)));
+  return {
+    ...c,
+    answer: typeof c.answer === "string" && c.answer.length > 80 ? `${c.answer.slice(0, 79)}…` : c.answer,
+    retrieved_chunk_ids: c.retrieved_chunk_ids.slice(0, 1),
+    retrieved_chunk_tenant_ids: c.retrieved_chunk_tenant_ids.slice(0, 1),
+    metric_values: keep(c.metric_values),
+    metric_status: keep(c.metric_status),
+  };
+}
+
+/** gate.json / slices.json of a filler run: the first 6 overall decisions and the absolute checks (hard fails stay). */
+export function trimGate(gate, slices) {
+  gate.decisions = gate.decisions.filter((d) => d.dimension === "overall").slice(0, 6);
+  gate.notable_slices = [];
+  const key = (d) => `${d.metric}|${d.dimension}|${d.value}`;
+  const kept = new Set([...gate.decisions, ...gate.absolute_checks].map(key));
+  slices.rows = slices.rows.filter((r) => kept.has(key(r)));
+}
+
+/**
+ * Clone one exported run under `newId`: ids inside the files are rewritten, `edit` may change run/gate.
+ * `gateMode`: "full" copies gate/slices/report, "trimmed" keeps the overall rows only (no report), "none" makes the clone ungated.
+ * `slim` copies the first 8 cases in their slim form.
+ */
+function cloneRun(dir, source, newId, createdAt, { withCases, edit = () => {}, gateMode = "full", slim = false }) {
   const from = path.join(dir, "runs", source.run_id);
   const to = path.join(dir, "runs", newId);
   const run = readJson(path.join(from, "run.json"));
   run.run_id = newId;
   run.created_at = createdAt.toISOString().replace(".000Z", "Z");
   const entry = { ...source, run_id: newId, created_at: run.created_at };
-  const gate = existsSync(path.join(from, "gate.json")) ? readJson(path.join(from, "gate.json")) : null;
-  if (gate !== null) gate.candidate_run_id = newId;
+  const hasGate = gateMode !== "none" && existsSync(path.join(from, "gate.json"));
+  const gate = hasGate ? readJson(path.join(from, "gate.json")) : null;
+  const slices = hasGate ? readJson(path.join(from, "slices.json")) : null;
+  if (gate !== null) {
+    gate.candidate_run_id = newId;
+    slices.run_id = newId;
+  } else {
+    Object.assign(entry, { status: null, baseline_run_id: null, no_baseline: false });
+  }
+  if (gateMode === "trimmed" && gate !== null) trimGate(gate, slices);
   edit({ run, gate, entry });
   writeText(path.join(to, "run.json"), dumps(run));
   if (gate !== null) {
     writeText(path.join(to, "gate.json"), dumps(gate));
-    const slices = readJson(path.join(from, "slices.json"));
-    slices.run_id = newId;
     writeText(path.join(to, "slices.json"), dumps(slices));
   }
   if (withCases) {
     for (const name of readdirSync(path.join(dir, "cases", source.run_id))) {
       const shard = readJson(path.join(dir, "cases", source.run_id, name));
       shard.run_id = newId;
+      if (slim) shard.cases = shard.cases.slice(0, 8).map(slimCase);
       writeText(path.join(dir, "cases", newId, name), dumps(shard));
     }
     if (gate !== null) {
@@ -98,9 +137,7 @@ function bigCases(dir, source, newId, n) {
   for (let i = 0; cases.length < n; i += 1) {
     for (const c of originals) {
       if (cases.length >= n) break;
-      // copies keep every field of the real case; only the answer is cut so a 500-case shard stays under the 1 MB file cap
-      const copy = { ...c, case_id: `${c.case_id}-x${String(i).padStart(3, "0")}`, failing: false };
-      if (typeof copy.answer === "string" && copy.answer.length > 240) copy.answer = `${copy.answer.slice(0, 239)}…`;
+      const copy = slimCase({ ...c, case_id: `${c.case_id}-x${String(i).padStart(3, "0")}`, failing: false });
       cases.push(i === 0 ? c : copy);
     }
   }
@@ -154,6 +191,8 @@ export function deriveExported(populated, rawRoles) {
     const id = derivedRunId(`D-MANY/clone-${i}`, date);
     const clone = cloneRun(populated, t1, id, date, {
       withCases: i < keepCases,
+      gateMode: i < keepCases ? "none" : "trimmed",
+      slim: true,
       edit: ({ run, entry }) => {
         if (i % 5 === 1) { run.workload = "nightly"; run.block = i % 3; entry.workload = "nightly"; entry.block = i % 3; }
         if (i % 7 === 2) { run.judged_subset = true; entry.judged_subset = true; }

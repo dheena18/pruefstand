@@ -24,16 +24,16 @@ Raw level (`apps/dashboard/fixtures/raw/`), through real code:
 Exported level:
 
 - `uv run pruefstand export-dashboard --runs apps/dashboard/fixtures/raw --out apps/dashboard/fixtures/populated`
-- `node scripts/dashboard/derive_fixtures.mjs` writes D-BASELINE-MISSING (`20261103T124230-46de12`, baseline `20261102T112731-75b3d6` is not in the index), D-MANY (the 1,500-case run `20261103T124330-75f7e3`, dated newest, and older clones of F-T1; copies of cases keep every field but cut the answer to 240 characters (1 MB file cap); the clones outside the newest 20 are S-CASES-PRUNED) and the empty set (D-EMPTY).
+- `node scripts/dashboard/derive_fixtures.mjs` writes D-BASELINE-MISSING (`20261103T124230-46de12`, baseline `20261102T112731-75b3d6` is not in the index), D-MANY (the 1,500-case run `20261103T124330-75f7e3`, dated newest, and older clones of F-T1; the copies of cases in it and in the filler clones are slim (see Size); the clones outside the newest 20 are S-CASES-PRUNED) and the empty set (D-EMPTY).
 
 ## States (ui-spec §14.1)
 
-- S-NOT-GATED: `20261103T123523-177b2a`, `20261103T112731-e15f0e`
-- S-TIER1: `20261103T124330-75f7e3`, `20261103T124230-46de12`, `20261103T124130-8ee0ce`, `20261103T123837-5d3b0f`, `20261103T123737-95d79b`, `20261103T123537-e01927`, … (59 in all)
-- S-PASS: `20261103T124230-46de12`, `20261103T123837-5d3b0f`, `20261103T123537-e01927`, `20261102T112731-86812c`, `20261102T102731-52a02b`, `20261102T092731-aab922`, … (56 in all)
+- S-NOT-GATED: `20261103T123523-177b2a`, `20261103T112731-e15f0e`, `20261102T112731-86812c`, `20261102T102731-52a02b`, `20261102T092731-aab922`, `20261102T082731-4b3868`, … (13 in all)
+- S-TIER1: `20261103T124330-75f7e3`, `20261103T124230-46de12`, `20261103T124130-8ee0ce`, `20261103T123837-5d3b0f`, `20261103T123737-95d79b`, `20261103T123537-e01927`, … (48 in all)
+- S-PASS: `20261103T124230-46de12`, `20261103T123837-5d3b0f`, `20261103T123537-e01927`, `20261102T002731-2558d7`, `20261101T232731-fa0afa`, `20261101T222731-e336c8`, … (45 in all)
 - S-HARD-FAIL: `20261103T124330-75f7e3`, `20261103T124130-8ee0ce`
 - S-PARTIAL: `20261103T123637-fa58d9`
-- S-JUDGE-SKIPPED: `20261103T124330-75f7e3`, `20261103T124230-46de12`, `20261103T124130-8ee0ce`, `20261103T123837-5d3b0f`, `20261103T123737-95d79b`, `20261103T123537-e01927`, … (59 in all)
+- S-JUDGE-SKIPPED: `20261103T124330-75f7e3`, `20261103T124230-46de12`, `20261103T124130-8ee0ce`, `20261103T123837-5d3b0f`, `20261103T123737-95d79b`, `20261103T123537-e01927`, … (48 in all)
 - S-NO-BASELINE: `20261103T123737-95d79b`
 - S-BASELINE-MISSING: `20261103T124230-46de12`
 - S-CASES-PRUNED: `20261102T002731-2558d7`, `20261101T232731-fa0afa`, `20261101T222731-e336c8`, `20261101T212731-6ca528`, `20261101T202731-a52cd8`, `20261101T192731-211be6`, … (42 in all)
@@ -42,8 +42,31 @@ Exported level:
 
 ## Real cases the matrix needs
 
-- refused: `20261102T012731-dc5369/slice-007`, `20261102T012731-dc5369/slice-038`, `20261102T022731-12858e/slice-007`, `20261102T022731-12858e/slice-038`, `20261102T032731-4f28ed/slice-007`, `20261102T032731-4f28ed/slice-038`, `20261102T042731-3fba5a/slice-007`, `20261102T042731-3fba5a/slice-038`, `20261102T052731-894e34/slice-007`, `20261102T052731-894e34/slice-038`, `20261102T062731-51420f/slice-007`, `20261102T062731-51420f/slice-038`, … (257 in all)
+- refused: `20261102T012731-dc5369/slice-007`, `20261102T022731-12858e/slice-007`, `20261102T032731-4f28ed/slice-007`, `20261102T042731-3fba5a/slice-007`, `20261102T052731-894e34/slice-007`, `20261102T062731-51420f/slice-007`, `20261102T072731-b9488b/slice-007`, `20261102T082731-4b3868/slice-007`, `20261102T092731-aab922/slice-007`, `20261102T102731-52a02b/slice-007`, `20261102T112731-86812c/slice-007`, `20261103T112731-e15f0e/slice-007`, … (246 in all)
 - with an error: none
-- `en`: `20261102T012731-dc5369/slice-011`, `20261102T012731-dc5369/slice-012`, `20261102T012731-dc5369/slice-013`, `20261102T022731-12858e/slice-011`, `20261102T022731-12858e/slice-012`, `20261102T022731-12858e/slice-013`, `20261102T032731-4f28ed/slice-011`, `20261102T032731-4f28ed/slice-012`, `20261102T032731-4f28ed/slice-013`, `20261102T042731-3fba5a/slice-011`, `20261102T042731-3fba5a/slice-012`, `20261102T042731-3fba5a/slice-013`, … (318 in all)
+- `en`: `20261103T112731-e15f0e/slice-011`, `20261103T112731-e15f0e/slice-012`, `20261103T112731-e15f0e/slice-013`, `20261103T123523-177b2a/slice-011`, `20261103T123523-177b2a/slice-012`, `20261103T123523-177b2a/slice-013`, `20261103T123523-177b2a/slice-014`, `20261103T123523-177b2a/slice-026`, `20261103T123523-177b2a/slice-027`, `20261103T123537-e01927/slice-011`, `20261103T123537-e01927/slice-012`, `20261103T123537-e01927/slice-013`, … (285 in all)
+
+## Size (D649)
+
+The set is as small as its tests allow (about 2.7 MB; the raw runs add about 1.3 MB). What the tests really need: >= 60 index entries (pagination), exactly 20 case-published runs, >= 40 pruned runs, one run with 1,500 cases in 3 shards (shard loading, Lighthouse list), real gated runs for every state. They do not need full payloads for the filler runs, so:
+
+- The 1,500 cases are the real F-HARD-FAIL cases once (full, they carry the failing cases), then slim copies: id (suffix `-xNNN`), tenant, language, category, question and flags are the real ones; the answer is cut to 80 characters, one chunk id and two metrics (`context_recall`, `error_rate`) are kept.
+- Filler runs (clones of F-T1) newer than the cut are ungated (`status` null, no gate/slices/report, 8 slim cases); the 42 pruned ones keep a gate with the first 6 overall decisions and the absolute checks, and the matching `slices.json` rows.
+- The real runs keep every field. `evidence.json` and the PR `report.html` of the downloaded runs are not kept in `raw/` (the export renders its own `report.html`).
+
+## Hashes, digests and personal data (checked 2026-11-03)
+
+Fields that can hold a hash or digest, and what each one is:
+
+| Field | Where | What it is |
+| --- | --- | --- |
+| `git_sha`, `candidate.git_sha`, `baseline.git_sha` | `run.json`, `runs/index.json`, `gate.json` | commit SHAs of the public repository |
+| `target.serving.model_sha256` | `run.json` | SHA-256 of the pinned Qwen2.5-0.5B-Instruct GGUF (Q4_K_M), the public Hugging Face file listed in `infra/models/live-models.yaml` |
+| `target.image_digest` | `run.json` | null (no image digest in these runs) |
+| `config_hash`, `eval_fingerprint`, `target_fingerprint`, `target.config_hash` (16 hex) | `run.json`, `gate.json` | hashes of the committed tier-1 config, the fixture dataset and the target description |
+| `artifact_sha256` | raw `run.json` only (empty in the export) | SHA-256 of `results.parquet`, `responses.jsonl`, `scored.jsonl` of the run: hashes of data about the synthetic slice |
+| `files.*` | `manifest.json` | SHA-256 of the files of this set |
+
+No field holds a digest of anything private. No real path, login, host or IP address is in the set: the CI runner CPU model (`serving.gpu`) and the placeholder `http://localhost:8000` in `raw/pruefstand.yaml` are the only host-like strings; `git_ref` is `refs/pull/<n>/merge` or `refs/heads/main`. Tenant text: the questions are the hand-written cases of `datasets/fixtures/slice_v1`; tenants are the six synthetic tenants of the slice corpus (`corpus/slice_v1`, hand-written, CC0, fictitious names). `populated/` has no chunk text (sanitised); `raw/` keeps chunk text of the public slice only (law text and those synthetic documents). Canary tokens in `raw/` are the public slice canaries (the VN and KM tokens of `corpus/slice_v1/canaries.public.json`), masked in every exported file.
 
 Judge: the quota-less tier-1 runs of this snapshot have `judge_mode=skipped`; a `judge_mode=github` run (block J rows) is added when a live PR run has quota.
