@@ -80,7 +80,7 @@ def dataset(tmp_path: Path, router: respx.MockRouter) -> Path:
 def use_stub_judges(monkeypatch: pytest.MonkeyPatch, pool: SpyPool) -> None:
     registry = MetricRegistry([*MetricRegistry.default().all(), StubJudgedMetric()])
     monkeypatch.setattr(run_module, "build_registry", lambda: registry)
-    monkeypatch.setattr(run_module, "build_judge_pool", lambda cfg, mode: pool)
+    monkeypatch.setattr(run_module, "build_judge_pool", lambda cfg, mode, **kwargs: pool)
 
 
 async def go(dataset: Path, tmp_path: Path) -> RunResults:
@@ -133,7 +133,9 @@ async def test_a40_stack_is_local(
 async def test_no_judged_value_downgrades_to_skipped(
     dataset: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    monkeypatch.setenv("PRUEFSTAND_STACK", "a40")  # the default registry has no judged metric yet
+    monkeypatch.setenv("PRUEFSTAND_STACK", "a40")
+    monkeypatch.setattr(run_module, "build_registry", MetricRegistry.default)  # no judged metric
+    monkeypatch.setattr(run_module, "build_judge_pool", lambda cfg, mode, **kwargs: SpyPool())
     results = await go(dataset, tmp_path)
     assert results.manifest.judge_mode == "skipped"
     assert results.manifest.judged_cases == 0

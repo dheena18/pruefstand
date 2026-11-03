@@ -2,12 +2,13 @@
 
 from collections.abc import Mapping
 
-from pruefstand.core.errors import ConfigError
+from pruefstand.core.errors import ConfigError, LLMError
 from pruefstand.core.models.judge import JudgeTask, JudgeVerdict
-from pruefstand.core.models.llm import LLMRequest, LLMRole
+from pruefstand.core.models.llm import LLMRequest, LLMRole, Message
 from pruefstand.core.settings import PruefstandSettings
 from pruefstand.judges.escaping import make_nonce, wrap
 from pruefstand.judges.output import normalise, output_model, output_schema, spec_of
+from pruefstand.judges.tokens import estimate_tokens, input_cap
 from pruefstand.llm.client import LLMClient
 from pruefstand.llm.prompts import PromptRegistry
 
@@ -57,11 +58,41 @@ class Judge:
         self._model = model
         self._registry = registry
         self._key = _nonce_key(nonce_key)
+        self._cap: int | None = None  # read from the catalogue when first needed (D520)
 
     @property
     def model(self) -> str:
         """The judge's model id."""
         return self._model
+
+    @property
+    def input_cap(self) -> int:
+        """Largest rendered prompt in (estimated) tokens: context window minus 1 024 (X3.9)."""
+        if self._cap is None:
+            self._cap = input_cap(self._model)
+        return self._cap
+
+    def prompt_tokens(self, task: JudgeTask) -> int:
+        """Estimate the tokens of the prompt ``score`` would send for ``task``.
+
+        Raises:
+            ConfigError: Unknown metric or inputs that do not fit the prompt.
+            PromptError: The prompt file is missing or malformed.
+        """
+        return sum(estimate_tokens(m.content) for m in self._render(task))
+
+    def _render(self, task: JudgeTask) -> tuple[Message, ...]:
+        spec = spec_of(task.metric)
+        if set(task.inputs) != set(spec.variables):
+            msg = f"{task.metric}: inputs {sorted(task.inputs)} must be {sorted(spec.variables)}"
+            raise ConfigError(msg)
+        if task.prompt_id != spec.prompt_id:
+            msg = f"{task.metric}: prompt_id '{task.prompt_id}' must be '{spec.prompt_id}'"
+            raise ConfigError(msg)
+        template = self._registry.get(task.prompt_id, task.prompt_version)
+        nonce = make_nonce(self._key, task.prompt_id, task.inputs)
+        blocks = {name: wrap(name, text, nonce) for name, text in task.inputs.items()}
+        return tuple(template.render(**blocks))
 
     async def score(self, task: JudgeTask) -> JudgeVerdict:
         """Render the prompt with nonce-wrapped inputs, ask the model and normalise the score.
@@ -77,25 +108,21 @@ class Judge:
             ConfigError: Unknown metric, a prompt id that is not the metric's, or inputs that do not
                 fit the prompt (no call is made).
             PromptError: The prompt file is missing or malformed.
-            LLMError: The answer is invalid or out of range after one repair.
+            LLMError: The rendered prompt is over the input cap (no call is made; the metrics
+                truncate before they ask), or the answer is invalid or out of range after one
+                repair.
             PolicyViolation: The provider policy refuses the call.
             QuotaExhausted: The free quota is used up and there is no fallback.
             BudgetExceeded: The call pushed the budget over a limit.
         """
-        spec = spec_of(task.metric)
-        if set(task.inputs) != set(spec.variables):
-            msg = f"{task.metric}: inputs {sorted(task.inputs)} must be {sorted(spec.variables)}"
-            raise ConfigError(msg)
-        if task.prompt_id != spec.prompt_id:
-            msg = f"{task.metric}: prompt_id '{task.prompt_id}' must be '{spec.prompt_id}'"
-            raise ConfigError(msg)
-        template = self._registry.get(task.prompt_id, task.prompt_version)
-        nonce = make_nonce(self._key, task.prompt_id, task.inputs)
-        blocks = {name: wrap(name, text, nonce) for name, text in task.inputs.items()}
+        messages = self._render(task)
+        if sum(estimate_tokens(m.content) for m in messages) > self.input_cap:
+            msg = f"{task.metric}: the prompt is over the input cap of {self.input_cap} tokens"
+            raise LLMError(msg, transient=False)
         request = LLMRequest(
             role=LLMRole.JUDGE,
             model=self._model,
-            messages=template.render(**blocks),
+            messages=messages,
             temperature=0.0,
             max_tokens=JUDGE_MAX_TOKENS,
             prompt_id=task.prompt_id,

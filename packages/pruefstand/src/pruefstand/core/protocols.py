@@ -141,6 +141,15 @@ class DeterministicMetric(Metric, Protocol):
 class JudgeLike(Protocol):
     """One judge model (``judges.Judge``, T5.2a)."""
 
+    @property
+    def input_cap(self) -> int:
+        """Largest rendered prompt in tokens (context window minus 1 024, round 9 X3.9)."""
+        ...
+
+    def prompt_tokens(self, task: JudgeTask) -> int:
+        """Estimate the tokens of the prompt ``score`` would send for ``task`` (no call)."""
+        ...
+
     async def score(self, task: JudgeTask) -> JudgeVerdict:
         """Judge one task. Raises ``LLMError``, ``PolicyViolation``, ``QuotaExhausted``."""
         ...

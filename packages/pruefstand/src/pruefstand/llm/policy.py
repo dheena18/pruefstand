@@ -1,6 +1,7 @@
 """Provider policy: free providers only, no paid provider without ``allow_paid``, data guard."""
 
 import unicodedata
+from collections.abc import Iterable
 
 from pruefstand.core.config import LLMPolicyConfig
 from pruefstand.core.errors import ConfigError, PolicyViolation
@@ -28,6 +29,24 @@ def normalise(text: str) -> str:
     folded = unicodedata.normalize("NFKC", text).translate(_HYPHENS)
     kept = "".join(c for c in folded if unicodedata.category(c) != "Cf")
     return " ".join(kept.split()).casefold()
+
+
+def contains_canary(texts: Iterable[str], canaries: CanaryRegistry) -> bool:
+    """Whether any of ``texts`` holds the token or the fact of a registered canary.
+
+    Examples:
+        >>> from pruefstand.core.models.attacks import Canary, CanaryRegistry
+        >>> c = Canary(token="CANARY-7f3", tenant="t", doc_id="d", kind="token", fact=None,
+        ...            probe_question=None, forbidden_answer=None)
+        >>> contains_canary(["x canary-7F3 y"], CanaryRegistry(canaries=(c,)))
+        True
+    """
+    text = normalise("\n".join(texts))
+    for canary in canaries.canaries:
+        fact = normalise(canary.fact) if canary.fact else None
+        if normalise(canary.token) in text or (fact and fact in text):
+            return True
+    return False
 
 
 def provider_of(model_id: str) -> str:
@@ -146,9 +165,6 @@ class LLMPolicy:
         if self._canaries is None:
             _log.warning("external_provider_without_canary_registry", provider=provider)
             return
-        text = normalise("\n".join(m.content for m in req.messages))
-        for canary in self._canaries.canaries:
-            fact = normalise(canary.fact) if canary.fact else None
-            if normalise(canary.token) in text or (fact and fact in text):
-                msg = f"canary data in the request; external provider '{provider}' refused"
-                raise PolicyViolation(msg)
+        if contains_canary((m.content for m in req.messages), self._canaries):
+            msg = f"canary data in the request; external provider '{provider}' refused"
+            raise PolicyViolation(msg)

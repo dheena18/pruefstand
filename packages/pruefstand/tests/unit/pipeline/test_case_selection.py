@@ -272,7 +272,7 @@ async def test_judged_metrics_run_only_on_subset_cases(
         "build_registry",
         lambda: MetricRegistry([*MetricRegistry.default().all(), StubJudgedMetric()]),
     )
-    monkeypatch.setattr(run_module, "build_judge_pool", lambda cfg, mode: pool)
+    monkeypatch.setattr(run_module, "build_judge_pool", lambda cfg, mode, **kwargs: pool)
     monkeypatch.setenv("PRUEFSTAND_JUDGE_MODE", "local")
     cfg = synthetic_config(core_dataset, (Split.CORE,))
     results = await run_eval(cfg, tier="pr", out=tmp_path / "runs", judged_subset=True)

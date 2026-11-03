@@ -1,6 +1,8 @@
 """``run_gate``: two stored runs in, ``gate.json`` out (T1.10 S3, S4b)."""
 
 import re
+from collections import Counter
+from collections.abc import Sequence
 from pathlib import Path
 
 import numpy as np
@@ -12,10 +14,12 @@ from pruefstand.core.errors import GateInputError
 from pruefstand.core.hashing import stable_hash
 from pruefstand.core.logging import get_logger
 from pruefstand.core.models.gate import GateReport
-from pruefstand.core.models.run import RunManifest, RunResults
+from pruefstand.core.models.metric import MetricStatus
+from pruefstand.core.models.run import RunManifest, RunResults, ScoredCase
 from pruefstand.core.protocols import BaselineStore
 from pruefstand.gate.hard_fail import find_hard_fails
 from pruefstand.gate.policy import evaluate_gate
+from pruefstand.judges.calibration import judges_uncalibrated
 from pruefstand.metrics.registry import MetricRegistry
 from pruefstand.report.json_report import write_gate_json
 from pruefstand.store.artifacts import ArtifactStore
@@ -40,7 +44,9 @@ def _tier_one(policy: GatePolicy) -> dict[str, str]:
     return mapping
 
 
-def _judge_reason(baseline: RunManifest, candidate: RunManifest) -> str | None:
+def _judge_reason(
+    baseline: RunManifest, candidate: RunManifest, *, uncalibrated: bool, by_share: bool
+) -> str | None:
     """First matching reason why judged metrics do not gate (tier 2)."""
     if baseline.judge_fallback or candidate.judge_fallback:
         return "judge_fallback"  # R11 Y4.4: never compared across judges
@@ -48,14 +54,37 @@ def _judge_reason(baseline: RunManifest, candidate: RunManifest) -> str | None:
         return "judge_degraded"
     if baseline.judge_drift or candidate.judge_drift:
         return "judge_drift"
+    if uncalibrated:
+        return "judge_uncalibrated"  # T5.4 found no passing judge (W3.8)
     truncated = candidate.counts.get("judge_truncated", 0)
-    if candidate.judged_cases > 0 and truncated > _TRUNCATED_SHARE * candidate.judged_cases:
+    if (
+        by_share
+        and candidate.judged_cases > 0
+        and truncated > _TRUNCATED_SHARE * candidate.judged_cases
+    ):
         return "judge_truncated"
     return None
 
 
+def _truncated_metrics(values: Sequence[ScoredCase]) -> set[str]:
+    """Judged metrics with more than 5 % truncated inputs among their applicable cases (X3.9)."""
+    applicable: Counter[str] = Counter()
+    truncated: Counter[str] = Counter()
+    for scored in values:
+        for value in scored.values:
+            if value.metric in JUDGED_METRICS and value.status is not MetricStatus.NOT_APPLICABLE:
+                applicable[value.metric] += 1
+                truncated[value.metric] += value.details.get("truncated") is True
+    return {m for m, n in truncated.items() if n > _TRUNCATED_SHARE * applicable[m]}
+
+
 def informational_mapping(
-    baseline: RunManifest, candidate: RunManifest, policy: GatePolicy
+    baseline: RunManifest,
+    candidate: RunManifest,
+    policy: GatePolicy,
+    *,
+    values: Sequence[ScoredCase] | None = None,
+    uncalibrated: bool = False,
 ) -> dict[str, str]:
     """Metrics the gate must treat as informational, with the reason (interfaces §9).
 
@@ -63,14 +92,19 @@ def informational_mapping(
     ``injection_success`` ``tier1_injection_reported``, every other metric with ``max_drop``
     ``tier1_deterministic_only``; (2) tier 2: judged metrics ``judge_fallback`` /
     ``judge_degraded`` /
-    ``judge_drift`` / ``judge_truncated``; (3) ``refusal_correct`` unless the run is the nightly
-    on ``full`` (``refusal_outside_nightly_full``). ``false_refusal`` is gated like any answerable
+    ``judge_drift`` / ``judge_uncalibrated`` / ``judge_truncated`` (more than 5 % of the metric's
+    applicable cases carry ``details["truncated"]``, counted from ``values``; without ``values``
+    the manifest's ``judge_truncated`` count against ``judged_cases`` stands in); (3)
+    ``refusal_correct`` unless the run is the nightly on ``full``
+    (``refusal_outside_nightly_full``). ``false_refusal`` is gated like any answerable
     metric. Only metrics of ``policy`` appear.
 
     Args:
         baseline: Baseline manifest.
         candidate: Candidate manifest (stack, workload and splits come from here).
         policy: The gate policy.
+        values: The candidate's scored cases (for the per-metric truncation share).
+        uncalibrated: ``judges/data/calibration_status.yaml`` says no judge passed (T5.4).
 
     Returns:
         Metric name to reason; metrics that are gated normally are absent.
@@ -78,9 +112,12 @@ def informational_mapping(
     if candidate.stack == "live":
         return _tier_one(policy)
     mapping: dict[str, str] = {}
-    reason = _judge_reason(baseline, candidate)
+    judged = {m for m in policy.metrics if m in JUDGED_METRICS}
+    reason = _judge_reason(baseline, candidate, uncalibrated=uncalibrated, by_share=values is None)
     if reason is not None:
-        mapping.update({m: reason for m in policy.metrics if m in JUDGED_METRICS})
+        mapping.update(dict.fromkeys(judged, reason))
+    elif values is not None:
+        mapping.update(dict.fromkeys(_truncated_metrics(values) & judged, "judge_truncated"))
     nightly_full = candidate.workload == "nightly" and Split.FULL in candidate.splits
     if "refusal_correct" in policy.metrics and not nightly_full:
         mapping["refusal_correct"] = "refusal_outside_nightly_full"
@@ -146,8 +183,14 @@ def _decide(cand: RunResults, base: RunResults | None, cfg: PruefstandConfig) ->
         cand,
         cfg.gate,
         np.random.default_rng(cfg.seed),
-        directions=MetricRegistry.default().directions(),
-        informational=informational_mapping(base.manifest, cand.manifest, cfg.gate),
+        directions=MetricRegistry.full().directions(),
+        informational=informational_mapping(
+            base.manifest,
+            cand.manifest,
+            cfg.gate,
+            values=cand.values,
+            uncalibrated=judges_uncalibrated(),
+        ),
     )
     if from_base > 0 and report.status is GateStatus.PASS:
         _log.warning("gate_answers_from_base_cache", count=from_base)
@@ -164,7 +207,7 @@ def _finish(report: GateReport, candidate: Path) -> GateReport:
 def run_gate(candidate: Path, baseline: Path | None, cfg: PruefstandConfig) -> GateReport:
     """Compare a candidate run with a baseline run and write ``gate.json`` into the candidate.
 
-    The directions of the metrics come from ``MetricRegistry.default().directions()``, the
+    The directions of the metrics come from ``MetricRegistry.full().directions()``, the
     randomness from ``numpy.random.default_rng(cfg.seed)``, so equal inputs give an equal report.
     Without a baseline the report says ``no_baseline`` (``INSUFFICIENT_DATA``, or ``FAIL`` when the
     candidate has a hard fail). A config whose hash differs from the one in ``run.json`` is
