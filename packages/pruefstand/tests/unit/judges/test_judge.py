@@ -54,7 +54,7 @@ async def test_a_partially_correct_verdict_is_half(
     assert (row["role"], row["prompt_id"], row["prompt_version"]) == (
         "judge",
         "answer_correctness_de",
-        "v2",
+        "v3",
     )
 
 

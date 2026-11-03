@@ -57,7 +57,7 @@ class MetricSpec:
 SPECS: dict[str, MetricSpec] = {
     "faithfulness": MetricSpec(2, "faithfulness_de", ("frage", "kontext", "antwort"), "v2"),
     "answer_correctness": MetricSpec(
-        2, "answer_correctness_de", ("frage", "referenz", "antwort"), "v2"
+        2, "answer_correctness_de", ("frage", "referenz", "antwort"), "v3"
     ),
     "perturbation_consistency": MetricSpec(
         1, "perturbation_consistency_de", ("frage", "referenz", "antwort")

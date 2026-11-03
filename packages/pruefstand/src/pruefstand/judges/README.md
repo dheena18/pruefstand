@@ -6,7 +6,7 @@
 | Metric | Prompt file | Variables (labelled blocks) | Raw scale |
 | --- | --- | --- | --- |
 | `faithfulness` | `prompts/faithfulness_de_v2.txt` | `frage`, `kontext`, `antwort` | 0 / 1 / 2 |
-| `answer_correctness` | `prompts/answer_correctness_de_v2.txt` | `frage`, `referenz`, `antwort` | 0 / 1 / 2 |
+| `answer_correctness` | `prompts/answer_correctness_de_v3.txt` | `frage`, `referenz`, `antwort` | 0 / 1 / 2 |
 | `perturbation_consistency` | `prompts/perturbation_consistency_de_v1.txt` | `frage`, `referenz`, `antwort` | 0 / 1 |
 | `refusal_judged` | `prompts/refusal_judged_de_v1.txt` | `frage`, `antwort` | 0 / 1 |
 
