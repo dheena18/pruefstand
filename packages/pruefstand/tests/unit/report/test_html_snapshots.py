@@ -27,10 +27,15 @@ from pruefstand.report.html import render_html
 Scenario = tuple[GateReport, RunResults | None, RunResults]
 
 
+def _blank(text: str, tag: str) -> str:
+    """Replace the content of the (single) ``<tag>`` element by an ellipsis marker."""
+    start = text.index(f"<{tag}>") + len(f"<{tag}>")
+    end = text.index(f"</{tag}>")
+    return f"{text[:start]}…{text[end:]}"
+
+
 def stripped(text: str) -> str:
-    text = re.sub(r"<style>.*?</style>", "<style>…</style>", text, flags=re.S)
-    text = re.sub(r"<script>.*?</script>", "<script>…</script>", text, flags=re.S)
-    return re.sub(r"sha256-[A-Za-z0-9+/=]+", "sha256-HASH", text)
+    return re.sub(r"sha256-[A-Za-z0-9+/=]+", "sha256-HASH", _blank(_blank(text, "style"), "script"))
 
 
 def _fail() -> Scenario:
