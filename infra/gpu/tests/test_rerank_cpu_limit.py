@@ -65,8 +65,11 @@ def test_the_override_wins_and_a_bad_override_is_ignored(
     assert cpu_limit(tmp_path, cores=160) == 2
     monkeypatch.setenv("RERANK_THREADS", "0")
     assert cpu_limit(tmp_path, cores=160) == 8
-    monkeypatch.setenv("RERANK_THREADS", "abc")
-    assert cpu_limit(tmp_path, cores=160) == 8
+    for bad in ("abc", "\u00b2", "-3", ""):
+        monkeypatch.setenv("RERANK_THREADS", bad)
+        assert cpu_limit(tmp_path, cores=160) == 8
+    monkeypatch.setenv("RERANK_THREADS", "500")
+    assert cpu_limit(tmp_path, cores=160) == 160  # never above the visible cores
 
 
 def test_the_real_host_returns_at_least_one_thread() -> None:

@@ -106,10 +106,13 @@ def cpu_limit(root: Path = Path("/sys/fs/cgroup"), cores: int | None = None) -> 
     >>> cpu_limit(Path("/nonexistent"), cores=160) >= 1
     True
     """
-    override = os.environ.get("RERANK_THREADS", "")
-    if override.isdigit() and int(override) > 0:
-        return int(override)
     visible = cores if cores is not None else len(os.sched_getaffinity(0))
+    try:
+        override = int(os.environ.get("RERANK_THREADS", ""))
+    except ValueError:
+        override = 0
+    if override > 0:
+        return min(override, visible)
     quota = _quota_cpus(root)
     return max(1, visible if quota is None else min(visible, math.ceil(quota)))
 

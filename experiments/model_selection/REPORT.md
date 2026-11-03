@@ -148,12 +148,12 @@ thread fix, D650); `max_tokens` stays at **256**. Computed by `budget.py` `scena
 | --- | --- | --- | --- | --- | --- |
 | 150 | 57.6 min | 36 % | 40.3 min | 55 % | both fit |
 | 200 | 72.6 min | 19 % | 50.6 min | 44 % | full core does not fit (just over 72), subset fits |
-| **256 (the cap)** | **89.4 min** | **0.7 %** | **62.1 min** | **31 %** | **full core does not fit, subset fits** |
+| **256 (the cap)** | **89.4 min** | **0.6 %** | **62.1 min** | **31 %** | **full core does not fit, subset fits** |
 | 512 | 166.4 min | negative | 114.9 min | negative | nothing fits: never raise the cap |
 
 **Decision (D655).** PR runs use the 150-case judged subset by default (D199): 62.1 min at the 256 cap, margin 31 % (27.9 min).
-The full `core` set runs in the nightly (night window 22:00 to 06:00, at most 8 h = 480 min): 600 generations take 149 min at
-256 tokens, margin 69 % (331 min); at 200 tokens 120 min (75 %). The first real tier-2 runs measure the mean output length; the
+The full-size runs happen in the nightly (refusal stratum plus block k of `full`, at most 600 cases; night window 22:00 to
+06:00, at most 8 h = 480 min): 600 generations take 149 min at 256 tokens, margin 69 % (331 min); at 200 tokens 120 min (75 %). The first real tier-2 runs measure the mean output length; the
 table is recomputed then (it is the only open input besides the assumed rerank time).
 
 ## Open option: a parallel-capable generator (not started, decision for the owner)

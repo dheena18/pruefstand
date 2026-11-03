@@ -118,7 +118,7 @@ ref `nightly-b<k>`, drift against the release anchor `release-b<k>` of the same 
 gates the job by its `run` output, a job starting after the fired night's 06:00 ends at once with
 `infra_error="window_exceeded"` (R13 D290), a phase that would end after 06:00 stops the same way, a skipped nightly
 is reported, never silent (R12 N1, N4.3; D248–D251, D256); cause-switches weekly (D223). PR runs gate against ref
-`main`; with `--judged-subset` (only when T3.1b measures > 90 min) the 150-case subset limits generation **and**
+`main`; with `--judged-subset` (the PR default since D655: a PR run needs a 20 % margin, i.e. at most 72 of the 90 min) the 150-case subset limits generation **and**
 judging of the `core` answerable cases, security cases always run in full (D199, R13 D295).
 
 ## 3. Tooling (exact commands) — the single definition of Make targets

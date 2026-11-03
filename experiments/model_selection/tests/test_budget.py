@@ -4,6 +4,7 @@ from typing import Any
 
 import pytest
 from model_selection import budget as b
+from model_selection import scenarios as sc
 
 GEN = b.Lane(
     calls=300, prompt_tokens=3500, out_tokens=200, prefill_tps=1200, decode_tps=18, slots=4
@@ -150,17 +151,17 @@ def test_fits_with_explicit_overhead() -> None:
 
 def test_measured_scenarios_apply_the_20_percent_margin_rule() -> None:
     """Above 72 min (20 % margin) does not fit: the subset is the PR default; 512 never fits."""
-    assert pytest.approx(72.0) == b.PR_LIMIT_MIN
-    by_cap = {out: (full, sub) for out, full, sub in b.scenarios()}
-    assert by_cap[150][0].total_min <= b.PR_LIMIT_MIN  # full core fits only at short answers
-    assert by_cap[200][0].total_min > b.PR_LIMIT_MIN  # 72.6 min: just over
+    assert pytest.approx(72.0) == sc.PR_LIMIT_MIN
+    by_cap = {out: (full, sub) for out, full, sub in sc.scenarios()}
+    assert by_cap[150][0].total_min <= sc.PR_LIMIT_MIN  # full core fits only at short answers
+    assert by_cap[200][0].total_min > sc.PR_LIMIT_MIN  # 72.6 min: just over
     full256, sub256 = by_cap[256]
-    assert full256.total_min > b.PR_LIMIT_MIN  # 89.4 min: no margin at all
-    assert sub256.total_min <= b.PR_LIMIT_MIN  # 62.1 min: the subset keeps >= 30 % margin
-    assert b.margin_pct(sub256.total_min) > 25
-    assert by_cap[512][1].total_min > b.PR_LIMIT_MIN  # the 256 cap must stay
+    assert full256.total_min > sc.PR_LIMIT_MIN  # 89.4 min: no margin at all
+    assert sub256.total_min <= sc.PR_LIMIT_MIN  # 62.1 min: the subset keeps >= 30 % margin
+    assert sc.margin_pct(sub256.total_min) > 25
+    assert by_cap[512][1].total_min > sc.PR_LIMIT_MIN  # the 256 cap must stay
     gen1 = b.Lane(350, 1650, 256, 966.0, 19.4, slots=1)
     assert b.lane_minutes(b.with_slots(gen1, 4)) < b.lane_minutes(gen1) / 2  # why one slot is tight
-    lines = b.scenarios_report().splitlines()
+    lines = sc.scenarios_report().splitlines()
     assert "does not fit" in lines[2]
     assert "subset fits" in lines[2]
