@@ -1,0 +1,41 @@
+### system
+Du bist eine erfahrene Juristin und schreibst Prüffragen für ein Frage-Antwort-System über deutsches und europäisches Recht. Du schreibst natürliches, heutiges Deutsch, kein steifes Amtsdeutsch. Du antwortest ausschließlich mit einem einzigen JSON-Objekt, ohne Erklärung davor oder danach.
+
+### user
+Aufgabe: Lies den Auszug und schreibe eine Frage, wie ein echter Nutzer sie stellen würde, dazu eine kurze Referenzantwort und die genaue Fundstelle.
+
+Regeln:
+1. "question": genau eine Frage, höchstens 30 Wörter, auch ohne Kenntnis des Auszugs verständlich. Schreibe nie "der Text", "der Abschnitt" oder "der Auszug".
+2. Stil: Bei "laie" fragt eine Privatperson im Alltagston (zum Beispiel "Wann darf mein Chef mich rauswerfen?"), ohne Fachbegriffe und ohne Paragraphennummer. Bei "fachlich" darf die Frage Fachbegriffe enthalten.
+3. Übernimm in Frage und Antwort keine Wortfolge von sechs oder mehr Wörtern aus dem Auszug; formuliere um.
+4. "answer": ein bis zwei Sätze, getragen von genau einem Absatz des Auszugs. Nenne die konkrete Zahl, Frist, das Datum oder den Paragraphen, den dieser Absatz enthält. Erfinde nichts hinzu.
+5. "citation": die Fundstelle auf Absatzebene, wenn die Norm Absätze hat, zum Beispiel "§ 573c Abs. 1 BGB" oder "Art. 6 Abs. 1 DSGVO"; sonst ohne Absatz; null, wenn du sie nicht sicher bestimmen kannst.
+6. "evidence": der oder die antwortrelevanten Sätze des zitierten Absatzes, wörtlich und unverändert aus dem Auszug kopiert (höchstens 40 Wörter).
+7. "style": "laie" oder "fachlich", wie gewünscht.
+
+Zwei Beispiele (frei erfunden, Mietrecht, nicht aus dem Auszug unten):
+
+Beispiel 1
+Gewünschter Stil: laie
+Quelle: § 573c BGB
+Auszug:
+(1) Eine Kündigung der Mietwohnung ist spätestens am dritten Werktag eines Kalendermonats für den Ablauf des übernächsten Monats möglich. Wer als Vermieter kündigt, muss die Frist nach mehreren Jahren Mietdauer verlängern.
+(2) Eine Befristung der Kündigung zum Nachteil des Mieters ist nicht erlaubt.
+Antwort:
+{"question": "Bis wann muss ich kündigen, damit meine Wohnung zwei Monate später frei wird?", "answer": "Spätestens am dritten Werktag eines Monats, dann endet der Vertrag mit Ablauf des übernächsten Monats.", "citation": "§ 573c Abs. 1 BGB", "evidence": "Eine Kündigung der Mietwohnung ist spätestens am dritten Werktag eines Kalendermonats für den Ablauf des übernächsten Monats möglich.", "style": "laie"}
+
+Beispiel 2
+Gewünschter Stil: fachlich
+Quelle: § 551 BGB
+Auszug:
+(1) Die Mietsicherheit darf höchstens das Dreifache der Monatsmiete ohne Betriebskostenvorauszahlungen betragen.
+(2) Der Mieter darf die Sicherheit in drei gleichen Monatsraten zahlen; die erste Rate ist zu Beginn des Mietverhältnisses fällig.
+Antwort:
+{"question": "In wie vielen Teilzahlungen darf der Mieter die Kaution leisten und wann wird die erste fällig?", "answer": "In drei gleichen Monatsraten; die erste Rate ist zu Beginn des Mietverhältnisses fällig.", "citation": "§ 551 Abs. 2 BGB", "evidence": "Der Mieter darf die Sicherheit in drei gleichen Monatsraten zahlen; die erste Rate ist zu Beginn des Mietverhältnisses fällig.", "style": "fachlich"}
+
+Jetzt dein Auftrag.
+Gewünschter Stil: {{stil}}
+Quelle: {{quelle}}
+Auszug:
+{{text}}
+Antwort:

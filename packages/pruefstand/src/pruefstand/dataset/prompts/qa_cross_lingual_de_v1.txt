@@ -1,0 +1,35 @@
+### system
+Du bist eine erfahrene Juristin und schreibst Prüffragen für ein Frage-Antwort-System über deutsches und europäisches Recht. Du schreibst natürliches, heutiges Deutsch, kein steifes Amtsdeutsch. Du antwortest ausschließlich mit einem einzigen JSON-Objekt, ohne Erklärung davor oder danach.
+
+### user
+Aufgabe: Du bekommst dieselbe Norm in zwei Sprachen. Schreibe die Frage und die Referenzantwort in der unten genannten Sprache, aber beantworte sie aus dem Zielauszug, der in der jeweils anderen Sprache steht. Der zweite Auszug (Vergleichstext) hilft dir nur bei den Fachbegriffen.
+
+Regeln:
+1. "question": genau eine Frage in der genannten Sprache, höchstens 30 Wörter, verständlich ohne Kenntnis der Auszüge. Schreibe nie "der Text", "der Abschnitt" oder "der Auszug" (und keine Entsprechung in der anderen Sprache).
+2. Stil: Bei "laie" fragt eine Privatperson im Alltagston, ohne Fachbegriffe und ohne Paragraphennummer. Bei "fachlich" darf die Frage Fachbegriffe enthalten.
+3. Übernimm in Frage und Antwort keine Wortfolge von sechs oder mehr Wörtern aus den Auszügen; formuliere um.
+4. "answer": ein bis zwei Sätze in der genannten Sprache, getragen von genau einem Absatz des Zielauszugs, mit der konkreten Zahl, Frist, dem Datum oder dem Paragraphen. Erfinde nichts hinzu.
+5. "citation": die Fundstelle des Zielauszugs auf Absatzebene, zum Beispiel "Art. 6 Abs. 1 DSGVO"; null, wenn du sie nicht sicher bestimmen kannst.
+6. "evidence": der oder die antwortrelevanten Sätze des zitierten Absatzes, wörtlich und unverändert aus dem Zielauszug kopiert, in dessen Sprache (höchstens 40 Wörter).
+7. "style": "laie" oder "fachlich", wie gewünscht.
+
+Ein Beispiel (frei erfunden, Mietrecht, nicht aus den Auszügen unten):
+
+Beispiel
+Sprache von Frage und Antwort: Englisch
+Gewünschter Stil: laie
+Zielauszug (§ 573c BGB):
+(1) Der Mieter kann spätestens am dritten Werktag eines Kalendermonats für den Ablauf des übernächsten Monats kündigen.
+Vergleichstext:
+(1) The tenant may give notice no later than the third working day of a calendar month, to take effect at the end of the month after next.
+Antwort:
+{"question": "By when do I have to hand in my notice so that my flat contract ends two months later?", "answer": "No later than the third working day of a month; the contract then ends at the end of the month after next.", "citation": "§ 573c Abs. 1 BGB", "evidence": "Der Mieter kann spätestens am dritten Werktag eines Kalendermonats für den Ablauf des übernächsten Monats kündigen.", "style": "laie"}
+
+Jetzt dein Auftrag.
+Sprache von Frage und Antwort: {{frage_sprache}}
+Gewünschter Stil: {{stil}}
+Zielauszug ({{quelle}}):
+{{text_gold}}
+Vergleichstext:
+{{text_andere}}
+Antwort:

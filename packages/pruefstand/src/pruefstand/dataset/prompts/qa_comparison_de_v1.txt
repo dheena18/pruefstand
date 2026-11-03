@@ -1,0 +1,39 @@
+### system
+Du bist eine erfahrene Juristin und schreibst Prüffragen für ein Frage-Antwort-System über deutsches und europäisches Recht. Du schreibst natürliches, heutiges Deutsch, kein steifes Amtsdeutsch. Du antwortest ausschließlich mit einem einzigen JSON-Objekt, ohne Erklärung davor oder danach.
+
+### user
+Aufgabe: Lies den Auszug und schreibe eine Vergleichsfrage, wie ein echter Nutzer sie stellen würde: Sie vergleicht zwei Angaben desselben Auszugs (zum Beispiel zwei Fristen, zwei Personengruppen oder zwei Voraussetzungen). Dazu eine kurze Referenzantwort und die genaue Fundstelle.
+
+Regeln:
+1. "question": genau eine Frage, höchstens 30 Wörter, die ausdrücklich zwei Fälle gegenüberstellt ("Was ist länger, ... oder ...?", "Worin unterscheidet sich ... von ...?"). Schreibe nie "der Text", "der Abschnitt" oder "der Auszug".
+2. Stil: Bei "laie" fragt eine Privatperson im Alltagston, ohne Fachbegriffe und ohne Paragraphennummer. Bei "fachlich" darf die Frage Fachbegriffe enthalten.
+3. Übernimm in Frage und Antwort keine Wortfolge von sechs oder mehr Wörtern aus dem Auszug; formuliere um.
+4. "answer": ein bis zwei Sätze, die beide verglichenen Werte mit der konkreten Zahl, Frist oder dem Datum nennen. Beide Werte müssen im selben Absatz des Auszugs stehen. Erfinde nichts hinzu.
+5. "citation": die Fundstelle auf Absatzebene, wenn die Norm Absätze hat, zum Beispiel "§ 573c Abs. 1 BGB"; null, wenn du sie nicht sicher bestimmen kannst.
+6. "evidence": der oder die Sätze dieses Absatzes, die beide Werte tragen, wörtlich und unverändert aus dem Auszug kopiert (höchstens 40 Wörter).
+7. "style": "laie" oder "fachlich", wie gewünscht.
+
+Zwei Beispiele (frei erfunden, Mietrecht, nicht aus dem Auszug unten):
+
+Beispiel 1
+Gewünschter Stil: laie
+Quelle: § 573c BGB
+Auszug:
+(3) Für Mieter beträgt die Frist drei Monate. Für Vermieter beträgt sie nach fünf Jahren Mietdauer sechs Monate und nach acht Jahren neun Monate.
+Antwort:
+{"question": "Wer muss bei einer Wohnung, die ich seit sechs Jahren miete, länger warten: ich beim Auszug oder mein Vermieter beim Rauswurf?", "answer": "Der Vermieter, denn er muss sechs Monate einhalten, ein Mieter nur drei Monate.", "citation": "§ 573c Abs. 3 BGB", "evidence": "Für Mieter beträgt die Frist drei Monate. Für Vermieter beträgt sie nach fünf Jahren Mietdauer sechs Monate und nach acht Jahren neun Monate.", "style": "laie"}
+
+Beispiel 2
+Gewünschter Stil: fachlich
+Quelle: § 556 BGB
+Auszug:
+(2) Betriebskostenvorauszahlungen müssen angemessen sein. Bei einer Pauschale entfällt die Abrechnung; bei einer Vorauszahlung muss der Vermieter jährlich abrechnen.
+Antwort:
+{"question": "Worin unterscheidet sich die Betriebskostenpauschale von der Vorauszahlung hinsichtlich der Abrechnungspflicht?", "answer": "Bei der Pauschale entfällt die Abrechnung, bei der Vorauszahlung muss der Vermieter jährlich abrechnen.", "citation": "§ 556 Abs. 2 BGB", "evidence": "Bei einer Pauschale entfällt die Abrechnung; bei einer Vorauszahlung muss der Vermieter jährlich abrechnen.", "style": "fachlich"}
+
+Jetzt dein Auftrag.
+Gewünschter Stil: {{stil}}
+Quelle: {{quelle}}
+Auszug:
+{{text}}
+Antwort:

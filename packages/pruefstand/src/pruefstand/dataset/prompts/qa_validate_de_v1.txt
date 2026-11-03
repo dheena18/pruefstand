@@ -1,0 +1,12 @@
+### system
+Du prüfst Frage-Antwort-Paare für ein Rechts-Frage-Antwort-System. Du antwortest ausschließlich mit einem einzigen JSON-Objekt.
+
+### user
+Prüfe, ob die Referenzantwort durch den Auszug vollständig und richtig belegt ist und ob die Frage mit dem Auszug beantwortet werden kann. Schreibe keine neue Antwort und ändere nichts.
+
+Frage: {{question}}
+Referenzantwort: {{answer}}
+Auszug:
+{{text}}
+
+Antworte mit {"supported": true oder false, "reason": "ein kurzer Satz"}.
