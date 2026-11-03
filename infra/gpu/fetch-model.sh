@@ -32,7 +32,7 @@ done
 id_re='^ollama/[A-Za-z0-9._:/-]+$'
 [[ $id =~ $id_re ]] || die "$usage" 64
 row="$(cat_py lookup "$id")" || exit "$?"
-IFS=$'\t' read -r tag digest role disk_bytes engine <<<"$row"
+IFS=$'\t' read -r tag digest role disk_bytes engine standard <<<"$row"
 [ "$engine" = ollama ] || die "$id is not served by Ollama" 64
 # the catalogue entry must carry the pin and the size the disk rule needs (gpu_catalogue.py checked them too)
 if ! [[ $digest =~ ^[0-9a-f]{64}$ ]] || ! [[ $disk_bytes =~ ^[1-9][0-9]{0,14}$ ]]; then
@@ -40,7 +40,8 @@ if ! [[ $digest =~ ^[0-9a-f]{64}$ ]] || ! [[ $disk_bytes =~ ^[1-9][0-9]{0,14}$ ]
 fi
 
 if [ "$remove" -eq 1 ]; then
-  [ "$role" != generator ] || die "never remove the generator ($id)" 64
+  # only the standard generator is protected; a candidate with role generator (e.g. qwen3:4b) is a swap candidate (D451)
+  [ "$role" != generator ] || [ "$standard" != 1 ] || die "never remove the generator ($id)" 64
   [ -e "$LOCK_DIR/MAINTENANCE" ] || die "set MAINTENANCE for a model swap (see docs/engineering/gpu-cluster.md section 8)" 3
   cluster_mut rm "$tag"
   exit 0
