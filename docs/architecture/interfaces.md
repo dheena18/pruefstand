@@ -1520,11 +1520,19 @@ async def generate_qa_pairs(pairs: Sequence[tuple[Chunk, Chunk]], llm: LLMClient
     #   cross_check(cands, chunks, llm, plan, rng, *, stats, done) -> list[CrossCheckRow] (dataset.cross_check),
     #   validate_candidates(cands, chunks, judge, judge_model) -> list[ValidationRow] (dataset.generate_validate, pass 2),
     #   sample_chunks / sample_multi_hop_pairs / sample_cross_lingual_pairs (dataset.sampling), scripts/generate_qa.py
-class FilterResult(BaseModel): kept: bool; reasons: tuple[str, ...]
-async def check_support(c: QACandidate, chunk: Chunk, llm: LLMClient, model: str) -> FilterResult
+class FilterResult(BaseModel): kept: bool; reasons: tuple[str, ...]   # reasons in FILTER_REASONS, kept <=> no reasons (T4.3, D826)
+async def check_support(c: QACandidate, chunk: Chunk, llm: LLMClient, model: str, *, extra: Sequence[Chunk] = (),
+                        generator_model: str | None = None) -> FilterResult   # T4.3 (D822, D826): extra = 2nd chunk of a pair;
+    # generator_model's family must differ (ConfigError); Quota/Budget/PolicyViolation propagate
     # prompt dataset/prompts/support_check_de_v1.txt; no Judge dependency
-def check_overlap(c: QACandidate, chunk: Chunk, max_ngram_overlap: float) -> FilterResult
+def check_overlap(c: QACandidate, chunk: Chunk, max_ngram_overlap: float, *, long_copy_words: int = 8) -> FilterResult
+    # T4.3 (D820, D821): word 6-grams, shared run >= long_copy_words, `der Text` rule; reasons ngram_overlap / long_copy / meta_reference
 def dedupe(cands: Sequence[QACandidate], embed: Callable[[Sequence[str]], NDArray[np.float32]], max_sim: float = 0.9) -> list[QACandidate]
+    # T4.3 (D824, D825, D826), additive: dedupe_report(...) -> (kept, dropped); dataset.filters_checks: check_evidence(c, sources),
+    #   drop_cluster_overlap(cands, chunks), style_report(cands, minimum, min_n); dataset.filters_run: filter_candidates(cands, chunks,
+    #   embed, config=FilterConfig(), *, support=SupportSetup | None) -> FilterOutcome(kept, dropped, report); core.models.dataset:
+    #   FilterConfig, FILTER_REASONS; dataset.to_case.case_id_of(c); scripts/filter_qa.py; D828: all of it is re-exported by
+    #   dataset.filters (code in filters_support / filters_text / filters_checks / filters_run); FilterOutcome.unjudged
 def assign_splits(cases: Sequence[TestCase], plan: SplitPlan, rng: np.random.Generator) -> list[TestCase]  # whole clusters stay in one split
     # R12 N1.1 (D248, owner T4.1): also sets TestCase.block and TestCase.judged_subset with the same rng:
     #   full: refusal stratum (category UNANSWERABLE cases) -> block None; every other full case -> block 0/1/2, whole
