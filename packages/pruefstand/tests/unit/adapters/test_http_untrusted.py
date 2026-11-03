@@ -108,11 +108,13 @@ async def test_event_loop_keeps_ticking_while_a_bomb_is_parsed(
             last = now
 
     task = asyncio.create_task(ticker())
-    await asyncio.sleep(0)  # let the ticker start before the query runs
-    with pytest.raises(TargetError):
-        await adapter.query(REQ)
-    stop.set()
-    await task
+    try:
+        await asyncio.sleep(0)  # let the ticker start before the query runs
+        with pytest.raises(TargetError):
+            await adapter.query(REQ)
+    finally:
+        stop.set()
+        await task
     assert len(gaps) >= 1
     assert max(gaps) < 4.0  # the unbounded parse blocked for ~8 s
 
