@@ -1,0 +1,209 @@
+{
+  "$defs": {
+    "GateStatus": {
+      "description": "Decision of the gate; ``UNSUPPORTED_CONFIG`` counts as ``WARN``.",
+      "enum": [
+        "pass",
+        "warn",
+        "fail",
+        "insufficient_data",
+        "unsupported_config"
+      ],
+      "title": "GateStatus",
+      "type": "string"
+    },
+    "RunIndexEntry": {
+      "additionalProperties": false,
+      "description": "One row of ``runs/index.json``, copied from ``run.json`` and ``gate.json``.\n\nAttributes:\n    status: Gate status; ``None`` when the run has no ``gate.json``.\n    baseline_run_id: ``None`` without ``gate.json`` or without a baseline.\n    no_baseline: ``GateReport.no_baseline`` (``False`` without ``gate.json``).\n    block: ``RunManifest.block`` (nightly block k, UI13-19).\n    judged_subset: ``RunManifest.judged_subset`` (UI13-19).",
+      "properties": {
+        "baseline_run_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Baseline Run Id"
+        },
+        "block": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Block"
+        },
+        "complete": {
+          "title": "Complete",
+          "type": "boolean"
+        },
+        "cost_usd": {
+          "title": "Cost Usd",
+          "type": "number"
+        },
+        "created_at": {
+          "format": "date-time",
+          "title": "Created At",
+          "type": "string"
+        },
+        "duration_s": {
+          "title": "Duration S",
+          "type": "number"
+        },
+        "git_ref": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Git Ref"
+        },
+        "git_sha": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Git Sha"
+        },
+        "judge_degraded": {
+          "title": "Judge Degraded",
+          "type": "boolean"
+        },
+        "judge_drift": {
+          "title": "Judge Drift",
+          "type": "boolean"
+        },
+        "judge_fallback": {
+          "title": "Judge Fallback",
+          "type": "boolean"
+        },
+        "judge_mode": {
+          "enum": [
+            "github",
+            "local",
+            "skipped"
+          ],
+          "title": "Judge Mode",
+          "type": "string"
+        },
+        "judged_subset": {
+          "default": false,
+          "title": "Judged Subset",
+          "type": "boolean"
+        },
+        "n_cases": {
+          "title": "N Cases",
+          "type": "integer"
+        },
+        "no_baseline": {
+          "default": false,
+          "title": "No Baseline",
+          "type": "boolean"
+        },
+        "pr_number": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Pr Number"
+        },
+        "run_id": {
+          "title": "Run Id",
+          "type": "string"
+        },
+        "stack": {
+          "enum": [
+            "live",
+            "a40"
+          ],
+          "title": "Stack",
+          "type": "string"
+        },
+        "status": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/GateStatus"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "stop_reason": {
+          "title": "Stop Reason",
+          "type": "string"
+        },
+        "workload": {
+          "enum": [
+            "pr",
+            "nightly",
+            "bench"
+          ],
+          "title": "Workload",
+          "type": "string"
+        }
+      },
+      "required": [
+        "run_id",
+        "created_at",
+        "git_ref",
+        "git_sha",
+        "pr_number",
+        "n_cases",
+        "duration_s",
+        "cost_usd",
+        "complete",
+        "stop_reason",
+        "stack",
+        "workload",
+        "judge_mode",
+        "judge_fallback",
+        "judge_degraded",
+        "judge_drift",
+        "status",
+        "baseline_run_id"
+      ],
+      "title": "RunIndexEntry",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "description": "``runs/index.json``: at most ``MAX_INDEX_RUNS`` runs, newest first.",
+  "properties": {
+    "runs": {
+      "items": {
+        "$ref": "#/$defs/RunIndexEntry"
+      },
+      "title": "Runs",
+      "type": "array"
+    },
+    "schema_version": {
+      "const": "1",
+      "title": "Schema Version",
+      "type": "string"
+    }
+  },
+  "required": [
+    "schema_version",
+    "runs"
+  ],
+  "title": "DashboardRunIndex",
+  "type": "object"
+}

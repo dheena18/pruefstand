@@ -1,0 +1,198 @@
+{
+  "$defs": {
+    "DashboardSliceRow": {
+      "additionalProperties": false,
+      "description": "One row per ``SliceDecision`` of ``gate.json`` (ui-spec §11.1), copied, never computed.\n\n``kind``: ``absolute_checks`` give ``absolute``; ``notable_slices`` and every entry with an\n``informational_reason`` give ``informational``; the other decisions give ``decision``. The\nCI fields are ``None`` when the decision has no bootstrap ``result``.",
+      "properties": {
+        "baseline_mean": {
+          "title": "Baseline Mean",
+          "type": "number"
+        },
+        "candidate_mean": {
+          "title": "Candidate Mean",
+          "type": "number"
+        },
+        "ci_high": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Ci High"
+        },
+        "ci_low": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Ci Low"
+        },
+        "dimension": {
+          "title": "Dimension",
+          "type": "string"
+        },
+        "gated": {
+          "title": "Gated",
+          "type": "boolean"
+        },
+        "informational_reason": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Informational Reason"
+        },
+        "kind": {
+          "enum": [
+            "decision",
+            "absolute",
+            "informational"
+          ],
+          "title": "Kind",
+          "type": "string"
+        },
+        "max_drop": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Max Drop"
+        },
+        "max_value": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Max Value"
+        },
+        "mde": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Mde"
+        },
+        "mean_diff": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Mean Diff"
+        },
+        "metric": {
+          "title": "Metric",
+          "type": "string"
+        },
+        "n_clusters": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "N Clusters"
+        },
+        "notable": {
+          "title": "Notable",
+          "type": "boolean"
+        },
+        "status": {
+          "$ref": "#/$defs/GateStatus"
+        },
+        "value": {
+          "title": "Value",
+          "type": "string"
+        }
+      },
+      "required": [
+        "metric",
+        "dimension",
+        "value",
+        "status",
+        "gated",
+        "notable",
+        "kind",
+        "baseline_mean",
+        "candidate_mean",
+        "mean_diff",
+        "ci_low",
+        "ci_high",
+        "mde",
+        "max_drop",
+        "max_value",
+        "n_clusters",
+        "informational_reason"
+      ],
+      "title": "DashboardSliceRow",
+      "type": "object"
+    },
+    "GateStatus": {
+      "description": "Decision of the gate; ``UNSUPPORTED_CONFIG`` counts as ``WARN``.",
+      "enum": [
+        "pass",
+        "warn",
+        "fail",
+        "insufficient_data",
+        "unsupported_config"
+      ],
+      "title": "GateStatus",
+      "type": "string"
+    }
+  },
+  "additionalProperties": false,
+  "description": "``runs/<run_id>/slices.json``.",
+  "properties": {
+    "rows": {
+      "items": {
+        "$ref": "#/$defs/DashboardSliceRow"
+      },
+      "title": "Rows",
+      "type": "array"
+    },
+    "run_id": {
+      "title": "Run Id",
+      "type": "string"
+    },
+    "schema_version": {
+      "const": "1",
+      "title": "Schema Version",
+      "type": "string"
+    }
+  },
+  "required": [
+    "schema_version",
+    "run_id",
+    "rows"
+  ],
+  "title": "DashboardSlices",
+  "type": "object"
+}

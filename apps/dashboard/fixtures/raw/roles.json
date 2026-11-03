@@ -1,0 +1,27 @@
+{
+  "config": "pruefstand.yaml",
+  "roles": {
+    "F-BASE": "20261103T112731-e15f0e",
+    "F-T1": "20261103T123537-e01927",
+    "F-E2E-BASE": "20261103T123523-177b2a",
+    "F-HARD-FAIL": "20261103T124130-8ee0ce"
+  },
+  "sources": {
+    "F-BASE": {
+      "github_run": "41627222531",
+      "artifact": "live-baseline"
+    },
+    "F-T1": {
+      "github_run": "41636773006",
+      "artifact": "live-run"
+    },
+    "F-E2E-BASE": {
+      "github_run": "41636773006",
+      "artifact": "e2e-baseline"
+    },
+    "F-HARD-FAIL": {
+      "github_run": "41636773006",
+      "artifact": "scenario-run-tenant_filter_post_topk"
+    }
+  }
+}

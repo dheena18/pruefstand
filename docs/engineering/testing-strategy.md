@@ -208,46 +208,29 @@ simulated **because the ground truth (true Δ) must be known**; this is not a st
 - Checks (native Ollama API only, D219): `/api/ps` lists the pinned models with catalogue digests and `size_vram == size`; `RERANK_URL` `/health` ok; 5 fixed German questions answered with ≥ 1 valid citation; judge output parses (`format` schema, `num_predict` 384); embedding dimension 1024; a 7 000-token prompt through rag-demo's path and through `LLMClient` gives `prompt_eval_count` ≥ 6 900; no response after preflight has `load_duration` > 1 s; p95 latency under budget.
 - Runs first in every tier-2 job.
 
-### 3.10 UI harness (`apps/dashboard`; owned by T8.3; page × state matrix, fixture ids and project names in `docs/design/ui-spec.md` §14, which wins on detail)
+### 3.10 UI harness (`apps/dashboard`; scaffold T8.1, Playwright T8.3)
 
-**One static build per fixture set.** The site is a static export with pre-rendered pages, so one
-build serves exactly one data tree. Each fixture set is a complete data tree,
-`apps/dashboard/fixtures/{populated,empty}/`, and is **built and tested as its own Playwright
-project** (own `next build` with that set as the data directory, own `webServer`), crossed with the
-viewports 360×740 and 1280×800 (`e2e/matrix.ts`). `populated` holds the real-run snapshot plus the
-derived states (ui-spec §14.1); `empty` is the 0-run index (`L-EMPTY`).
+The page x state x theme x locale x viewport matrix, the fixture ids (`F-*`, `D-*`), the two fixture sets
+(`populated`, `empty`) and the Playwright project names are defined in `docs/design/ui-spec.md` section 14, which wins on
+detail. This section only says where each layer runs (the table is section 14.3 of the spec):
 
-- **Data is schema-validated at build time.** Invalid data fails the build in CI before deploy, so the
-  static site has no "bad data" panel and no bad-schema fixture is served. The error state is tested
-  via the **404 page** (unknown run id → `out/404.html` from `app/not-found.tsx`).
-- **Loading states** (`C-LOADING`, shards pending; Try-it `T-LOADING` / `T-SLOW` / `T-CANCELLED`)
-  delay real responses only through the shared helper `e2e/delay.ts` (T8.3); it never changes,
-  removes or replaces data.
-- **Empty set build:** `generateStaticParams` returns one placeholder param `_empty` with
-  `dynamicParams = false`, which renders the empty state (D236).
-
-| Layer / tool | Scope | When |
+| Layer | Scope | When |
 | --- | --- | --- |
-| Vitest + Testing Library | every component variant, reducers (try, filters), i18n parity, contrast, label coverage; dashboard `src/lib` coverage per `CLAUDE.md` §6 | every UI PR (`ui-unit`) |
-| Playwright e2e, Chromium 360 + 1280, per fixture set | full ui-spec §14.2 matrix except Try it: {light, dark} × {de, en} × both viewports; state assertions, axe 0 `serious`/`critical`, no page-level horizontal scroll, `lang`, footer attribution; navigation runs list → run summary → diff → slices → cases list → case detail (`?case=` deep link); filters, sort and page kept in the URL across reload; theme and locale toggles; incomplete-run banner; 404; `keyboard.spec.ts`, `reflow.spec.ts`, `content.spec.ts`, `filters.spec.ts` | every UI PR (part of required `ui / check`) |
-| Playwright `populated-basepath-1280` | `basePath` smoke of the static export served at `/pruefstand/` (N5.5) | every UI PR, job `basepath-smoke` in `ui / check` |
-| Visual regression | `toHaveScreenshot`, full matrix, Chromium, `maxDiffPixelRatio: 0.01`, baselines rendered in the pinned Playwright container (`make ui-update-snapshots`), masks for times/latency/answer text | nightly; informational until M7 |
-| WebKit 1280, mobile Chromium (Pixel 7), mobile WebKit (iPhone 14) | full matrix: assertions + axe | nightly |
-| Lighthouse CI | runs list, FAIL summary, cases list on the 1,500-case run of `populated`; performance ≥ 0.9, accessibility ≥ 0.95, best practices ≥ 0.95, SEO ≥ 0.9; LCP < 2.5 s, CLS < 0.1, JS < 250 kB per page | nightly; informational until M7 |
-| Try it (T8.4; job `demo-e2e` of the private `demo-nightly.yml`, T8.5; never a `ui.yml` job, UI12-10) | the Try-it states of ui-spec §14.2 against **one real demo instance on the VM** (CPU model, in-process rate limits; D239); no API mocks; delays only through `e2e/delay.ts` (as above); `workers: 1`, tests run sequentially, the demo container is restarted between test groups to reset the limits, plus `POST /v1/_test/reset` before each of the 8 combinations (N5.4); the test reset is called **from inside the container** (`docker compose exec rag-demo-e2e curl -X POST localhost:8000/v1/_test/reset`), so the loopback check is real (round 13 P5.4) | nightly on the VM |
-| Post-deploy smoke (T8.5) | `e2e/smoke.deployed.spec.ts`, read-only on the deployed **GitHub Pages** URL (D235; CSP from the hash-based `<meta>` only, no header files): `/` → `/de/`, runs list (de + en), first gated run summary, its cases list, licences, its `report.html`, footer attribution. **Freshness (round 13 P5.5):** every Pages build writes `build-id.txt` = `<head_sha>-<deploy_run_id>`; the job first polls `/pruefstand/build-id.txt` (cache-busting query) until it matches (max 10 min, then fail "Pages still serves an older build"), then runs the checks, every page request with a cache-busting query | after each Pages deploy: job `post-deploy-smoke` of `docs.yml` (`needs: deploy`, T8.5) |
+| Vitest | every component variant (§5), reducers (try, filters), `cases.ts` loader incl. `C-LOADING` (deferred shard promise) and `C-SHARD-ERROR` (rejected shard load), `X-ERROR`, i18n parity, label coverage, contrast, `validate_data.mjs`, `csp.mjs` | every UI PR (`ui-unit`) |
+| Playwright `populated-*`, `empty-*` (Chromium 360 + 1280) | full §14.2 matrix except Try it: assertions + axe + reflow + CSP | every UI PR (job `playwright`, part of required `ui / check`) |
+| Playwright `populated-basepath-1280` | `basePath` smoke at `/pruefstand/` (§14.2): runtime URLs (shards, report link, theme script), site-root 404 | every UI PR (job `basepath-smoke`, part of required `ui / check`; N5.5) |
+| Visual `toHaveScreenshot` | full §14.2 matrix, Chromium projects, `maxDiffPixelRatio: 0.01`, masks for times/latency/answer text; baselines only from the pinned Playwright container | nightly; informational until M7 |
+| WebKit + mobile projects | full matrix: assertions + axe | nightly |
+| Lighthouse CI | runs list, FAIL summary, cases list of the `D-MANY` 1,500-case run (populated set) | nightly; informational until M7 |
+| Try-it matrix | Try-it rows × 8 combinations, real demo stack on the VM, sequential, reset before each combination (§14.2 Try-it run) | nightly job `demo-e2e` of the private `demo-nightly.yml` on the VM, after `demo-deploy` (T8.4 spec, T8.5 workflow; D244); informational, never a PR check, no `ui.yml` job |
+| Post-deploy smoke (T8.5) | read-only Playwright on `https://dheena18.github.io/pruefstand/` (`basePath` `/pruefstand`; the docs at `/pruefstand/docs/` still load). **Step 0 (P5.5, UI13-05):** poll `/pruefstand/build-id.txt?nocache=…` until it equals `<workflow_run.head_sha>-<workflow_run.id>` (≤ 10 min, else fail "Pages still serves an older build"); every later request carries a cache-busting query. Then: `/` → `/de/`, runs list (`de` + `en`), first gated case-published run summary, its cases list, licences, its `report.html` (no such run in the index → runs list / `L-EMPTY` asserted and the run checks skipped with an annotation, UI13-17), an unknown path → 404 page with the docs link, footer attribution, axe, no CSP violation, exactly one CSP meta and no CSP header. Placeholder deploy → only `/` and `/docs/` (UI13-09) | job `post-deploy-smoke` of `docs.yml`, after each Pages deploy (N5.2) |
 
-**Fixtures** (never hand-written): `populated` = the committed real-run snapshot (sanitised
-`pruefstand export-dashboard` output of real tier-1 runs and, from T8.3, tier-2 runs from
-`pruefstand-dashboard-data`; refreshed by `scripts/dashboard/refresh_snapshot.sh`, provenance in
-`SOURCE.md`) plus the derived states written by `scripts/dashboard/derive_fixtures.mjs` (ui-spec §14.1
-`D-*` ids); `F-PARTIAL`, `F-NO-BASELINE` and `F-JUDGE-SKIPPED` are **derived from real tier-1 runs** by
-the documented script `scripts/dashboard/derive.py` (D268; was `apps/dashboard/fixtures/derive.py`, D237) (truncate the run, drop the baseline, set
-`judge_mode=skipped`), output under `apps/dashboard/fixtures/**` (D237); `empty` = the derived 0-run index. Fixture paths are allowed by the raw-data guard
-(`apps/dashboard/fixtures/**`). CI (`ui.yml`) validates every fixture against the schemas,
-`check_fixture_states.mjs` fails if a ui-spec §14.1 state has no fixture, and the `SOURCE.md` date
-check (≤ 30 days) is **informational until M7**. Update snapshots only with `make ui-update-snapshots`
-inside the container.
+Rules that follow from the spec: an unknown run id gives `out/404.html` from `app/not-found.tsx` (served by GitHub Pages for
+every unknown path); the Try-it matrix delays responses only through `e2e/delay.ts` (UI11-15) and resets the demo with an
+in-container `POST /v1/_test/reset` before each of the 8 combinations (N5.4, P5.4); the `basepath-smoke` row is
+"Playwright `populated-basepath-1280` · `basePath` smoke at `/pruefstand/` · every UI PR, job `basepath-smoke` in
+`ui / check`". `make ui-check` runs lint, typecheck, both fixture-set builds, the fixture-state check and Vitest with the
+`src/lib` coverage gate; T8.3 adds Playwright. T8.3 refreshes this section.
 
 ### 3.11 Code mutation testing (mutmut, nightly)
 - Targets `pruefstand/gate/` and `pruefstand/metrics/`; score reported (target ≥ 80 %), survivors become issues; never blocks a PR.

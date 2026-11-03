@@ -306,6 +306,14 @@ jobs:
             ${{ steps.gate.outputs.run_dir }}/report.html
             ${{ steps.gate.outputs.run_dir }}/evidence.json
           retention-days: 14
+      - name: Upload the PR run directory
+        # T8.1 S8: the dashboard fixtures (F-T1) are real run directories; PR runs upload theirs for the snapshot refresh.
+        if: github.event_name == 'pull_request' && steps.gate.outputs.run_dir != ''
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: live-run
+          path: ${{ steps.gate.outputs.run_dir }}
+          retention-days: 14
       - name: Upload live-baseline
         if: github.event_name == 'push' && steps.gate.outputs.run_dir != ''
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
@@ -395,6 +403,7 @@ jobs:
           - injection_guard_off
     env:
       PRUEFSTAND_E2E_SCENARIO: ${{ matrix.scenario }}
+      PRUEFSTAND_E2E_KEEP: ${{ github.workspace }}/scenario-run
     steps:
       - name: Start time
         run: echo "JOB_START=$(date +%s)" >> "$GITHUB_ENV"
@@ -417,6 +426,14 @@ jobs:
         run: |
           baseline="$(find "$PWD/e2e-baseline" -mindepth 1 -maxdepth 1 -type d | head -n 1)"
           PRUEFSTAND_E2E_BASELINE_RUN="$baseline" uv run pytest -m "e2e and live" packages/pruefstand/tests/e2e -v
+      - name: Upload the scenario run directory
+        # T8.1 S8: F-HARD-FAIL and friends are real scenario run dirs (run + gate.json).
+        if: always() && hashFiles('scenario-run/**') != ''
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: scenario-run-${{ matrix.scenario }}
+          path: scenario-run
+          retention-days: 14
       - name: Wall time
         if: always()
         run: |
