@@ -85,10 +85,10 @@ regexes = [
 ]
 
 [[allowlists]]
-description = "T4.5 rewriter test: a synthetic canary token assigned to an argument named token to prove the data guard routes the question to the local model (CLAUDE.md section 9: test data, not a credential)"
+description = "T4.5 rewriter test (early commit of an open branch): the synthetic canary ZXQ-CANARY-7731 assigned to a variable named token (CLAUDE.md section 9: canary tokens are test data, not credentials)"
 condition = "AND"
 paths = [
-  '''^packages/pruefstand/tests/unit/perturb/test_rewriter\.py$''',
+  '''packages/pruefstand/tests/unit/perturb/test_rewriter\.py''',
 ]
 regexes = [
   '''ZXQ-CANARY-7731''',
