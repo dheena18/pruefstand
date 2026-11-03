@@ -105,6 +105,14 @@ def test_the_generator_entry_is_the_cluster_model(cat: Catalogue) -> None:
     assert model_family(GEN_ID) == "qwen"
 
 
+def test_only_the_cluster_generator_is_standard_and_protected(raw: dict[str, Any]) -> None:
+    """``fetch-model.sh --rm`` protects the standard generator (D451, D630)."""
+    protected = [
+        m["id"] for m in raw["models"] if m.get("role") == "generator" and m.get("standard")
+    ]
+    assert protected == [GEN_ID]
+
+
 def test_every_entry_with_the_thinking_capability_has_think_false(raw: dict[str, Any]) -> None:
     with pytest.raises(ValidationError):
         Catalogue.model_validate(_mutated(raw, GEN_ID, think=None))
