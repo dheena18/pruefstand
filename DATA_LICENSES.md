@@ -26,6 +26,7 @@ This is not legal advice. Re-check each source's terms when the pinned version c
 | BSI IT-Grundschutz (optional) | edition + date | **Verify before use** (one secondary source reports CC BY-SA 4.0 for the OSCAL edition; not confirmed) | not used until verified | Do not redistribute until verified |
 | Own synthetic private docs, canaries, planted attacks, fixtures | dataset version | CC BY 4.0 (data), MIT (generator code) | `own` | Allowed |
 | `legal_hard` calibration set (T5.3): A40 generator answers on `full` + deterministic edits (party/section swap, sentence drop, unsupported append) | dataset version | CC BY 4.0 (our edits and labels); generator output terms per §5 (the pinned tier-2 `qwen` generator) | `own` **only if** T0.6 C3 finds an allowlisted licence for the generator checkpoint (round 11 AI11-08); else none | Allowed only under that condition; otherwise `legal_hard` stays **local** like MEMERAG (calibration only, aggregate numbers in the report). Source law text keeps its `laws_eurlex` credit |
+| In-domain dev set `experiments/model_selection/indomain_dev.jsonl` (T3.1b): questions and reference answers written by a GitHub Models datagen model from Gesetze-im-Internet norms | archive SHA-256 pins and model ids in `indomain_dev_sources.json` and in each record | Passages: official works (§ 5 Abs. 1 UrhG); generated text: GitHub Models terms and the model's output terms (**verify** when generated, section 5); our selection and checks CC BY 4.0 | none (`dev_only`, model selection only) | Repository only |
 
 ## 2. Hugging Face configs
 

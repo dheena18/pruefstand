@@ -103,6 +103,7 @@ def test_client_uses_native_api_only() -> None:
         "/api/embed",
         "/api/ps",
         "/api/show",
+        "/api/tags",
         "/api/version",
     }
 
