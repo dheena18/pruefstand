@@ -1,5 +1,5 @@
 # Dev service of the tier-2 reference app on the VM (T3.2 S4, Y1.4, D242). Use it with the root file:
-#   make up COMPOSE_FILES="infra/gpu/compose.gpu.yml infra/gpu/compose.rag-demo.yml" PROFILES="gpu dev" SERVICES=rag-demo-dev
+#   make up COMPOSE_FILES="infra/gpu/compose.rag-demo.yml" PROFILES="gpu dev" SERVICES="rag-demo-dev rerank-cpu"
 # network_mode host: the tunnel's 172.17.0.1 bind is firewalled to the proxy-egress subnet, so the dev container
 # reaches Ollama on 127.0.0.1:11434 (OLLAMA_GPU0_URL from .env), Qdrant and rerank-cpu on their dev host ports, and
 # listens on 127.0.0.1:${RAG_DEMO_HOST_PORT} (18000 with PORT_OFFSET=10000). No GPU device: the models run in Ollama

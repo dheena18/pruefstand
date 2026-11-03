@@ -254,9 +254,9 @@ less for Gemma 3 (sliding window). All rows are planning values: **verify in T3.
 
 | Card (expected) / mode | Models | Weights | KV (`num_ctx` × 4 slots) | Card total |
 | --- | --- | --- | --- | --- |
-| generator card, day + night | generator `qwen3.8:27b-q8_0` + `bge-m3` | ~29 GB + ~1.2 GB | generator 8192 × 4 = 32 k tokens ≈ 4 GB at `q8_0`; bge-m3 small | ≈ 35 GB of 45 (**verify**) |
+| generator card, day + night | generator `qwen3.8:27b-q8_0` + `bge-m3` | ~29 GB + ~1.2 GB | one sequence × 8 192 tokens: KV 272 MiB at `q8_0` (34 816 B/token) + 150 MiB recurrent state; bge-m3 small | ≈ 28 GB of 45 (**measured**: 28 135 MiB, D651) |
 | judge card, day + night | judge `gemma3:12b` Q4 (ADR-0019) | ~8 GB | **12288** × 4 (= 8 192 + 3 072 + 1 024, D306) at `q8_0`: with the sliding-window cache a few GB; without it ≈ 9 GB (**verify** in T3.1b) | ≈ 12–18 GB of 45 (**verify**) |
-| generator card, embed swap (M3, RQ1 e5) | generator + e5-large instead of `bge-m3` | ~29 GB + ~1.2 GB | as the bge-m3 row | ≈ 35 GB of 45 (**verify**, AI12-08) |
+| generator card, embed swap (M3, RQ1 e5) | generator + e5-large instead of `bge-m3` | ~29 GB + ~1.2 GB | as the bge-m3 row | ≈ 28 GB of 45 (bge-m3 row measured; e5 **verify**, AI12-08) |
 | judge card, RQ2 swap (T5.4) | one pulled candidate instead of the judge (swap rule §2) | ≤ ~10 GB (disk-bound) | as the judge row | **verify** per candidate |
 
 **Generator fallback (AI11-07).** If `qwen3.8:27b-q8_0` fails its licence or quality check in T3.1b, the generator
@@ -290,8 +290,24 @@ about 7.9 KB per token (sliding window active); 20 inputs of about 9 200 tokens:
 prefill about 970 tok/s); judge decode 57 tok/s per stream at 1 stream, aggregate incl. prefill 36.3 at 1 and 54.5 at 4, prefill 1 625 tok/s. PR estimate about 82 min (GPU0
 binds), nightly about 139 min (D471).
 
+**Measured from the Ollama load log (2026-11-03, `pruefstand-cluster log`, D651).** The generator `qwen3.8:27b-q8_0` is a
+hybrid model (Ollama family `qwen35`): only **16 of its 66 layers** carry a KV cache, and the server loads it with **one
+sequence** (`1/1 seqs`, `slot id 0`, `n_ctx_slot = 8192`) although `OLLAMA_NUM_PARALLEL=4` is set (Ollama: `model architecture does not currently support parallel requests architecture=qwen35`, D654; the server env is correct). Load lines
+(`<models-dir>` blobs): `CUDA0 model buffer 25 972 MiB` + `CPU_Mapped 1 288 MiB` (66/66 layers offloaded), `KV buffer
+272 MiB` for 8 192 cells (K and V `q8_0` 136 MiB each) = **34 816 B per token**, recurrent state `RS buffer 149.6 MiB` per
+sequence, compute buffers `260 + 248 MiB` on the card (+ 56 and 25 MiB on the host). Card total with everything
+(`nvidia-smi`): 28 135 MiB of 46 068, so the planning figure of 35 GB was too high by about 7 GB. The old
+`kv_bytes_per_token` of 131 072 was a dense-model planning value; the catalogue now holds 34 816. Two consequences: (1)
+the generator does not batch, which is why aggregate decode stays at about 14.4 tok/s at concurrency 1, 4 and 8
+(`experiments/model_selection/REPORT.md`); the PR budget already models one slot; (2) every request logs `forcing full
+prompt re-processing due to lack of cache data (likely due to SWA or hybrid/recurrent memory)`, so prefix reuse does
+not exist for this model and `prompt_eval_count` is the full prompt (this settles the T3.6 `prompt_overflow` worry about
+cache reuse lowering it). The server also keeps a prompt cache in host RAM (limit 8 192 MiB, about 4.5 GiB used after
+nine prompts). The judge and embedding load lines scrolled out of the 1 000-line window; their `overhead_gib` stays the
+provisional `size_vram` minus disk figure (`gemma3:12b` 9.46 GiB resident vs 7.6 GiB on disk).
+
 `OLLAMA_MAX_LOADED_MODELS=3` holds generator + embeddings + the one judge. Ollama places the models; the generator
-(≈ 35 GB with KV) and the judge together exceed one card, so they land on different cards, and `health.sh`
+(≈ 28 GB with KV, measured, D651) and the judge together exceed one card, so they land on different cards, and `health.sh`
 reports the placement. If a measured total exceeds 44 GB on the generator card, lower `num_ctx` before lowering
 `OLLAMA_NUM_PARALLEL`, and record it; on the judge card the judge rule of §2.1 applies instead (lower `OLLAMA_NUM_PARALLEL` to 2 first, `num_ctx` 12 288 is lowered only if
 T3.1b's VRAM measurement still fails, D306).

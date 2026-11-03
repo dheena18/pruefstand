@@ -520,7 +520,7 @@ Layering (enforced by import-linter, ADR-0016) is defined in `CLAUDE.md` §4. `g
 | Cache | Key | Why |
 | --- | --- | --- |
 | Target responses (runner) | `stable_hash(target_fingerprint, case.id, case.question, case.tenant)` | Unchanged system + case → reuse; any app code, image or serving change invalidates |
-| LLM calls (`llm` namespace, `LLMClient` only: judge, datagen, perturbation) | `stable_hash(model, provider_version, prompt_id, prompt_version, rendered messages, temperature, max_tokens, seed, response_format)`; for judges this is model id + provider-reported version + prompt version + hash of **all rendered inputs** (question, answer, context chunk ids and text hashes, reference), never the answer hash alone | Same judgment never paid twice; same answer with different context = cache miss |
+| LLM calls (`llm` namespace, `LLMClient` only: judge, datagen, perturbation) | `stable_hash(model, provider_version, prompt_id, prompt_version, rendered messages, temperature, max_tokens, seed, response_format)`; for judges this is model id + provider-reported version + prompt version + hash of **all rendered inputs** (question, answer, context chunk ids and text hashes, reference), never the answer text alone | Same judgment never paid twice; same answer with different context = cache miss |
 
 **Judge drift.** A judge can change behind the same model id (hosted model swap, serving
 nondeterminism). Nightly re-judges a fixed **anchor set** of **50** public items with the cache

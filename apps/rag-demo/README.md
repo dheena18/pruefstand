@@ -70,7 +70,7 @@ The same app runs two profiles, chosen by `RAG_CONFIG` (`profile:` in the file).
 container, host network, `127.0.0.1:18000`):
 
 ```bash
-make up COMPOSE_FILES="infra/gpu/compose.gpu.yml infra/gpu/compose.rag-demo.yml" PROFILES="gpu dev" SERVICES=rag-demo-dev
+make up COMPOSE_FILES="infra/gpu/compose.rag-demo.yml" PROFILES="gpu dev" SERVICES="rag-demo-dev rerank-cpu"
 curl -s 127.0.0.1:18000/v1/info
 ```
 

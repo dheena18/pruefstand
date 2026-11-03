@@ -1,12 +1,12 @@
 """The one place that imports ``litellm`` (import-linter contract ``llm-gateway``, ADR-0009).
 
 Providers: ``openai_compatible_local/<m>`` (llama.cpp, LiteLLM ``openai/``), ``github/<m>`` (GitHub
-Models) and, from T5.1, ``ollama/<tag>`` (LiteLLM ``ollama_chat/``, native ``/api/chat``).
+Models) and ``ollama/<tag>`` (LiteLLM ``ollama_chat/``, native ``/api/chat``, options from the
+catalogue). Pure request building lives in ``kwargs.py``; this module makes the calls.
 """
 
 import asyncio
 import os
-import re
 import time
 from typing import Any
 
@@ -19,12 +19,21 @@ os.environ["LITELLM_MODE"] = "PRODUCTION"  # forced: an exported DEV must not wi
 import httpx
 import litellm
 import openai
+from litellm.llms.custom_httpx.http_handler import AsyncHTTPHandler
 
-from pruefstand.core.config import ModelRef
 from pruefstand.core.errors import ConfigError, LLMError
 from pruefstand.core.models.llm import LLMRequest, LLMResponse
 from pruefstand.core.models.target import Usage
+from pruefstand.llm.backends import versions
+from pruefstand.llm.backends.kwargs import (
+    completion_kwargs,
+    litellm_model,
+    provider_prefix,
+    strip_think,
+)
 from pruefstand.llm.backends.limits import IDENTITY_HEADERS, LimitedTransport, response_limits
+from pruefstand.llm.providers import catalogue_options
+from pruefstand.llm.retry import RateLimitedError, parse_retry_after
 
 if litellm.litellm_mode != "PRODUCTION":  # litellm was imported first, in DEV mode, and loaded .env
     msg = "litellm was imported before pruefstand.llm in non-PRODUCTION mode (.env may be loaded)"
@@ -33,99 +42,24 @@ litellm.suppress_debug_info = True
 litellm.telemetry = False
 litellm.drop_params = False
 
+__all__ = [
+    "GITHUB_MODELS_URL",
+    "NO_KEY",
+    "LiteLLMBackend",
+    "completion_kwargs",
+    "litellm_model",
+    "map_error",
+    "provider_prefix",
+    "strip_think",
+]
+
 GITHUB_MODELS_URL = (
     "https://models.github.ai/inference"  # LiteLLM's own default host does not resolve
 )
 NO_KEY = "not-needed"  # llama.cpp ignores the key; the OpenAI client insists on a non-empty one
-_THINK_BLOCK = re.compile(r"\A\s*<think>.*?</think>\s*", re.DOTALL)
 _CONNECTION_ERRORS = ("APIConnectionError", "Timeout", "APITimeoutError")
 _TRANSIENT_STATUS = frozenset({408, 409, 425, 429})
 _MAX_ERROR_TEXT = 200
-
-
-def provider_prefix(model_id: str) -> str:
-    """Return the provider prefix of ``model_id``."""
-    return model_id.split("/", 1)[0]
-
-
-def _litellm_id(model_id: str) -> str:
-    """Translate a config id into LiteLLM's model string (R11 D219/D221)."""
-    for prefix in ("ollama_chat/", "openai/"):
-        if model_id.startswith(prefix):
-            msg = (
-                f"model id '{model_id}': the prefix '{prefix}' is a LiteLLM detail, "
-                "not a config value; use ollama/<tag> or openai_compatible_local/<m> (D221)"
-            )
-            raise ConfigError(msg)
-    provider, _, rest = model_id.partition("/")
-    if provider == "ollama":
-        return f"ollama_chat/{rest}"
-    if provider == "openai_compatible_local":
-        return f"openai/{rest}"
-    return model_id
-
-
-def litellm_model(ref: ModelRef) -> str:
-    """Return LiteLLM's model string for ``ref`` (the only translation point, D221).
-
-    Examples:
-        >>> litellm_model(ModelRef(id="ollama/qwen3.8:27b-q8_0", family="qwen"))
-        'ollama_chat/qwen3.8:27b-q8_0'
-        >>> litellm_model(ModelRef(id="openai_compatible_local/m", family="qwen"))
-        'openai/m'
-
-    Raises:
-        ConfigError: ``ref.id`` already carries a LiteLLM prefix (``ollama_chat/``, ``openai/``).
-    """
-    return _litellm_id(ref.id)
-
-
-def strip_think(text: str) -> tuple[str, bool]:
-    """Remove a leading ``<think>...</think>`` block.
-
-    Returns:
-        ``(text, stripped)``; a block that is not closed or not leading is left alone.
-
-    Examples:
-        >>> strip_think("<think>x</think>Antwort")
-        ('Antwort', True)
-        >>> strip_think("Antwort")
-        ('Antwort', False)
-    """
-    stripped, count = _THINK_BLOCK.subn("", text, count=1)
-    return (stripped, True) if count else (text, False)
-
-
-def completion_kwargs(
-    req: LLMRequest, *, api_base: str | None, api_key: str, timeout_s: float
-) -> dict[str, object]:
-    """Build the ``litellm.acompletion`` arguments for ``req`` (pure).
-
-    Qwen3 ids on the OpenAI-compatible llama.cpp path always send
-    ``chat_template_kwargs.enable_thinking=false`` (D95). Retries stay at 0: the client owns them.
-
-    Raises:
-        ConfigError: ``req.model`` carries a LiteLLM prefix (D221).
-    """
-    provider = provider_prefix(req.model)
-    kwargs: dict[str, object] = {
-        "model": _litellm_id(req.model),
-        "messages": [{"role": m.role, "content": m.content} for m in req.messages],
-        "temperature": req.temperature,
-        "max_tokens": req.max_tokens,
-        "timeout": timeout_s,
-        "num_retries": 0,
-        "api_key": api_key,
-    }
-    if req.seed is not None:
-        kwargs["seed"] = req.seed
-    if api_base is not None:
-        kwargs["api_base"] = api_base
-    if req.response_format == "json" and provider != "ollama":
-        kwargs["response_format"] = {"type": "json_object"}
-    if provider == "openai_compatible_local" and "qwen3" in req.model.lower():
-        kwargs["extra_body"] = {"chat_template_kwargs": {"enable_thinking": False}}
-    return kwargs
 
 
 class LiteLLMBackend:
@@ -134,7 +68,7 @@ class LiteLLMBackend:
     Args:
         model_id: Provider-qualified model this backend was built for; requests for another
             model of the same provider are served with the same endpoint.
-        api_base: Endpoint (llama.cpp); None = LiteLLM's default for the provider.
+        api_base: Endpoint (llama.cpp, Ollama); None = LiteLLM's default for the provider.
         api_key_env: Name of the environment variable that holds the key; read at call time,
             never stored, logged or put into an exception. None = no key needed.
         timeout_s: Hard timeout per call in seconds.
@@ -161,6 +95,28 @@ class LiteLLMBackend:
             raise LLMError(msg, transient=False)
         return value
 
+    async def resolve_version(self, model: str) -> str | None:
+        """Return the provider-reported version of ``model`` for the cache key, or None.
+
+        Ollama: tag + manifest digest from ``/api/tags``; llama.cpp: hash of the model path from
+        ``/props``; GitHub Models: None (the version arrives with each response).
+
+        Raises:
+            LLMError: The probe failed (transient).
+        """
+        provider = provider_prefix(model)
+        if self.api_base is None or provider not in {"ollama", "openai_compatible_local"}:
+            return None
+        try:
+            if provider == "ollama":
+                return await asyncio.to_thread(versions.ollama_version, self.api_base, model)
+            return await asyncio.to_thread(versions.llamacpp_version, self.api_base)
+        except ConfigError:
+            raise
+        except Exception as err:  # best effort: the call that follows reports a real outage
+            msg = f"{provider}: version probe failed ({type(err).__name__})"
+            raise LLMError(msg, transient=True) from None
+
     async def acomplete(self, req: LLMRequest) -> LLMResponse:
         """Call the model once.
 
@@ -171,18 +127,25 @@ class LiteLLMBackend:
             The response with usage, ``cost_usd`` (0.0, free providers only), ``latency_ms``.
 
         Raises:
-            LLMError: Timeout, connection loss, 429 and 5xx are ``transient=True``; other 4xx,
-                a missing key or a foreign provider are not.
+            LLMError: Timeout, connection loss, 429 and 5xx are ``transient=True`` (a 429 is a
+                ``RateLimitedError`` that carries ``Retry-After``); other 4xx, a missing key or a
+                foreign provider are not.
+            ConfigError: An ``ollama/`` model is missing from the GPU catalogue (checked now,
+                not when the backend was built).
         """
         provider = provider_prefix(req.model)
         if provider != provider_prefix(self.model_id):
             msg = f"backend for '{provider_prefix(self.model_id)}' cannot serve model '{req.model}'"
             raise LLMError(msg, transient=False)
+        options = catalogue_options(req.model) if provider == "ollama" else None
         key = self._api_key()
         kwargs = completion_kwargs(
-            req, api_base=self.api_base, api_key=key, timeout_s=self.timeout_s
+            req, api_base=self.api_base, api_key=key, timeout_s=self.timeout_s, options=options
         )
-        max_chars, max_bytes = response_limits(req.max_tokens)
+        asked = (
+            req.max_tokens if options is None else max(req.max_tokens, int(options["num_predict"]))
+        )
+        max_chars, max_bytes = response_limits(asked)
         tripped: list[bool] = []
         http_client = self._bounded_client(provider, key, max_bytes, tripped, kwargs)
         start = time.perf_counter()
@@ -210,12 +173,19 @@ class LiteLLMBackend:
         tripped: list[bool],
         kwargs: dict[str, object],
     ) -> httpx.AsyncClient | None:
-        """Install the size-capped OpenAI client (`ollama/` must do the same in T5.1)."""
+        """Install a size-capped HTTP client (OpenAI SDK, or a LiteLLM handler for Ollama)."""
         base = self.api_base or (GITHUB_MODELS_URL if provider == "github" else None)
-        if provider not in {"openai_compatible_local", "github"} or base is None:
+        if provider not in {"openai_compatible_local", "github", "ollama"} or base is None:
             return None
         transport = LimitedTransport(max_bytes, tripped)
-        http_client = httpx.AsyncClient(transport=transport, timeout=self.timeout_s)
+        http_client = httpx.AsyncClient(
+            transport=transport, timeout=self.timeout_s, headers=IDENTITY_HEADERS
+        )
+        if provider == "ollama":
+            handler = AsyncHTTPHandler(timeout=self.timeout_s)
+            handler.client = http_client
+            kwargs["client"] = handler
+            return http_client
         kwargs["client"] = openai.AsyncOpenAI(
             base_url=base,
             api_key=key,
@@ -245,7 +215,8 @@ class LiteLLMBackend:
             raise LLMError(msg, transient=False)
         if "qwen3" in req.model.lower():
             text, stripped = strip_think(text)
-            self.think_stripped += int(stripped)
+            reasoning = getattr(raw.choices[0].message, "reasoning_content", None)
+            self.think_stripped += int(stripped or bool(reasoning))  # LiteLLM may split it already
         usage = raw.usage
         return LLMResponse(
             text=text,
@@ -280,11 +251,34 @@ def _root_connection_error(err: BaseException) -> BaseException | None:
     return None
 
 
+def _retry_after(err: Exception) -> float | None:
+    """Read ``Retry-After`` (seconds) from the first response in the exception chain.
+
+    LiteLLM wraps the SDK error in its own and drops the headers; the original response is
+    still on the chained exceptions.
+    """
+    seen: set[int] = set()
+    cur: BaseException | None = err
+    while cur is not None and id(cur) not in seen:
+        seen.add(id(cur))
+        headers = getattr(getattr(cur, "response", None), "headers", None)
+        if headers is not None:
+            try:
+                value = parse_retry_after(headers.get("retry-after"))
+            except (AttributeError, TypeError):
+                value = None
+            if value is not None:
+                return value
+        cur = cur.__cause__ or cur.__context__
+    return None
+
+
 def map_error(err: Exception, provider: str, key: str) -> LLMError:
     """Map a LiteLLM/OpenAI exception to ``LLMError``; the key never appears in the text.
 
     Connection problems (DNS, refused, reset, timeout) are transient and carry no status; so are
-    408/409/425/429 and 5xx. Any other exception without a status is permanent.
+    408/409/425/429 and 5xx. A 429 becomes a ``RateLimitedError`` with the ``Retry-After`` the
+    provider sent. Any other exception without a status is permanent.
     """
     root = _root_connection_error(err)
     if root is not None:
@@ -295,4 +289,7 @@ def map_error(err: Exception, provider: str, key: str) -> LLMError:
     transient = status is not None and (status >= 500 or status in _TRANSIENT_STATUS)
     detail = str(err).replace(key, "***")[:_MAX_ERROR_TEXT]
     where = f"HTTP {status}" if status is not None else type(err).__name__
-    return LLMError(f"{provider}: {where}: {detail}", transient=transient, status=status)
+    text = f"{provider}: {where}: {detail}"
+    if status == 429:
+        return RateLimitedError(text, retry_after_s=_retry_after(err))
+    return LLMError(text, transient=transient, status=status)
