@@ -12,6 +12,7 @@ from testsupport.pipeline_support import CORPUS_VERSION, case_rows, synthetic_co
 from testsupport.run_builders import make_case
 from testsupport.runner_support import SpyPool, StubJudgedMetric
 
+from pruefstand.core.config.gate import JUDGED_METRICS
 from pruefstand.core.enums import Split
 from pruefstand.core.errors import ConfigError
 from pruefstand.core.fingerprint import eval_fingerprint
@@ -166,11 +167,11 @@ async def test_default_stratum_keeps_the_fingerprint_of_runs_before_it_existed(
         judge_prompt_versions={},
         judge_serving={},
         judge_epoch=0,
-        metric_versions=m.metric_versions,
+        metric_versions={k: v for k, v in m.metric_versions.items() if k not in JUDGED_METRICS},
         corpus_version=CORPUS_VERSION,
         block=None,
         judged_subset=False,
-    )
+    )  # tier 1: the informational judged metrics stay out of the fingerprint (D810)
     assert m.eval_fingerprint == expected
 
 

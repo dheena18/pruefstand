@@ -16,7 +16,7 @@ from numpy.typing import NDArray
 from pydantic import ValidationError
 
 from pruefstand.core.models.gate import ScoreTable
-from pruefstand.core.models.metric import MetricStatus, MetricValue
+from pruefstand.core.models.metric import JUDGE_SIDE_REASONS, MetricStatus, MetricValue
 from pruefstand.core.models.run import RunResults, ScoredCase
 from pruefstand.gate._validate import fail
 
@@ -74,8 +74,13 @@ def _request_failed(scored: ScoredCase) -> bool:
 
 
 def _fillable(scored: ScoredCase, value: MetricValue | None, *, fill_errors: bool) -> bool:
-    """A candidate value without a number is worst-filled unless it is a judge error."""
-    if value is None or value.status is MetricStatus.NOT_APPLICABLE:
+    """Whether a candidate value without a number is worst-filled.
+
+    Not a judge error and not a judge-side ``not_applicable`` (canary scope, quota, cap, no judges).
+    """
+    if value is not None and value.status is MetricStatus.NOT_APPLICABLE:
+        return value.details.get("reason") not in JUDGE_SIDE_REASONS
+    if value is None:
         return True
     return value.status is MetricStatus.ERROR and (fill_errors or _request_failed(scored))
 

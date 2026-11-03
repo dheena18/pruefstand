@@ -32,7 +32,6 @@ gate:
     faithfulness:             {max_drop: 0.05, confidence: 0.95}
     answer_correctness:       {max_drop: 0.05, confidence: 0.95}
     perturbation_consistency: {max_drop: 0.05, confidence: 0.95}
-    refusal_judged:           {max_drop: 0.05, confidence: 0.95}
   slices: [category, perturbation, tenant, lang, tags]
   gated_slices: [overall, tenant, lang, perturbed_all]
   min_clusters: 30

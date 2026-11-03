@@ -20,8 +20,9 @@ async def test_a_phrase_match_decides_without_a_judge_call(
         value = await RefusalJudged(judge_enabled=True).acompute(
             make_case(0), response("Die Dokumente enthalten dazu keine Information."), pool
         )
-    assert (value.status, value.value) == (MetricStatus.OK, 1.0)
-    assert value.details["refused_source"] == "phrase"
+    # a clear refusal is the phrase list's business: this metric cannot reward it (SPEC 7.1)
+    assert (value.status, value.value) == (MetricStatus.NOT_APPLICABLE, None)
+    assert value.details["reason"] == "not_ambiguous"
     assert user_prompts(state) == []
 
 
@@ -34,7 +35,7 @@ async def test_the_flag_is_ignored_and_a_disagreement_is_reported(
             response("Die Dokumente enthalten dazu keine Information.", refused=False),
             pool,
         )
-    assert value.value == 1.0  # the phrase list decides, the flag only informs
+    assert value.value is None  # the phrase list decides elsewhere, the flag only informs
     assert value.details["refusal_flag_mismatch"] is True
 
 
@@ -59,7 +60,7 @@ async def test_a_short_answer_with_a_paragraph_citation_is_not_judged(
         value = await RefusalJudged(judge_enabled=True).acompute(
             make_case(0), response("Das regelt § 622 BGB für alle Arbeitgeber."), pool
         )
-    assert (value.value, value.details["refused_source"]) == (0.0, "phrase")
+    assert (value.value, value.details["reason"]) == (None, "not_ambiguous")
     assert user_prompts(state) == []
 
 
@@ -74,7 +75,7 @@ async def test_a_long_answer_with_a_hedge_is_judged_and_a_clear_one_is_not(
         judged = await metric.acompute(make_case(0), response(hedge), pool)
         plain = await metric.acompute(make_case(0), response(clear), pool)
     assert judged.details["refused_source"] == "judge"
-    assert plain.details["refused_source"] == "phrase"
+    assert (plain.status, plain.details["reason"]) == (MetricStatus.NOT_APPLICABLE, "not_ambiguous")
     assert len(user_prompts(state)) == 1
 
 
@@ -85,7 +86,7 @@ async def test_with_the_refusal_judge_not_passing_only_the_phrase_list_decides(
         value = await RefusalJudged(judge_enabled=False).acompute(
             make_case(0), response(TWELVE), pool
         )
-    assert (value.value, value.details["refused_source"]) == (0.0, "phrase")
+    assert (value.value, value.details["reason"]) == (None, "refusal_judge_off")
     assert user_prompts(state) == []
 
 
@@ -112,3 +113,12 @@ def test_ambiguity_rule() -> None:
     assert is_ambiguous(response(TWELVE))
     assert not is_ambiguous(response("Die Frist beträgt 4 Wochen."))
     assert not is_ambiguous(response("Dazu liegen keine Informationen vor."))  # phrase list
+
+
+async def test_a_candidate_that_falsely_refuses_cannot_look_better_on_this_metric(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    refusing = response("Die Dokumente enthalten dazu keine Information.")
+    with judges(tmp_path, monkeypatch, []) as (pool, _, _):
+        value = await RefusalJudged(judge_enabled=True).acompute(make_case(0), refusing, pool)
+    assert value.status is MetricStatus.NOT_APPLICABLE  # never a 1.0 for a phrase refusal

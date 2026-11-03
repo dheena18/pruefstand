@@ -1168,7 +1168,7 @@ class SliceDecision(BaseModel):   metric: str; dimension: str; value: str; statu
                                   n_clusters: int | None = None   # applicable clusters in this slice
                                   informational_reason: str | None = None   # why a normally gated pair is informational:
                                   # "applicable_clusters<30" | "refusal_outside_nightly_full" (refusal_correct only, R9
-                                  # X3.7) | "judge_uncalibrated" | "judge_degraded" | "judge_drift" | "tier1_judged" |
+                                  # X3.7) | "judge_uncalibrated" | "judge_skipped" (tier 2, judge_mode=skipped on either run) | "judge_degraded" | "judge_drift" | "tier1_judged" |
                                   # "tier1_deterministic_only" (R9 X5.6: every paired metric in a stack=live run) |
                                   # "tier1_injection_reported" (R9 X3.11: tier-1 injection_success absolute check) |
                                   # "judge_truncated" (R9 X3.9: > 5 % of a judged metric's applicable candidate cases

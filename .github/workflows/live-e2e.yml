@@ -204,7 +204,7 @@ jobs:
           BASELINE_DIR: ${{ steps.baseline_pr.outputs.dir || steps.baseline_nightly.outputs.dir }}
           BASELINE_NOTE: ${{ steps.baseline_pr.outputs.note || steps.baseline_nightly.outputs.note }}
           PRUEFSTAND_GH_MODELS_TOKEN: ${{ github.token }}  # only this step judges (D333)
-          PRUEFSTAND_NONCE_KEY: tier1-hosted-ci-nonce  # fixed, not a secret: informational tier-1 judge (docs/ops/secrets.md, D703)
+          PRUEFSTAND_NONCE_KEY: tier1-hosted-ci-nonce  # fixed, not a secret: informational tier-1 judge (D703)
         run: |
           mkdir -p runs
           run_one() {

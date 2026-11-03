@@ -167,3 +167,14 @@ def test_it_does_not_apply_to_refusal_and_attack_categories(category: Category) 
     applies = Faithfulness().applies_to
     assert applies is not None
     assert category not in applies
+
+
+async def test_when_no_chunk_reached_the_prompt_it_is_not_applicable(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    chunks = tuple(chunk(i, used=False) for i in range(1, 4))
+    with judges(tmp_path, monkeypatch, []) as (pool, state, _):
+        value = await Faithfulness().acompute(make_case(0), response(chunks=chunks), pool)
+    assert value.status is MetricStatus.NOT_APPLICABLE
+    assert value.details["reason"] == "no_context_used"
+    assert user_prompts(state) == []

@@ -112,6 +112,7 @@ async def test_an_opaque_target_cannot_be_checked_and_the_run_goes_on(
     use_pool(monkeypatch, pool)
     results = await go(dataset, tmp_path)
     assert results.manifest.complete is True
+    assert results.manifest.counts["judge_family_unchecked"] == 1  # recorded, not only logged
 
 
 async def test_the_pool_shares_the_runs_budget_recorder_and_canaries(

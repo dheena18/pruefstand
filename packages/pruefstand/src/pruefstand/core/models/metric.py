@@ -22,6 +22,21 @@ class MetricKind(StrEnum):
     JUDGED = "judged"
 
 
+JUDGE_SIDE_REASONS: frozenset[str] = frozenset(
+    {
+        "canary_in_input",
+        "no_judges",
+        "judge_quota",
+        "judge_cap",
+        "judge_not_selected",
+        "judge_input_too_long",
+    }
+)
+"""``not_applicable`` reasons that come from the judge side (scope, quota, cap, infrastructure),
+not from the candidate: the gate leaves such a case out of the pairing like a judge error, it
+never worst-fills it (B1)."""
+
+
 class MetricValue(BaseModel):
     """One metric on one case.
 

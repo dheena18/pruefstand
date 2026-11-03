@@ -221,12 +221,8 @@ class JudgeStage:
                 )
             finally:
                 await self._release(tally.requests)
-        # a value that needed no judge (not applicable, or a refusal the phrase list decided) does
-        # not make this a judged case
-        decided_without_judge = (
-            value.status is MetricStatus.NOT_APPLICABLE
-            or value.details.get("refused_source") == "phrase"
-        )
+        # a value that needed no judge (not applicable) does not make this a judged case
+        decided_without_judge = value.status is MetricStatus.NOT_APPLICABLE
         outcome.attempted = outcome.attempted or not decided_without_judge
         return value
 

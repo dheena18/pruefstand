@@ -36,7 +36,7 @@ from pruefstand.pipeline.judge_mode import (
     requested_judge_mode,
     resolve_stack,
 )
-from pruefstand.pipeline.judging import JudgeSetup, checked_pool, prepare_judging
+from pruefstand.pipeline.judging import JudgeSetup, checked_pool, count_up, prepare_judging
 from pruefstand.pipeline.plan import Plan, complete_manifest, fingerprint_of_target, store_run
 from pruefstand.pipeline.select import Stratum, Tier, select_cases, validate_selection
 from pruefstand.runner.runner import Runner
@@ -99,7 +99,7 @@ async def _execute(
     try:
         info = await adapter.info()
         abort_on_corpus_mismatch(plan, info, out)
-        judges = checked_pool(plan, setup.pool, info, out)
+        judges, unchecked = checked_pool(plan, setup.pool, info, out)
         usable = not identity_is_opaque(info)
         if not usable:
             _log.warning("target_cache_off", note="the target reports no usable identity")
@@ -114,6 +114,8 @@ async def _execute(
                 judged_subset=plan.judged_subset,
             )
         results = _mark_base_hits(results, base_read=reads_base(usable=usable, trusted=trusted))
+        if unchecked:
+            results = count_up(results, "judge_family_unchecked")
     finally:
         await adapter.aclose()
     return results, info

@@ -24,7 +24,10 @@ JUDGED = ("faithfulness", "answer_correctness")
 
 
 def pair(**changes: object) -> tuple[RunManifest, RunManifest]:
-    fields = {"stack": "a40", "workload": "nightly", "splits": (Split.FULL,), **changes}
+    fields = {
+        "stack": "a40", "workload": "nightly", "splits": (Split.FULL,), "judge_mode": "local",
+        **changes,
+    }  # fmt: skip
     return (
         make_manifest(run_id="20261102T220000-aaaaaa", **fields),
         make_manifest(run_id="20261102T220001-bbbbbb", **fields),
@@ -103,3 +106,11 @@ def test_a_broken_calibration_file_is_a_config_error(tmp_path: Path) -> None:
     broken.write_text("- not a mapping\n", encoding="utf-8")
     with pytest.raises(ConfigError):
         read_status(broken)
+
+
+def test_a_tier_two_run_without_a_judge_makes_every_judged_metric_informational() -> None:
+    base, cand = pair()
+    skipped = cand.model_copy(update={"judge_mode": "skipped"})
+    mapping = informational_mapping(base, skipped, POLICY)
+    assert dict.fromkeys(JUDGED, "judge_skipped").items() <= mapping.items()
+    assert "context_recall" not in mapping

@@ -9,6 +9,7 @@ import polars as pl
 from pruefstand.core.config import PruefstandConfig
 from pruefstand.core.fingerprint import target_fingerprint
 from pruefstand.core.hashing import stable_hash
+from pruefstand.core.models.metric import MetricKind
 from pruefstand.core.models.run import RunArtifacts, RunManifest, RunResults
 from pruefstand.core.models.target import TargetInfo
 from pruefstand.core.models.testcase import TestCase
@@ -39,14 +40,22 @@ class Plan:
     stratum: Stratum
 
     def eval_fingerprint(self) -> str:
-        """The ``eval_fingerprint`` of this plan (``core.fingerprint`` does the hashing)."""
+        """The ``eval_fingerprint`` of this plan (``core.fingerprint`` does the hashing).
+
+        Tier 1 gates no judged metric (they are informational), so their versions stay out of the
+        fingerprint: adding or changing one must not make main's tier-1 baseline incomparable.
+        """
         return build_eval_fingerprint(
             self.judges,
             name=self.data.name,
             version=self.data.version,
             corpus_version=self.data.corpus_version,
             splits=self.cfg.splits,
-            metric_versions={m.name: m.version for m in self.registry.all()},
+            metric_versions={
+                m.name: m.version
+                for m in self.registry.all()
+                if self.stack != "live" or m.kind is not MetricKind.JUDGED
+            },
             block=self.block,
             judged_subset=self.judged_subset,
             stratum=self.stratum,

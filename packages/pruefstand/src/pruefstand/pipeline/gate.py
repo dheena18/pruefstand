@@ -48,22 +48,16 @@ def _judge_reason(
     baseline: RunManifest, candidate: RunManifest, *, uncalibrated: bool, by_share: bool
 ) -> str | None:
     """First matching reason why judged metrics do not gate (tier 2)."""
-    if baseline.judge_fallback or candidate.judge_fallback:
-        return "judge_fallback"  # R11 Y4.4: never compared across judges
-    if baseline.judge_degraded or candidate.judge_degraded:
-        return "judge_degraded"
-    if baseline.judge_drift or candidate.judge_drift:
-        return "judge_drift"
-    if uncalibrated:
-        return "judge_uncalibrated"  # T5.4 found no passing judge (W3.8)
-    truncated = candidate.counts.get("judge_truncated", 0)
-    if (
-        by_share
-        and candidate.judged_cases > 0
-        and truncated > _TRUNCATED_SHARE * candidate.judged_cases
-    ):
-        return "judge_truncated"
-    return None
+    cases, truncated = candidate.judged_cases, candidate.counts.get("judge_truncated", 0)
+    checks = (
+        (baseline.judge_fallback or candidate.judge_fallback, "judge_fallback"),  # Y4.4
+        ("skipped" in (baseline.judge_mode, candidate.judge_mode), "judge_skipped"),
+        (baseline.judge_degraded or candidate.judge_degraded, "judge_degraded"),
+        (baseline.judge_drift or candidate.judge_drift, "judge_drift"),
+        (uncalibrated, "judge_uncalibrated"),  # T5.4 found no passing judge (W3.8)
+        (by_share and cases > 0 and truncated > _TRUNCATED_SHARE * cases, "judge_truncated"),
+    )
+    return next((reason for hit, reason in checks if hit), None)
 
 
 def _truncated_metrics(values: Sequence[ScoredCase]) -> set[str]:

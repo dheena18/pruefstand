@@ -74,6 +74,8 @@ class Faithfulness(JudgedBase):
         if not resp.chunks:
             return self.na("missing_chunks")
         texts = context_chunks(resp.chunks, self._top_k)
+        if not texts:
+            return self.na("no_context_used")  # no chunk reached the generator prompt
         judge = judges.for_metric(self.name)
 
         def build(kontext: str) -> JudgeTask:

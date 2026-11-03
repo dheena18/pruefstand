@@ -44,7 +44,7 @@ The real-judge run is `packages/pruefstand/tests/gpu/test_judge_injection.py`.
 
 `Judge.input_cap` is the context window minus 1 024 tokens (`tokens.input_cap`: catalogue `num_ctx` for an Ollama judge,
 `quotas.yaml` `tokens_per_request` for GitHub Models); `Judge.prompt_tokens(task)` estimates the rendered prompt
-(UTF-8 bytes / 3, deliberately high). The metrics fit their inputs before they ask (`metrics/judged/truncate.py`: the
+(digits 1 token each, other ASCII 0.4, non-ASCII 1: deliberately high). The metrics fit their inputs before they ask (`metrics/judged/truncate.py`: the
 lowest-ranked `kontext` chunks go first, then the last chunk is cut at a sentence end; question, answer and reference
 are never cut). `Judge.score` refuses a prompt over the cap with `LLMError` before any call, so Ollama never cuts
 silently. A judge failure never carries the judge's output: `reason` is not stored and `llm/json_call.py` does not echo it.

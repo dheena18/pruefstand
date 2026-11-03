@@ -46,6 +46,10 @@ def flagged_reason(manifest: RunManifest) -> str | None:
             f"judge fallback run ({judges}): not promoted; "
             "judged metrics are never compared across judges"
         )
+    if manifest.stack != "live" and manifest.judge_mode == "skipped":
+        return (
+            f"run {manifest.run_id} ran without judges (judge_mode=skipped) in tier 2: not promoted"
+        )
     for flag in ("judge_drift", "judge_degraded"):
         if getattr(manifest, flag):
             return f"run {manifest.run_id} has {flag}=true: flagged runs are never promoted"

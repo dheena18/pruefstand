@@ -1,22 +1,24 @@
 """The judge side of a run: shared budget and call log, canaries, case selection, family check."""
 
 import os
-from collections.abc import Callable, Mapping
+from collections.abc import Callable, Iterable, Mapping
 from dataclasses import dataclass
 from pathlib import Path
 
+from pruefstand.core.config import ModelRef, PruefstandConfig
 from pruefstand.core.errors import ConfigError, StoreError
 from pruefstand.core.logging import get_logger
 from pruefstand.core.models.attacks import CanaryRegistry
+from pruefstand.core.models.run import RunResults
 from pruefstand.core.models.target import TargetInfo
 from pruefstand.core.protocols import JudgePoolLike, KVCache
 from pruefstand.judges.family_guard import check_judge_families
 from pruefstand.llm.budget import Budget
+from pruefstand.llm.policy import LOCAL_PROVIDERS, provider_of
 from pruefstand.llm.recorder import CallRecorder
 from pruefstand.metrics.judged.base import JudgedBase
 from pruefstand.metrics.judged.routing import select_judged_cases
 from pruefstand.pipeline.abort import write_aborted_run
-from pruefstand.pipeline.judge_mode import JudgeMode
 from pruefstand.pipeline.plan import Plan
 from pruefstand.runner.judging import JudgeScope
 from pruefstand.store.canary_source import load_canary_registry
@@ -43,16 +45,28 @@ class JudgeSetup:
     scope: JudgeScope
 
 
-def load_canaries(mode: JudgeMode, env: Mapping[str, str] | None = None) -> CanaryRegistry | None:
-    """Load the canary registry; None when an external judge could not be guarded.
+def _external(refs: Iterable[ModelRef | None]) -> bool:
+    return any(ref is not None and provider_of(ref.id) not in LOCAL_PROVIDERS for ref in refs)
 
-    A local judge (A40) runs without a registry (an empty one); a GitHub Models judge needs the
-    real registry, so a missing one fails closed (the judges are skipped, never run unguarded).
+
+def judge_refs(cfg: PruefstandConfig) -> list[ModelRef]:
+    """Every judge the run can use: PR, nightly, per-metric ones."""
+    return [cfg.judge.pr, cfg.judge.nightly, *cfg.judge.per_metric.values()]
+
+
+def load_canaries(
+    cfg: PruefstandConfig, env: Mapping[str, str] | None = None
+) -> CanaryRegistry | None:
+    """Load the canary registry; None when it is unreadable and an external judge is configured.
+
+    Fails closed whenever ANY external judge (a judge or ``llm.fallback_judge``) is configured: an
+    empty registry would let canary or private text reach that provider (a fallback answers after
+    a primary 429). Only a purely local setup (D328) may run without a registry.
     """
     try:
         return load_canary_registry(root=Path.cwd(), env=os.environ if env is None else env)
     except StoreError:
-        if mode == "github":
+        if _external([*judge_refs(cfg), cfg.llm.fallback_judge]):
             _log.warning("judge_canaries_unavailable", detail="external judge skipped")
             return None
         return CanaryRegistry(canaries=())
@@ -80,7 +94,7 @@ def prepare_judging(plan: Plan, build: PoolBuilder, cache: KVCache | None) -> Ju
         max_requests=cfg.budget.max_requests_per_run,
     )
     recorder = CallRecorder()
-    canaries = None if plan.mode == "skipped" else load_canaries(plan.mode)
+    canaries = None if plan.mode == "skipped" else load_canaries(cfg)
     guarded = plan.mode != "skipped" and canaries is not None
     pool = None
     if guarded:
@@ -88,7 +102,9 @@ def prepare_judging(plan: Plan, build: PoolBuilder, cache: KVCache | None) -> Ju
             cfg, plan.mode, tier=plan.tier, budget=budget, recorder=recorder,
             canaries=canaries, cache=cache,
         )  # fmt: skip
-    return JudgeSetup(budget, recorder, pool, _scope(plan, canaries, pooled=pool is not None))
+    # the canary scope (canary_in_input, selection) is for external judges; a local one may see them
+    scoped = canaries if _external(judge_refs(cfg)) else None
+    return JudgeSetup(budget, recorder, pool, _scope(plan, scoped, pooled=pool is not None))
 
 
 def _scope(plan: Plan, canaries: CanaryRegistry | None, *, pooled: bool) -> JudgeScope:
@@ -104,26 +120,36 @@ def _scope(plan: Plan, canaries: CanaryRegistry | None, *, pooled: bool) -> Judg
 
 def checked_pool(
     plan: Plan, pool: JudgePoolLike | None, info: TargetInfo | None, out: Path
-) -> JudgePoolLike | None:
+) -> tuple[JudgePoolLike | None, bool]:
     """Apply the run-time family rule after ``/v1/info`` and before any judge call.
 
     Every configured judge and ``llm.fallback_judge`` must come from another family than the
     target's generator. An opaque target (no ``/v1/info``) cannot be checked: the run goes on
     with a warning, like the corpus check.
 
+    Returns:
+        The pool and whether the family check was skipped (opaque target; the run records
+        ``counts["judge_family_unchecked"]``).
+
     Raises:
         ConfigError: A judge shares the generator's family; an aborted run (``complete=False``,
             ``stop_reason="aborted"``, no judge call) is written first and named in the message.
     """
     if pool is None:
-        return None
+        return None, False
     if info is None:
         _log.warning("judge_family_unchecked", detail="opaque target; generator family unknown")
-        return pool
+        return pool, True
     try:
         check_judge_families(plan.cfg.judge, [info], plan.cfg.llm.fallback_judge)
     except ConfigError as exc:
         directory = write_aborted_run(plan, info, out, "judge_family")
         msg = f"{exc}; aborted run {directory}"
         raise ConfigError(msg) from exc
-    return pool
+    return pool, False
+
+
+def count_up(results: RunResults, key: str) -> RunResults:
+    """Return ``results`` with ``manifest.counts[key]`` set to 1 (recorded, not only logged)."""
+    manifest = results.manifest.model_copy(update={"counts": {**results.manifest.counts, key: 1}})
+    return results.model_copy(update={"manifest": manifest})
