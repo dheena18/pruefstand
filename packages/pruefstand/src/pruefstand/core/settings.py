@@ -24,6 +24,7 @@ class PruefstandSettings(BaseSettings):
         gh_models_token: ``PRUEFSTAND_GH_MODELS_TOKEN``; the only GitHub Models credential (D333).
         hf_token: ``HF_TOKEN``, else the alias ``PRUEFSTAND_HF_TOKEN``.
         judge_base_url: ``PRUEFSTAND_JUDGE_BASE_URL``; OpenAI-compatible local judge endpoint.
+        nonce_key: ``PRUEFSTAND_NONCE_KEY``; HMAC key of the judge-prompt nonces (T5.2a).
         log_json: ``PRUEFSTAND_LOG_JSON``; defaults to true when ``CI`` is set.
         cache_dir: ``PRUEFSTAND_CACHE_DIR``; defaults to ``$PRUEFSTAND_HOME/cache``.
         gpu_endpoints_file: ``PRUEFSTAND_GPU_ENDPOINTS``; the endpoint map of ``build_backend``.
@@ -48,6 +49,7 @@ class PruefstandSettings(BaseSettings):
         default=None, validation_alias=AliasChoices("HF_TOKEN", "PRUEFSTAND_HF_TOKEN")
     )
     judge_base_url: str | None = None
+    nonce_key: SecretStr | None = None
     log_json: bool = Field(default_factory=_default_log_json)
     cache_dir: Path = Field(default_factory=_default_cache_dir)
     gpu_endpoints_file: Path = Field(
