@@ -259,7 +259,8 @@ def report() -> str:
 MEASURED_PROMPT_TOKENS = 1650
 MEASURED_EMBED_S = 0.19
 ASSUMED_RERANK_S = 0.5
-MARGIN_MIN = 10.0  # a full PR run needs this much headroom, else the judged subset applies
+MARGIN_FRACTION = 0.20  # a PR run needs 20 % headroom (D655): anything above 72 min does not fit
+PR_LIMIT_MIN = PR_BUDGET_MIN * (1 - MARGIN_FRACTION)
 
 
 def scenarios(
@@ -279,17 +280,27 @@ def scenarios(
     return rows
 
 
+def margin_pct(minutes: float, budget_min: float = PR_BUDGET_MIN) -> float:
+    """Headroom against ``budget_min`` in percent of the budget (negative = over).
+
+    >>> round(margin_pct(62.1), 1)
+    31.0
+    """
+    return (budget_min - minutes) / budget_min * 100
+
+
 def scenarios_report() -> str:
-    """One line per output cap: full-core and subset PR minutes against the 90 min budget."""
+    """One line per output cap: full-core and subset PR minutes, margins and the verdict (D655)."""
     lines = []
     for out, full, sub in scenarios():
-        margin = PR_BUDGET_MIN - full.total_min
-        verdict = "fits" if margin >= MARGIN_MIN else "no margin: use the 150-case subset (D199)"
-        if sub.total_min > PR_BUDGET_MIN:
-            verdict = "does not fit even with the subset"
+        verdict = (
+            "subset fits" if sub.total_min <= PR_LIMIT_MIN else "does not fit even with the subset"
+        )
+        full_ok = "fits" if full.total_min <= PR_LIMIT_MIN else "does not fit"
+        full_margin, sub_margin = margin_pct(full.total_min), margin_pct(sub.total_min)
         lines.append(
-            f"max_tokens {out}: PR full {full.total_min:.1f} min, subset {sub.total_min:.1f} min"
-            f" -> {verdict}"
+            f"max_tokens {out}: PR full {full.total_min:.1f} min ({full_margin:.0f} % margin,"
+            f" {full_ok}), subset {sub.total_min:.1f} min ({sub_margin:.0f} % margin) -> {verdict}"
         )
     return "\n".join(lines)
 

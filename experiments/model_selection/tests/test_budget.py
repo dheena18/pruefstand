@@ -148,15 +148,19 @@ def test_fits_with_explicit_overhead() -> None:
     assert b.total_gib(12288, 4, kv, 15.6, 2.5) == pytest.approx(41.1, abs=0.05)
 
 
-def test_measured_scenarios_single_slot_generator_and_the_256_cap() -> None:
-    """At the 256 cap the full PR run has no margin, the subset fits; at 512 nothing fits."""
+def test_measured_scenarios_apply_the_20_percent_margin_rule() -> None:
+    """Above 72 min (20 % margin) does not fit: the subset is the PR default; 512 never fits."""
+    assert pytest.approx(72.0) == b.PR_LIMIT_MIN
     by_cap = {out: (full, sub) for out, full, sub in b.scenarios()}
-    assert by_cap[200][0].total_min < b.PR_BUDGET_MIN
+    assert by_cap[150][0].total_min <= b.PR_LIMIT_MIN  # full core fits only at short answers
+    assert by_cap[200][0].total_min > b.PR_LIMIT_MIN  # 72.6 min: just over
     full256, sub256 = by_cap[256]
-    assert 85 < full256.total_min < 95  # no margin: D199 (subset) applies
-    assert sub256.total_min < 70
-    assert by_cap[512][1].total_min > b.PR_BUDGET_MIN  # the cap must stay at 256
-    # a 4-slot generator would be about 4x faster in decode: the single slot is what makes it tight
-    gen4 = b.with_slots(b.Lane(350, 1650, 256, 966.0, 19.4, slots=1), 4)
-    assert b.lane_minutes(gen4) < b.lane_minutes(b.with_slots(gen4, 1)) / 2
-    assert "no margin" in b.scenarios_report().splitlines()[2]
+    assert full256.total_min > b.PR_LIMIT_MIN  # 89.4 min: no margin at all
+    assert sub256.total_min <= b.PR_LIMIT_MIN  # 62.1 min: the subset keeps >= 30 % margin
+    assert b.margin_pct(sub256.total_min) > 25
+    assert by_cap[512][1].total_min > b.PR_LIMIT_MIN  # the 256 cap must stay
+    gen1 = b.Lane(350, 1650, 256, 966.0, 19.4, slots=1)
+    assert b.lane_minutes(b.with_slots(gen1, 4)) < b.lane_minutes(gen1) / 2  # why one slot is tight
+    lines = b.scenarios_report().splitlines()
+    assert "does not fit" in lines[2]
+    assert "subset fits" in lines[2]

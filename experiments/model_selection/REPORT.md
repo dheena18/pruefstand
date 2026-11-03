@@ -135,3 +135,36 @@ PYTHONPATH=experiments python -m model_selection.indomain_cli assemble
 
 A 429 ends a step cleanly (exit code 3); every answer is cached under `data/raw/indomain_dev_cache`, so reruns cost no quota.
 `assemble` writes `indomain_dev.jsonl`, `indomain_dev_checks.jsonl`, the final sources list and the card.
+
+## PR time budget with a 20 % margin (D655, owner rule 2026-11-03)
+
+A PR run must stay below **72 min** (90 min budget, 20 % margin); anything above 72 min **does not fit**. The generator
+`qwen3.8:27b-q8_0` serves one sequence (Ollama: `model architecture does not currently support parallel requests`, D654), so the
+generator lane is single-slot at about 19.4 tok/s per stream. Inputs measured 2026-11-03: prompt about 1 650 tokens (prefill
+966 tok/s), embedding 0.19 s per query, rerank 0.5 s per query (**assumed**; 0.18 s was measured for two short passages after the
+thread fix, D650); `max_tokens` stays at **256**. Computed by `budget.py` `scenarios()`:
+
+| `max_tokens` | PR full core (350 generations) | margin | PR 150-case subset (240 generations) | margin | verdict |
+| --- | --- | --- | --- | --- | --- |
+| 150 | 57.6 min | 36 % | 40.3 min | 55 % | both fit |
+| 200 | 72.6 min | 19 % | 50.6 min | 44 % | full core does not fit (just over 72), subset fits |
+| **256 (the cap)** | **89.4 min** | **0.7 %** | **62.1 min** | **31 %** | **full core does not fit, subset fits** |
+| 512 | 166.4 min | negative | 114.9 min | negative | nothing fits: never raise the cap |
+
+**Decision (D655).** PR runs use the 150-case judged subset by default (D199): 62.1 min at the 256 cap, margin 31 % (27.9 min).
+The full `core` set runs in the nightly (night window 22:00 to 06:00, at most 8 h = 480 min): 600 generations take 149 min at
+256 tokens, margin 69 % (331 min); at 200 tokens 120 min (75 %). The first real tier-2 runs measure the mean output length; the
+table is recomputed then (it is the only open input besides the assumed rerank time).
+
+## Open option: a parallel-capable generator (not started, decision for the owner)
+
+The `qwen35` generator cannot batch, which is why the full core set does not fit a PR run. A dense generator that supports
+parallel slots (Qwen3-14B `q8_0`, about 16 GB, or Qwen3-32B `Q4_K_M`, about 20 GB; sizes are the planning values of
+`gpu-cluster.md` section 3, to be confirmed from the registry when a catalogue entry is added) could serve 4 slots. A candidate
+pass (quality, tok/s at 1 and 4 slots, VRAM, PR time with the full set) needs the model on the cluster disk. It does **not fit**
+without removing the judge or the embedding model, and the generator is never removed (D451): the models disk has **2.20 GiB
+free** (reserve 2 GiB, so 0.2 GiB of headroom). If every removable catalogue model went (`qwen3:4b` 2.33, `gemma3:12b` 7.6,
+`bge-m3` 1.08 GiB), at most **11.2 GiB** would be usable for a candidate, less than either model. No swap was done and none is
+planned. Choices for the owner: (a) keep the generator and the judged subset (current), (b) free cluster disk (or add a disk) and
+run the candidate pass, (c) wait for Ollama to support parallel requests for this architecture.
+
