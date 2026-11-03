@@ -5,7 +5,7 @@
 # status: OK | INFO | WARN | FAIL; exit 1 when any row is FAIL (the CSV is complete anyway), else 0.
 # Rows: server, second-server (FAIL when two `ollama serve` run), listener, start-script (WARN when the start script of
 # record `~/start-ollama.sh` is missing, a dangling link or not executable), env / env:<KEY> (WARN per key that
-# differs from cluster.env), disk-models (WARN below MODELS_MIN_FREE_GB), api-tags, ps:<tag> (size, size_vram,
+# differs from cluster.env), disk-models (WARN below MODELS_MIN_FREE_GB + 1 GB: early warning, D662), api-tags, ps:<tag> (size, size_vram,
 # digest), gpu:<index>, gpu-proc:<pid> (WARN for a pid that is not ours), placement:<tag> (the card(s) of every
 # resident model: the model's blob in its manifest, matched to the runner process whose command line names that
 # blob, matched to nvidia-smi --query-compute-apps by pid and to the card by gpu_uuid), bin-integrity
@@ -78,11 +78,12 @@ check_env() {
 }
 
 check_disk() {
-  local free_kb min_kb=$((MODELS_MIN_FREE_GB * 1024 * 1024)) st=OK
+  local free_kb warn_gb=$((MODELS_MIN_FREE_GB + 1)) st=OK
+  local warn_kb=$((warn_gb * 1024 * 1024))
   free_kb="$(df -Pk "$OLLAMA_MODELS" 2>/dev/null | awk 'END{print $4}')" || free_kb=0
   if ! [[ $free_kb =~ ^[0-9]+$ ]]; then free_kb=0; fi
-  if [ "$free_kb" -lt "$min_kb" ]; then st=WARN; fi
-  emit disk-models "$st" "free_kb=$free_kb min_free_gb=$MODELS_MIN_FREE_GB"
+  if [ "$free_kb" -lt "$warn_kb" ]; then st=WARN; fi
+  emit disk-models "$st" "free_kb=$free_kb min_free_gb=$MODELS_MIN_FREE_GB warn_below_gb=$warn_gb"
 }
 
 check_start_script() {

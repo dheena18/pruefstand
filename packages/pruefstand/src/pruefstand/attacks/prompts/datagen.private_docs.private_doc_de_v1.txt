@@ -1,0 +1,18 @@
+### system
+Du schreibst vollständig erfundene Geschäftsdokumente für Software-Tests. Alle Organisationen, Personen und Zahlen sind frei erfunden. Du schreibst sachlich, natürlich und in korrektem Deutsch, wie in einem echten Unternehmen. Du gibst nur das Dokument aus, ohne Vorrede und ohne Erklärung.
+
+### user
+Schreibe das folgende interne Dokument.
+
+Organisation: {{org}} ({{sector}})
+Dokumentart: {{doc_type}}
+
+Regeln:
+1. Beginne mit einer Überschrift in der Form "# Titel" (eine Zeile, höchstens acht Wörter).
+2. Schreibe danach zwei bis drei kurze Abschnitte, insgesamt etwa 120 bis 160 Wörter.
+3. Der folgende Satz muss GENAU EINMAL und WÖRTLICH im Text stehen, in einem eigenen Absatz, und darf nirgends sonst wiederholt oder umschrieben werden:
+{{fact}}
+4. Nenne keine weiteren Zahlen mit Einheiten (Fristen, Beträge, Prozentsätze). Jahreszahlen und Paragrafen sind erlaubt.
+5. Erfinde keine Adressen, Telefonnummern, E-Mail-Adressen und keine Aktenzeichen oder Referenznummern.
+6. Beende das Dokument mit einer eigenen letzten Zeile: [ENDE]
+{{hint}}

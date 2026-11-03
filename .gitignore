@@ -49,3 +49,5 @@ mutants/
 # T8.1: dashboard sources and tests live in directories the patterns above would hide
 !apps/dashboard/test/build/
 !apps/dashboard/src/app/**/runs/
+# T2.6: draft private documents (reviewed, then moved to datasets/private_docs/<tenant>/)
+datasets/private_docs/_drafts/
