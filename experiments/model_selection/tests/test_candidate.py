@@ -1,6 +1,7 @@
 """T3.1b candidate pass and owner sheet: pure functions on real inputs (no network, no GPU)."""
 
 import csv
+import json
 import subprocess
 from pathlib import Path
 
@@ -59,7 +60,12 @@ def test_write_candidate_appends_with_run_id(tmp_path: Path) -> None:
     assert first.startswith("cand-")
     assert {r[0] for r in lines[1:]} >= {first}
     assert lines[-1][2:] == ["cand_throughput", "ollama/x:1b", "4", "n", "8"]
-    assert (tmp_path / "2026-11-04_x-1b_answers.jsonl").read_text(encoding="utf-8").count("Ü") == 1
+    files = list(tmp_path.glob("2026-11-04_x-1b_cand-*_answers.jsonl"))
+    assert len(files) == 1
+    assert first in files[0].name
+    text = files[0].read_text(encoding="utf-8")
+    assert text.count("Ü") == 1
+    assert json.loads(text)["run_id"] == first
 
 
 def _make_dry_run(**variables: str) -> str:
@@ -78,7 +84,7 @@ def test_make_target_selects_the_candidate_pass_under_the_lock() -> None:
     assert "model_selection.bench --phases" in day
     assert "pruefstand-lock" in day
     one = _make_dry_run(CANDIDATE="gemma3:4b")
-    assert "model_selection.bench_candidate --candidate gemma3:4b" in one
+    assert 'model_selection.bench_candidate --candidate "gemma3:4b"' in one
     assert "pruefstand-lock" in one
     assert "model_selection.bench --phases" not in one
 
@@ -105,3 +111,11 @@ def test_committed_owner_sheet_matches_the_picker_and_is_unscored(tmp_path: Path
     rows = list(csv.DictReader(SHEET.open(encoding="utf-8")))
     assert list(rows[0])[:3] == ["question", "answer", "score"]
     assert all(r["score"] == "" and r["question"] and r["answer"] for r in rows)
+
+
+def test_eviction_of_a_day_set_model_is_detected() -> None:
+    before = {"qwen3.8:27b-q8_0", "gemma3:12b"}
+    assert cand.eviction(before, before | {"qwen3:4b"}, "qwen3:4b") is None
+    why = cand.eviction(before, {"gemma3:12b", "qwen3:4b"}, "qwen3:4b")
+    assert why is not None
+    assert "qwen3.8:27b-q8_0" in why

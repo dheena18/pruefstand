@@ -16,5 +16,5 @@ bench-models:
 ifeq ($(strip $(CANDIDATE)),)
 	PYTHONPATH=experiments pruefstand-lock uv run python -m model_selection.bench --phases $(BENCH_PHASES)
 else
-	PYTHONPATH=experiments pruefstand-lock uv run python -m model_selection.bench_candidate --candidate $(CANDIDATE) --phases $(CANDIDATE_PHASES)
+	PYTHONPATH=experiments pruefstand-lock uv run python -m model_selection.bench_candidate --candidate "$(CANDIDATE)" --phases $(CANDIDATE_PHASES)
 endif

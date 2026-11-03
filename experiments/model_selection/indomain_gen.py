@@ -25,6 +25,10 @@ class GenError(RuntimeError):
     """A GitHub Models call failed or did not answer JSON."""
 
 
+class RejectedError(GenError):
+    """HTTP 400/422 for one request (for example a content filter): skip that passage."""
+
+
 class QuotaStop(GenError):  # noqa: N818  # reason: a controlled stop, not an error condition
     """HTTP 429: the free-tier quota is used up; resume later (``retry_after`` seconds)."""
 
@@ -95,6 +99,9 @@ def call_model(token: str, model: str, content: str, timeout_s: float = 90.0) ->
     }
     resp = _post(token, body, timeout_s)
     kind = resp.headers.get("content-type", "?")
+    if resp.status_code in (400, 422):
+        msg = f"request rejected with HTTP {resp.status_code}"
+        raise RejectedError(msg)
     if resp.status_code != 200 or "json" not in kind:
         msg = f"GitHub Models answered HTTP {resp.status_code} ({kind}); is the endpoint reachable?"
         raise GenError(msg)
@@ -116,9 +123,15 @@ def cached_response(model: str, prompt: str, passage_id: str) -> str | None:
 
 def ask(token: str, model: str, prompt: str, passage_id: str, content: str) -> str:
     """One new call; the raw answer is stored (no secrets) before it is returned."""
-    text = call_model(token, model, content)
+    rejected = ""
+    try:
+        text = call_model(token, model, content)
+    except RejectedError as exc:  # recorded: not asked again
+        text, rejected = "", str(exc)
     CACHE.mkdir(parents=True, exist_ok=True)
     rec = {"model": model, "prompt": prompt, "passage_id": passage_id, "response": text}
+    if rejected:
+        rec["rejected"] = rejected
     cache_path(model, prompt, passage_id).write_text(
         json.dumps(rec, ensure_ascii=False), encoding="utf-8"
     )

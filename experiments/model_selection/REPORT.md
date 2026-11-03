@@ -103,6 +103,8 @@ the pinned `num_ctx` and slots, so it is an upper bound of the vision tower plus
 (`budget.py`); the Ollama load log gives the exact split and replaces it. A negative value means partial CPU offload. The day-set
 models get the same figure from `make bench-models BENCH_PHASES=overhead` (phase `overhead`, resident models only).
 
+The lead unloads first (`make gpu-down`): the pass refuses with "no room" while more than two other models are resident, loads the candidate explicitly with the catalogue options, and fails when that load evicted a model that was resident before or when `/api/ps` has no entry for it.
+
 ### Candidate comparison (the lead fills one row per pass)
 
 Reference rows are the committed phase-1 numbers; `n/m` = not measured yet. Pick by the rule of S3: German quality first (CIs must not
@@ -112,7 +114,7 @@ overlap), then JSON validity, tok/s, VRAM headroom; the lead decides swaps.
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | `qwen3.8:27b-q8_0` (generator, resident) | r1, r3 | 1.83 (1.72-1.93) | n/a | 19.4 | 14.5 | 30 s | n/m | n/m / 27.9 | n/m (phase `overhead`) | 0 | 0 | reference |
 | `gemma3:12b` (judge, resident) | r1, r3 | 1.67 (1.53-1.81) | 1.00 | 56.9 | 54.5 | 4.3 s | n/m | n/m / 7.6 | n/m (phase `overhead`) | 4 | 0 | reference |
-| `qwen3:4b` (generator candidate) | | | | | | | | | | | | |
+| `qwen3:4b` (generator candidate) | cand-2026-11-03T1126 | **0.00** (0.00-0.00); all 107 answers English with visible reasoning although `think: false` | 1.00 (accuracy 0.98) | 132.5 | 218.4 | 2.0 s | 11.6 (cold) | 4.90 / 2.33 | 2.58 | 0 | 0 | not a candidate |
 | second judge candidate (needs a catalogue entry first) | | | | | | | | | | | | |
 
 ## In-domain dev set `indomain_dev.jsonl` (S4 primary ranking set): status

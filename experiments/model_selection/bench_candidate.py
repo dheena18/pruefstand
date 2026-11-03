@@ -51,6 +51,14 @@ def check_candidate(
     return None
 
 
+def eviction(before: set[str], after: set[str], tag: str) -> str | None:
+    """Reason when loading ``tag`` pushed out a model that was resident before, else ``None``."""
+    lost = sorted(before - after - {tag})
+    if lost:
+        return f"loading {tag} evicted {lost}; restore the day set (make gpu-up) before going on"
+    return None
+
+
 def tag_set(models: list[dict[str, Any]]) -> set[str]:
     """Tags of an ``/api/tags`` or ``/api/ps`` listing, ``:latest`` removed."""
     return {m["name"].removesuffix(":latest") for m in models}
@@ -60,7 +68,10 @@ def vram_row(client: OllamaClient, tag: str, disk: int, before: dict[str, int]) 
     """VRAM figures: wrapper ``status`` after (and delta to before), ``/api/ps``, overhead."""
     after = vram.snapshot()
     ps = runs.ps_entry(client, tag)
-    size_vram = int(ps.get("size_vram", 0))
+    if not ps.get("size_vram"):
+        msg = f"/api/ps has no resident entry with size_vram for {tag}; the model was unloaded"
+        raise BenchError(msg)
+    size_vram = int(ps["size_vram"])
     row: Row = {
         "size_vram_gib": round(size_vram / GIB, 3),
         "disk_gib": round(disk / GIB, 3),
@@ -102,7 +113,10 @@ def measure(tag: str, phases: list[str]) -> tuple[list[tuple[str, Row]], list[Ro
         raise SystemExit(why)
     cases = load_cases(CASES_PATH)
     before, disk = vram.snapshot(), disk_bytes_of(tag)
-    load_s = runs.warm_up(client, entry)  # cold load from the cluster disk if not resident
+    # explicit load with exactly the catalogue options (cold load from the cluster disk if needed)
+    load_s = runs.warm_up(client, entry)
+    if (why := eviction(resident, tag_set(client.get("ps")["models"]), entry.tag)) is not None:
+        raise BenchError(why)
     load = {"model": entry.id, "first_load_s": round(load_s, 3)}
     rows: list[tuple[str, Row]] = [("load", {**load, "was_resident": int(entry.tag in resident)})]
     answers: list[Row] = []
@@ -124,13 +138,16 @@ def write_candidate(
 ) -> str:
     """Append the rows to ``<day>.csv`` (phase prefix ``cand_``) under a fresh ``run_id``."""
     run_id = "cand-" + datetime.now().astimezone().strftime("%Y-%m-%dT%H%M")
+    answers = [{"run_id": run_id, **a} for a in answers]
     flat = [t for phase, row in rows for t in bench.flatten(run_id, day, f"cand_{phase}", row)]
     out_dir.mkdir(exist_ok=True)
     bench.write_outputs(out_dir, day, flat, [])
     if answers:
         slug = tag.replace(":", "-").replace("/", "_")
         text = "\n".join(json.dumps(a, ensure_ascii=False) for a in answers) + "\n"
-        (out_dir / f"{day}_{slug}_answers.jsonl").write_text(stats.redact(text), encoding="utf-8")
+        (out_dir / f"{day}_{slug}_{run_id}_answers.jsonl").write_text(
+            stats.redact(text), encoding="utf-8"
+        )
     return run_id
 
 
