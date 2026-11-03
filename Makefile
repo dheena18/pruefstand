@@ -22,7 +22,7 @@ endef
 
 install:
 	uv sync --all-packages --all-extras
-	@if [ -f apps/dashboard/package.json ]; then pnpm -C apps/dashboard install; fi
+	@if [ -f apps/dashboard/package.json ]; then if command -v pnpm >/dev/null; then pnpm -C apps/dashboard install; else echo "install: pnpm not installed, dashboard dependencies skipped"; fi; fi
 
 lint:
 	uv run ruff check .
