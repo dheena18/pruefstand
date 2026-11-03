@@ -10,10 +10,11 @@ from typing import Any
 import httpx
 from jsonschema import Draft202012Validator
 
-from rag_demo.analysis import GermanAnalyzer
+from rag_demo.analysis.analyzer import GermanAnalyzer
+from rag_demo.analysis.fingerprint import index_metadata
+from rag_demo.analysis.sparse import SparseEncoder
 from rag_demo.errors import CorpusError, RetrievalError
 from rag_demo.protocols import DenseEncoder
-from rag_demo.sparse import SparseEncoder
 
 _log = logging.getLogger(__name__)
 NAMESPACE = uuid.UUID("6f1a8f64-3c1e-4b0e-9d52-5f0b7b1c2a10")
@@ -107,6 +108,9 @@ class Indexer:
             RetrievalError: Qdrant refused a request.
         """
         manifest, rows = read_corpus(corpus_dir)
+        token_lists = [self._analyzer.tokens(index_text(r)) for r in rows]
+        avgdl = sum(map(len, token_lists)) / max(len(rows), 1)
+        sparse = self._sparse.with_avg_len(avgdl)
         dim = int(self._dense.encode(["dim probe"], kind="passage").shape[1])
         self._call("DELETE", "", ok=(200, 404))
         self._call(
@@ -115,29 +119,29 @@ class Indexer:
             json={
                 "vectors": {"dense": {"size": dim, "distance": "Cosine"}},
                 "sparse_vectors": {"sparse": {"modifier": "idf"}},
-                "metadata": {
-                    "corpus_version": manifest["corpus_version"],
-                    "tenants": sorted(manifest["tenants"]),
-                },
+                "metadata": index_metadata(manifest, self._analyzer, sparse, avgdl),
             },
         )
         self._call("PUT", "/index", json={"field_name": "tenant_id", "field_schema": "keyword"})
         for start in range(0, len(rows), BATCH):
-            self._upsert(rows[start : start + BATCH])
+            end = start + BATCH
+            self._upsert(rows[start:end], token_lists[start:end], sparse)
         _log.info("indexed chunks=%d corpus=%s", len(rows), manifest["corpus_version"])
 
-    def _upsert(self, rows: list[dict[str, Any]]) -> None:
+    def _upsert(
+        self, rows: list[dict[str, Any]], token_lists: list[list[str]], sparse: SparseEncoder
+    ) -> None:
         texts = [index_text(r) for r in rows]
         vectors = self._dense.encode(texts, kind="passage")
         points = []
-        for row, text, vector in zip(rows, texts, vectors, strict=True):
-            sparse = self._sparse.encode(self._analyzer.tokens(text))
+        for row, tokens, vector in zip(rows, token_lists, vectors, strict=True):
+            vec = sparse.encode(tokens)
             points.append(
                 {
                     "id": point_id(row["chunk_id"]),
                     "vector": {
                         "dense": vector.tolist(),
-                        "sparse": {"indices": sparse.indices, "values": sparse.values},
+                        "sparse": {"indices": vec.indices, "values": vec.values},
                     },
                     "payload": {
                         "chunk_id": row["chunk_id"],

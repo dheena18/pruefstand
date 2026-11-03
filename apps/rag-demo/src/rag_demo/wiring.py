@@ -2,12 +2,14 @@
 
 from collections.abc import Sequence
 from dataclasses import dataclass
-from typing import Literal
+from typing import Any, Literal
 
 import numpy as np
 from numpy.typing import NDArray
 
-from rag_demo.analysis import GermanAnalyzer
+from rag_demo.analysis.analyzer import GermanAnalyzer
+from rag_demo.analysis.fingerprint import fingerprint
+from rag_demo.analysis.sparse import SparseEncoder
 from rag_demo.catalogue import CatalogueEntry, check_against_catalogue, load_catalogue
 from rag_demo.config import Settings, resolve_model_sha
 from rag_demo.dense import TeiDenseEncoder
@@ -18,7 +20,6 @@ from rag_demo.generate_ollama import OllamaChatGenerator
 from rag_demo.models import RagConfig, Stats
 from rag_demo.protocols import DenseEncoder, Generator
 from rag_demo.retrieve import Retriever
-from rag_demo.sparse import SparseEncoder
 
 
 class PendingOllamaEncoder:
@@ -93,6 +94,17 @@ def build_generator(cfg: RagConfig, url: str, stats: Stats) -> Generator:
     return OpenAICompatGenerator(cfg, url, stats=stats)
 
 
+def build_analyzer(cfg: RagConfig) -> GermanAnalyzer:
+    """The analyzer of ``cfg.analyzer`` (identical at index and query time)."""
+    a = cfg.analyzer
+    return GermanAnalyzer(a.compound_split, a.stemmer, a.fold_umlauts)
+
+
+def expected_fingerprint(cfg: RagConfig) -> dict[str, Any]:
+    """The index fingerprint this app instance can query (see ``analysis.fingerprint``)."""
+    return fingerprint(build_analyzer(cfg), SparseEncoder())
+
+
 def build_retriever(cfg: RagConfig, settings: Settings, embed_url: str) -> Retriever:
     """The retriever with the dense encoder of ``cfg.embed.engine``."""
     encoder: DenseEncoder = (
@@ -104,7 +116,7 @@ def build_retriever(cfg: RagConfig, settings: Settings, embed_url: str) -> Retri
         cfg,
         settings.qdrant_url,
         encoder,
-        GermanAnalyzer(compound_split=False, stemmer="none"),
+        build_analyzer(cfg),
         SparseEncoder(),
         collection=settings.collection,
     )

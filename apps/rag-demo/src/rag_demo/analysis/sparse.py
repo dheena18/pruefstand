@@ -1,15 +1,15 @@
 """``SparseEncoder``: hashed vocabulary and BM25 term weights (IDF is applied by Qdrant)."""
 
 from collections import Counter, defaultdict
-from hashlib import blake2b
+
+import xxhash
 
 from rag_demo.models import SparseVector
 
 
 def token_index(token: str, dim: int) -> int:
-    """Return the stable vocabulary index of ``token`` (same in every process)."""
-    digest = blake2b(token.encode("utf-8"), digest_size=8).digest()
-    return int.from_bytes(digest, "big") % dim
+    """Return the stable vocabulary index ``xxhash64(token) mod dim`` (same in every process)."""
+    return xxhash.xxh64_intdigest(token.encode("utf-8")) % dim
 
 
 class SparseEncoder:
@@ -19,19 +19,23 @@ class SparseEncoder:
     the collection's ``modifier: idf`` multiplies the IDF at query time. Queries get weight 1.
 
     Args:
-        dim: Vocabulary size (hash buckets).
+        dim: Vocabulary size (hash buckets); 2**31 by default (T3.3).
         k1: BM25 saturation.
         b: BM25 length normalisation.
         avg_len: Assumed average document length in tokens.
     """
 
     def __init__(
-        self, dim: int = 1 << 20, k1: float = 1.2, b: float = 0.75, avg_len: float = 60.0
+        self, dim: int = 1 << 31, k1: float = 1.2, b: float = 0.75, avg_len: float = 60.0
     ) -> None:
         self.dim = dim
         self.k1 = k1
         self.b = b
         self.avg_len = avg_len
+
+    def with_avg_len(self, avg_len: float) -> "SparseEncoder":
+        """Return a copy with another average document length (set at index time)."""
+        return SparseEncoder(self.dim, self.k1, self.b, avg_len)
 
     def encode(self, tokens: list[str]) -> SparseVector:
         """Document-side vector.
@@ -39,7 +43,7 @@ class SparseEncoder:
         Examples:
             >>> v = SparseEncoder().encode(["frist", "frist", "woche"])
             >>> len(v.indices), round(max(v.values), 3)
-            (2, 1.4)
+            (2, 1.876)
         """
         length = len(tokens)
         weights: defaultdict[int, float] = defaultdict(float)

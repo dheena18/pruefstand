@@ -5,11 +5,11 @@ from typing import Any
 
 import httpx
 
-from rag_demo.analysis import GermanAnalyzer
+from rag_demo.analysis.analyzer import GermanAnalyzer
+from rag_demo.analysis.sparse import SparseEncoder
 from rag_demo.errors import RetrievalError
 from rag_demo.models import Hit, QueryVectors, RagConfig, SparseVector
 from rag_demo.protocols import DenseEncoder
-from rag_demo.sparse import SparseEncoder
 
 _log = logging.getLogger(__name__)
 SHARED = "shared_public"
