@@ -45,6 +45,7 @@ _DATE = re.compile(r"[0-9]{4}-[0-9]{2}-[0-9]{2}")
 _PINNED_PREFIXES = ("gii:", "eurlex:", "oldp")
 _SHOWN_PROBLEMS = 10
 _MIN_KEY = 32
+_MIN_DISTINCT = 12
 _PUBLIC_TENANT = "shared_public"  # visible to every tenant: no private or attack documents
 
 
@@ -54,8 +55,11 @@ def _attack_set(cfg: CorpusBuildConfig) -> AttackSet | None:
         return None
     secret = PruefstandSettings().attack_key
     key = None if secret is None else secret.get_secret_value()
-    if key is not None and len(key) < _MIN_KEY:
-        msg = f"PRUEFSTAND_ATTACK_KEY must have at least {_MIN_KEY} characters"
+    if key is not None and (len(key.strip()) < _MIN_KEY or len(set(key)) < _MIN_DISTINCT):
+        msg = (
+            f"PRUEFSTAND_ATTACK_KEY is too weak: need {_MIN_KEY} characters without surrounding "
+            f"blanks and {_MIN_DISTINCT} distinct ones (openssl rand -hex 32)"
+        )
         raise ConfigError(msg)
     return build_attack_set(cfg.attacks, cfg.plan.tenants, None if key is None else key.encode())
 

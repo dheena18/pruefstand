@@ -6,7 +6,12 @@ from pathlib import Path
 import numpy as np
 import pytest
 
-from pruefstand.attacks.refusal import CITE_TAG, NEAR_MISS_TAG, make_own_unanswerable
+from pruefstand.attacks.refusal import (
+    CITE_TAG,
+    NEAR_MISS_TAG,
+    _check_law,
+    make_own_unanswerable,
+)
 from pruefstand.core.errors import DatasetError
 
 SLICE = Path(__file__).resolve().parents[5] / "corpus" / "slice_v1"
@@ -74,3 +79,23 @@ def test_no_template_leans_on_a_provision_the_indexed_law_answers() -> None:
     text = " ".join(c.question for c in cases)
     assert "a. F." not in text
     assert "Hochzeit" not in text
+
+
+@pytest.mark.parametrize(
+    ("cite", "kind", "laws", "fails"),
+    [
+        ("§ 6 VVG a. F.", "repealed", {"VVG"}, False),
+        ("§ 6 VVG", "repealed", {"VVG"}, True),
+        ("§ 622 Abs. 2 BGB", "missing_section", {"BGB"}, False),
+        ("§ 622 Abs. 2 Satz 1 BGB", "missing_section", {"KSchG"}, True),
+        ("Art. 7 RL 95/46/EG", "repealed", {"DSGVO"}, False),
+    ],
+)
+def test_check_law_compares_the_law_abbreviation_only(
+    cite: str, kind: str, laws: set[str], *, fails: bool
+) -> None:
+    if fails:
+        with pytest.raises(DatasetError):
+            _check_law("t", cite, kind, laws)
+    else:
+        _check_law("t", cite, kind, laws)

@@ -22,6 +22,7 @@ from pruefstand.core.errors import DatasetError
 from pruefstand.core.ids import DocId, TenantId
 from pruefstand.core.models.corpus import Chunk, Document
 from pruefstand.core.models.testcase import TestCase
+from pruefstand.core.settings import PruefstandSettings
 
 SOURCE_KEY = "attacks"
 MARKERS_KEY = "attacks.markers_public"
@@ -43,7 +44,14 @@ class AttackSet(NamedTuple):
 def _output_digest(docs: Sequence[Document], cases: Sequence[TestCase], *, public: bool) -> str:
     """Hash the GENERATED set (document id, marker, title and text hashes), sorted by id."""
     marker = {c.id.removeprefix("inj-"): c.injection_marker for c in cases}
-    rows = sorted([d.doc_id, marker[d.doc_id], _sha(d.title), _sha(d.text), d.tenant] for d in docs)
+    group = {c.id.removeprefix("inj-"): (c.cluster_id, list(c.tags)) for c in cases}
+    rows = sorted(
+        [
+            d.doc_id, marker[d.doc_id], _sha(d.title), _sha(d.text), d.tenant,
+            json.dumps(d.metadata, sort_keys=True), *group[d.doc_id],
+        ]
+        for d in docs
+    )  # fmt: skip
     return hashlib.sha256(
         json.dumps([public, rows], ensure_ascii=False).encode("utf-8")
     ).hexdigest()
@@ -118,15 +126,16 @@ def check_attack_versions(
     sources: Mapping[str, str],
     prompt_versions: Mapping[str, str],
     *,
-    expect_secret_markers: bool = False,
+    expect_secret_markers: bool | None = None,
 ) -> None:
     """Fail when the corpus and the dataset manifest disagree about the attack set.
 
     Args:
         sources: ``CorpusManifest.sources``.
         prompt_versions: ``DatasetManifest.prompt_versions`` (same two keys as ``sources``).
-        expect_secret_markers: True on the executor when ``PRUEFSTAND_ATTACK_KEY`` is set: the
-            corpus must then hold keyed markers.
+        expect_secret_markers: None (default): derived from ``PRUEFSTAND_ATTACK_KEY`` (key set
+            = the corpus must hold keyed markers, so the check cannot fail open); a bool
+            overrides it.
 
     Raises:
         DatasetError: Exactly one of them names an attack set, the versions or the marker kind
@@ -140,6 +149,8 @@ def check_attack_versions(
                 f"dataset manifest prompt_versions['{key}'] = {dataset!r}"
             )
             raise DatasetError(msg)
+    if expect_secret_markers is None:
+        expect_secret_markers = PruefstandSettings().attack_key is not None
     if expect_secret_markers and SOURCE_KEY in sources and sources.get(MARKERS_KEY) != "false":
         msg = (
             "attack markers are public but the executor expects secret ones (PRUEFSTAND_ATTACK_KEY)"

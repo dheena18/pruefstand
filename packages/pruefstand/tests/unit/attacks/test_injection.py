@@ -206,3 +206,15 @@ def test_keyed_set_passes_the_set_check_including_base64() -> None:
     docs, cases = keyed()
     chunks = mark_attack_chunks(_chunks(docs), {d.doc_id: d for d in docs})
     check_injection_set(cases, chunks)
+
+
+def test_keyed_pseudo_words_come_from_the_key_not_from_a_public_list() -> None:
+    def words(key: bytes) -> set[str]:
+        return {
+            m.split("-")[0] if m.split("-")[0].isalpha() else m.split("-")[1]
+            for m in (str(c.injection_marker) for c in keyed(key)[1])
+        }
+
+    first, second = words(KEY), words(bytes.fromhex("b2" * 32))
+    assert all(6 <= len(w) <= 10 and w.isalpha() for w in first | second)
+    assert first.isdisjoint(second)

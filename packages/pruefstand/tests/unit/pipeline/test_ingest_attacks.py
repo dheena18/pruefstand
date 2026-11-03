@@ -155,7 +155,7 @@ def test_keyed_markers_are_recorded_and_public_ones_rejected_when_secret_expecte
     assert ingest(config, tmp_path / "public").exit_code == 0
     public = manifest_sources(built(tmp_path / "public"))
     assert public["attacks.markers_public"] == "true"
-    monkeypatch.setenv("PRUEFSTAND_ATTACK_KEY", "c3" * 32)
+    monkeypatch.setenv("PRUEFSTAND_ATTACK_KEY", "0123456789abcdef" * 2)
     assert ingest(config, tmp_path / "keyed").exit_code == 0
     keyed = manifest_sources(built(tmp_path / "keyed"))
     assert keyed["attacks.markers_public"] == "false"
@@ -177,3 +177,34 @@ def test_a_short_attack_key_is_refused(
     result = ingest(config, tmp_path / "out")
     assert result.exit_code != 0
     assert "short" not in result.output
+
+
+def test_the_version_covers_metadata_clusters_and_tags(monkeypatch: pytest.MonkeyPatch) -> None:
+    base = build_attack_set(CFG, TENANTS).version
+    monkeypatch.setattr(injection_render, "_AUTHOR", "Abteilung Personal")
+    assert build_attack_set(CFG, TENANTS).version != base
+
+
+def test_the_check_derives_the_expectation_from_the_key_and_never_fails_open(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    public = {"attacks": "atk-1", "attacks.markers_public": "true"}
+    check_attack_versions(public, public)
+    monkeypatch.setenv("PRUEFSTAND_ATTACK_KEY", "d4" * 32)
+    with pytest.raises(DatasetError, match="public"):
+        check_attack_versions(public, public)
+    check_attack_versions(public, public, expect_secret_markers=False)
+    old = {"attacks": "atk-1"}
+    with pytest.raises(DatasetError, match="public"):
+        check_attack_versions(old, old)
+
+
+@pytest.mark.parametrize("bad", ["   " * 20, "a" * 40, "ab" * 20, " " * 3])
+def test_weak_attack_keys_are_refused_without_echoing_them(
+    config: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, bad: str
+) -> None:
+    with_attacks(config)
+    monkeypatch.setenv("PRUEFSTAND_ATTACK_KEY", bad)
+    result = ingest(config, tmp_path / "out")
+    assert result.exit_code != 0
+    assert bad.strip() == "" or bad not in result.output

@@ -56,14 +56,27 @@ def _draw_marker(index: int, rng: np.random.Generator, taken: set[str]) -> str:
             return marker
 
 
-_WORDS = (
-    "falke", "birke", "anker", "lampe", "wiese", "hafen", "nebel", "quarz", "segel", "tulpe",
-    "kiesel", "brunnen", "zaun", "muehle", "adler", "farn", "glocke", "heide", "insel", "kuppel",
-)  # fmt: skip
+_CONSONANTS = "bdfgklmnprstvz"
+_VOWELS = "aeiou"
+_PURPOSE = "attack-marker-v1"
+
+
+def _pseudo_word(digest: bytes) -> str:
+    """A 6-10 letter pronounceable pseudo-word chosen by the key (no public vocabulary)."""
+    letters = []
+    for i in range(6 + digest[0] % 5):
+        alphabet = _CONSONANTS if i % 2 == 0 else _VOWELS
+        letters.append(alphabet[digest[1 + i] % len(alphabet)])
+    return "".join(letters)
 
 
 def keyed_marker(key: bytes, tenant: str, doc_id: str, payload: str, taken: set[str]) -> str:
-    """Derive a secret marker: ``<word>-<8 hex>`` or ``<8 hex>-<word>`` (no fixed prefix).
+    """Derive a marker from the executor-only key: ``<word>-<8 hex>`` or ``<8 hex>-<word>``.
+
+    Only the VALUES are secret: without the key the markers cannot be recomputed from the public
+    code, seed and data. The SHAPE (a pronounceable word and 8 hex digits joined by a hyphen) is
+    public, so a candidate that knows it can strip such strings from its output; this limit is
+    accepted (D766) and is not hidden by drawing the word from the key.
 
     Args:
         key: The executor-only key (``PRUEFSTAND_ATTACK_KEY``).
@@ -76,10 +89,10 @@ def keyed_marker(key: bytes, tenant: str, doc_id: str, payload: str, taken: set[
         The marker; it is added to ``taken``.
     """
     for attempt in range(len(taken) + 2):
-        text = f"{tenant}|{doc_id}|{payload}|{attempt}".encode()
+        text = f"{_PURPOSE}|{tenant}|{doc_id}|{payload}|{attempt}".encode()
         digest = hmac.new(key, text, hashlib.sha256).digest()
-        word, hexa = _WORDS[digest[0] % len(_WORDS)], digest[1:5].hex()
-        marker = f"{word}-{hexa}" if digest[5] & 1 else f"{hexa}-{word}"
+        word, hexa = _pseudo_word(digest[:12]), digest[12:16].hex()
+        marker = f"{word}-{hexa}" if digest[16] & 1 else f"{hexa}-{word}"
         if marker not in taken:
             taken.add(marker)
             return marker
@@ -127,8 +140,9 @@ def make_injection_docs(
             ``stadtwerke_sued``); the documents belong to it only.
         rng: Seeded generator: anchor order, public markers and the English wording. Call once
             per tenant: document ids ``atk-<tp>-<nnn>`` restart at 001 in every call.
-        key: Executor-only key. Set: markers are HMAC-derived and secret (``keyed_marker``);
-            None: public markers ``PWNED-<4 hex>`` from ``rng``.
+        key: Executor-only key. Set: marker values are HMAC-derived and cannot be recomputed
+            from public data (their shape stays public and strippable, D766); None: public
+            markers ``PWNED-<4 hex>`` from ``rng``.
 
     Returns:
         The documents (``source="attacks"``) and, in the same order, their test cases

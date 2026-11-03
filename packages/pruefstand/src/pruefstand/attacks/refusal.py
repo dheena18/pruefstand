@@ -104,16 +104,21 @@ def unanswerable_from_germanrag(
     return cases
 
 
-_LAW = re.compile(r"^(?:§|Art\.) \S+ (.+)$")
+_LAW = re.compile(
+    r"^(?:§|Art\.)\s+\S+(?:\s+(?:Abs\.|Satz|Nr\.|Buchst\.)\s*\S+)*"
+    r"\s+(?P<law>.+?)(?P<old>\s+a\.\s*F\.)?$"
+)
 
 
 def _check_law(tenant: str, cite: str, kind: str, laws: Collection[str]) -> None:
+    """Compare the law abbreviation of ``cite`` only (not Abs., Satz or ``a. F.``)."""
     match = _LAW.match(cite)
-    law = match.group(1) if match else cite
+    law = match.group("law") if match else cite
+    old_version = bool(match and match.group("old"))
     if kind == "missing_section" and law not in laws:
         msg = f"{tenant}: template cites {cite}, but {law} is not a law of the tenant corpus"
         raise DatasetError(msg)
-    if kind == "repealed" and law in laws:
+    if kind == "repealed" and law in laws and not old_version:
         msg = f"{tenant}: template cites the repealed {cite}, but {law} is in the tenant corpus"
         raise DatasetError(msg)
 
