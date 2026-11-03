@@ -111,7 +111,7 @@ Step S6 of `prompts/T3.1b-model-benchmark.md` is no longer a HUMAN step. The gen
 
 Reserved decision ranges (2026-11-03): the lead assigned disjoint ranges per agent to avoid merge collisions, so gaps between D-numbers are intentional and rows are not renumbered: D520 T5.1, D540 T6.4, D560 wrapper PR, D580 checkpoint (this PR), D600 T3.1b prep, D620 T3.6.
 
-- Up to 5 Sonnet task agents in parallel when their files do not overlap.
+- At most 3 task agents (D660; the 5-agent full-speed window of D586 is over)
 - Docs-only and test-only PRs get one review round, then merge on green. Code PRs get at most 2 review rounds.
 - Owner steps are collected in one list and sent once at the end; they never block work. A task that needs the owner is parked.
 

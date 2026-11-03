@@ -8,16 +8,20 @@
 # work and this script only before you push. Usage: scripts/vm_check.sh [make args]
 set -u
 slots="${PRUEFSTAND_CHECK_SLOTS:-2}"
+case "$slots" in '' | *[!0-9]* | 0)
+  echo "vm_check: PRUEFSTAND_CHECK_SLOTS must be a whole number of at least 1 (got '$slots')" >&2
+  exit 2
+  ;;
+esac
 dir="${PRUEFSTAND_CHECK_DIR:-${XDG_CACHE_HOME:-$HOME/.cache}/pruefstand-check}"
-mkdir -p "$dir"
+mkdir -p "$dir" || { echo "vm_check: cannot create $dir" >&2; exit 2; }
 waited=0
 while true; do
   for ((i = 1; i <= slots; i++)); do
     exec {fd}>"$dir/slot$i.lock"
     if flock -n "$fd"; then
       [ "$waited" -eq 0 ] || echo "vm_check: slot $i free after ${waited}s" >&2
-      make check "$@"
-      exit $?
+      exec make check "$@" # exec: a signal to this script reaches make, which keeps the slot lock fd
     fi
     exec {fd}>&-
   done
