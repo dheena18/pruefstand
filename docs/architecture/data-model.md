@@ -302,6 +302,7 @@ datasets/canaries/retired.json      rotated-out public canaries (T4.6, D93)
 datasets/<name>/<version>/
   dataset_manifest.json
   smoke.jsonl  smoke_live.jsonl  core.jsonl  robust_pr.jsonl  full.jsonl  rq1.jsonl  human_labels.jsonl
+datasets/<name>/<version>/hf_export/  dry-run HF layout <license_config>/<split>.jsonl + README.md (git-ignored; T4.1, D484)
 datasets/fixtures/                  hand-written + synthetic_v1 cases committed for CI
 data/sources.yaml  data/manifests/  data/raw/ (git-ignored)
 runs/<run_id>/                      local; on the executor VM: $PRUEFSTAND_HOME/runs/<run_id>/ (VM disk)

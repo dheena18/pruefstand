@@ -1465,6 +1465,23 @@ def assign_splits(cases: Sequence[TestCase], plan: SplitPlan, rng: np.random.Gen
     #   refusal stratum = every UNANSWERABLE `full` case (block None). Shortfall -> DatasetError.
     # R13 P3.2 (D293): `rq1` (Split.RQ1) = 300 bases x applicable perturbations, cluster-disjoint from core, robust_pr
     #   and full; block None, judged_subset False
+# T4.1 (D480, D481; additive): assign_splits_report(...) -> SplitReport(cases, dropped, n_perturbed) is assign_splits plus
+#   the dropped cases and the perturbed count per split; assignment_summary(cases, seed) -> (blocks, judged_subset, seed)
+#   gives the DatasetManifest fields; dataset.io: read_dataset / read_split (lenient, collect `file:line` problems),
+#   write_dataset, write_split_file, build_manifest(name, version, corpus_version, cases, *, seed, ...)
+class SplitPlan(BaseModel):         # core.config.build, frozen, extra forbid, sizes >= 0 (T4.1, D482; 0 switches a part off)
+    smoke_size: int = 50; smoke_min_per_category: int = 3
+    core_answerable: int = 220; core_unanswerable: int = 50; core_injection: int = 30
+    core_min_cross_lingual: int = 30; core_min_answerable_clusters: int = 200; min_clusters_per_tenant: int = 30
+    judged_subset_size: int = 150
+    robust_pr_bases: int = 40; robust_pr_min_bases_per_type: int = 20; robust_pr_min_perturbed: int = 300
+    robust_pr_types: tuple[str, ...] = PERTURBATION_TYPES            # the 11 names of SPEC 4.1
+    full_refusal: int = 150; full_refusal_min: int = 135; full_refusal_max: int = 165; full_refusal_min_clusters: int = 100
+    full_block_unperturbed: int = 300; full_block_perturbed: int = 150; full_block_min_clusters: int = 250
+    nightly_cap: int = 600; rq1_bases: int = 300
+class DatasetBuildConfig(BaseModel):  # core.config.build (T4.1, D482)
+    version: Literal[1] = 1; name: str; dataset_version: str; corpus_dir: Path; out_dir: Path = Path("datasets")
+    split_plan: SplitPlan = SplitPlan(); seed: int = 0; prompt_versions: dict[str, str] = {}
 class DatasetManifest(BaseModel): name: str; version: str; created_at: datetime; corpus_version: str
                                   splits: dict[Split, int]; license_configs: dict[str, str]; prompt_versions: dict[str, str]
                                   review: tuple[ReviewRound, ...]
@@ -1488,6 +1505,8 @@ def validate_dataset(dir: Path) -> list[str]                        # noqa: A002
     # perturbed variants whose base_id is a case of the same block; violations -> problem "full quota: <detail>". R13 P3.2: `rq1` cases share no cluster_id with core/robust_pr/full -> else problem.
     # R13 P3.4: a judged subset without injection cases -> problem (it is stratified by category incl. injection)
 def export_hf(dir: Path, repo_id: str, private: bool, *, dry_run: bool = False) -> None   # noqa: A002, FBT001; D132
+    # T4.1 (D484): layout <license_config>/<split>.jsonl + README.md (YAML `configs:` + `config_licenses:`); refuses
+    # datasets/private/**; CLI `python -m pruefstand.dataset.export_hf <dir> --repo U/N [--dry-run --out DIR] [--public]`
     # dry_run=True: builds the HF layout (one config per license_config) under `dir / "hf_export"`, checks that it
     # loads with `datasets.load_dataset`, and makes no network call; the CLI's `--dry-run --out` copies that dir
 ```

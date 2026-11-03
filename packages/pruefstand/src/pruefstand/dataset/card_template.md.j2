@@ -1,0 +1,33 @@
+---
+{{ front_matter }}---
+
+# Prüfstand-DE
+
+German-language RAG test cases of the open-source release gate
+[Prüfstand](https://github.com/dheena18/pruefstand): questions, reference answers, gold citations
+and security probes over German and EU law, split into `smoke`, `core`, `robust_pr`, `full` and
+`rq1`. Version `{{ name }}/{{ version }}`, corpus `{{ corpus_version }}`.
+
+Every case has exactly one `license_config`; each config below is a separate Hugging Face config
+with its own licence. Load one with
+`datasets.load_dataset("{{ repo_id }}", "<config>", split="core")`.
+
+## Configs and licences
+
+| Config | Licence | Cases per split |
+| --- | --- | --- |
+{% for c in configs -%}
+| `{{ c.name }}` | {{ c.license_name }} | {{ c.counts }} |
+{% endfor %}
+
+## Attribution
+
+{% for c in configs -%}
+- **`{{ c.name }}`** ({{ c.license_name }}): {{ c.attribution }}
+{% endfor %}
+
+## Notes
+
+- Splits keep whole clusters (all questions about one source document, with their perturbations) together.
+- Held-out canary cases are never part of this dataset.
+- MEMERAG-derived material is not included and never redistributed.
