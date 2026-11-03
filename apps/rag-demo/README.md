@@ -10,8 +10,8 @@ against it; T3.x extends the same app to the A40 stack.
 | --- | --- | --- |
 | Config | `config.py`, `models.py` | `RagConfig` (frozen, `extra=forbid`), `config_hash` (config + prompt bytes), `Settings` from the environment |
 | Analysis | `analysis/` (`normalise`, `abbreviations`, `compound`, `analyzer`, `sparse`) | `GermanAnalyzer` and `SparseEncoder`, see "Analyzer" below |
-| Dense | `dense.py` | `TeiDenseEncoder` (TEI CPU, e5 `query: ` / `passage: ` prefixes, `truncate: true`) |
-| Index | `index.py` | corpus reader validated by `schemas/chunk.schema.json`; one Qdrant collection, `tenant_id` payload index |
+| Dense | `index/encoders.py` | `TeiDenseEncoder` (TEI CPU, e5 `query: ` / `passage: ` prefixes, `truncate: true`) and `OllamaDenseEncoder` (native `/api/embed`, catalogue options, unit vectors) |
+| Index | `index/` (`corpus_reader`, `indexer`, `naming`, `qdrant_admin`, `tokens`), `cli.py` | `rag-demo index`: corpus lines validated by `index/chunk.schema.json`; one Qdrant collection per index fingerprint, `tenant_id` tenant index, atomic `chunks_active` alias |
 | Retrieval | `retrieve.py` | Query API, dense + sparse prefetch, tenant filter inside **every** prefetch, RRF |
 | Generation | `generate.py`, `prompts/*.txt` | OpenAI-compatible (llama.cpp) client `OpenAICompatGenerator`, prompt building, injection guard, output guard, `<think>` strip |
 | API | `api.py`, `schemas.py`, `info.py`, `wiring.py` | `create_app`, response mapping, `/v1/info` (`info.py`), the collaborators per profile (`wiring.py`), `/v1/health` |
@@ -42,7 +42,7 @@ embedding service when set and non-empty (D216); it is never logged.
 ```bash
 uv run python scripts/models/fetch.py --manifest infra/models/live-models.yaml   # generator GGUF
 make up PROFILES="core live dev" WAIT=1        # Qdrant, llama.cpp, TEI, rag-demo (VM: PORT_OFFSET=10000 from .env)
-make index-slice                               # embeds corpus/slice_v1, writes .cache/pruefstand/qdrant/slice_v1.snapshot
+make index-slice                               # rag-demo index of corpus/slice_v1 into a fresh collection (alias chunks_active), writes .cache/pruefstand/qdrant/slice_v2.snapshot
 make rag-demo-bug BUG=tenant_filter_post_topk  # second instance with a bug config on the next free port
 curl -s -X POST 127.0.0.1:$(make -s ports | awk '/^rag-demo /{print $2}')/v1/query \
   -H 'content-type: application/json' \
@@ -60,7 +60,7 @@ The same app runs two profiles, chosen by `RAG_CONFIG` (`profile:` in the file).
 | | `configs/rag.yaml` (`live`) | `configs/rag.gpu.yaml` (`gpu`) |
 | --- | --- | --- |
 | Generator | `qwen2.5-0.5b` on llama.cpp (CPU), OpenAI-compatible `/v1` | `ollama/qwen3.8:27b-q8_0` on the A40s, native `/api/chat`, `think: false` |
-| Embeddings | TEI CPU, e5-small | `ollama/bge-m3` via `/api/embed` (encoder: T3.4; until then queries answer 503) |
+| Embeddings | TEI CPU, e5-small | `ollama/bge-m3` via `/api/embed` (`OllamaDenseEncoder`, T3.4) |
 | Models | pinned in `infra/models/live-models.yaml` | resolved from `infra/gpu/models.yaml` (`RAG_MODEL_CATALOGUE`), checked at config load |
 | URLs | `LLM_URL`, `EMBED_URL` | env named by `endpoint_env` (`OLLAMA_GPU0_URL` on the dev stack, `LLM_PROXY_URL` in gate runs), checked at app start |
 | Bug configs | `configs/bugs/*.yaml` | `configs/bugs/gpu/*.yaml` (the same eight switches on top of `rag.gpu.yaml`) |
@@ -73,6 +73,21 @@ container, host network, `127.0.0.1:18000`):
 make up COMPOSE_FILES="infra/gpu/compose.gpu.yml infra/gpu/compose.rag-demo.yml" PROFILES="gpu dev" SERVICES=rag-demo-dev
 curl -s 127.0.0.1:18000/v1/info
 ```
+
+## Indexing (T3.4)
+
+```bash
+uv run rag-demo index --corpus corpus/slice_v1 --encoder tei            # tier 1 (live stack: QDRANT_URL, EMBED_URL)
+make fetch-tokenizer                                                     # once: pinned bge-m3 tokenizer.json (truncation count)
+RAG_EMBED_TOKENIZER=$HOME/.cache/pruefstand/models/tokenizers/bge-m3.json \
+  pruefstand-lock uv run rag-demo index --corpus <corpus dir> --encoder ollama   # tier 2 (OLLAMA_GPU0_URL, dev Qdrant)
+uv run rag-demo index --corpus <dir> --collection pr_7_abc1234 --no-alias        # PR-scoped build, alias untouched
+uv run rag-demo index --drop pr_7_abc1234                                        # executor cleanup
+```
+
+Prints `indexed N chunks into <collection>, alias chunks_active switched`. The collection is named
+`chunks__<corpus_version>__<analyzer_hash8>__<embed_slug>`; an aborted build never reaches the alias. Every build writes a fresh collection and moves the alias last (the app serves the alias `chunks_active`, `RAG_COLLECTION`). `QDRANT_API_KEY` is
+sent as `api-key` when set. Without `--config` the profile of `--encoder` is used (`configs/rag.yaml` or `rag.gpu.yaml`).
 
 ## Tests
 
@@ -99,7 +114,7 @@ folding, Snowball German stemming. The three switches live in the `analyzer:` se
 `config_hash`; `compound_split: false` is mutation M4. `SparseEncoder` hashes a token to
 `xxhash64(token) mod 2**31` and weights it with BM25 term-frequency saturation (k1 1.2, b 0.75); Qdrant applies
 the IDF. The Indexer stores `avgdl` and an analyzer fingerprint in the collection metadata; the app refuses a
-collection with a missing or different fingerprint (503, "re-index"). Collection and snapshot are `slice_v2`.
+collection with a missing or different fingerprint (503, "re-index"). The served collection is the alias `chunks_active`; the snapshot file is named `slice_v2`.
 
 `uv run python -m rag_demo.analysis.analyzer "Kündigungsschutzgesetz"` prints the token list.
 Benchmark (`uv run pytest -m slow apps/rag-demo/tests/unit/analysis/test_benchmark.py -s`): 10 000 chunks

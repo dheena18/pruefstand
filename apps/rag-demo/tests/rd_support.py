@@ -2,7 +2,11 @@
 
 import json
 import os
+import time
 from pathlib import Path
+
+import httpx
+import yaml
 
 from rag_demo.models import Hit
 
@@ -50,3 +54,34 @@ def prefetch_filters(body: dict[str, object]) -> list[object]:
     prefetch = body["prefetch"]
     assert isinstance(prefetch, list)
     return [p.get("filter") for p in prefetch]
+
+
+FIXTURE_CORPUS = APP_DIR / "tests" / "fixtures" / "corpus"
+
+
+def write_word_tokenizer(path: Path) -> Path:
+    """Save a real word-level ``tokenizers`` tokenizer (one token per whitespace-separated word)."""
+    from tokenizers import Tokenizer, models, pre_tokenizers  # noqa: PLC0415
+
+    tok = Tokenizer(models.WordLevel({"[UNK]": 0}, unk_token="[UNK]"))  # noqa: S106
+    tok.pre_tokenizer = pre_tokenizers.Whitespace()
+    tok.save(str(path))
+    return path
+
+
+def compose_image(service: str) -> str:
+    data = yaml.safe_load((REPO / "docker-compose.yml").read_text(encoding="utf-8"))
+    return str(data["services"][service]["image"])
+
+
+def wait_http(url: str, timeout_s: float = 240.0) -> None:
+    deadline = time.monotonic() + timeout_s
+    while time.monotonic() < deadline:
+        try:
+            if httpx.get(url, timeout=3).is_success:
+                return
+        except httpx.HTTPError:
+            pass
+        time.sleep(1)
+    msg = f"{url} did not become ready"
+    raise TimeoutError(msg)
