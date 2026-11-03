@@ -10,6 +10,7 @@ from pruefstand.core.models.attacks import CanaryRegistry
 from pruefstand.core.models.corpus import Chunk, CorpusManifest
 from pruefstand.core.models.dashboard import LabelsDocument
 from pruefstand.core.models.dataset import DatasetManifest
+from pruefstand.core.models.evidence import EvidenceRecord
 from pruefstand.core.models.gate import GateReport
 from pruefstand.core.models.run import RunManifest
 from pruefstand.core.models.testcase import TestCase
@@ -66,3 +67,4 @@ register_schema("pruefstand_config", PruefstandConfig)
 register_schema("gate_report", GateReport)
 register_schema("labels", LabelsDocument)
 register_schema("dataset_manifest", DatasetManifest)
+register_schema("evidence_record", EvidenceRecord)
