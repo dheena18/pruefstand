@@ -97,26 +97,28 @@ def test_over_cap_range_keeps_both_ends() -> None:
 
 
 # Scaling check, not a wall-clock bound: a 4x larger input must cost at most _MAX_RATIO x the base
-# input, measured as min-of-N perf_counter ratios inside one process (load cancels out). Linear is
-# ~4x, the original quadratic bug ~16x. The absolute bound is only a hang guard.
+# input. The cost is the CPU time of this process (`process_time`, so other processes sharing the
+# machine do not count), min-of-N, with the small and the big input measured alternately so that
+# drift cancels out. Linear is ~4x, the original quadratic bug ~16x, so 10x separates them with
+# margin on both sides. The absolute bound is only a hang guard.
 _SCALE = 4
-_MAX_RATIO = 8.0
+_MAX_RATIO = 10.0
 _HANG_GUARD_S = 120.0
-_REPS = 3
+_REPS = 5
 
 
-def _best_time(text: str) -> float:
-    best = float("inf")
-    for _ in range(_REPS):
-        start = time.perf_counter()
-        extract_citations(text)
-        best = min(best, time.perf_counter() - start)
-    return best
+def _cpu_time(text: str) -> float:
+    start = time.process_time()
+    extract_citations(text)
+    return time.process_time() - start
 
 
 def _assert_scales_linearly(unit: str, count: int) -> None:
-    small = _best_time(unit * count)
-    big = _best_time(unit * count * _SCALE)
+    small_text, big_text = unit * count, unit * count * _SCALE
+    small = big = float("inf")
+    for _ in range(_REPS):
+        small = min(small, _cpu_time(small_text))
+        big = min(big, _cpu_time(big_text))
     assert big < _HANG_GUARD_S
     assert big <= _MAX_RATIO * max(small, 1e-3), f"{_SCALE}x input took {big / small:.1f}x"
 
