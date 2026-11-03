@@ -30,6 +30,7 @@ dev = [
   "types-regex>=2026.9.29.20261030",
   "testcontainers>=4.9",
   "scipy-stubs>=1.18.1.1",
+  "datasets>=5.1.0",
 ]
 # T0.4: documentation site (mkdocs-material + Mermaid fence via pymdownx.superfences, D340)
 docs = [

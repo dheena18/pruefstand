@@ -164,3 +164,120 @@ class CorpusBuildConfig(BaseModel):
             msg = "loaders must be unique"
             raise ValueError(msg)
         return self
+
+
+PERTURBATION_TYPES = (
+    "compound_split",
+    "umlaut_translit",
+    "eszett",
+    "register",
+    "gender",
+    "numbers",
+    "dates",
+    "citation_style",
+    "abbreviations",
+    "typos",
+    "colloquial",
+)
+"""The eleven perturbation names of SPEC §4.1 (``robust_pr`` needs bases for each)."""
+NUM_BLOCKS = 3
+"""Nightly blocks of ``full`` (round 13 P3.1)."""
+_Size = Annotated[int, Field(ge=0, le=100_000)]
+
+
+class SplitPlan(BaseModel):
+    """Sizes and quotas of the dataset splits (interfaces §2 ``Split``, §14; T4.1).
+
+    The defaults are the table of SPEC §3.4 with the round 13 ``full`` quota (P3.1) and the
+    ``rq1`` size (P3.2). A size of 0 switches the split (or part) off, which tests use to
+    exercise one split at a time; ``validate_dataset`` always checks against the *defaults*.
+
+    Attributes:
+        smoke_size: Cases of ``smoke``; ``smoke_min_per_category`` per category present.
+        core_answerable: Answerable ``core`` cases (factual, multi_hop, comparison,
+            cross_lingual) with at least ``core_min_cross_lingual`` cross-lingual ones.
+        core_unanswerable: ``unanswerable`` ``core`` cases.
+        core_injection: ``injection`` ``core`` cases (the security probes of the Wilson check).
+        core_min_answerable_clusters: Distinct clusters among the answerable ``core`` cases.
+        min_clusters_per_tenant: Clusters per tenant in answerable ``core`` and in a ``full`` block.
+        judged_subset_size: ``core`` cases flagged ``judged_subset``.
+        robust_pr_bases: Bases of ``robust_pr`` (one per cluster); at least
+            ``robust_pr_min_bases_per_type`` of them per type in ``robust_pr_types`` and at least
+            ``robust_pr_min_perturbed`` perturbed cases in total.
+        full_refusal: ``unanswerable`` cases of the ``full`` refusal stratum, within
+            ``full_refusal_min`` .. ``full_refusal_max`` and on ``full_refusal_min_clusters``.
+        full_block_unperturbed: Unperturbed answerable cases per nightly block (at least
+            ``full_block_min_clusters`` clusters); ``full_block_perturbed`` is the most perturbed
+            variants of one block.
+        nightly_cap: Most cases of refusal stratum plus one block (SPEC §6.2).
+        rq1_bases: Bases of ``rq1`` (one per cluster).
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    smoke_size: _Size = 50
+    smoke_min_per_category: _Size = 3
+    core_answerable: _Size = 220
+    core_unanswerable: _Size = 50
+    core_injection: _Size = 30
+    core_min_cross_lingual: _Size = 30
+    core_min_answerable_clusters: _Size = 200
+    min_clusters_per_tenant: _Size = 30
+    judged_subset_size: _Size = 150
+    robust_pr_bases: _Size = 40
+    robust_pr_min_bases_per_type: _Size = 20
+    robust_pr_min_perturbed: _Size = 300
+    robust_pr_types: tuple[Short, ...] = PERTURBATION_TYPES
+    full_refusal: _Size = 150
+    full_refusal_min: _Size = 135
+    full_refusal_max: _Size = 165
+    full_refusal_min_clusters: _Size = 100
+    full_block_unperturbed: _Size = 300
+    full_block_perturbed: _Size = 150
+    full_block_min_clusters: _Size = 250
+    nightly_cap: _Size = 600
+    rq1_bases: _Size = 300
+
+    @property
+    def core_size(self) -> int:
+        """Total ``core`` cases."""
+        return self.core_answerable + self.core_unanswerable + self.core_injection
+
+    @model_validator(mode="after")
+    def _consistent(self) -> Self:
+        if self.judged_subset_size > self.core_size:
+            msg = "judged_subset_size must not exceed the core size"
+            raise ValueError(msg)
+        if (
+            self.full_refusal
+            and not self.full_refusal_min <= self.full_refusal <= self.full_refusal_max
+        ):
+            msg = "full_refusal must lie within full_refusal_min..full_refusal_max"
+            raise ValueError(msg)
+        return self
+
+
+class DatasetBuildConfig(BaseModel):
+    """Inputs of ``build_dataset`` (interfaces §15): which corpus, which plan, which seed.
+
+    Attributes:
+        version: Schema version of this file.
+        name: Dataset name (``datasets/<name>/<dataset_version>/``).
+        dataset_version: Dataset version, e.g. ``"v1"``.
+        corpus_dir: The corpus the questions are generated from (T2.5 output).
+        out_dir: Root under which the dataset directory is written.
+        split_plan: Sizes and quotas.
+        seed: Seed of ``assign_splits`` (recorded as ``assignment_seed``).
+        prompt_versions: Versioned prompt files used per step (recorded in the manifest).
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    version: Literal[1] = 1
+    name: Short
+    dataset_version: Short
+    corpus_dir: Path
+    out_dir: Path = Path("datasets")
+    split_plan: SplitPlan = Field(default_factory=SplitPlan)
+    seed: int = Field(default=0, ge=0)
+    prompt_versions: dict[Short, Short] = Field(default_factory=dict, max_length=64)
