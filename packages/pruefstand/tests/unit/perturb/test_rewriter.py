@@ -2,11 +2,17 @@
 
 import pytest
 from testsupport.loopback_script import serve_script
-from testsupport.perturb_support import LOCAL_REWRITER, REWRITER, answers, client
+from testsupport.perturb_support import KEY_ENV, LOCAL_REWRITER, REWRITER, answers, client
 
+from pruefstand.core.config import LLMPolicyConfig
 from pruefstand.core.errors import PolicyViolation
 from pruefstand.core.ids import DocId, TenantId
 from pruefstand.core.models.attacks import Canary, CanaryRegistry
+from pruefstand.llm.backends.litellm import LiteLLMBackend
+from pruefstand.llm.budget import Budget
+from pruefstand.llm.client import LLMClient
+from pruefstand.llm.policy import LLMPolicy
+from pruefstand.llm.recorder import CallRecorder
 from pruefstand.perturb.rewriter import LocalTarget, Rewriter, clean_rewrite
 
 CANARY = CanaryRegistry(
@@ -69,4 +75,22 @@ async def test_blocked_question_without_local_target_raises_policy_violation() -
         await Rewriter(REWRITER).rewrite(
             client(ext, REWRITER, canaries=CANARY), "colloquial_de", question=SECRET_Q
         )
+    assert es.posts() == 0
+
+
+async def test_other_policy_violations_surface_instead_of_going_local() -> None:
+
+    with serve_script(answers("x")) as (ext, es), serve_script(answers("lokal")) as (loc, ls):
+        denied = LLMPolicyConfig(allowed_providers=("ollama",))  # github is not allowed
+        ext_client = LLMClient(
+            LiteLLMBackend(REWRITER, api_base=f"{ext}/v1", api_key_env=KEY_ENV, timeout_s=30),
+            None,
+            Budget(None, None),
+            CallRecorder(),
+            LLMPolicy(denied, CanaryRegistry(canaries=())),
+        )
+        rewriter = Rewriter(REWRITER, LocalTarget(client(loc, LOCAL_REWRITER), LOCAL_REWRITER))
+        with pytest.raises(PolicyViolation):
+            await rewriter.rewrite(ext_client, "colloquial_de", question="Wann endet die Frist?")
+    assert ls.posts() == 0
     assert es.posts() == 0

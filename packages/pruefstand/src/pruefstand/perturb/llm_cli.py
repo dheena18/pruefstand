@@ -11,8 +11,6 @@ from collections.abc import Callable, Sequence
 from pathlib import Path
 from typing import TextIO
 
-import numpy as np
-
 from pruefstand.core.config import ModelRef
 from pruefstand.core.config_loader import load_config
 from pruefstand.core.errors import ConfigError
@@ -22,7 +20,14 @@ from pruefstand.llm.client import LLMClient
 from pruefstand.llm.factory import build_client
 from pruefstand.llm.families import family_of
 from pruefstand.llm.recorder import CallRecorder
-from pruefstand.perturb.batch import Item, RewriteStore, rewrite_pass, validate_pass
+from pruefstand.perturb.batch import (
+    Item,
+    RewriteStore,
+    item_id,
+    item_rng,
+    rewrite_pass,
+    validate_pass,
+)
 from pruefstand.perturb.llm_base import LLMRewritePerturbation
 from pruefstand.perturb.llm_registry import build_llm_perturbation
 from pruefstand.perturb.rewriter import LocalTarget, Rewriter
@@ -117,7 +122,7 @@ async def run(
 ) -> int:
     """Run the chosen pass for the questions.
 
-    With ``--questions`` every line starts with the item id (``q01``, ``q02``, ...).
+    With ``--questions`` every line starts with the item id (``q`` + content hash).
 
     Returns:
         0 on success, 3 when the quota or request cap stopped the rewrite.
@@ -127,7 +132,7 @@ async def run(
     """
     _quiet_provider_logs()
     perturbations = _build(names, args, factory)
-    items = [Item(id=f"q{n:02d}", text=q) for n, q in enumerate(questions, 1)]
+    items = [Item(id=item_id(q), text=q) for q in questions]
     texts = {it.id: it.text for it in items}
 
     def emit(item_id: str, line: str) -> None:
@@ -137,7 +142,7 @@ async def run(
         llm = factory(args.model, args.max_requests)
         for item in items:
             for p in perturbations:
-                res = await p.aapply(item.text, llm, np.random.default_rng(args.seed))
+                res = await p.aapply(item.text, llm, item_rng(item, p, args.seed))
                 emit(
                     item.id, _line(p.name, item.text, res.text, valid=res.changed, reason=res.notes)
                 )

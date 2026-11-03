@@ -85,3 +85,26 @@ async def test_llm_handles_singular_and_is_validated() -> None:
         res = await p.aapply(q, client(rb, REWRITER), np.random.default_rng(0))
     assert res.changed
     assert res.text == "Dürfen Mitarbeitende kündigen?"
+
+
+@pytest.mark.parametrize(
+    "q",
+    [
+        "Muss ich das beim Arbeitgeber melden?",
+        "Bekomme ich vom Arbeitgeber Geld?",
+        "Darf dein Arbeitgeber das?",
+        "Darf der neue Arbeitgeber kündigen?",
+        "Gilt das für Ihren Mitarbeiter?",
+    ],
+)
+def test_ambiguous_singular_context_goes_to_the_model(q: str) -> None:
+    got = rule_gender(q, np.random.default_rng(0))
+    assert got is not None
+    assert got.needs_llm
+    assert got.text == q
+
+
+def test_adjective_before_a_plural_noun_is_still_rule_converted() -> None:
+    got = rule_gender("Haben die neuen Mitarbeiter Anspruch?", np.random.default_rng(0))
+    assert got is not None
+    assert not got.needs_llm

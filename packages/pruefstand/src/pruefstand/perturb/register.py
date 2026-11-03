@@ -26,8 +26,7 @@ _ACC = _ACC_PREP.split("|")
 _FORMAL = re.compile(r"\b(?:Sie|Ihnen|Ihr(?:e|en|em|er|es)?)\b")
 _INFORMAL = re.compile(r"\b(?:du|dich|dir|dein(?:e|en|em|er|es)?)\b", re.IGNORECASE)
 _SENTENCE_START = re.compile(r"(?:^|[.?!]\s+)$")
-_TO_DU = "Wechsle die Anrede von Sie (formell) zu du (informell)."
-_TO_SIE = "Wechsle die Anrede von du (informell) zu Sie (formell)."
+_AMBIGUOUS = re.compile(r"\b(?:sich|sie|ihnen|ihr(?:e|en|em|er|es)?)\b")  # they / her / reflexive
 
 
 @cache
@@ -62,7 +61,7 @@ def _to_du(text: str) -> RuleResult:
 
     out = re.sub(r"\bIhr(e|en|em|er|es)?\b", possessive, text)
     out = re.sub(r"\b(\w+) Sie\b", verb, out)
-    out = re.sub(rf"\b({_ACC_PREP}|{_DAT_PREP}) Sie\b", prep, out, flags=re.IGNORECASE)
+    out = re.sub(rf"\b((?i:{_ACC_PREP}|{_DAT_PREP})) Sie\b", prep, out)
     out = re.sub(r"\bIhnen\b", "dir", out)
     if _FORMAL.search(out):
         return RuleResult(text=text, variant="du", needs_llm=True)
@@ -108,11 +107,13 @@ def rule_register(text: str) -> RuleResult | None:
         >>> rule_register("Wie lange ist die Frist?") is None
         True
     """
-    if _FORMAL.search(text):
-        return _to_du(text)
-    if _INFORMAL.search(text):
-        return _to_sie(text)
-    return None
+    formal = _FORMAL.search(text) is not None
+    if not formal and _INFORMAL.search(text) is None:
+        return None
+    variant = "du" if formal else "sie"
+    if _AMBIGUOUS.search(text):  # lowercase sie / sich / ihr: meaning or reflexive agreement
+        return RuleResult(text=text, variant=variant, needs_llm=True)
+    return _to_du(text) if formal else _to_sie(text)
 
 
 class Register(LLMRewritePerturbation):
@@ -128,8 +129,7 @@ class Register(LLMRewritePerturbation):
             return None
         if not rule.needs_llm:
             return Draft(text=rule.text, variant=rule.variant)
-        direction = _TO_DU if rule.variant == "du" else _TO_SIE
-        out = await self.rewriter.rewrite(llm, "register_de", question=text, direction=direction)
+        out = await self.rewriter.rewrite(llm, f"register_{rule.variant}_de", question=text)
         return Draft(
             text=out.text, model=out.model, local=out.local, used_llm=True, variant=rule.variant
         )

@@ -78,3 +78,19 @@ async def test_llm_leaving_sie_is_invalid() -> None:
     assert res.changed is False
     assert res.text == q
     assert "transformation_missing" in res.notes
+
+
+@pytest.mark.parametrize(
+    "src",
+    [
+        "Können Sie mir sagen, ob die Frist für sie gilt?",
+        "Können Sie gegen sie klagen?",
+        "Müssen Sie sich arbeitslos melden?",
+        "Erinnerst du dich an die Frist?",
+    ],
+)
+def test_lowercase_sie_and_sich_go_to_the_model(src: str) -> None:
+    got = rule_register(src)
+    assert got is not None
+    assert got.needs_llm
+    assert got.text == src

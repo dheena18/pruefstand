@@ -632,6 +632,7 @@ def eval_fingerprint(*, dataset_name: str, dataset_version: str, splits: Sequenc
 class PruefstandError(Exception); class ConfigError; class TargetError; class LLMError(message, *, transient: bool = False, status: int | None = None); class PolicyViolation(LLMError); class BudgetExceeded
 class QuotaExhausted(LLMError)        # R9 (D9-07): provider quota exhausted (GitHub Models 429 + exhausted headers); raised by
                                       # LLMClient (T5.1), caught by the runner -> counts["judge_skipped"], reason "judge_quota"
+class DataGuardViolation(PolicyViolation)   # T4.5 (D745, additive): the data guard (private prompt / canary) refused an external provider
 class DatasetError; class StoreError; class StoreIntegrityError(StoreError)   # T1.8: stored file does not match its SHA-256; class GateInputError; class PromptError; class CorpusMismatch   # all subclass PruefstandError
 ```
 

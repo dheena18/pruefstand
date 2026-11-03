@@ -12,6 +12,7 @@ from pruefstand.perturb.citation_style import CitationStyle
 from pruefstand.perturb.dates import Dates
 from pruefstand.perturb.eszett import Eszett
 from pruefstand.perturb.numbers import Numbers
+from pruefstand.perturb.rewriter import PUBLIC_TENANT, private_text
 from pruefstand.perturb.typos import Typos
 from pruefstand.perturb.umlaut_translit import UmlautTranslit
 
@@ -104,6 +105,10 @@ async def perturb_case_async(
         llm: Client of the rewrite model (an ``LLMClient`` at runtime).
         rng: Randomness for seeded choices.
 
+    A case of a tenant other than ``shared_public`` carries private text: its calls are marked
+    ``datagen.private_docs`` so only the local model may see it (the data guard, independent of
+    the canary registry).
+
     Returns:
         The variant (id ``<id>~<name>``, ``base_id`` and ``cluster_id`` of the base), or ``None``
         when the rewrite was rejected, did not apply, or an ``LLMError`` ended the call (logged as
@@ -115,7 +120,8 @@ async def perturb_case_async(
     """
     _require_base(case)
     try:
-        result = await p.aapply(case.question, llm, rng)
+        with private_text(private=case.tenant != PUBLIC_TENANT):
+            result = await p.aapply(case.question, llm, rng)
     except QuotaExhausted:
         raise
     except LLMError as err:

@@ -20,7 +20,7 @@ from pruefstand.core.models.llm import LLMRequest, LLMRole
 from pruefstand.core.protocols import LLMClientLike
 from pruefstand.llm.families import family_of
 from pruefstand.perturb.draft import Draft
-from pruefstand.perturb.rewriter import PROMPT_VERSION, PROMPTS
+from pruefstand.perturb.rewriter import PROMPT_VERSION, PROMPTS, request_prompt_id
 
 log = get_logger(__name__)
 
@@ -29,12 +29,9 @@ _FORMAL = re.compile(r"\b(?:Sie|Ihnen|Ihr(?:e|en|em|er|es)?)\b")
 _INFORMAL = re.compile(r"\b(?:du|dich|dir|dein(?:e|en|em|er|es)?)\b", re.IGNORECASE)
 _GENDER = re.compile(r"[*:_]innen|ende[n]?\b|innen und")
 _MIN_RATIO, _MAX_RATIO, _SLACK = 0.3, 3.0, 40
-TRANSFORMATIONS = {
-    "compound_split": "Zusammengesetzte Wörter durch analytische Umschreibungen ersetzt",
-    "register": "Anrede gewechselt (Sie und du)",
-    "gender": "Generische Maskulina durch geschlechtergerechte Formen ersetzt",
-    "colloquial": "In Alltagssprache umformuliert",
-}
+_ABBREVIATION = re.compile(
+    r"\b(?=[A-Za-zÄÖÜäöüß]*[A-ZÄÖÜ][A-Za-zÄÖÜäöüß]*[A-ZÄÖÜ])[A-Za-zÄÖÜäöüß]{2,10}\b"
+)
 
 
 class Verdict(BaseModel):
@@ -59,7 +56,9 @@ class Equivalence(BaseModel):
 
 
 def _numbers(text: str) -> set[str]:
-    return {re.sub(r"\s+", "", m) for m in _NUMBER.findall(text)}
+    """Numbers, ``§`` references and law abbreviations (BGB, KSchG, DSGVO) of ``text``."""
+    found = {re.sub(r"\s+", "", m) for m in _NUMBER.findall(text)}
+    return found | set(_ABBREVIATION.findall(text))
 
 
 def _compound_done(draft: Draft) -> bool:
@@ -153,6 +152,12 @@ class RewriteValidator:
         self._rate = cross_check_rate
         self._seed = seed
 
+    @property
+    def ident(self) -> str:
+        """Identity of the validators, part of the stored-verdict key."""
+        second = self._second[1] if self._second else ""
+        return f"{self._primary[1]}|{second}|{self._rate}|{self._seed}"
+
     async def judge(self, name: str, source: str, draft: Draft) -> Verdict:
         """Check that ``draft`` keeps the meaning of ``source``.
 
@@ -197,8 +202,9 @@ class RewriteValidator:
     async def _ask(
         self, llm: LLMClientLike, model: str, name: str, source: str, draft: Draft
     ) -> Equivalence:
-        messages = PROMPTS.get("perturb_equivalence_de", PROMPT_VERSION).render(
-            original=source, rewrite=draft.text, transformation=TRANSFORMATIONS[name]
+        prompt_id = f"perturb_equivalence_{name}_de"
+        messages = PROMPTS.get(prompt_id, PROMPT_VERSION).render(
+            original=source, rewrite=draft.text
         )
         req = LLMRequest(
             role=LLMRole.PERTURB,
@@ -207,7 +213,7 @@ class RewriteValidator:
             temperature=0.0,
             max_tokens=256,
             seed=0,
-            prompt_id="perturb_equivalence_de",
+            prompt_id=request_prompt_id(prompt_id),
             prompt_version=PROMPT_VERSION,
             response_format="json",
         )

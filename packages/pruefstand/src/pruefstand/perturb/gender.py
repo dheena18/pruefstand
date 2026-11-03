@@ -20,54 +20,17 @@ from pruefstand.perturb.draft import Draft, RuleResult
 from pruefstand.perturb.llm_base import LLMRewritePerturbation
 
 STYLES = ("star", "colon", "partizip", "pair")
-_STYLE_TEXT = {
-    "star": "Gendersternchen („Mitarbeiter*innen“)",
-    "colon": "Doppelpunkt („Mitarbeiter:innen“)",
-    "partizip": "Partizip („Mitarbeitende“)",
-    "pair": "Paarform („Mitarbeiterinnen und Mitarbeiter“)",
-}
 _FILE = Path(__file__).resolve().parent / "data" / "gender_nouns.yaml"
 _WORD = re.compile(r"\b[A-ZÄÖÜ][a-zäöüß]+\b")
 _JOINERS = "*:_/·"
-_SINGULAR_DETERMINERS = frozenset(
-    [
-        "der",
-        "ein",
-        "einer",
-        "einem",
-        "einen",
-        "eines",
-        "jeder",
-        "jedem",
-        "jeden",
-        "jedes",
-        "dieser",
-        "diesem",
-        "diesen",
-        "dem",
-        "des",
-        "den",
-        "kein",
-        "keinem",
-        "keinen",
-        "mein",
-        "meinem",
-        "meinen",
-        "sein",
-        "seinem",
-        "seinen",
-        "unser",
-        "unserem",
-        "unseren",
-        "ihr",
-        "ihrem",
-        "ihren",
-        "welcher",
-        "welchem",
-        "welchen",
-        "dessen",
-        "jener",
-    ]
+_SINGULAR = re.compile(
+    r"^(?:der|dem|den|des|ein|einem|einen|einer|eines|jede[rmns]?|dies(?:er|em|en|es)|"
+    r"welche[rmns]|kein(?:em|en|er|es)?|vom|zum|beim|im|am|(?:mein|dein|sein|unser|euer|ihr)"
+    r"(?:em|en|er|es)?)$"
+)
+_PLURAL = re.compile(
+    r"^(?:die|viele|alle|keine|welche|einige|mehrere|etliche|zwei|drei|vier|fünf|sechs|sieben|"
+    r"acht|neun|zehn|\d+|(?:mein|dein|sein|unser|euer|ihr)e)$"
 )
 
 
@@ -120,9 +83,17 @@ def _form(noun: Noun, style: str, *, dative: bool) -> str:
     return f"{noun.f_pl} und {noun.dative if dative else noun.pl}"
 
 
-def _previous_word(text: str, pos: int) -> str:
-    m = re.search(r"(\w+)\W*$", text[:pos])
-    return m.group(1).lower() if m else ""
+def _number_context(text: str, pos: int) -> str:
+    """Return ``sg``, ``pl`` or ``none``: the nearest determiner (three words back at most)."""
+    words = re.findall(r"[\wäöüß]+|[,.;:!?]", text[:pos].lower())[-3:]
+    for word in reversed(words):
+        if not word[0].isalnum():
+            break
+        if _SINGULAR.match(word):
+            return "sg"
+        if _PLURAL.match(word):
+            return "pl"
+    return "none"
 
 
 def _scan(text: str) -> tuple[list[tuple[re.Match[str], Noun, bool]], bool]:
@@ -134,7 +105,7 @@ def _scan(text: str) -> tuple[list[tuple[re.Match[str], Noun, bool]], bool]:
         if found is None or text[m.end() : m.end() + 1] in _JOINERS:
             continue
         noun, kind = found
-        if kind == "sg" or _previous_word(text, m.start()) in _SINGULAR_DETERMINERS:
+        if kind == "sg" or _number_context(text, m.start()) == "sg":
             singular = True
             continue
         hits.append((m, noun, kind == "dat"))
@@ -189,9 +160,7 @@ class Gender(LLMRewritePerturbation):
             return None
         if not rule.needs_llm:
             return Draft(text=rule.text, variant=rule.variant)
-        out = await self.rewriter.rewrite(
-            llm, "gender_de", question=text, style=_STYLE_TEXT[rule.variant]
-        )
+        out = await self.rewriter.rewrite(llm, f"gender_{rule.variant}_de", question=text)
         return Draft(
             text=out.text, model=out.model, local=out.local, used_llm=True, variant=rule.variant
         )

@@ -2,8 +2,8 @@
 Du formulierst deutsche Fragen um, ohne ihre Bedeutung zu ändern. Du antwortest nur mit der umformulierten Frage, ohne Erklärung und ohne Anführungszeichen.
 
 ### user
-Wechsle die Anrede in der Frage: {{direction}}
-Konjugiere alle Verben und passe Pronomen (Sie, Ihnen, Ihr, du, dich, dir, dein) und Reflexivpronomen richtig an.
+Ersetze die generischen Maskulina für Personengruppen in der Frage durch eine geschlechtergerechte Form. Verwende diesen Stil: Partizip („Mitarbeitende“)
+Passe Artikel, Adjektive und Verbformen an, sodass der Satz grammatisch korrekt bleibt (zum Beispiel „der Mitarbeiter“ wird zu „die Mitarbeitenden“).
 Ändere sonst nichts: keine neuen Fakten, Zahlen oder Paragrafen, die Fragestellung bleibt erhalten.
 
 Frage: {{question}}

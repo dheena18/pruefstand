@@ -7,8 +7,8 @@ from testsupport.llm_scenarios import DictCache
 from testsupport.loopback_script import Step, serve_script
 from testsupport.perturb_support import JUDGE, REWRITER, answers, client, verdict
 
-from pruefstand.core.errors import DatasetError
-from pruefstand.perturb.batch import Item, RewriteStore, rewrite_pass, validate_pass
+from pruefstand.core.errors import DatasetError, LLMError
+from pruefstand.perturb.batch import Item, RewriteStore, item_id, rewrite_pass, validate_pass
 from pruefstand.perturb.colloquial import Colloquial
 from pruefstand.perturb.rewriter import Rewriter
 from pruefstand.perturb.validate import RewriteValidator
@@ -107,3 +107,31 @@ def test_corrupt_store_line_is_an_error(tmp_path: Path, bad: str) -> None:
     (tmp_path / "rewrites.jsonl").write_text(bad + "\n" if bad else "\n{x\n", encoding="utf-8")
     with pytest.raises(DatasetError):
         RewriteStore(tmp_path)
+
+
+async def test_private_items_stay_local(tmp_path: Path) -> None:
+    items = [Item(id="a", text=ITEMS[0].text, private=True)]
+    with serve_script(answers(OUT[0])) as (rb, rs):
+        rep = await rewrite_pass(
+            items, [_perturbation()], llm=client(rb, REWRITER), store=RewriteStore(tmp_path), seed=0
+        )
+    assert rs.posts() == 0
+    assert rep.failed == 1
+
+
+async def test_verdicts_are_stored_so_a_failed_validate_resumes(tmp_path: Path) -> None:
+    store = RewriteStore(tmp_path)
+    with serve_script(answers(*OUT)) as (rb, _):
+        await rewrite_pass(ITEMS, [_perturbation()], llm=client(rb, REWRITER), store=store, seed=0)
+    with serve_script([*answers(verdict(1)), Step(500)]) as (jb, _), pytest.raises(LLMError):
+        await validate_pass(ITEMS, [_perturbation(jb)], store=RewriteStore(tmp_path))
+    with serve_script(answers(verdict(1), verdict(1))) as (jb, js2):
+        outcomes = await validate_pass(ITEMS, [_perturbation(jb)], store=RewriteStore(tmp_path))
+    assert js2.posts() == 2
+    assert [o.result.changed for o in outcomes] == [True, True, True]
+
+
+def test_item_id_is_a_content_hash() -> None:
+    assert item_id("Wann endet die Frist?") == item_id("Wann endet die Frist?")
+    assert item_id("Wann endet die Frist?") != item_id("Wann endet die Frist denn?")
+    assert item_id("x").startswith("q")

@@ -8,6 +8,7 @@ from testsupport.perturb_support import JUDGE, REWRITER, answers, client, verdic
 
 from pruefstand.llm.client import LLMClient
 from pruefstand.perturb.__main__ import main
+from pruefstand.perturb.batch import item_id
 
 Q = "Können Sie mir sagen, ob das Kündigungsschutzgesetz für meine Mitarbeiter gilt?"
 
@@ -113,8 +114,8 @@ def test_questions_file_prefixes_the_item_id(
     assert state.posts() == 0
     lines = capsys.readouterr().out.splitlines()
     assert lines == [
-        "q01\tregister\tvalid=True\tKannst du mir helfen?",
-        "q02\tregister\tvalid=True\tHast du Urlaub?",
+        f"{item_id('Können Sie mir helfen?')}\tregister\tvalid=True\tKannst du mir helfen?",
+        f"{item_id('Haben Sie Urlaub?')}\tregister\tvalid=True\tHast du Urlaub?",
     ]
 
 

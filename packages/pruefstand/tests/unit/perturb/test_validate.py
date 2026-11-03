@@ -148,3 +148,11 @@ async def test_cross_check_sample_is_seeded_and_logged() -> None:
     assert out.cross_check == 0
     assert skipped.cross_check is None
     assert sstate.posts() == 1
+
+
+def test_law_abbreviation_must_stay() -> None:
+    src = "Gilt § 622 BGB für Kleinbetriebe?"
+    assert (
+        static_check("colloquial", src, _draft("Gilt § 622 HGB für kleine Läden?"))
+        == "number_changed"
+    )

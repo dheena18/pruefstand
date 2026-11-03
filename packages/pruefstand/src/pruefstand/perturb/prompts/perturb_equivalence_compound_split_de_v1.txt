@@ -4,7 +4,7 @@ Du prüfst, ob eine umformulierte deutsche Frage dieselbe Bedeutung wie das Orig
 ### user
 Original: {{original}}
 Umformulierung: {{rewrite}}
-Erwartete Umformung: {{transformation}}
+Erwartete Umformung: Zusammengesetzte Wörter durch analytische Umschreibungen ersetzt
 
 Bewerte mit score 1 nur, wenn alle drei Bedingungen gelten:
 1. Die Umformulierung fragt nach demselben Rechtsinhalt wie das Original (keine neuen Fakten, keine ausgelassene Rechtsfrage).

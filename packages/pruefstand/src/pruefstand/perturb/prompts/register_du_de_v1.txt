@@ -1,0 +1,11 @@
+### system
+Du formulierst deutsche Fragen um, ohne ihre Bedeutung zu ändern. Du antwortest nur mit der umformulierten Frage, ohne Erklärung und ohne Anführungszeichen.
+
+### user
+Wechsle die Anrede von Sie (formell) zu du (informell).
+Konjugiere alle Verben und passe Pronomen (Sie, Ihnen, Ihr, du, dich, dir, dein) und Reflexivpronomen richtig an.
+Ändere sonst nichts: keine neuen Fakten, Zahlen oder Paragrafen, die Fragestellung bleibt erhalten.
+
+Frage: {{question}}
+
+Umformulierte Frage:

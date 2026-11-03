@@ -23,19 +23,22 @@ from pruefstand.core.protocols import LLMClientLike
 from pruefstand.perturb._common import nfc
 from pruefstand.perturb.draft import Draft
 from pruefstand.perturb.llm_base import LLMRewritePerturbation
+from pruefstand.perturb.rewriter import private_text
 from pruefstand.perturb.validate import Verdict
 
 log = get_logger(__name__)
 STORE_FILE = "rewrites.jsonl"
+VERDICT_FILE = "verdicts.jsonl"
 
 
 class Item(BaseModel):
-    """One text to perturb (a case id and its question)."""
+    """One text to perturb. ``private`` marks text of a non-public tenant: local model only."""
 
     model_config = ConfigDict(frozen=True, extra="forbid")
 
     id: str
     text: str
+    private: bool = False
 
 
 class Entry(BaseModel):
@@ -47,6 +50,15 @@ class Entry(BaseModel):
     item_id: str
     name: str
     draft: Draft | None
+
+
+class StoredVerdict(BaseModel):
+    """A stored validity verdict (key = draft key + validator identity)."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    key: str
+    verdict: Verdict
 
 
 class Outcome(BaseModel):
@@ -81,7 +93,14 @@ class RewriteStore:
 
     def __init__(self, directory: Path) -> None:
         self._path = directory / STORE_FILE
+        self._verdict_path = directory / VERDICT_FILE
         self._entries: dict[str, Entry] = {}
+        self._verdicts: dict[str, Verdict] = {}
+        if self._verdict_path.is_file():
+            for line in self._verdict_path.read_text(encoding="utf-8").splitlines():
+                if line.strip():
+                    stored = StoredVerdict.model_validate_json(line)
+                    self._verdicts[stored.key] = stored.verdict
         if self._path.is_file():
             for number, line in enumerate(self._path.read_text(encoding="utf-8").splitlines(), 1):
                 if line.strip():
@@ -103,12 +122,28 @@ class RewriteStore:
         """Return all entries in storage order."""
         return tuple(self._entries.values())
 
+    def verdict(self, key: str) -> Verdict | None:
+        """Return the stored verdict under ``key``."""
+        return self._verdicts.get(key)
+
+    def put_verdict(self, key: str, verdict: Verdict) -> None:
+        """Append a verdict (flushed at once) so a later failure does not lose it."""
+        line = StoredVerdict(key=key, verdict=verdict).model_dump_json()
+        with self._verdict_path.open("a", encoding="utf-8") as fh:
+            fh.write(line + "\n")
+        self._verdicts[key] = verdict
+
     def put(self, entry: Entry) -> None:
         """Append ``entry`` to the file (flushed at once) and remember it."""
         self._path.parent.mkdir(parents=True, exist_ok=True)
         with self._path.open("a", encoding="utf-8") as fh:
             fh.write(json.dumps(entry.model_dump(mode="json"), ensure_ascii=False) + "\n")
         self._entries[entry.key] = entry
+
+
+def item_id(text: str) -> str:
+    """Return the id of a text: ``q`` + 8 hex of its content hash (stable under reordering)."""
+    return "q" + stable_hash(nfc(text))[:8]
 
 
 def entry_key(item: Item, p: LLMRewritePerturbation, seed: int) -> str:
@@ -154,7 +189,8 @@ async def rewrite_pass(
                 skipped += 1
                 continue
             try:
-                draft = await p.adraft(nfc(item.text), llm, item_rng(item, p, seed))
+                with private_text(private=item.private):
+                    draft = await p.adraft(nfc(item.text), llm, item_rng(item, p, seed))
             except QuotaExhausted:
                 return _report(done, skipped, failed, total, "quota")
             except BudgetExceeded:
@@ -198,6 +234,8 @@ async def validate_pass(
 
     Returns:
         One outcome per stored draft, in item order; items without a stored draft are skipped.
+        Verdicts are stored as they come, so a rerun repeats no check; ``QuotaExhausted`` of the
+        second model ends the pass with the outcomes so far.
 
     Raises:
         ConfigError: No validator, or none of another family than the rewriter.
@@ -207,10 +245,22 @@ async def validate_pass(
     for item in items:
         source = nfc(item.text)
         for p in perturbations:
-            entry = store.get(entry_key(item, p, seed))
+            key = entry_key(item, p, seed)
+            entry = store.get(key)
             if entry is None:
                 continue
-            verdict = await p.acheck(source, entry.draft) if entry.draft else None
+            verdict = None
+            if entry.draft is not None:
+                vkey = stable_hash(key, p.validator.ident if p.validator else "")
+                verdict = store.verdict(vkey)
+                if verdict is None:
+                    try:
+                        with private_text(private=item.private):
+                            verdict = await p.acheck(source, entry.draft)
+                    except QuotaExhausted:
+                        log.warning("perturb_validate_quota", validated=len(outcomes))
+                        return outcomes
+                    store.put_verdict(vkey, verdict)
             result = p.result(source, entry.draft, verdict)
             outcomes.append(Outcome(item_id=item.id, name=p.name, result=result, verdict=verdict))
     return outcomes

@@ -13,6 +13,8 @@ import sys
 from collections import defaultdict
 from pathlib import Path
 
+from pruefstand.perturb.batch import item_id
+
 NOT_APPLICABLE = {"not_applicable", "unchanged"}
 
 
@@ -26,13 +28,14 @@ def render(questions: list[str], tsv: str) -> str:
     """Return the markdown table and the validity rates.
 
     Args:
-        questions: The pilot questions, in order (``q01`` is the first).
+        questions: The pilot questions, in order (ids are ``item_id(question)``).
         tsv: Output lines ``qNN<TAB>name<TAB>valid=True<TAB>text`` or
             ``qNN<TAB>name<TAB>valid=False<TAB>reason=<why><TAB>original``.
 
     Returns:
         Markdown: one row per (question, perturbation), then a rate table.
     """
+    by_id = {item_id(q): q for q in questions}
     rows = ["| id | perturbation | before | after / reason |", "| --- | --- | --- | --- |"]
     counts: dict[str, dict[str, int]] = defaultdict(lambda: {"valid": 0, "applicable": 0})
     for line in tsv.splitlines():
@@ -40,7 +43,7 @@ def render(questions: list[str], tsv: str) -> str:
         if len(parts) < 4 or not parts[0].startswith("q"):
             continue
         qid, name, flag = parts[0], parts[1], parts[2]
-        before = questions[int(qid[1:]) - 1]
+        before = by_id.get(qid, qid)
         valid = flag == "valid=True"
         detail = parts[3] if valid else parts[3].removeprefix("reason=")
         if valid or detail not in NOT_APPLICABLE:
