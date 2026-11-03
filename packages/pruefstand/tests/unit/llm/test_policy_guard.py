@@ -15,7 +15,7 @@ from pruefstand.llm.client import LLMClient
 from pruefstand.llm.policy import LLMPolicy
 from pruefstand.llm.recorder import CallRecorder
 
-TOKEN = "CANARY-VN-" + "7f3a9c"  # noqa: S105  (a test canary, not a credential)
+TOKEN = "CANARY-VN-" + "7f3a9c"
 KEY_ENV = "PRUEFSTAND_TEST_KEY"
 
 
