@@ -146,3 +146,17 @@ def test_fits_with_explicit_overhead() -> None:
         card_gib=44.0,
     )
     assert b.total_gib(12288, 4, kv, 15.6, 2.5) == pytest.approx(41.1, abs=0.05)
+
+
+def test_measured_scenarios_single_slot_generator_and_the_256_cap() -> None:
+    """At the 256 cap the full PR run has no margin, the subset fits; at 512 nothing fits."""
+    by_cap = {out: (full, sub) for out, full, sub in b.scenarios()}
+    assert by_cap[200][0].total_min < b.PR_BUDGET_MIN
+    full256, sub256 = by_cap[256]
+    assert 85 < full256.total_min < 95  # no margin: D199 (subset) applies
+    assert sub256.total_min < 70
+    assert by_cap[512][1].total_min > b.PR_BUDGET_MIN  # the cap must stay at 256
+    # a 4-slot generator would be about 4x faster in decode: the single slot is what makes it tight
+    gen4 = b.with_slots(b.Lane(350, 1650, 256, 966.0, 19.4, slots=1), 4)
+    assert b.lane_minutes(gen4) < b.lane_minutes(b.with_slots(gen4, 1)) / 2
+    assert "no margin" in b.scenarios_report().splitlines()[2]

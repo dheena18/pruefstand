@@ -24,7 +24,8 @@ models:
     provisional: true
     disk_bytes: 29978242050
     keep_alive: 24h
-    kv_bytes_per_token: 131072
+    # measured 2026-11-03 from the Ollama load log (D651): 16 attention layers, q8_0, 272 MiB for 8192 cells, one sequence
+    kv_bytes_per_token: 34816
     options: {num_ctx: 8192, num_predict: 512, temperature: 0.0, seed: 42, top_p: 1.0}
     option_bounds: {temperature: [0.0, 1.0], top_p: [0.0, 1.0], num_predict: [1, 512]}
     tokenizer:
