@@ -13,7 +13,7 @@ Commands (``PRUEFSTAND_GPU_CATALOGUE`` overrides the catalogue path):
   unload-body <tag> [--embed]    ``{"model", "keep_alive": 0}`` (--embed: with ``input``)
   catalogue-tags         every Ollama tag of the catalogue
   allowlist              TSV ``tag disk_bytes`` of every Ollama entry (the installer's allow-list)
-  lookup <id>            TSV ``tag digest role disk_bytes engine`` of an ``ollama/<tag>`` id
+  lookup <id>            TSV ``tag digest role disk_bytes engine standard`` of an id (standard 1/0)
   server <tag>           ``gpu0`` or ``gpu1``: the lane (URL setting) of a tag
   role <tag>             ``generator|judge|embed``
   tag-digest <tag>       reads an ``/api/tags`` body on stdin, prints the digest of the tag
@@ -189,7 +189,9 @@ def _mode_set_lines(arg: str, _opts: frozenset[str]) -> list[str]:
 
 def _lookup_line(arg: str, _opts: frozenset[str]) -> list[str]:
     e = by_id(arg)
-    return [_tsv(e["tag"], e.get("digest", ""), e["role"], e.get("disk_bytes", 0), e["engine"])]
+    standard = 1 if e.get("standard") else 0
+    digest, size = e.get("digest", ""), e.get("disk_bytes", 0)
+    return [_tsv(e["tag"], digest, e["role"], size, e["engine"], standard)]
 
 
 ONE_ARG: dict[str, Callable[[str, frozenset[str]], list[str]]] = {
