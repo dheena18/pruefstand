@@ -111,6 +111,25 @@ Step S6 of `prompts/T3.1b-model-benchmark.md` is no longer a HUMAN step. The gen
 
 Reserved decision ranges (2026-11-03): the lead assigned disjoint ranges per agent to avoid merge collisions, so gaps between D-numbers are intentional and rows are not renumbered: D520 T5.1, D540 T6.4, D560 wrapper PR, D580 checkpoint (this PR), D600 T3.1b prep, D620 T3.6.
 
-- Up to 5 Sonnet task agents in parallel when their files do not overlap.
+- At most 3 task agents (D660; the 5-agent full-speed window of D586 is over)
 - Docs-only and test-only PRs get one review round, then merge on green. Code PRs get at most 2 review rounds.
 - Owner steps are collected in one list and sent once at the end; they never block work. A task that needs the owner is parked.
+
+## 8. Shared-VM discipline (D660, 2026-11-03)
+
+- Full checks go through `make check-vm` (`scripts/vm_check.sh`): at most 2 at once. Targeted tests (`uv run pytest <path>`) while
+  working; the full check only before pushing. Tell every task agent this in its brief.
+- Never take a timing measurement for a budget (rerank latency, tok/s, TTFT, load times) while other checks run; repeat any
+  measurement that was taken under load.
+- At most 3 task agents at once (the full-speed window of D586 is over).
+- Every watcher or waiter you start ends itself when its PR is merged or closed (a `gh pr checks --watch`, or a loop that tests
+  the PR state); never leave one running. No agent kills a process it did not start (no `pkill -f` patterns); only the lead does
+  that, during a cleanup, by exact PID. (2026-11-03: ten orphaned waiters, the oldest 35 hours, were stopped; one `pkill -f` by a
+  reviewer had killed another session's polling loop.)
+- No `git stash` in worktrees: the stash list is shared across all worktrees, so a `stash pop` can apply another session's
+  entry. Use a WIP commit on your own branch, or `git diff > patch`. Old stash entries (T1.13) stay untouched.
+- Pipe gates: every "only on success" step (commit, push, PR create, merge) tests the exit code of the REAL command, never of
+  `tail`, `grep` or `tee` at the end of a pipe. Use `set -o pipefail`, `${PIPESTATUS[0]}`, or write the output to a file and tail
+  the file afterwards, and branch with `if ! cmd >file 2>&1; then ...; exit 1; fi`. For the full check test the exit code of `make check-vm` itself (it `exec`s `make check`, so the status is make's own); when the check runs in the background, write `EXIT=$?` right after it into the log and gate on that line. Do not gate on `cmd | tail -1 && next`.
+  (2026-11-03: `ruff | tail && git add` let two lint-failing commits through to a PR branch; CI caught them.)
+
