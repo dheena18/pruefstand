@@ -79,16 +79,13 @@ def _write_file(
     run: Path, fmt: Format, report: GateReport, raw: bytes, config: Path | None
 ) -> None:
     """Write ``report.html`` or ``evidence.json`` into the run directory and print its path."""
-    store = ArtifactStore(run.parent)
-    cand = store.read_run(run).results
-    base = _baseline_results(run, report)
     if fmt is Format.HTML:
-        target, text = run / HTML_FILE, render_html(report, base, cand)
+        cand = ArtifactStore(run.parent).read_run(run).results
+        target, text = run / HTML_FILE, render_html(report, _baseline_results(run, report), cand)
     else:
         if config is None:
             fail("error: --format evidence needs --config <pruefstand.yaml>", EXIT_USAGE)
-        pair = (None if base is None else base.manifest, cand.manifest)
-        target, text = run / EVIDENCE_FILE, evidence_json(run, report, raw, pair, config)
+        target, text = run / EVIDENCE_FILE, evidence_json(run, report, raw, config)
     write_atomic(target, text)
     typer.echo(str(target))
 

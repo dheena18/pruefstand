@@ -20,7 +20,7 @@
   </p>
   <p class="meta">Baseline: <span class="mono">–</span> · Candidate: <span class="mono">pr-42@d4e5f6a</span></p>
   <p class="meta">core, robust_pr · 790 cases · 18m 12s · 0 USD · 4.1 M tokens · ~2,100 GPU-s · created 2026-11-02 22:00 UTC</p>
-  <div class="banner fail" role="status"><span aria-hidden="true">❌</span> No baseline for this evaluation fingerprint — nothing was compared. Run baseline-promote.</div>
+  <div class="banner fail" role="alert"><span aria-hidden="true">❌</span> No baseline for this evaluation fingerprint — nothing was compared. Run baseline-promote.</div>
   <div class="banner neutral" role="status"><span aria-hidden="true">ℹ️</span> Supports documentation, not a compliance certificate.</div>
   <nav class="toc" aria-label="Report sections">
   <ul>

@@ -20,6 +20,11 @@ _SPACE = re.compile(r"[ \t\r\n]+")
 _BLANKS = re.compile(r"\n{3,}")
 
 
+def masked(text: str) -> str:
+    """Return ``text`` with every canary token replaced by ``MASKED`` (detector folding)."""
+    return mask_canaries(text).replace(CANARY_MASK, MASKED)
+
+
 def _masked(text: str) -> str:
     return mask_canaries(text).replace(CANARY_MASK, MASKED)
 

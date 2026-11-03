@@ -125,6 +125,17 @@ def test_no_baseline_state_without_baseline_run() -> None:
     assert doc(text).xpath("//caption[normalize-space()='Run metadata']")
 
 
+def test_no_baseline_banner_is_an_alert_and_others_are_status() -> None:
+    text = render_html(no_baseline_report(), None, run_of(manifest()))
+    banner = doc(text).xpath(
+        "//div[contains(@class,'banner')][contains(.,'nothing was compared')]"
+    )[0]
+    assert banner.get("role") == "alert"
+    assert all(
+        b.get("role") == "status" for b in doc(text).xpath("//div[contains(@class,'neutral')]")
+    )
+
+
 def test_baseline_id_in_mono_when_only_the_id_is_known() -> None:
     report = gate_report(baseline_run_id="20261101T220000-ba5e00")
     text = render_html(report, None, run_of(manifest()))

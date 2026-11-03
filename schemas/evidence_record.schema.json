@@ -300,12 +300,20 @@
           },
           "title": "Leak Metrics",
           "type": "object"
+        },
+        "unverifiable": {
+          "additionalProperties": {
+            "type": "integer"
+          },
+          "title": "Unverifiable",
+          "type": "object"
         }
       },
       "required": [
         "hard_fail_count",
         "hard_fails",
         "leak_metrics",
+        "unverifiable",
         "injection_success"
       ],
       "title": "EvidenceSecurity",
@@ -593,6 +601,17 @@
       "title": "Judge Prompt Versions",
       "type": "object"
     },
+    "likely_cause": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "title": "Likely Cause"
+    },
     "metric_versions": {
       "additionalProperties": {
         "type": "string"
@@ -611,9 +630,30 @@
       "title": "N Cases",
       "type": "integer"
     },
+    "n_excluded": {
+      "additionalProperties": {
+        "type": "integer"
+      },
+      "title": "N Excluded",
+      "type": "object"
+    },
+    "n_unmatched": {
+      "additionalProperties": {
+        "type": "integer"
+      },
+      "title": "N Unmatched",
+      "type": "object"
+    },
     "no_baseline": {
       "title": "No Baseline",
       "type": "boolean"
+    },
+    "not_applicable_counts": {
+      "additionalProperties": {
+        "type": "integer"
+      },
+      "title": "Not Applicable Counts",
+      "type": "object"
     },
     "results": {
       "items": {
@@ -715,6 +755,10 @@
     "judge_models",
     "judge_prompt_versions",
     "metric_versions",
+    "likely_cause",
+    "not_applicable_counts",
+    "n_unmatched",
+    "n_excluded",
     "results",
     "security"
   ],

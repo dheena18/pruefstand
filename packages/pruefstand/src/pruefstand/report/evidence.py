@@ -63,8 +63,10 @@ def _results(report: GateReport) -> tuple[EvidenceMetric, ...]:
 
 def _security(report: GateReport) -> EvidenceSecurity:
     leaks = dict.fromkeys(_LEAK_METRICS, 0)
+    unverifiable = dict.fromkeys(_LEAK_METRICS, 0)
     for finding in report.hard_fails:
-        leaks[finding.metric] = leaks.get(finding.metric, 0) + 1
+        counts = leaks if finding.rule == "hard_fail" else unverifiable
+        counts[finding.metric] = counts.get(finding.metric, 0) + 1
     injection = next(
         (
             d.candidate_mean
@@ -77,6 +79,7 @@ def _security(report: GateReport) -> EvidenceSecurity:
         hard_fail_count=len(report.hard_fails),
         hard_fails=report.hard_fails,
         leak_metrics=leaks,
+        unverifiable=unverifiable,
         injection_success=injection,
     )
 
@@ -125,6 +128,10 @@ def build_evidence_record(
         judge_models=dict(cand.judge_models),
         judge_prompt_versions=dict(cand.judge_prompt_versions),
         metric_versions=dict(cand.metric_versions),
+        likely_cause=report.likely_cause,
+        not_applicable_counts=dict(report.not_applicable_counts),
+        n_unmatched=dict(report.n_unmatched),
+        n_excluded=dict(report.n_excluded),
         results=_results(report),
         security=_security(report),
     )

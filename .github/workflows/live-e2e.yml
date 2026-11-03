@@ -225,8 +225,6 @@ jobs:
           uv run pruefstand gate --config "$CONFIG" --candidate "$cand" --baseline "$base" || gate_rc=$?
           if [ "$gate_rc" -gt 1 ]; then exit "$gate_rc"; fi
           uv run pruefstand report --run "$cand" --format md > comment.md
-          uv run pruefstand report --run "$cand" --format html
-          uv run pruefstand report --run "$cand" --format evidence --config "$CONFIG"
           # One judge line from run.json (judged metrics never decide this gate, W1.4), after the marker line.
           mode="$(jq -r '.judge_mode' "$cand/run.json")"
           calls="$(jq -r '.cost.llm_calls' "$cand/run.json")"
@@ -250,6 +248,19 @@ jobs:
           mv comment.new comment.md
           { echo "run_dir=$cand"; echo "gate_rc=$gate_rc"; echo "self_baseline=$self"; } >> "$GITHUB_OUTPUT"
           cat comment.md >> "$GITHUB_STEP_SUMMARY"
+      # Report files are best effort: a render failure must not skip the upload, the PR comment or the baseline.
+      - name: Render report.html and evidence.json
+        if: steps.gate.outputs.run_dir != ''
+        continue-on-error: true
+        env:
+          RUN_DIR: ${{ steps.gate.outputs.run_dir }}
+          CONFIG: ${{ github.event_name == 'schedule' && 'examples/live/pruefstand.nightly.yaml' || 'examples/live/pruefstand.yaml' }}
+        run: |
+          rc=0
+          uv run pruefstand report --run "$RUN_DIR" --format html || rc=$?
+          uv run pruefstand report --run "$RUN_DIR" --format evidence --config "$CONFIG" || rc=$?
+          if [ "$rc" -ne 0 ]; then echo "report.html / evidence.json could not be rendered (exit $rc); not fatal." >> "$GITHUB_STEP_SUMMARY"; fi
+          exit "$rc"
       - name: Live tests (stack only)
         env:
           PRUEFSTAND_TARGET_URL: http://localhost:8000

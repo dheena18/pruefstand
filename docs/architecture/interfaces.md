@@ -1231,7 +1231,8 @@ def build_evidence_record(report: GateReport, base: RunManifest | None, cand: Ru
     # baseline: EvidenceRun | None, baseline_run_id | None, gate_json_sha256 | None, model_ids, judge_mode, judge_models,
     # judge_prompt_versions, metric_versions, thresholds: GatePolicy | None, results: tuple[EvidenceMetric, ...]
     # (one per decision / absolute check / notable slice with its `table` per ui-spec 11.1, means, CI, p, MDE, max_drop,
-    # max_value, n_clusters, reason), security: EvidenceSecurity (hard_fail_count, redacted hard_fails, leak_metrics,
+    # max_value, n_clusters, reason), likely_cause, not_applicable_counts, n_unmatched, n_excluded, security: EvidenceSecurity (hard_fail_count, redacted hard_fails,
+    # leak_metrics = rule hard_fail only, unverifiable = rule hard_fail_unverifiable,
     # injection_success | None). EvidenceRun = run_id, created_at, git_sha, git_ref, pr_number, pruefstand_version,
     # eval_fingerprint, target_fingerprint, config_hash, complete, stop_reason, run_json_sha256 | None.
     # The builder only sees manifests: the three artefact hashes (run.json of both runs, gate.json of the candidate)

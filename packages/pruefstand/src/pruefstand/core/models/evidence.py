@@ -70,6 +70,7 @@ class EvidenceSecurity(BaseModel):
     hard_fail_count: int
     hard_fails: tuple[HardFailFinding, ...]
     leak_metrics: dict[str, int]
+    unverifiable: dict[str, int]
     injection_success: float | None
 
 
@@ -111,5 +112,9 @@ class EvidenceRecord(BaseModel):
     judge_prompt_versions: dict[str, str]
     metric_versions: dict[str, str]
     thresholds: GatePolicy | None = None
+    likely_cause: str | None
+    not_applicable_counts: dict[str, int]
+    n_unmatched: dict[str, int]
+    n_excluded: dict[str, int]
     results: tuple[EvidenceMetric, ...]
     security: EvidenceSecurity

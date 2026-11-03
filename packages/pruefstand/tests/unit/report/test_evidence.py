@@ -11,16 +11,17 @@ from testsupport.report_builders import (
     base_manifest,
     decision,
     gate_report,
+    hard_fail,
     info_row,
     manifest,
     no_baseline_report,
     notable_row,
 )
 
-from pruefstand.cli._report_files import sha256_file
+from pruefstand.cli._report_files import dump_record, sha256_file
 from pruefstand.core.enums import GateStatus
-from pruefstand.core.models.evidence import EvidenceRecord
-from pruefstand.core.models.gate import GateReport
+from pruefstand.core.models.evidence import EvidenceRecord, EvidenceSecurity
+from pruefstand.core.models.gate import GateReport, HardFailFinding
 from pruefstand.core.schema import export_schemas
 from pruefstand.report.evidence import build_evidence_record
 
@@ -89,6 +90,58 @@ def test_wording_never_claims_compliance() -> None:
     assert "compliant" not in text
     assert "konform" not in text
     assert "supports documentation for accuracy, robustness and record-keeping" in text
+
+
+def finding(rule: str, metric: str) -> HardFailFinding:
+    return hard_fail(metric=metric).model_copy(update={"rule": rule})
+
+
+def security(*findings: HardFailFinding) -> EvidenceSecurity:
+    rep = gate_report(hard_fails=findings)
+    return build_evidence_record(rep, base_manifest(), manifest(), None).security
+
+
+def test_leak_counts_only_verified_hard_fails() -> None:
+    sec = security(finding("hard_fail", "canary_leak"), finding("hard_fail", "canary_leak"))
+    assert (sec.leak_metrics["canary_leak"], sec.unverifiable["canary_leak"]) == (2, 0)
+
+
+def test_unverifiable_findings_are_not_counted_as_leaks() -> None:
+    sec = security(*[finding("hard_fail_unverifiable", "canary_leak")] * 3)
+    assert (sec.leak_metrics["canary_leak"], sec.unverifiable["canary_leak"]) == (0, 3)
+    assert sec.hard_fail_count == 3
+
+
+def test_mixed_findings_are_counted_apart() -> None:
+    sec = security(
+        finding("hard_fail", "tenant_leak"),
+        finding("hard_fail_unverifiable", "tenant_leak"),
+        finding("hard_fail_unverifiable", "system_prompt_leak"),
+    )
+    assert sec.leak_metrics == {"canary_leak": 0, "tenant_leak": 1, "system_prompt_leak": 0}
+    assert sec.unverifiable == {"canary_leak": 0, "tenant_leak": 1, "system_prompt_leak": 1}
+
+
+def test_record_carries_cause_and_accounting_maps() -> None:
+    rep = gate_report(
+        likely_cause="retrieval",
+        not_applicable_counts={"citation_f1": 3},
+        n_unmatched={"context_recall": 1},
+        n_excluded={"faithfulness": 2},
+    )
+    rec = build_evidence_record(rep, base_manifest(), manifest(), None)
+    assert rec.likely_cause == "retrieval"
+    assert rec.not_applicable_counts == {"citation_f1": 3}
+    assert (rec.n_unmatched, rec.n_excluded) == ({"context_recall": 1}, {"faithfulness": 2})
+
+
+def test_dumped_evidence_masks_canary_tokens_in_every_string() -> None:
+    rep = gate_report(
+        hard_fails=(hard_fail().model_copy(update={"evidence": "x CAN\u200bARY-VN-7f3a9c y"}),)
+    )
+    text = dump_record(build_evidence_record(rep, base_manifest(), manifest(), "CANARY-VN-7f3a9c"))
+    assert "7f3a9c" not in text
+    assert "‹masked›" in text
 
 
 def test_reviewer_is_optional() -> None:

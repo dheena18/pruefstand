@@ -64,8 +64,8 @@ def _baseline_ref(report: GateReport, base: RunManifest | None) -> str:
     return clean(report.baseline_run_id, 64) or DASH
 
 
-def _banner(kind: str, icon: str, text: str) -> dict[str, str]:
-    return {"cls": kind, "icon": icon, "text": text}
+def _banner(kind: str, icon: str, text: str, role: str = "status") -> dict[str, str]:
+    return {"cls": kind, "icon": icon, "text": text, "role": role}
 
 
 def banners(b: Builder) -> list[dict[str, str]]:
@@ -85,6 +85,7 @@ def banners(b: Builder) -> list[dict[str, str]]:
                 "fail",
                 "❌",
                 NO_BASELINE_TEXT,
+                "alert",
             )
         )
     if report.status is GateStatus.UNSUPPORTED_CONFIG:

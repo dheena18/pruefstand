@@ -71,7 +71,7 @@
 <p class="meta">Baseline: <span class="mono">{{ header.baseline }}</span> · Candidate: <span class="mono">{{ header.candidate }}</span></p>
 <p class="meta">{{ header.facts|join(" · ") }}</p>
 {% for bn in banners %}
-<div class="banner {{ bn.cls }}" role="status"><span aria-hidden="true">{{ bn.icon }}</span> {{ bn.text }}</div>
+<div class="banner {{ bn.cls }}" role="{{ bn.role }}"><span aria-hidden="true">{{ bn.icon }}</span> {{ bn.text }}</div>
 {% endfor %}
 <nav class="toc" aria-label="Report sections">
 <ul>
