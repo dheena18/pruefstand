@@ -217,6 +217,10 @@ owning module's unit test dir (`pt/unit/<module>/`, `rd/unit/…`).
 | `Judge.score` | `judges.judge` | T5.2a | `test_judge.py`, `test_output.py`, `test_escaping.py` | raw → score scales; `"2"`/1.5/empty reason rejected; nonce escaping; `cached` propagated | covered |
 | `JudgePool.for_metric` | `judges.judge` | T5.2a | `test_judge.py` | per-metric judge; fallback to default; default missing → `ConfigError` | covered |
 | `check_judge_families` (T5.2a part) | `judges.family_guard` | T5.2a | `test_family_guard.py` | ok pair; generator clash; unknown id → `ConfigError` | covered |
+| `LLMClient.complete_json_meta`, `LLMRequest.json_schema` | `llm.client`, `llm.json_call` | T5.2a | `test_json_schema.py` | schema sent as Ollama `format`; schema in the cache key, absent = old key; `cached` of the second call | covered |
+| `build_pool` | `judges.factory` | T5.2a | `test_factory.py` | tier picks the default judge; per-metric override; one `Judge` per model | covered |
+| `summarize`, `load_items`, `task_inputs` | `judges.robustness` | T5.2a | `test_robustness_set.py` | 60 pairs, injected = clean + injection; shifts and pass rule on known numbers | covered |
+| `make_nonce`, `wrap`, `escape` | `judges.escaping` | T5.2a | `test_escaping.py` | forged closing tag defanged; nonce stable per key and inputs; Hypothesis: no input closes its block | covered |
 | `check_judge_families` (T5.2b part: run-time check) | `judges.family_guard` | T5.2b | `test_run_family_check.py` | run aborts on a clash with `/v1/info.models["generator"]` | covered |
 | `cohens_kappa` | `judges.calibration` | T5.4 | `test_calibration.py` | perfect; 0.5 example; constant raters → `nan`; quadratic 3×3; Hypothesis | covered |
 | `gwet_ac1` | `judges.calibration` | T5.4 | `test_calibration.py` | known example | covered |
