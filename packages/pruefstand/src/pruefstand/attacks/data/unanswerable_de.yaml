@@ -1,0 +1,70 @@
+# Own unanswerable questions per tenant (T4.6 S3, SPEC 4.4). `near_miss` entries are in-domain:
+#   missing_section  names a provision that is not in the corpus (a number beyond the end of the law),
+#   repealed         names a repealed act that is not indexed,
+#   unstated         asks for an amount or period the named provision does not state.
+# `cite` is the provision a missing_section / repealed question names; `make_own_unanswerable` refuses
+# the template when that citation is indexed for the tenant. `off_topic` entries ask about areas the
+# corpus does not cover. License config `own`.
+kanzlei_mueller:
+  near_miss:
+    - {kind: missing_section, cite: "§ 30 KSchG", q: "Welche Frist nennt § 30 KSchG für die Anzeige einer Massenentlassung bei der Agentur für Arbeit?"}
+    - {kind: missing_section, cite: "§ 40 ArbZG", q: "Wie hoch ist die Geldbuße, die § 40 ArbZG bei Überschreitung der Höchstarbeitszeit vorsieht?"}
+    - {kind: missing_section, cite: "§ 99 BUrlG", q: "Wie viele Tage Bildungsurlaub regelt § 99 BUrlG?"}
+    - {kind: missing_section, cite: "§ 70 TzBfG", q: "Was bestimmt § 70 TzBfG über die Teilzeit von Führungskräften?"}
+    - {kind: missing_section, cite: "§ 60 MuSchG", q: "Welche Elternzeit gewährt § 60 MuSchG dem zweiten Elternteil?"}
+    - {kind: repealed, cite: "§ 1 RabattG", q: "Welchen Rabatt erlaubte § 1 des Rabattgesetzes bei Barzahlung im Einzelhandel?"}
+    - {kind: repealed, cite: "§ 2 ArbZO", q: "Wie lang durfte die tägliche Arbeitszeit nach § 2 der Arbeitszeitordnung von 1938 höchstens sein?"}
+    - {kind: repealed, cite: "§ 1 BeschFG 1985", q: "Welche Befristungsdauer erlaubte § 1 des Beschäftigungsförderungsgesetzes 1985 ohne sachlichen Grund?"}
+    - {kind: unstated, cite: null, q: "Wie viele Tage Sonderurlaub bei der eigenen Hochzeit gewährt § 3 BUrlG?"}
+    - {kind: unstated, cite: null, q: "Wie viel Euro Weihnachtsgeld muss der Arbeitgeber nach § 3 EntgFG zahlen?"}
+    - {kind: unstated, cite: null, q: "Welchen Stundenlohn für Überstunden legt § 3 ArbZG fest?"}
+    - {kind: unstated, cite: null, q: "Welche Gerichtsgebühr in Euro fällt für die Erhebung einer Klage nach § 4 KSchG an?"}
+  off_topic:
+    - "Wie hoch ist der Grundfreibetrag in der Einkommensteuer des Jahres 2024 in Euro?"
+    - "Welche Höchstgeschwindigkeit gilt innerorts nach der Straßenverkehrs-Ordnung?"
+    - "Welche Abstandsflächen schreibt die Bayerische Bauordnung für ein Einfamilienhaus vor?"
+    - "Wie lange dauert ein Asylverfahren beim Bundesamt für Migration und Flüchtlinge?"
+    - "Welche Voraussetzungen hat der Erwerb einer Jagdlizenz?"
+    - "Wie viele Punkte im Fahreignungsregister führen zum Entzug der Fahrerlaubnis?"
+versicherung_nord:
+  near_miss:
+    - {kind: missing_section, cite: "§ 300 VVG", q: "Welche Frist nennt § 300 VVG für die Meldung eines Schadens an die Rückversicherung?"}
+    - {kind: missing_section, cite: "§ 400 VAG", q: "Welche Mindestkapitalanforderung regelt § 400 VAG für Pensionskassen?"}
+    - {kind: missing_section, cite: "§ 150 KWG", q: "Wie hoch ist die Einlagensicherung nach § 150 KWG je Kunde?"}
+    - {kind: missing_section, cite: "§ 250 VVG", q: "Was regelt § 250 VVG zur Tierkrankenversicherung?"}
+    - {kind: missing_section, cite: "§ 500 VAG", q: "Welche Berichtspflichten enthält § 500 VAG für Versicherungsvermittler?"}
+    - {kind: repealed, cite: "§ 6 VVG a. F.", q: "Welche Anzeigefrist sah § 6 des Versicherungsvertragsgesetzes in der bis 2007 geltenden Fassung bei Gefahrerhöhung vor?"}
+    - {kind: repealed, cite: "§ 1 ZugabeVO", q: "Welche Zugaben erlaubte § 1 der Zugabeverordnung beim Abschluss eines Versicherungsvertrags?"}
+    - {kind: unstated, cite: null, q: "Wie viel Euro beträgt die Mindestprämie, die § 33 VVG für einen Versicherungsvertrag vorschreibt?"}
+    - {kind: unstated, cite: null, q: "Welchen Prämienrabatt in Prozent gewährt § 8 VVG bei einem Widerruf?"}
+    - {kind: unstated, cite: null, q: "Welchen Selbstbehalt in Euro schreibt § 28 VVG für eine Hausratversicherung vor?"}
+    - {kind: unstated, cite: null, q: "Welche Vertragsstrafe in Euro legt § 38 VVG bei verspäteter Folgeprämie fest?"}
+    - {kind: unstated, cite: null, q: "Wie viele Euro darf der Versicherer nach § 14 VVG als Abschlagszahlung höchstens leisten?"}
+  off_topic:
+    - "Welche Fristen gelten für die Anfechtung eines Testaments nach dem Erbschaftsteuergesetz?"
+    - "Wie hoch ist der aktuelle Leitzins der Europäischen Zentralbank?"
+    - "Welche Regeln gelten für den Betrieb einer Drohne über Wohngebiet?"
+    - "Welche Voraussetzungen hat die Anerkennung als Kriegsdienstverweigerer?"
+    - "Wie lange darf ein Bauvorhaben nach der Landesbauordnung unterbrochen sein?"
+    - "Welche Gebühren fallen für die Eintragung einer Marke beim Patentamt an?"
+stadtwerke_sued:
+  near_miss:
+    - {kind: missing_section, cite: "Art. 150 DSGVO", q: "Was regelt Art. 150 DSGVO zur Datenübermittlung an Energieversorger?"}
+    - {kind: missing_section, cite: "§ 300 EnWG", q: "Welche Frist nennt § 300 EnWG für den Wechsel des Wasserversorgers?"}
+    - {kind: missing_section, cite: "Art. 80 RL (EU) 2022/2555", q: "Welche Meldefrist enthält Art. 80 der Richtlinie (EU) 2022/2555 für Betreiber von Fernwärmenetzen?"}
+    - {kind: missing_section, cite: "§ 99 BSIG", q: "Wie hoch ist das Bußgeld nach § 99 BSIG bei verspäteter Störungsmeldung?"}
+    - {kind: missing_section, cite: "Art. 200 DSGVO", q: "Welche Aufbewahrungsfrist für Zählerdaten ergibt sich aus Art. 200 DSGVO?"}
+    - {kind: repealed, cite: "Art. 7 RL 95/46/EG", q: "Welche Zulässigkeitsgründe nannte Art. 7 der Datenschutzrichtlinie 95/46/EG für die Verarbeitung von Kundendaten?"}
+    - {kind: repealed, cite: "Art. 3 RL 2009/72/EG", q: "Welche Entflechtungspflicht enthielt Art. 3 der Elektrizitätsrichtlinie 2009/72/EG?"}
+    - {kind: unstated, cite: null, q: "Welche Telefonnummer der Aufsichtsbehörde ist für Meldungen nach Art. 33 DSGVO zu verwenden?"}
+    - {kind: unstated, cite: null, q: "Welche Speicherdauer in Monaten schreibt Art. 17 DSGVO für Verbrauchsdaten vor?"}
+    - {kind: unstated, cite: null, q: "Welche Seitenzahl darf eine Auskunft nach Art. 15 DSGVO höchstens umfassen?"}
+    - {kind: unstated, cite: null, q: "Welchen Betrag in Euro nennt Art. 35 DSGVO als Schwelle für eine Datenschutz-Folgenabschätzung?"}
+    - {kind: unstated, cite: null, q: "Wie viele Mitarbeiter muss ein Unternehmen nach Art. 28 DSGVO mindestens haben, um einen Auftragsverarbeiter einzusetzen?"}
+  off_topic:
+    - "Welche Pflichten hat ein Vermieter bei der Rückgabe einer Mietkaution?"
+    - "Wie hoch ist der Regelsatz beim Bürgergeld im Jahr 2025?"
+    - "Welche Regeln gelten für das Führen eines Waffenscheins?"
+    - "Welche Fristen gelten für die Anfechtung eines Verwaltungsakts im Ausländerrecht?"
+    - "Wie wird die Grunderwerbsteuer beim Kauf einer Immobilie berechnet?"
+    - "Welche Zulassungsvoraussetzungen gelten für ein Taxiunternehmen?"

@@ -329,7 +329,7 @@ sequenceDiagram
     CLI->>Gen: generate_qa(chunks, prompt_version)
     Gen-->>CLI: QACandidates
     CLI->>Sup: check_support(candidate, chunk, llm, model)
-    CLI->>CLI: check_overlap, dedupe, perturb_case(_async), attack cases from pipeline, refusal cases
+    CLI->>CLI: check_overlap, dedupe, perturb_case(_async), attack cases (the same `AttackSet` that `pruefstand ingest` put into the corpus; `check_attack_versions` compares `sources["attacks"]` with `prompt_versions["attacks"]`), refusal cases
     CLI->>CLI: assign_splits (cluster_id-aware, incl. SMOKE_LIVE and ROBUST_PR), validate_dataset
     CLI->>RM: review 100 % of smoke and core, seeded 20 % sample of full
     RM-->>CLI: ok / bad per item (deterministic checks override, the judge never writes or rewrites references)
