@@ -53,7 +53,7 @@ def _words(text: str) -> list[str]:
 def test_validate_dataset_accepts_both_splits() -> None:
     result = CliRunner().invoke(app, ["validate", "dataset", str(DATASET)])
     assert result.exit_code == 0, result.output
-    assert "40 valid cases" in result.output
+    assert "OK: 0 problems" in result.output
 
 
 def test_the_split_files_equal_a_fresh_selection() -> None:
