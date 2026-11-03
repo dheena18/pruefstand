@@ -6,6 +6,8 @@ the second document of a pair must not be the cluster of another case (leakage b
 ``style_report``: the layperson share of the kept set (report level, nothing is dropped for it).
 """
 
+import re
+import unicodedata
 from collections import Counter
 from collections.abc import Mapping, Sequence
 
@@ -16,7 +18,13 @@ from pruefstand.core.enums import Lang
 from pruefstand.core.ids import ChunkId
 from pruefstand.core.models.corpus import Chunk
 from pruefstand.core.models.dataset import FilterResult, QACandidate
-from pruefstand.dataset.evidence import cited_absatz, cites_chunk, evidence_span
+from pruefstand.dataset.evidence import (
+    MAX_EVIDENCE_TOKENS,
+    cited_absatz,
+    cites_chunk,
+    count_tokens,
+    normalise_text,
+)
 from pruefstand.dataset.to_case import case_id_of
 
 
@@ -28,43 +36,130 @@ def sources_of(c: QACandidate, chunks: Mapping[ChunkId, Chunk]) -> list[Chunk] |
     return [chunks[i] for i in ids]
 
 
+_MARKER = re.compile(r"(?<!\w)\((\d+[a-z]?)\)\s")
+_ABSATZ = re.compile(
+    r"(?i:Absatz|Abs\.?)\s*\(?\s*\d+[a-z]?\)?(?:\s*(?:,|und|bis|[–—-])\s*\(?\d+[a-z]?\)?)*"
+)
+_NUMBER = re.compile(r"\d+[a-z]?")
+_RANGE = re.compile(r"bis|[–—-]")
+MIN_EVIDENCE_WORDS = 3
+_MAX_RANGE = 30
+
+
+def absaetze_of(citation: str) -> list[str]:
+    """All Absatz numbers a citation names, ranges expanded (``Abs. 1 bis 3`` -> 1, 2, 3).
+
+    Examples:
+        >>> absaetze_of("Art. 5 Abs. 1 bis 3 DSGVO")
+        ['1', '2', '3']
+        >>> absaetze_of("§ 622 Abs. 2 und 3 BGB")
+        ['2', '3']
+    """
+    found: list[str] = []
+    for match in _ABSATZ.finditer(citation):
+        numbers = _NUMBER.findall(match.group(0))
+        first, last = numbers[0], numbers[-1]
+        spans = _RANGE.search(match.group(0)) and first.isdigit() and last.isdigit()
+        if spans and 0 <= int(last) - int(first) <= _MAX_RANGE:
+            numbers = [str(n) for n in range(int(first), int(last) + 1)]
+        found += numbers
+    return found
+
+
+def _lead(number: str) -> int:
+    return int("".join(ch for ch in number if ch.isdigit()))
+
+
+def _scope(source: Chunk, absaetze: set[str] | None) -> str | None:
+    """The text of ``source`` in which evidence for the cited Absätze may lie (None: nowhere)."""
+    body = unicodedata.normalize("NFC", normalise_text(source.text))
+    if absaetze is None:
+        return body
+    later = int(source.chunk_id.rsplit("#", 1)[-1] or 0) > 0
+    markers = list(_MARKER.finditer(body))
+    if not markers:  # no Absätze: a lone Absatz 1, or the continuation of a long Absatz
+        return body if later or absaetze <= {"1"} else None
+    parts = [
+        body[m.start() : markers[n + 1].start() if n + 1 < len(markers) else len(body)]
+        for n, m in enumerate(markers)
+        if m.group(1) in absaetze
+    ]
+    first = _lead(markers[0].group(1))
+    # the text before the first marker is a continuation only in a later chunk, and only of an
+    # Absatz that comes before that marker; in the first chunk it is the heading (never evidence)
+    if not parts and later and all(a[:1].isdigit() and _lead(a) < first for a in absaetze):
+        parts.append(body[: markers[0].start()])
+    return " ".join(parts) if parts else None
+
+
+def _cited_absaetze(c: QACandidate, source: Chunk) -> set[str] | None:
+    first = cited_absatz(c.citation, source)
+    if first is None:
+        return None
+    if len(extract_citations(c.citation or "")) == 1:
+        return {first, *absaetze_of(c.citation or "")}
+    return {first}
+
+
+def _evidence_reason(c: QACandidate, cited: Sequence[Chunk]) -> str | None:
+    span = unicodedata.normalize("NFC", normalise_text(c.evidence_span or ""))
+    if len(span.split()) < MIN_EVIDENCE_WORDS:
+        return "evidence_too_short"
+    if count_tokens(span) > MAX_EVIDENCE_TOKENS:
+        return "evidence_off_paragraph"
+    anywhere = False
+    for source in cited:
+        scope = _scope(source, _cited_absaetze(c, source))
+        if scope is not None and span in scope:
+            return None
+        anywhere = anywhere or span in unicodedata.normalize("NFC", normalise_text(source.text))
+    return "evidence_not_in_cited_absatz" if anywhere else "evidence_off_paragraph"
+
+
 def check_evidence(c: QACandidate, sources: Sequence[Chunk]) -> FilterResult:
     r"""Check citation and evidence against the chunks the citation names.
 
-    A citation that parses but names none of the source paragraphs is ``citation_mismatch``. An
-    ``evidence_span`` must be a span of the cited Absatz of a chunk the citation names; the whole
-    chunk is accepted only when the citation names the paragraph without an Absatz, or the chunk
-    has no Absätze (``evidence_off_paragraph``). A missing citation or evidence is not a reason:
-    they are reported by the caller.
+    Reasons: ``citation_missing``, ``citation_unparsed``, ``citation_mismatch`` (it parses but
+    names none of the source paragraphs), ``evidence_missing``, ``evidence_too_short`` (fewer than
+    3 words), ``evidence_not_in_cited_absatz`` (the text is in a cited chunk but outside the cited
+    Absatz or range; an Absatz the chunk does not have is accepted only for the text before the
+    first Absatz marker of a LATER chunk, never for the heading of the first chunk) and
+    ``evidence_off_paragraph`` (in no cited chunk, or over 60 tokens). A citation without Absatz
+    accepts the whole cited chunk.
 
     Args:
         c: The candidate.
         sources: Its chunks (gold chunk first).
 
     Returns:
-        The verdict.
+        The verdict; several reasons can apply.
 
     Examples:
         >>> from pruefstand.core.models.corpus import Chunk
         >>> kw = dict(doc_id="d", tenant="t", lang="de", section=None, parallel_id=None,
         ...           version_date=None, license="l", source="gii:bgb", citation_key="§ 622 BGB")
-        >>> chunk = Chunk(chunk_id="a#0", text="(1) Eins gilt.\n(2) Zwei gilt.", **kw)
+        >>> chunk = Chunk(chunk_id="a#0", text="(1) Eins gilt hier.\n(2) Zwei gilt hier.", **kw)
         >>> cand = QACandidate(question="q?", answer="a", citation="§ 622 Abs. 1 BGB",
         ...                    chunk_id="a#0", prompt_version="qa_factual_de_v1",
-        ...                    evidence_span="Zwei gilt.")
+        ...                    evidence_span="Zwei gilt hier.")
         >>> check_evidence(cand, [chunk]).reasons
-        ('evidence_off_paragraph',)
+        ('evidence_not_in_cited_absatz',)
     """
-    named = bool(extract_citations(c.citation or ""))
-    cited = [s for s in sources if cites_chunk(c.citation, s)]
-    if named and not cited:
-        return FilterResult(kept=False, reasons=("citation_mismatch",))
-    if c.evidence_span is not None and not any(
-        evidence_span(c.evidence_span, s.text, cited_absatz(c.citation, s)) is not None
-        for s in cited
-    ):
-        return FilterResult(kept=False, reasons=("evidence_off_paragraph",))
-    return FilterResult(kept=True, reasons=())
+    reasons: list[str] = []
+    cited = list(sources)
+    if not c.citation:
+        reasons.append("citation_missing")
+    elif not extract_citations(c.citation):
+        reasons.append("citation_unparsed")
+    else:
+        cited = [s for s in sources if cites_chunk(c.citation, s)]
+        if not cited:
+            return FilterResult(kept=False, reasons=("citation_mismatch",))
+    if c.evidence_span is None:
+        reasons.append("evidence_missing")
+    elif (reason := _evidence_reason(c, cited)) is not None:
+        reasons.append(reason)
+    return FilterResult(kept=not reasons, reasons=tuple(reasons))
 
 
 def doc_group(chunk: Chunk) -> str:

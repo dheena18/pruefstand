@@ -79,6 +79,11 @@ FILTER_REASONS = frozenset(
         "chunk_missing",
         "citation_mismatch",
         "evidence_off_paragraph",
+        "evidence_not_in_cited_absatz",
+        "evidence_too_short",
+        "evidence_missing",
+        "citation_missing",
+        "citation_unparsed",
         "cluster_overlap",
     }
 )

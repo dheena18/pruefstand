@@ -1,10 +1,18 @@
 """Evidence/citation check, cluster overlap of pairs and the style report (T4.3)."""
 
+import unicodedata
+
 from testsupport.qa_support import as_chunk, chunk
 
 from pruefstand.core.enums import Lang
+from pruefstand.core.ids import ChunkId
 from pruefstand.core.models.dataset import QACandidate
-from pruefstand.dataset.filters_checks import check_evidence, drop_cluster_overlap, style_report
+from pruefstand.dataset.filters_checks import (
+    absaetze_of,
+    check_evidence,
+    drop_cluster_overlap,
+    style_report,
+)
 
 G1 = chunk("gii-bgb-622#1")
 G0 = chunk("gii-bgb-622#0")
@@ -49,10 +57,6 @@ def test_the_whole_chunk_is_not_accepted_when_the_citation_names_another_chunk()
 
 def test_a_citation_without_absatz_accepts_the_whole_chunk() -> None:
     assert check_evidence(_cand(citation="§ 622 BGB"), [G1]).kept
-
-
-def test_missing_citation_and_evidence_are_not_reasons() -> None:
-    assert check_evidence(_cand(citation=None, evidence_span=None), [G1]).kept
 
 
 def _pair(first: str, second: str, tag: str = "") -> QACandidate:
@@ -111,3 +115,82 @@ def test_the_style_share_is_reported_from_the_minimum_count() -> None:
     assert (report.laie, report.fachlich, report.share, report.ok) == (5, 5, 0.5, False)
     assert style_report(cands[:4], 0.6, 10).ok is None
     assert style_report([_cand()], 0.6, 1).unknown == 1
+
+
+ART5_0 = chunk("eurlex-32016r0679-art-5-de#0")
+ART5_1 = chunk("eurlex-32016r0679-art-5-de#1")
+ART6_0 = chunk("eurlex-32016r0679-art-6-de#0")
+ART6_1 = chunk("eurlex-32016r0679-art-6-de#1")
+HEADING = "Grundsätze für die Verarbeitung personenbezogener Daten"
+ART5_SENTENCE = "Personenbezogene Daten müssen"
+
+
+def _dsgvo(citation: str, evidence: str | None, chunk_id: str = ART5_0.chunk_id) -> QACandidate:
+    return QACandidate(
+        question="Was verlangt die DSGVO?", answer="Rechtmäßigkeit.", citation=citation,
+        chunk_id=ChunkId(chunk_id), prompt_version="qa_factual_de_v1", evidence_span=evidence,
+    )  # fmt: skip
+
+
+def test_an_absatz_the_chunk_does_not_have_does_not_accept_the_heading() -> None:
+    # regression (review of #76): Abs. 9 does not exist; the text before "(1)" is the heading
+    got = check_evidence(_dsgvo("Art. 5 Abs. 9 DSGVO", HEADING), [ART5_0])
+    assert got.reasons == ("evidence_not_in_cited_absatz",)
+    heading6 = ART6_0.text.split("\n")[0]
+    assert check_evidence(
+        _dsgvo("Art. 6 Abs. 9 DSGVO", heading6, ART6_0.chunk_id), [ART6_0]
+    ).reasons == ("evidence_not_in_cited_absatz",)
+
+
+def test_the_heading_is_no_evidence_for_absatz_one_either() -> None:
+    got = check_evidence(_dsgvo("Art. 5 Abs. 1 DSGVO", HEADING), [ART5_0])
+    assert got.reasons == ("evidence_not_in_cited_absatz",)
+    assert check_evidence(_dsgvo("Art. 5 Abs. 1 DSGVO", ART5_SENTENCE), [ART5_0]).kept
+
+
+def test_an_absatz_missing_from_every_chunk_of_the_norm_is_rejected() -> None:
+    evidence = "Der Verantwortliche ist für die Einhaltung des Absatzes 1 verantwortlich"
+    got = check_evidence(_dsgvo("Art. 5 Abs. 9 DSGVO", evidence), [ART5_0, ART5_1])
+    assert got.reasons == ("evidence_not_in_cited_absatz",)
+
+
+def test_ranges_of_absaetze_are_expanded() -> None:
+    assert absaetze_of("Art. 5 Abs. 1 bis 3 DSGVO") == ["1", "2", "3"]
+    assert absaetze_of("Art. 5 Abs. 1-2 DSGVO") == ["1", "2"]
+    assert absaetze_of("§ 622 Abs. 2 und 3 BGB") == ["2", "3"]
+    evidence = "Der Verantwortliche ist für die Einhaltung des Absatzes 1 verantwortlich"
+    for citation in ("Art. 5 Abs. 1 bis 2 DSGVO", "Art. 5 Abs. 1-2 DSGVO"):
+        assert check_evidence(_dsgvo(citation, evidence), [ART5_0, ART5_1]).kept
+    assert not check_evidence(_dsgvo("Art. 5 Abs. 1 DSGVO", evidence), [ART5_0, ART5_1]).kept
+
+
+def test_text_before_the_first_marker_of_a_later_chunk_is_a_continuation() -> None:
+    tail = ART6_1.text[4:]
+    later = as_chunk(
+        ART6_1,
+        chunk_id="eurlex-32016r0679-art-6-de#9",
+        text=tail + "\n" + chunk("eurlex-32016r0679-art-6-de#2").text,
+    )
+    evidence = tail.split(".")[0][:60]
+    ok = check_evidence(_dsgvo("Art. 6 Abs. 1 DSGVO", evidence, later.chunk_id), [later])
+    assert ok.kept
+    assert not check_evidence(_dsgvo("Art. 6 Abs. 9 DSGVO", evidence, later.chunk_id), [later]).kept
+    first = as_chunk(later, chunk_id="eurlex-32016r0679-art-6-de#0")
+    assert not check_evidence(_dsgvo("Art. 6 Abs. 1 DSGVO", evidence, first.chunk_id), [first]).kept
+
+
+def test_short_evidence_is_rejected_and_nfd_evidence_is_compared_as_nfc() -> None:
+    assert check_evidence(_dsgvo("Art. 5 Abs. 1 DSGVO", "Daten müssen"), [ART5_0]).reasons == (
+        "evidence_too_short",
+    )
+    nfd = unicodedata.normalize("NFD", "Personenbezogene Daten müssen")
+    assert nfd != unicodedata.normalize("NFC", nfd)
+    assert check_evidence(_dsgvo("Art. 5 Abs. 1 DSGVO", nfd), [ART5_0]).kept
+
+
+def test_a_missing_or_unparsable_citation_is_a_reason() -> None:
+    assert check_evidence(_dsgvo("irgendwo", ART5_SENTENCE), [ART5_0]).reasons == (
+        "citation_unparsed",
+    )
+    got = check_evidence(_cand(citation=None, evidence_span=None), [G1])
+    assert got.reasons == ("citation_missing", "evidence_missing")

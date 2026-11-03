@@ -9,8 +9,8 @@ a candidate the support model could not judge because a quota stopped the batch 
 
 import asyncio
 from collections import Counter
-from collections.abc import Mapping, Sequence
-from dataclasses import dataclass
+from collections.abc import Callable, Mapping, Sequence
+from dataclasses import dataclass, field
 from typing import Literal
 
 from pydantic import BaseModel, ConfigDict
@@ -19,13 +19,18 @@ from pruefstand.core.errors import BudgetExceeded, QuotaExhausted
 from pruefstand.core.ids import ChunkId
 from pruefstand.core.models.corpus import Chunk
 from pruefstand.core.models.dataset import FilterConfig, FilterResult, QACandidate
-from pruefstand.dataset.filters import Embedder, check_support, check_support_family, dedupe_report
 from pruefstand.dataset.filters_checks import (
     StyleReport,
     check_evidence,
     drop_cluster_overlap,
     sources_of,
     style_report,
+)
+from pruefstand.dataset.filters_support import (
+    Embedder,
+    check_support,
+    check_support_family,
+    dedupe_report,
 )
 from pruefstand.dataset.filters_text import check_overlap
 from pruefstand.dataset.to_case import case_id_of
@@ -57,17 +62,25 @@ class FilterReport(BaseModel):
     reasons: dict[str, int]
     support: Literal["checked", "skipped"]
     support_model: str | None
+    generator_model: str | None = None
     style: StyleReport
     config: FilterConfig
 
 
 @dataclass(frozen=True)
 class SupportSetup:
-    """The support model: its client, its id and the generator model it must differ from."""
+    """The support model: its client, its id and the generator model it must differ from.
+
+    ``known`` holds verdicts of an earlier run (by ``case_id_of``; no request is made for them);
+    ``on_verdict`` is called with every fresh verdict as soon as it arrives, so a caller can
+    persist it before a later failure.
+    """
 
     llm: LLMClient
     model: str
     generator_model: str
+    known: Mapping[str, FilterResult] = field(default_factory=dict)
+    on_verdict: Callable[[QACandidate, FilterResult], None] | None = None
 
 
 @dataclass(frozen=True)
@@ -77,6 +90,7 @@ class FilterOutcome:
     kept: list[QACandidate]
     dropped: list[Dropped]
     report: FilterReport
+    unjudged: list[QACandidate]
 
 
 def _static_reasons(
@@ -108,8 +122,10 @@ async def _support_stage(
         async with gate:
             if stop.is_set():
                 return None
+            if (prior := setup.known.get(case_id_of(c))) is not None:
+                return prior
             try:
-                return await check_support(
+                verdict = await check_support(
                     c,
                     chunks[c.chunk_id],
                     setup.llm,
@@ -119,6 +135,9 @@ async def _support_stage(
             except (QuotaExhausted, BudgetExceeded):
                 stop.set()
                 return None
+            if setup.on_verdict is not None:
+                setup.on_verdict(c, verdict)
+            return verdict
 
     results = await asyncio.gather(*(one(c) for c in cands))
     return {case_id_of(c): r for c, r in zip(cands, results, strict=True)}
@@ -128,19 +147,19 @@ def _split_verdicts(
     live: Sequence[QACandidate],
     verdicts: Mapping[str, FilterResult | None],
     dropped: list[Dropped],
-) -> tuple[list[QACandidate], int]:
-    """Keep the supported candidates, add the rejected to ``dropped``, count the unjudged."""
+) -> tuple[list[QACandidate], list[QACandidate]]:
+    """Keep the supported candidates, add the rejected to ``dropped``, return the unjudged."""
     checked: list[QACandidate] = []
-    not_checked = 0
+    unjudged: list[QACandidate] = []
     for c in live:
         verdict = verdicts[case_id_of(c)]
         if verdict is None:
-            not_checked += 1
+            unjudged.append(c)
         elif verdict.kept:
             checked.append(c)
         else:
             dropped.append(Dropped(candidate=c, reasons=verdict.reasons))
-    return checked, not_checked
+    return checked, unjudged
 
 
 async def filter_candidates(
@@ -180,19 +199,18 @@ async def filter_candidates(
             live.append(c)
     live, overlap = drop_cluster_overlap(live, chunks)
     dropped += [Dropped(candidate=c, reasons=("cluster_overlap",)) for c in overlap]
-    not_checked = 0
+    unjudged: list[QACandidate] = []
     if support is not None:
         verdicts = await _support_stage(live, chunks, support, config.concurrency)
-        live, not_checked = _split_verdicts(live, verdicts, dropped)
+        live, unjudged = _split_verdicts(live, verdicts, dropped)
     kept, duplicates = dedupe_report(live, embed, config.max_sim)
     dropped += [Dropped(candidate=c, reasons=("near_duplicate",)) for c in duplicates]
     keep = {id(c) for c in kept}
     ordered = [c for c in live if id(c) in keep]
-    return FilterOutcome(
-        ordered,
-        dropped,
-        _report(cands, ordered, dropped, not_checked=not_checked, support=support, config=config),
+    report = _report(
+        cands, ordered, dropped, not_checked=len(unjudged), support=support, config=config
     )
+    return FilterOutcome(ordered, dropped, report, unjudged)
 
 
 def _report(
@@ -213,6 +231,7 @@ def _report(
         reasons=dict(sorted(reasons.items())),
         support="checked" if support is not None else "skipped",
         support_model=support.model if support is not None else None,
+        generator_model=support.generator_model if support is not None else None,
         style=style_report(kept, config.min_laie_share, config.style_min_n),
         config=config,
     )

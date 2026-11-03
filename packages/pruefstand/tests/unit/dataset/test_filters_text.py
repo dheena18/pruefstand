@@ -9,9 +9,11 @@ from testsupport.qa_support import as_chunk, chunk
 
 from pruefstand.core.enums import Lang
 from pruefstand.core.errors import ConfigError
+from pruefstand.core.models.corpus import Chunk
 from pruefstand.core.models.dataset import QACandidate
 from pruefstand.dataset.filters_text import (
     check_overlap,
+    copy_words,
     longest_common_run,
     overlap_ratio,
     refers_to_text,
@@ -140,3 +142,53 @@ def test_a_run_never_exceeds_either_text(tokens: list[str]) -> None:
     other = words(CHUNK.text)
     assert longest_common_run(tokens, other) <= min(len(tokens), len(other))
     assert longest_common_run(tokens, tokens) == len(tokens)
+
+
+@pytest.mark.parametrize(
+    "question",
+    [
+        "Was gilt laut dem obigen Text für Probezeiten?",
+        "Was steht im obigen Text zur Frist?",
+        "Wie lang ist die Frist im genannten Text?",
+        "Was regelt es in diesem Paragrafen?",
+        "Was besagt die vorliegende Vorschrift zur Frist?",
+        "Was sagt der zitierte Paragraf zur Kündigung?",
+        "Was nennt dieser Abschnitt als Frist?",
+    ],
+)
+def test_references_to_the_given_source_are_meta_references(question: str) -> None:
+    assert refers_to_text(question)
+    assert check_overlap(_cand(question), CHUNK, 0.0).reasons == ("meta_reference",)
+
+
+@pytest.mark.parametrize(
+    "question",
+    [
+        "Was ist der Text eines Arbeitsvertrags?",
+        "Welche Vorschrift gilt für die Probezeit?",
+        "Was regelt der Paragraf zur Probezeit im Arbeitsrecht?",
+    ],
+)
+def test_ordinary_uses_of_the_words_are_not_flagged(question: str) -> None:
+    assert not refers_to_text(question)
+
+
+def test_umlaut_and_sz_spellings_are_one_spelling_for_the_copy_rule() -> None:
+    assert copy_words("Fünfzehnten Kündigungsfrist Straße") == copy_words(
+        "FUENFZEHNTEN Kuendigungsfrist Strasse"
+    )
+    typed = "Frist von vier Wochen zum Fuenfzehnten oder zum Ende eines Kalendermonats"
+    assert "ngram_overlap" in check_overlap(_cand(typed), CHUNK, 0.0).reasons
+
+
+def test_norm_citations_and_law_names_are_not_copying() -> None:
+    chunk = chunk_with("Nach § 622 Abs. 2 Satz 1 des Bürgerlichen Gesetzbuchs gilt für Kündigungen")
+    question = "Wann gilt § 622 Abs. 2 Satz 1 des Bürgerlichen Gesetzbuchs?"
+    assert check_overlap(_cand(question), chunk, 0.0).kept
+    for text in ("Wann gilt Art. 5 Abs. 1 DSGVO?", "Wann gilt § 3 ArbZG Satz 2 KSchG BGB?"):
+        assert copy_words(text) == ["wann", "gilt"]
+    assert copy_words("Kündigungsschutzgesetz und Arbeitszeitgesetz") == ["und"]
+
+
+def chunk_with(text: str) -> Chunk:
+    return as_chunk(CHUNK, text=text)

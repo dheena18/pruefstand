@@ -19,11 +19,33 @@ from pruefstand.core.models.dataset import FilterResult, QACandidate
 NGRAM = 6
 _SOFT_HYPHEN = "­"
 _WORD = re.compile(r"\w+")
-_NOUN_DE = r"(?:text(?:es|s)?|textauszug|abschnitt(?:s|es)?|auszug(?:s|es)?|ausschnitt|passage)"
-_META_DE = re.compile(
-    rf"\b(?:(?:der|dem|den|des|diesem|dieser|diesen|dieses|im|laut|gemäß|vom|aus)\s+)+{_NOUN_DE}\b"
+_SOURCE_NOUN = (
+    r"(?:text(?:es|s)?|textauszug|abschnitt(?:s|es)?|auszug(?:s|es)?|ausschnitt|passage"
+    r"|paragra(?:f|ph)(?:en|s)?|vorschrift(?:en)?|norm)"
+)
+_TEXT_NOUN = r"(?:text(?:es|s)?|textauszug|abschnitt(?:s|es)?|auszug(?:s|es)?|ausschnitt|passage)"
+_POINTER = (
+    r"(?:dies(?:e|er|em|en|es)|vorliegend\w*|zitiert\w*|genannt\w*|obig\w*|angegeben\w*"
+    r"|folgend\w*|oben\s+genannt\w*)"
+)
+# a pointer word + text/norm noun always refers to the given source; a bare article + text noun
+# does too unless a genitive/of-phrase turns it into an ordinary subject ("Text eines Vertrags")
+_META_DE = (
+    re.compile(rf"\b{_POINTER}\s+{_SOURCE_NOUN}\b"),
+    re.compile(
+        rf"\b(?:der|dem|den|des|im|laut|gemäß|vom)\s+{_TEXT_NOUN}\b(?!\s+(?:eines|einer|einem|von)\b)"
+    ),
 )
 _META_EN = re.compile(r"\b(?:the|this|that)\s+(?:text|passage|excerpt|extract)\b")
+_NORM_REF = re.compile(
+    r"(?:§§?|\b(?:Artikel|Art|Absatz|Abs|Satz|S|Nr|Nummer|Buchstabe|lit)\b\.?)\s*\d+[a-z]?(?![a-z])",
+    re.IGNORECASE,
+)
+_LAW_NAME = re.compile(
+    r"\b(?:Bürgerliche[nms]?\s+Gesetzbuch\w*|[A-ZÄÖÜ][A-Za-zÄÖÜäöü-]*(?:gesetz|gesetzbuch|verordnung)\w*"
+    r"|(?=[A-Za-zÄÖÜäöü]{2,9}\b)[A-ZÄÖÜ][a-zäöü]*[A-ZÄÖÜ][A-Za-zÄÖÜäöü]*)\b"
+)
+_FOLD = str.maketrans({"ä": "ae", "ö": "oe", "ü": "ue", "ß": "ss"})
 
 
 def words(text: str) -> list[str]:
@@ -37,6 +59,24 @@ def words(text: str) -> list[str]:
     """
     normal = unicodedata.normalize("NFC", text).replace(_SOFT_HYPHEN, "").lower()
     return _WORD.findall(normal)
+
+
+def copy_words(text: str) -> list[str]:
+    """Words for the copy rules: ``words`` without norm references, with umlauts folded.
+
+    ``§ 622``, ``Abs. 2``, ``Satz 1``, ``Art. 5`` and law names (``BGB``, ``Bürgerlichen
+    Gesetzbuchs``, ``Kündigungsschutzgesetz``) are not copying; ``ä ö ü ß`` become ``ae oe ue
+    ss``, so ``Kuendigungsfrist`` equals ``Kündigungsfrist``.
+
+    Examples:
+        >>> copy_words("Wann gilt § 622 Abs. 2 Satz 1 BGB für Kündigungen?")
+        ['wann', 'gilt', 'fuer', 'kuendigungen']
+        >>> copy_words("Straße") == copy_words("Strasse")
+        True
+    """
+    plain = unicodedata.normalize("NFC", text).replace(_SOFT_HYPHEN, "")
+    plain = _LAW_NAME.sub(" ", _NORM_REF.sub(" ", plain))
+    return _WORD.findall(plain.lower().translate(_FOLD))
 
 
 def ngrams(tokens: Sequence[str], n: int = NGRAM) -> set[tuple[str, ...]]:
@@ -93,12 +133,16 @@ def refers_to_text(question: str, lang: Lang = Lang.DE) -> bool:
         True
         >>> refers_to_text("Wie lange ist die Kündigungsfrist?")
         False
+        >>> refers_to_text("Was regelt die vorliegende Vorschrift?")
+        True
+        >>> refers_to_text("Was ist der Text eines Arbeitsvertrags?")
+        False
         >>> refers_to_text("What does the passage say?", Lang.EN)
         True
     """
     normal = unicodedata.normalize("NFC", question).lower()
-    pattern = _META_EN if lang is Lang.EN else _META_DE
-    return pattern.search(normal) is not None
+    patterns = (_META_EN,) if lang is Lang.EN else _META_DE
+    return any(p.search(normal) for p in patterns)
 
 
 def check_overlap(
@@ -148,7 +192,7 @@ def check_overlap(
     if long_copy_words < 2:
         msg = f"long_copy_words must be at least 2, not {long_copy_words}"
         raise ConfigError(msg)
-    question, source = words(c.question), words(chunk.text)
+    question, source = copy_words(c.question), copy_words(chunk.text)
     reasons: list[str] = []
     if overlap_ratio(question, source) > max_ngram_overlap:
         reasons.append("ngram_overlap")

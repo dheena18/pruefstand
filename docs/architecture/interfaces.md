@@ -1518,7 +1518,8 @@ def dedupe(cands: Sequence[QACandidate], embed: Callable[[Sequence[str]], NDArra
     # T4.3 (D824, D825, D826), additive: dedupe_report(...) -> (kept, dropped); dataset.filters_checks: check_evidence(c, sources),
     #   drop_cluster_overlap(cands, chunks), style_report(cands, minimum, min_n); dataset.filters_run: filter_candidates(cands, chunks,
     #   embed, config=FilterConfig(), *, support=SupportSetup | None) -> FilterOutcome(kept, dropped, report); core.models.dataset:
-    #   FilterConfig, FILTER_REASONS; dataset.to_case.case_id_of(c); scripts/filter_qa.py
+    #   FilterConfig, FILTER_REASONS; dataset.to_case.case_id_of(c); scripts/filter_qa.py; D828: all of it is re-exported by
+    #   dataset.filters (code in filters_support / filters_text / filters_checks / filters_run); FilterOutcome.unjudged
 def assign_splits(cases: Sequence[TestCase], plan: SplitPlan, rng: np.random.Generator) -> list[TestCase]  # whole clusters stay in one split
     # R12 N1.1 (D248, owner T4.1): also sets TestCase.block and TestCase.judged_subset with the same rng:
     #   full: refusal stratum (category UNANSWERABLE cases) -> block None; every other full case -> block 0/1/2, whole
