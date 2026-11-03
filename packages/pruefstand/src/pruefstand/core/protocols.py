@@ -1,6 +1,6 @@
 """Structural protocols implemented by other modules (interfaces §4, §5, §7, §11).
 
-``Perturbation`` is added by T4.4; ``LLMPerturbation`` follows with T4.5.
+``Perturbation`` is added by T4.4, ``LLMPerturbation`` by T4.5.
 """
 
 from collections.abc import Iterator
@@ -176,4 +176,23 @@ class Perturbation(Protocol):
 
     def apply(self, text: str, rng: np.random.Generator) -> PerturbResult:
         """Perturb ``text``; ``changed`` is False when no rule applied. Never raises on text."""
+        ...
+
+
+@runtime_checkable
+class LLMPerturbation(Perturbation, Protocol):
+    """A perturbation that may call a model (compound_split, register, gender, colloquial)."""
+
+    async def aapply(
+        self, text: str, llm: LLMClientLike, rng: np.random.Generator
+    ) -> PerturbResult:
+        """Rewrite ``text`` and validate the rewrite.
+
+        Returns:
+            The accepted rewrite, or the unchanged text with ``changed=False`` and the reason in
+            ``notes``.
+
+        Raises:
+            LLMError: The model call failed (``PolicyViolation``, ``QuotaExhausted``, ...).
+        """
         ...

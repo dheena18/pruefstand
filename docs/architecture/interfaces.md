@@ -632,6 +632,7 @@ def eval_fingerprint(*, dataset_name: str, dataset_version: str, splits: Sequenc
 class PruefstandError(Exception); class ConfigError; class TargetError; class LLMError(message, *, transient: bool = False, status: int | None = None); class PolicyViolation(LLMError); class BudgetExceeded
 class QuotaExhausted(LLMError)        # R9 (D9-07): provider quota exhausted (GitHub Models 429 + exhausted headers); raised by
                                       # LLMClient (T5.1), caught by the runner -> counts["judge_skipped"], reason "judge_quota"
+class DataGuardViolation(PolicyViolation)   # T4.5 (D745, additive): the data guard (private prompt / canary) refused an external provider
 class DatasetError; class StoreError; class StoreIntegrityError(StoreError)   # T1.8: stored file does not match its SHA-256; class GateInputError; class PromptError; class CorpusMismatch   # all subclass PruefstandError
 ```
 
@@ -1449,6 +1450,12 @@ class LLMPerturbation(Perturbation, Protocol):
 #                 citation_style, abbreviations, typos, colloquial
 def perturb_case(case: TestCase, p: Perturbation, rng: np.random.Generator) -> TestCase | None   # None if unchanged
 async def perturb_case_async(case: TestCase, p: LLMPerturbation, llm: LLMClient, rng: np.random.Generator) -> TestCase | None
+# T4.5 (D740-D744, additive; no signature above changed): perturb_case_async returns None for a rejected rewrite or an
+#   LLMError (warning `perturb_llm_error`) and re-raises QuotaExhausted. The four LLM perturbations are built with
+#   `build_llm_perturbation(name, Rewriter(model, local=...), RewriteValidator(...))` (`perturb/llm_registry.py`;
+#   `perturbation_names()` / `get_perturbation()` stay the seven deterministic ones). `LLMRewritePerturbation.apply` raises
+#   ConfigError (use `aapply`); `adraft` + `acheck` are the two halves behind `aapply`. `perturb/batch.py`: `RewriteStore`,
+#   `rewrite_pass(items, perturbations, llm=, store=, seed=) -> PassReport`, `validate_pass(...) -> list[Outcome]`.
 ```
 
 ## 13. attacks

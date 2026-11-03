@@ -1,0 +1,21 @@
+# T4.5 pilot: 20 German legal questions (hand-written inputs, no model output). One per line.
+Gilt das Kündigungsschutzgesetz für Kleinbetriebe?
+Können Sie mir sagen, wann die Kündigungsfrist nach § 622 BGB endet?
+Wie viele Mitarbeiter braucht ein Betrieb für einen Betriebsrat?
+Unter welchen Voraussetzungen ist eine ordentliche Kündigung durch den Arbeitgeber zulässig?
+Haben Sie als Arbeitnehmer Anspruch auf Urlaub nach dem Bundesurlaubsgesetz?
+Welche Pflichten hat der Vermieter bei einer Mieterhöhung?
+Darf der Arbeitgeber Überstunden ohne Vergütung anordnen?
+Wie lange dauert die Probezeit nach dem Arbeitsvertrag höchstens?
+Was regelt das Arbeitszeitgesetz zur täglichen Höchstarbeitszeit?
+Müssen Sie Ihrem Arbeitgeber eine Krankschreibung vorlegen?
+Welche Rechte haben Verbraucher beim Widerruf eines Fernabsatzvertrags?
+Wann verjähren Ansprüche aus einem Kaufvertrag nach § 438 BGB?
+Wie hoch ist der gesetzliche Mindestlohn nach dem Mindestlohngesetz?
+Darf der Vermieter die Kaution nach dem Auszug einbehalten?
+Wer haftet bei einem Schaden durch einen Mitarbeiter im Betrieb?
+Gilt die Datenschutz-Grundverordnung auch für kleine Unternehmen?
+Welche Frist gilt für die Anfechtung eines Testaments?
+Kann ich Ihnen als Lieferant eine Rechnung nach Ablauf der Zahlungsfrist stellen?
+Wann endet der Anspruch auf Elterngeld nach dem Bundeselterngeld- und Elternzeitgesetz?
+Wie wird die Abfindung bei einer betriebsbedingten Kündigung berechnet?

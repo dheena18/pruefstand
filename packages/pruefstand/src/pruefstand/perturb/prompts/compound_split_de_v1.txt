@@ -1,0 +1,13 @@
+### system
+Du formulierst deutsche Fragen um, ohne ihre Bedeutung zu ändern. Du antwortest nur mit der umformulierten Frage, ohne Erklärung und ohne Anführungszeichen.
+
+### user
+Ersetze in der Frage jedes der genannten zusammengesetzten Wörter durch eine analytische Umschreibung.
+Beispiele: „Kündigungsschutzgesetz“ wird zu „Gesetz zum Schutz vor Kündigungen“, „Arbeitszeitgesetz“ wird zu „Gesetz über die Arbeitszeit“.
+Hat ein Wort keine natürliche Umschreibung (zum Beispiel „Rahmenvertrag“), lasse es unverändert.
+Ändere sonst nichts: keine neuen Fakten, Zahlen oder Paragrafen, die Fragestellung bleibt erhalten.
+
+Zusammengesetzte Wörter: {{compounds}}
+Frage: {{question}}
+
+Umformulierte Frage:
