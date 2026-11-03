@@ -8,7 +8,7 @@ from rd_support import CONFIGS, attack_hits, hit
 from rag_demo.config import load_config
 from rag_demo.generate import (
     REFUSAL,
-    LlamaCppGenerator,
+    OpenAICompatGenerator,
     apply_output_guard,
     build_prompt,
     extract_citations,
@@ -76,7 +76,7 @@ def test_citation_regex() -> None:
 @pytest.mark.default_cassette("generate_smoke_622.yaml")
 @pytest.mark.vcr
 async def test_recorded_real_answer_passes_both_modes_unchanged() -> None:
-    out = await LlamaCppGenerator(ON, "http://llm.test:8080", stats=Stats()).answer(
+    out = await OpenAICompatGenerator(ON, "http://llm.test:8080", stats=Stats()).answer(
         "Welche Kündigungsfrist gilt nach zwei Jahren Betriebszugehörigkeit?",
         [hit("gii-bgb-622#1")],
     )

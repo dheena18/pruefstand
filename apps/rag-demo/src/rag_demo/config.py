@@ -8,6 +8,7 @@ import yaml
 from pydantic import AliasChoices, Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+from rag_demo.catalogue import check_against_catalogue, load_catalogue
 from rag_demo.errors import ConfigError
 from rag_demo.models import RagConfig
 
@@ -32,6 +33,9 @@ class Settings(BaseSettings):
     model_sha256: str = ""
     model_file: str = ""
     model_pin: str = ""
+    rag_model_catalogue: Path | None = None
+    serving_engine_version: str = "unknown"
+    serving_gpu: str = "unknown"
 
 
 def resolve_model_sha(settings: Settings) -> str:
@@ -52,23 +56,36 @@ def resolve_model_sha(settings: Settings) -> str:
     return pinned_sha if pinned_file and pinned_file == settings.model_file else "unknown"
 
 
-def parse_config(text: str) -> RagConfig:
+def parse_config(text: str, catalogue_path: Path | None = None) -> RagConfig:
     """Parse YAML text into a validated ``RagConfig``.
+
+    Args:
+        text: YAML text of a ``rag*.yaml``.
+        catalogue_path: ``models.yaml`` for the ``gpu`` profile (default: env
+            ``RAG_MODEL_CATALOGUE``); ignored for the ``live`` profile.
 
     Raises:
         pydantic.ValidationError: Unknown key, wrong type or value out of range.
-        ConfigError: The text is not a YAML mapping.
+        ConfigError: The text is not a YAML mapping, or a ``gpu`` config disagrees with the
+            catalogue (unknown id, option mismatch, value outside ``option_bounds``).
     """
     data = yaml.safe_load(text)
     if not isinstance(data, dict):
         msg = "config must be a YAML mapping"
         raise ConfigError(msg)
-    return RagConfig.model_validate(data)
+    cfg = RagConfig.model_validate(data)
+    if cfg.profile == "gpu":
+        path = catalogue_path or Settings().rag_model_catalogue
+        if path is None:
+            msg = "profile gpu needs the model catalogue: set RAG_MODEL_CATALOGUE"
+            raise ConfigError(msg)
+        check_against_catalogue(cfg, load_catalogue(path), path)
+    return cfg
 
 
-def load_config(path: Path) -> RagConfig:
+def load_config(path: Path, catalogue_path: Path | None = None) -> RagConfig:
     """Read and validate a ``rag*.yaml`` file (see ``parse_config``)."""
-    return parse_config(path.read_text(encoding="utf-8"))
+    return parse_config(path.read_text(encoding="utf-8"), catalogue_path)
 
 
 def prompt_path(prompt_file: str, root: Path | None = None) -> Path:

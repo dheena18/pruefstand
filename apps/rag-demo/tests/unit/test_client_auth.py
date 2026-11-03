@@ -12,7 +12,7 @@ from rag_demo.auth import auth_headers
 from rag_demo.config import load_config
 from rag_demo.dense import TeiDenseEncoder
 from rag_demo.errors import GenerationError
-from rag_demo.generate import LlamaCppGenerator
+from rag_demo.generate import OpenAICompatGenerator
 from rag_demo.models import Stats
 
 ENV = "PRUEFSTAND_CANDIDATE_API_KEY"
@@ -48,7 +48,7 @@ async def test_generator_request_carries_the_bearer_key(monkeypatch: pytest.Monk
     route = respx.post("http://llm.test/v1/chat/completions").mock(
         return_value=httpx.Response(200, json=CHAT)
     )
-    await LlamaCppGenerator(cfg, "http://llm.test", stats=Stats()).answer(
+    await OpenAICompatGenerator(cfg, "http://llm.test", stats=Stats()).answer(
         "Frage?", [hit("gii-bgb-622#0")]
     )
     assert route.calls.last.request.headers["Authorization"] == "Bearer k1"
@@ -71,7 +71,7 @@ async def test_no_header_when_unset_or_empty(
     emb_route = respx.post("http://embed.test/embed").mock(
         return_value=httpx.Response(200, json=[[0.0] * cfg.embed.dim])
     )
-    await LlamaCppGenerator(cfg, "http://llm.test", stats=Stats()).answer(
+    await OpenAICompatGenerator(cfg, "http://llm.test", stats=Stats()).answer(
         "Frage?", [hit("gii-bgb-622#0")]
     )
     TeiDenseEncoder(cfg.embed, "http://embed.test").encode(["x"])
@@ -91,7 +91,7 @@ async def test_api_key_env_null_sends_no_header_even_when_set(
     route = respx.post("http://llm.test/v1/chat/completions").mock(
         return_value=httpx.Response(200, json=CHAT)
     )
-    await LlamaCppGenerator(cfg, "http://llm.test", stats=Stats()).answer(
+    await OpenAICompatGenerator(cfg, "http://llm.test", stats=Stats()).answer(
         "Frage?", [hit("gii-bgb-622#0")]
     )
     assert "Authorization" not in route.calls.last.request.headers
@@ -106,7 +106,7 @@ async def test_403_error_and_logs_never_contain_the_key(
     respx.post("http://llm.test/v1/chat/completions").mock(
         return_value=httpx.Response(403, text="bad key k1-secret-value")
     )
-    gen = LlamaCppGenerator(cfg, "http://llm.test", stats=Stats())
+    gen = OpenAICompatGenerator(cfg, "http://llm.test", stats=Stats())
     with caplog.at_level(logging.DEBUG), pytest.raises(GenerationError) as err:
         await gen.answer("Frage?", [hit("gii-bgb-622#0")])
     assert "k1-secret-value" not in str(err.value)

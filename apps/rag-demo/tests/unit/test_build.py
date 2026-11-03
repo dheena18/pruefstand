@@ -2,9 +2,10 @@
 
 from rd_support import CONFIGS, attack_hits, hit
 
-from rag_demo.api import build_health, build_info, to_query_response
+from rag_demo.api import build_health, to_query_response
 from rag_demo.config import config_hash, load_config
 from rag_demo.generate import build_prompt
+from rag_demo.info import build_info
 from rag_demo.models import GenOutput, QueryVectors, SparseVector, Stats
 from rag_demo.retrieve import apply_post_topk, build_query, build_shared_query, merge_by_score
 

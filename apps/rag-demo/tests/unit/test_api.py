@@ -6,7 +6,7 @@ import httpx
 import pytest
 import respx
 from fastapi.testclient import TestClient
-from rd_support import CONFIGS, SLICE
+from rd_support import CONFIGS, REPO, SLICE
 
 from rag_demo.api import create_app
 from rag_demo.config import Settings, load_config
@@ -120,3 +120,47 @@ def test_collection_metadata_without_tenants_is_503(client: TestClient) -> None:
         return_value=httpx.Response(200, json=body)
     )
     assert client.post("/v1/query", json=_request()).status_code == 503
+
+
+GPU_SETTINGS = Settings(
+    qdrant_url="http://qdrant.test:6333",
+    collection="slice_v1",
+    rag_model_catalogue=REPO / "infra" / "gpu" / "models.yaml",
+    serving_engine_version="0.x",
+    serving_gpu="A40",
+)
+
+
+@respx.mock
+def test_gpu_info_serving_comes_from_the_catalogue_and_env(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("OLLAMA_GPU0_URL", "http://127.0.0.1:11434")
+    cfg = load_config(CONFIGS / "rag.gpu.yaml", catalogue_path=GPU_SETTINGS.rag_model_catalogue)
+    client = TestClient(create_app(cfg, settings=GPU_SETTINGS))
+    respx.get("http://qdrant.test:6333/collections/slice_v1").mock(
+        return_value=httpx.Response(200, json=COLLECTION)
+    )
+    before = client.get("/v1/info")
+    stats_before = client.get("/v1/health").json()["stats"]["requests"]
+    for _ in range(3):
+        client.post("/v1/query", json=_request())
+    after = client.get("/v1/info")
+    info = after.json()
+    assert after.content == before.content
+    assert info["serving"] == {
+        "engine": "ollama",
+        "engine_version": "0.x",
+        "quantization": "Q8_0",
+        "gpu": "A40",
+        "model_sha256": "8f5fb6b71ea00052cbe8545738c55ce61112c4e571cb60ca4dad00b131766039",
+    }
+    assert info["models"] == {
+        "generator": "ollama/qwen3.8:27b-q8_0",
+        "generator_family": "qwen",
+        "embed": "ollama/bge-m3",
+        "rerank": "none",
+    }
+    health = client.get("/v1/health").json()["stats"]
+    assert health["requests"] == stats_before + 3
+    assert all(isinstance(v, int) for v in health.values())

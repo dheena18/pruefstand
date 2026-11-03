@@ -2,9 +2,8 @@
 
 import asyncio
 import logging
-from collections.abc import Awaitable, Callable, Mapping
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
-from pathlib import Path
 from typing import Any
 
 import httpx
@@ -12,16 +11,21 @@ from fastapi import FastAPI, HTTPException, Request, Response
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 
-from rag_demo import __version__
-from rag_demo.analysis import GermanAnalyzer
-from rag_demo.config import Settings, config_hash, load_config, resolve_model_sha
-from rag_demo.dense import TeiDenseEncoder
+from rag_demo.catalogue import CatalogueEntry
+from rag_demo.config import Settings, load_config
 from rag_demo.errors import RagDemoError
-from rag_demo.generate import LlamaCppGenerator
+from rag_demo.info import build_info, cpu_model
 from rag_demo.models import GenOutput, Hit, RagConfig, Stats
+from rag_demo.protocols import Generator
 from rag_demo.retrieve import Retriever
 from rag_demo.schemas import HealthResponse, InfoResponse, QueryRequest, QueryResponse
-from rag_demo.sparse import SparseEncoder
+from rag_demo.wiring import (
+    build_catalogue,
+    build_generator,
+    build_retriever,
+    info_env,
+    resolve_urls,
+)
 
 _log = logging.getLogger(__name__)
 
@@ -66,49 +70,6 @@ def build_health(stats: Stats) -> dict[str, Any]:
     }
 
 
-def cpu_model(cpuinfo: Path = Path("/proc/cpuinfo")) -> str:
-    """The CPU model name of this host ("unknown" if it cannot be read)."""
-    try:
-        for line in cpuinfo.read_text(encoding="utf-8").splitlines():
-            if line.startswith("model name"):
-                return line.split(":", 1)[1].strip()
-    except OSError:
-        pass
-    return "unknown"
-
-
-def build_info(
-    cfg: RagConfig, *, corpus_version: str, env: Mapping[str, str], cpu_model: str
-) -> dict[str, Any]:
-    """The ``/v1/info`` body; ``serving`` holds static fields only (X3.13).
-
-    Args:
-        cfg: Active configuration.
-        corpus_version: From the collection metadata.
-        env: ``GIT_SHA``, ``IMAGE_DIGEST``, ``LLAMA_CPP_VERSION``, ``MODEL_SHA256``.
-        cpu_model: CPU model name; part of the target fingerprint via ``serving.gpu`` (AI-36).
-    """
-    return {
-        "app_version": __version__,
-        "git_sha": env.get("GIT_SHA", "unknown"),
-        "image_digest": env.get("IMAGE_DIGEST") or None,
-        "config_hash": config_hash(cfg),
-        "corpus_version": corpus_version,
-        "models": {
-            "generator": cfg.generator.model,
-            "generator_family": cfg.generator.family,
-            "embedding": cfg.embed.model,
-        },
-        "serving": {
-            "engine": "llama.cpp",
-            "engine_version": env.get("LLAMA_CPP_VERSION", "unknown"),
-            "quantization": "Q4_K_M",
-            "gpu": f"cpu:{cpu_model}",
-            "model_sha256": env.get("MODEL_SHA256", "unknown"),
-        },
-    }
-
-
 class _CorpusMeta:
     """Corpus version and tenant list, read once from the Qdrant collection metadata."""
 
@@ -135,33 +96,23 @@ class _Parts:
 
     stats: Stats
     retriever: Retriever
-    generator: LlamaCppGenerator
+    generator: Generator
     corpus: _CorpusMeta
     env: dict[str, str]
+    catalogue: dict[str, CatalogueEntry] | None
 
 
 def _build_parts(cfg: RagConfig, s: Settings) -> _Parts:
+    """Wire one instance; a ``gpu`` config is checked here (catalogue, endpoint variables)."""
     stats = Stats()
-    retriever = Retriever(
-        cfg,
-        s.qdrant_url,
-        TeiDenseEncoder(cfg.embed, s.embed_url),
-        GermanAnalyzer(compound_split=False, stemmer="none"),
-        SparseEncoder(),
-        collection=s.collection,
-    )
-    env = {
-        "GIT_SHA": s.git_sha,
-        "IMAGE_DIGEST": s.image_digest or "",
-        "LLAMA_CPP_VERSION": s.llama_cpp_version,
-        "MODEL_SHA256": resolve_model_sha(s),
-    }
+    urls = resolve_urls(cfg, s)
     return _Parts(
         stats=stats,
-        retriever=retriever,
-        generator=LlamaCppGenerator(cfg, s.llm_url, stats=stats),
+        retriever=build_retriever(cfg, s, urls.embed),
+        generator=build_generator(cfg, urls.llm, stats),
         corpus=_CorpusMeta(s.qdrant_url, s.collection),
-        env=env,
+        env=info_env(s),
+        catalogue=build_catalogue(cfg, s),
     )
 
 
@@ -187,7 +138,11 @@ def _add_routes(app: FastAPI, cfg: RagConfig, parts: _Parts) -> None:
     async def info() -> dict[str, Any]:
         meta = await asyncio.to_thread(parts.corpus.get)
         return build_info(
-            cfg, corpus_version=meta["corpus_version"], env=parts.env, cpu_model=cpu_model()
+            cfg,
+            corpus_version=meta["corpus_version"],
+            env=parts.env,
+            cpu_model=cpu_model(),
+            catalogue=parts.catalogue,
         )
 
     @app.get("/v1/health", operation_id="health", response_model=HealthResponse)
