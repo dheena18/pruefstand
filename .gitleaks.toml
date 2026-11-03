@@ -93,3 +93,13 @@ paths = [
 regexes = [
   '''ZXQ-CANARY-7731''',
 ]
+
+[[allowlists]]
+description = "T4.6 ingest-attacks test (early commit of an open branch): a repeated hex test string passed as the optional attack key (CLAUDE.md section 9: test data, not a credential)"
+condition = "AND"
+paths = [
+  '''packages/pruefstand/tests/unit/pipeline/test_ingest_attacks\.py''',
+]
+regexes = [
+  '''0123456789abcdef''',
+]
