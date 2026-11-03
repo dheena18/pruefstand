@@ -494,3 +494,63 @@ sequenceDiagram
 
 The seeded bugs change only step 6 (`tenant_filter: post_topk` sends no filter and filters in Python after
 the cut, `shared_public_merge: unfiltered` adds a second unfiltered query) and switch the guard off.
+
+### 9a. rag-demo: generation after retrieval (T3.6, `/v1/query` only)
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant A as rag-demo API
+    participant G as ChatGenerator
+    participant T as generator tokenizer (baked)
+    participant O as Ollama via LLM_PROXY_URL (native /api/chat)
+
+    A->>G: answer(question, hits)
+    alt no hits
+        G-->>A: refusal sentence (DE or EN), no model call
+    else hits
+        G->>T: count prompt (ChatML wrapper), drop lowest-ranked chunks above num_ctx - num_predict
+        G->>O: POST /api/chat {model: bare tag, think: false, options: num_ctx, temperature, seed, num_predict}, Bearer key if set, no keep_alive
+        O-->>G: message.content, prompt_eval_count, eval_count (HTTP 502/503/504 retried twice, read timeout 300 s not retried)
+        G->>G: strip leading think block, output 8-gram guard, refusal flag, citations (regex)
+        G->>G: prompt_eval_count vs local count: more than 2 percent or at the budget counts prompt_overflow
+        G-->>A: GenOutput (prompt_chunk_ids)
+    end
+    A-->>A: to_query_response: prompted chunks first (prompt text, used_in_prompt true), extras after (false)
+```
+
+Tier 1 sends the same prompt to llama.cpp `/v1/chat/completions` (thinking off through the chat template) without the
+budget step.
+
+## 10. One LLM call (T5.1)
+
+`LLMClient.complete` is the only door to a model: policy, cache, quota, budget, backend, recorder (interfaces §3, §8).
+
+```mermaid
+sequenceDiagram
+    participant M as Metric / script
+    participant C as LLMClient
+    participant P as LLMPolicy
+    participant K as KVCache (llm)
+    participant B as LiteLLMBackend
+    participant R as CallRecorder
+    M->>C: complete(req)
+    C->>P: check(req, provider)  (allow-list, paid block, data guard)
+    P-->>C: ok or PolicyViolation (recorded, no call)
+    C->>B: resolve_version(model) once per model and run
+    C->>K: get(key = hash(model, version#epoch, prompt, messages, temperature, ...))
+    alt hit
+        K-->>C: response (cached=True, cost 0, no quota charged)
+    else miss
+        C->>C: budget.check, then QuotaExhausted or fallback when the model is exhausted
+        loop up to 1 + max_retries
+            C->>B: acomplete(req)
+            B-->>C: response or LLMError (429/5xx/timeout are transient)
+            C->>R: record(attempt)
+        end
+        Note over C: external 429 after the retries, or Retry-After above the cap: QuotaExhausted, model exhausted for the run
+        C->>K: set(key) when temperature == 0
+        C->>C: budget.charge(response)
+    end
+    C-->>M: LLMResponse (fallback=True when the fallback judge answered)
+```

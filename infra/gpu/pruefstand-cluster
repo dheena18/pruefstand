@@ -5,7 +5,8 @@
 # Installed by infra/gpu/install-cluster-wrapper.sh to /usr/local/bin/pruefstand-cluster (root-owned) and called as
 #   sudo -n -u pruefstand /usr/local/bin/pruefstand-cluster <op> [tag] [--bin-dev]
 # so only user pruefstand (the sole holder of the cluster key) opens the ssh connection and the caller never gets
-# the key. Fixed ops, nothing else (exit 64): start-ollama | stop-ollama | status | pull <tag> | rm <tag> | show <tag>.
+# the key. Fixed ops, nothing else (exit 64): start-ollama | stop-ollama | status | pull <tag> | rm <tag> | show <tag> |
+# log [N].
 # A tag matches ^[a-z0-9._:/-]+$, does not start with "-", has no ".." AND is listed in the allow-list the installer
 # generated from models.yaml (/usr/local/lib/pruefstand-cluster.allow: "tag<TAB>bytes", root-owned). `pull` takes the
 # size from that list, so the cluster checks model size + reserve against the free space (ollama-op.sh, exit 17).
@@ -14,7 +15,9 @@
 # ANCESTORS (A12-M5, M1): PRUEFSTAND_LOCK_HELD=1 (kept by the sudoers env_keep line) AND /proc/locks shows a
 # flock on the lock file (device and inode) taken by a process we descend from (pruefstand-lock -> make -> sudo -> this wrapper). A
 # lock held by someone else (the executor during a gate run) is no proof: exit 2 "run under the GPU lock".
-# status and show need no lock. --bin-dev selects /data/dheena/pruefstand-bin-dev (A11-M11).
+# status, show and log need no lock. `log [N]` (T3.1e, D560) prints the last N lines (integer 1..1000, default 200) of
+# the Ollama server log, redacted ON THE CLUSTER by log-tail.sh (read-only; it prints nothing and fails when it cannot
+# redact). --bin-dev selects /data/dheena/pruefstand-bin-dev (A11-M11).
 # Self-contained on purpose: it is copied to a root-owned path and must not load anything from a checkout.
 # Exit: the remote command's, 2 not under the lock, 3 rm without MAINTENANCE, 64 usage / unknown tag.
 # PRUEFSTAND_LOCK_DIR and PRUEFSTAND_CLUSTER_ALLOW are test seams (sudo drops the environment).
@@ -26,7 +29,9 @@ lock_dir="${PRUEFSTAND_LOCK_DIR:-/var/lib/pruefstand}"
 allow="${PRUEFSTAND_CLUSTER_ALLOW:-/usr/local/lib/pruefstand-cluster.allow}"
 host_re='^[A-Za-z0-9][A-Za-z0-9._-]*$'
 tag_re='^[a-z0-9._:/-]+$'
-usage="usage: pruefstand-cluster start-ollama|stop-ollama|status|pull <tag>|rm <tag>|show <tag> [--bin-dev]"
+usage="usage: pruefstand-cluster start-ollama|stop-ollama|status|pull <tag>|rm <tag>|show <tag>|log [N] [--bin-dev]"
+n_re='^[1-9][0-9]{0,3}$'
+log_n=200
 
 fail() { # message exit-code
   echo "pruefstand-cluster: $1" >&2
@@ -45,6 +50,13 @@ tag="${args[1]:-}"
 case "$op" in
   start-ollama | stop-ollama | status)
     if [ "${#args[@]}" -ne 1 ]; then fail "$usage" 64; fi
+    ;;
+  log)
+    if [ "${#args[@]}" -gt 2 ]; then fail "$usage" 64; fi
+    if [ "${#args[@]}" -eq 2 ]; then
+      log_n="${args[1]}"
+      if ! [[ $log_n =~ $n_re ]] || [ "$log_n" -gt 1000 ]; then fail "log N must be an integer from 1 to 1000" 64; fi
+    fi
     ;;
   pull | rm | show)
     if [ "${#args[@]}" -ne 2 ]; then fail "$usage" 64; fi
@@ -97,6 +109,7 @@ fi
 
 case "$op" in
   pull) remote="bash $bin/ollama-op.sh pull $tag $bytes" ;;
+  log) remote="bash $bin/log-tail.sh $log_n" ;;
   rm | show) remote="bash $bin/ollama-op.sh $op $tag" ;;
   *) remote="bash $bin/$op.sh" ;;
 esac

@@ -38,6 +38,10 @@ class Settings(BaseSettings):
     embed_tokenizer: Path | None = Field(
         default=None, validation_alias=AliasChoices("RAG_EMBED_TOKENIZER", "embed_tokenizer")
     )
+    generator_tokenizer: Path | None = Field(
+        default=None,
+        validation_alias=AliasChoices("RAG_GENERATOR_TOKENIZER", "generator_tokenizer"),
+    )
     serving_engine_version: str = "unknown"
     serving_gpu: str = "unknown"
 

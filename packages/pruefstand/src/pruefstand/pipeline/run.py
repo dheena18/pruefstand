@@ -21,6 +21,7 @@ from pruefstand.core.models.run import RunArtifacts, RunManifest, RunResults
 from pruefstand.core.models.target import TargetInfo
 from pruefstand.core.models.testcase import TestCase
 from pruefstand.core.protocols import JudgePoolLike, KVCache, TargetAdapter
+from pruefstand.core.settings import PruefstandSettings
 from pruefstand.llm.budget import Budget, ChargeTally
 from pruefstand.metrics.registry import MetricRegistry
 from pruefstand.pipeline.cache import (
@@ -37,6 +38,9 @@ from pruefstand.pipeline.judge_mode import (
     Stack,
     build_judge_pool,
     final_judge_mode,
+    judge_drift_flag,
+    judge_ids,
+    quota_skipped,
     requested_judge_mode,
     resolve_stack,
 )
@@ -274,8 +278,14 @@ async def run_eval(
     plan = _plan(cfg, tier, block=block, judged_subset=judged_subset, stratum=stratum)
     judges = None if plan.mode == "skipped" else build_judge_pool(cfg, plan.mode)
     results, info = await _execute(plan, judges, out)
-    mode = final_judge_mode(plan.mode, judged_cases=results.manifest.judged_cases)
+    mode = final_judge_mode(
+        plan.mode,
+        judged_cases=results.manifest.judged_cases,
+        quota_skipped=quota_skipped(results.values),
+    )
     manifest = _complete(results.manifest, plan, info, mode)
+    drift = judge_drift_flag(PruefstandSettings().cache_dir, judge_ids(cfg, tier))
+    manifest = manifest.model_copy(update={"judge_drift": manifest.judge_drift or drift})
     done = results.model_copy(update={"manifest": manifest})
     _store(out, done)
     _log.info(

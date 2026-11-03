@@ -11,6 +11,7 @@ from collections.abc import Sequence
 from pathlib import Path
 
 import httpx
+import yaml
 
 from rag_demo.catalogue import load_catalogue
 from rag_demo.errors import ConfigError
@@ -79,16 +80,34 @@ def fetch(catalogue: Path, entry_id: str, out: Path) -> Path:
     return out
 
 
+def generator_id(config: Path) -> str:
+    """The catalogue id of the generator in a ``rag*.yaml`` (a re-pin needs no code change).
+
+    Raises:
+        ConfigError: The file has no ``generator.catalogue_id``.
+    """
+    data = yaml.safe_load(config.read_text(encoding="utf-8"))
+    try:
+        return str(data["generator"]["catalogue_id"])
+    except (KeyError, TypeError):
+        msg = f"{config} has no generator.catalogue_id"
+        raise ConfigError(msg) from None
+
+
 def main(argv: Sequence[str] | None = None) -> int:
     """Command line entry; returns the exit code."""
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--catalogue", type=Path, default=os.environ.get("RAG_MODEL_CATALOGUE"))
     parser.add_argument("--id", dest="entry_id", default="ollama/bge-m3")
+    parser.add_argument(
+        "--config", type=Path, help="a rag*.yaml: fetch the tokenizer of its generator.catalogue_id"
+    )
     parser.add_argument("--out", type=Path, default=os.environ.get("RAG_EMBED_TOKENIZER"))
     args = parser.parse_args(argv)
     if args.catalogue is None or args.out is None:
         parser.error("--catalogue and --out (or RAG_MODEL_CATALOGUE / RAG_EMBED_TOKENIZER) needed")
-    out = fetch(Path(args.catalogue), args.entry_id, Path(args.out))
+    entry_id = generator_id(args.config) if args.config else args.entry_id
+    out = fetch(Path(args.catalogue), entry_id, Path(args.out))
     print(f"tokenizer written to {out}")  # noqa: T201  (command line tool)
     return 0
 

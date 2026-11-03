@@ -42,7 +42,7 @@ max_tokens: 256
 reranker: "on"
 tenant_filter: inside
 shared_public_merge: filtered
-prompt_file: prompts/answer_de_v1.txt
+prompt_file: prompts/answer_de_v2.txt
 answer_language: auto
 injection_guard: "off"
 system_prompt_guard: "on"

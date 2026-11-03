@@ -18,6 +18,7 @@ from rag_demo.errors import (
     RagDemoError,
     UnknownTenantError,
 )
+from rag_demo.generation import prompt_hits
 from rag_demo.info import build_info, cpu_model
 from rag_demo.models import GenOutput, Hit, RagConfig, Stats
 from rag_demo.protocols import Generator
@@ -43,13 +44,15 @@ from rag_demo.wiring import (
 _log = logging.getLogger(__name__)
 
 
-def to_query_response(hits: list[Hit], gen: GenOutput, prompt_hits: list[Hit]) -> dict[str, Any]:
+def to_query_response(hits: list[Hit], gen: GenOutput, prompted: list[Hit]) -> dict[str, Any]:
     """Map retrieval and generation results to the ``/v1/query`` body (X3.14).
 
-    Every chunk of ``hits`` is returned in rank order; ``used_in_prompt`` is true for those that
-    are in ``prompt_hits`` (the chunks the generator prompt actually held).
+    The chunks of ``prompted`` come first, in prompt order and with the (truncated) text the
+    prompt held, ``used_in_prompt`` true; further retrieved chunks of ``hits`` follow with
+    ``used_in_prompt`` false.
     """
-    used = {h.chunk_id for h in prompt_hits}
+    used = {h.chunk_id for h in prompted}
+    ordered = [(h, True) for h in prompted] + [(h, False) for h in hits if h.chunk_id not in used]
     return {
         "answer": gen.answer,
         "citations": gen.citations,
@@ -61,9 +64,9 @@ def to_query_response(hits: list[Hit], gen: GenOutput, prompt_hits: list[Hit]) -
                 "text": h.text,
                 "score": h.score,
                 "rank": h.rank,
-                "used_in_prompt": h.chunk_id in used,
+                "used_in_prompt": in_prompt,
             }
-            for h in hits
+            for h, in_prompt in ordered
         ],
         "refused": gen.refused,
         "model": gen.model,
@@ -96,6 +99,7 @@ def build_health(stats: Stats) -> dict[str, Any]:
             "think_stripped": stats.think_stripped,
             "truncated_chunks": stats.truncated_chunks,
             "requests": stats.requests,
+            "prompt_overflow": stats.prompt_overflow,
         },
     }
 
@@ -127,7 +131,9 @@ def _build_parts(cfg: RagConfig, s: Settings) -> _Parts:
         retrieve_only=retriever
         if cfg.rerank.on_retrieve
         else retriever.with_reranker(IdentityReranker()),
-        generator=build_generator(cfg, urls.llm, stats),
+        generator=build_generator(
+            cfg, urls.llm, stats, catalogue=catalogue, tokenizer=s.generator_tokenizer
+        ),
         corpus=corpus,
         env=info_env(s),
         catalogue=catalogue,
@@ -168,7 +174,9 @@ def _add_routes(app: FastAPI, cfg: RagConfig, parts: _Parts) -> None:
             gen = await parts.generator.answer(req.question, hits)
         except RagDemoError as err:
             raise _http_error(err, "query") from None
-        prompted = [h for h in hits if h.chunk_id in set(gen.prompt_chunk_ids)]
+        by_id = {h.chunk_id: h for h in hits}
+        prompted = prompt_hits([by_id[i] for i in gen.prompt_chunk_ids], cfg)
+        _log.debug("request_id=%s prompt_chunk_ids=%s", req.request_id, gen.prompt_chunk_ids)
         return to_query_response(hits, gen, prompted)
 
     @app.post(

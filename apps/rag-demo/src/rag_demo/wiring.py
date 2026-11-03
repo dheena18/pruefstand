@@ -1,5 +1,6 @@
 """Builds the collaborators of one app instance for the ``live`` and the ``gpu`` profile."""
 
+import logging
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -11,8 +12,7 @@ from rag_demo.catalogue import CatalogueEntry, check_against_catalogue, load_cat
 from rag_demo.config import Settings, resolve_model_sha
 from rag_demo.endpoints import check_endpoint, resolve_endpoint
 from rag_demo.errors import ConfigError
-from rag_demo.generate import OpenAICompatGenerator
-from rag_demo.generate_ollama import OllamaChatGenerator
+from rag_demo.generation import OllamaChatGenerator, OpenAICompatGenerator
 from rag_demo.index.encoders import OllamaDenseEncoder, TeiDenseEncoder
 from rag_demo.index.tokens import load_token_counter
 from rag_demo.models import RagConfig, Stats
@@ -21,6 +21,9 @@ from rag_demo.retrieval.corpus_meta import CorpusMeta
 from rag_demo.retrieval.rerank import CrossEncoderReranker, IdentityReranker
 from rag_demo.retrieval.retriever import QdrantRetriever
 from rag_demo.retrieval.store import QdrantStore
+
+_log = logging.getLogger(__name__)
+OLLAMA_TIMEOUT_S = 300.0
 
 
 @dataclass(frozen=True)
@@ -79,11 +82,31 @@ def build_catalogue(cfg: RagConfig, settings: Settings) -> dict[str, CatalogueEn
     return catalogue
 
 
-def build_generator(cfg: RagConfig, url: str, stats: Stats) -> Generator:
-    """The generator class for ``cfg.generator.engine``."""
-    if cfg.generator.engine == "ollama":
-        return OllamaChatGenerator(cfg, url, stats=stats)
-    return OpenAICompatGenerator(cfg, url, stats=stats)
+def build_generator(
+    cfg: RagConfig,
+    url: str,
+    stats: Stats,
+    *,
+    catalogue: dict[str, CatalogueEntry] | None = None,
+    tokenizer: Path | None = None,
+) -> Generator:
+    """The generator class for ``cfg.generator.engine``.
+
+    Tier 2 reads the request timeout from the catalogue entry (``request_timeout_s``, default
+    300 s: the generator serialises requests, so a request may queue for over a minute) and counts
+    prompts with the generator's own ``tokenizer`` (never the embedding model's).
+
+    Raises:
+        ConfigError: The tokenizer file is configured but unusable.
+    """
+    if cfg.generator.engine != "ollama":
+        return OpenAICompatGenerator(cfg, url, stats=stats)
+    entry = (catalogue or {}).get(cfg.generator.catalogue_id or "")
+    timeout = (entry.request_timeout_s if entry else None) or OLLAMA_TIMEOUT_S
+    if tokenizer is None:
+        _log.warning("RAG_GENERATOR_TOKENIZER unset: no local prompt count, no prompt budget")
+    counter = load_token_counter(tokenizer) if tokenizer else None
+    return OllamaChatGenerator(cfg, url, stats=stats, timeout_s=timeout, count_tokens=counter)
 
 
 def build_analyzer(cfg: RagConfig) -> GermanAnalyzer:

@@ -5,12 +5,15 @@ no CPU judge in any tier.
 """
 
 import re
-from collections.abc import Mapping
+from collections.abc import Iterable, Mapping
+from pathlib import Path
 from typing import Literal
 
 from pruefstand.core.config import PruefstandConfig
 from pruefstand.core.errors import ConfigError
+from pruefstand.core.models.run import ScoredCase
 from pruefstand.core.protocols import JudgePoolLike
+from pruefstand.llm.cache_epochs import read_drift
 
 Stack = Literal["live", "a40"]
 JudgeMode = Literal["github", "local", "skipped"]
@@ -87,12 +90,16 @@ def requested_judge_mode(
     return "github" if has_models_token else "skipped"
 
 
-def final_judge_mode(requested: JudgeMode, *, judged_cases: int) -> JudgeMode:
-    """Downgrade to ``skipped`` when no judged value was produced.
+def final_judge_mode(
+    requested: JudgeMode, *, judged_cases: int, quota_skipped: int = 0
+) -> JudgeMode:
+    """Downgrade to ``skipped`` when no judged value was produced or the quota ran out.
 
     Args:
         requested: The mode from ``requested_judge_mode``.
         judged_cases: Cases with a judged value (runner result).
+        quota_skipped: Judged values skipped with reason ``judge_quota`` (W1.4: the remaining
+            judged metrics are skipped, never handed to another judge).
 
     Returns:
         The mode to record in ``run.json``.
@@ -100,8 +107,48 @@ def final_judge_mode(requested: JudgeMode, *, judged_cases: int) -> JudgeMode:
     Examples:
         >>> final_judge_mode("github", judged_cases=0)
         'skipped'
+        >>> final_judge_mode("github", judged_cases=4, quota_skipped=1)
+        'skipped'
     """
-    return requested if judged_cases > 0 else "skipped"
+    return requested if judged_cases > 0 and quota_skipped == 0 else "skipped"
+
+
+def quota_skipped(values: Iterable[ScoredCase]) -> int:
+    """Count the metric values the runner skipped because the judge quota was exhausted."""
+    return sum(
+        1
+        for scored in values
+        for value in scored.values
+        if value.details.get("reason") == "judge_quota"
+    )
+
+
+def fallback_used(rows: Iterable[Mapping[str, object]]) -> bool:
+    """Return True when any recorded judge call was answered by the fallback judge (Y4.4).
+
+    Args:
+        rows: ``CallRecorder.rows`` of the run's judge calls.
+    """
+    return any(row.get("fallback") is True for row in rows)
+
+
+def judge_ids(cfg: PruefstandConfig, tier: str) -> frozenset[str]:
+    """Return the judge model ids a run of ``tier`` can use (default judge and per-metric ones)."""
+    default = cfg.judge.nightly if tier == "nightly" else cfg.judge.pr
+    return frozenset({default.id, *(ref.id for ref in cfg.judge.per_metric.values())})
+
+
+def judge_drift_flag(cache_dir: Path, models: Iterable[str]) -> bool:
+    """Return True when ``judge_drift.json`` flags one of ``models`` (S13).
+
+    The flag marks judged metrics informational (``judge_drift``); it never touches
+    ``eval_fingerprint``.
+
+    Raises:
+        ConfigError: The drift file exists but is invalid.
+    """
+    flag = read_drift(cache_dir)
+    return flag is not None and flag.model in set(models)
 
 
 def build_judge_pool(cfg: PruefstandConfig, mode: JudgeMode) -> JudgePoolLike | None:  # noqa: ARG001

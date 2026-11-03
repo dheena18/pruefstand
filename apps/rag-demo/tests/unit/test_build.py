@@ -4,7 +4,7 @@ from rd_support import CONFIGS, attack_hits, hit
 
 from rag_demo.api import build_health, to_query_response
 from rag_demo.config import config_hash, load_config
-from rag_demo.generate import build_prompt
+from rag_demo.generation import build_prompt
 from rag_demo.info import build_info
 from rag_demo.models import GenOutput, Stats
 
@@ -52,10 +52,10 @@ def test_response_marks_prompted_hits_and_keeps_rank_order() -> None:
 
 
 def test_health_returns_the_counters() -> None:
-    stats = Stats(think_stripped=2, truncated_chunks=3, requests=5)
+    stats = Stats(think_stripped=2, truncated_chunks=3, requests=5, prompt_overflow=1)
     assert build_health(stats) == {
         "status": "ok",
-        "stats": {"think_stripped": 2, "truncated_chunks": 3, "requests": 5},
+        "stats": {"think_stripped": 2, "truncated_chunks": 3, "requests": 5, "prompt_overflow": 1},
     }
 
 

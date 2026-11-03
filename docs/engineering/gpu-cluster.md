@@ -254,9 +254,9 @@ less for Gemma 3 (sliding window). All rows are planning values: **verify in T3.
 
 | Card (expected) / mode | Models | Weights | KV (`num_ctx` × 4 slots) | Card total |
 | --- | --- | --- | --- | --- |
-| generator card, day + night | generator `qwen3.8:27b-q8_0` + `bge-m3` | ~29 GB + ~1.2 GB | generator 8192 × 4 = 32 k tokens ≈ 4 GB at `q8_0`; bge-m3 small | ≈ 35 GB of 45 (**verify**) |
+| generator card, day + night | generator `qwen3.8:27b-q8_0` + `bge-m3` | ~29 GB + ~1.2 GB | one sequence × 8 192 tokens: KV 272 MiB at `q8_0` (34 816 B/token) + 150 MiB recurrent state; bge-m3 small | ≈ 28 GB of 45 (**measured**: 28 135 MiB, D651) |
 | judge card, day + night | judge `gemma3:12b` Q4 (ADR-0019) | ~8 GB | **12288** × 4 (= 8 192 + 3 072 + 1 024, D306) at `q8_0`: with the sliding-window cache a few GB; without it ≈ 9 GB (**verify** in T3.1b) | ≈ 12–18 GB of 45 (**verify**) |
-| generator card, embed swap (M3, RQ1 e5) | generator + e5-large instead of `bge-m3` | ~29 GB + ~1.2 GB | as the bge-m3 row | ≈ 35 GB of 45 (**verify**, AI12-08) |
+| generator card, embed swap (M3, RQ1 e5) | generator + e5-large instead of `bge-m3` | ~29 GB + ~1.2 GB | as the bge-m3 row | ≈ 28 GB of 45 (bge-m3 row measured; e5 **verify**, AI12-08) |
 | judge card, RQ2 swap (T5.4) | one pulled candidate instead of the judge (swap rule §2) | ≤ ~10 GB (disk-bound) | as the judge row | **verify** per candidate |
 
 **Generator fallback (AI11-07).** If `qwen3.8:27b-q8_0` fails its licence or quality check in T3.1b, the generator
@@ -290,8 +290,24 @@ about 7.9 KB per token (sliding window active); 20 inputs of about 9 200 tokens:
 prefill about 970 tok/s); judge decode 57 tok/s per stream at 1 stream, aggregate incl. prefill 36.3 at 1 and 54.5 at 4, prefill 1 625 tok/s. PR estimate about 82 min (GPU0
 binds), nightly about 139 min (D471).
 
+**Measured from the Ollama load log (2026-11-03, `pruefstand-cluster log`, D651).** The generator `qwen3.8:27b-q8_0` is a
+hybrid model (Ollama family `qwen35`): only **16 of its 66 layers** carry a KV cache, and the server loads it with **one
+sequence** (`1/1 seqs`, `slot id 0`, `n_ctx_slot = 8192`) although `OLLAMA_NUM_PARALLEL=4` is set (Ollama: `model architecture does not currently support parallel requests architecture=qwen35`, D654; the server env is correct). Load lines
+(`<models-dir>` blobs): `CUDA0 model buffer 25 972 MiB` + `CPU_Mapped 1 288 MiB` (66/66 layers offloaded), `KV buffer
+272 MiB` for 8 192 cells (K and V `q8_0` 136 MiB each) = **34 816 B per token**, recurrent state `RS buffer 149.6 MiB` per
+sequence, compute buffers `260 + 248 MiB` on the card (+ 56 and 25 MiB on the host). Card total with everything
+(`nvidia-smi`): 28 135 MiB of 46 068, so the planning figure of 35 GB was too high by about 7 GB. The old
+`kv_bytes_per_token` of 131 072 was a dense-model planning value; the catalogue now holds 34 816. Two consequences: (1)
+the generator does not batch, which is why aggregate decode stays at about 14.4 tok/s at concurrency 1, 4 and 8
+(`experiments/model_selection/REPORT.md`); the PR budget already models one slot; (2) every request logs `forcing full
+prompt re-processing due to lack of cache data (likely due to SWA or hybrid/recurrent memory)`, so prefix reuse does
+not exist for this model and `prompt_eval_count` is the full prompt (this settles the T3.6 `prompt_overflow` worry about
+cache reuse lowering it). The server also keeps a prompt cache in host RAM (limit 8 192 MiB, about 4.5 GiB used after
+nine prompts). The judge and embedding load lines scrolled out of the 1 000-line window; their `overhead_gib` stays the
+provisional `size_vram` minus disk figure (`gemma3:12b` 9.46 GiB resident vs 7.6 GiB on disk).
+
 `OLLAMA_MAX_LOADED_MODELS=3` holds generator + embeddings + the one judge. Ollama places the models; the generator
-(≈ 35 GB with KV) and the judge together exceed one card, so they land on different cards, and `health.sh`
+(≈ 28 GB with KV, measured, D651) and the judge together exceed one card, so they land on different cards, and `health.sh`
 reports the placement. If a measured total exceeds 44 GB on the generator card, lower `num_ctx` before lowering
 `OLLAMA_NUM_PARALLEL`, and record it; on the judge card the judge rule of §2.1 applies instead (lower `OLLAMA_NUM_PARALLEL` to 2 first, `num_ctx` 12 288 is lowered only if
 T3.1b's VRAM measurement still fails, D306).
@@ -436,7 +452,7 @@ scripts are invoked as `ssh "$CLUSTER_SSH_HOST" bash /data/dheena/pruefstand-bin
 | Deploy cluster scripts | `infra/gpu/deploy-cluster-bin.sh` (VM, T3.1a): copies `infra/cluster/*.sh` + `cluster.env` from the VM checkout **over SSH** to `/data/dheena/pruefstand-bin/` on the cluster (`ssh … 'cat > <name>.partial && mv <name>.partial <name>'`) plus `SHA256SUMS` (ADR-0019; a few KB); the orchestrator re-runs it when `infra/cluster/**` changed on `main`. It talks to the cluster with plain ssh, so it runs as `pruefstand`; the owner runs `make gpu-deploy-bin` (copies the scripts to a world-readable temp dir, then `sudo -u pruefstand …/deploy-cluster-bin.sh`); any other user writes `pruefstand-bin-dev/` (D415) |
 | Pull / update a model | `fetch-model.sh <models.yaml id>` (VM, under the lock): `ssh … OLLAMA_HOST=127.0.0.1:11434 ollama pull <tag>` into the server's store (`<models-dir>`), after checking that `/data` keeps ≥ 2 GB free with the new model (else exit 17 "free space first: swap rule; ask the owner", ADR-0019, D413), then compare the manifest digest with `models.yaml`; mismatch → `ollama rm <tag>`, exit 1. One pull at a time; `fetch-model.sh --rm <id>` removes a non-generator model under `MAINTENANCE` |
 | Swap sequence (ADR-0019, stated once) | 1. owner: `pruefstand-lock touch /var/lib/pruefstand/MAINTENANCE`; 2. `make gpu-down` (unload) and `make gpu-rm ID=ollama/<non-generator id>` (exit 3 without `MAINTENANCE`, 64 for the generator); 3. `make gpu-pull ID=ollama/<new id>` (digest check; **exit 17 when the disk is too full: free space first, the script never starts the pull**); 4. run the swap (RQ2 candidate, M11, e5); 5. `make gpu-rm` the swapped model, `make gpu-pull` the standard model again if it was removed; 6. `make gpu-up`; owner: `rm` `MAINTENANCE`. Every step is a lock-taking `make` target (one `pruefstand-lock` per target) |
-| Logs | `ssh … tail -n 200 /data/dheena/ollama.log` (the owner's start command writes it, truncated at each start); owner: `sudo -n -u pruefstand /usr/local/bin/pruefstand-cluster status` |
+| Logs | the owner's start command writes `/data/dheena/ollama.log` (truncated at each start). Read it with **`sudo -n -u pruefstand /usr/local/bin/pruefstand-cluster log [N]`** (T3.1e, D560-D562): the last N lines (1..1000, default 200), read-only, no lock, **redacted on the cluster** (`<models-dir>`, `<home>`, `<cluster-user>`, `<ollama-bin>`, `<host>`, `<data-dir>`, addresses other than `127.0.0.1:11434`, secrets) and fail closed (nothing printed, exit 5, when redaction fails or the final scan finds a leak; the scan covers IPv4/IPv6, URL hosts, `user@host`, uuids, sha256, login/host/home/models-dir and secret pairs, but bare hostnames, `host:port` and `port N` depend on the redaction rules alone, D562). The model load lines (parallel slots, KV buffer size, layers offloaded) give `kv_bytes_per_token`, the generator slot count and `overhead_gib`. Status: `… pruefstand-cluster status` |
 | Stop GPU serving | normally: unload all models (`switch-mode.sh` / API `keep_alive: 0`), the server keeps running. Stopping the server itself: executor `ssh … /data/dheena/pruefstand-bin/stop-ollama.sh` (as `pruefstand`, under the lock; pid checked as in §4); owner `pruefstand-lock sudo -n -u pruefstand /usr/local/bin/pruefstand-cluster stop-ollama` (T3.1a wrapper); a restart is the owner's (runbook §2a). The wrapper's mutating ops (`start-ollama`, `stop-ollama`, `pull`, `rm`) require the GPU lock: sudoers `env_keep += PRUEFSTAND_LOCK_HELD`, and the wrapper checks that `flock -n /var/lib/pruefstand/gpu.lock true` **fails** (lock held); `status`/`show` are lock-free (A12-M5) |
 | Runner status | `systemctl status pruefstand-runner` on the VM; heartbeat on branch `heartbeat` of `pruefstand-dashboard-data`, refreshed **every 15 min** during long jobs and lock waits (Y5.1) |
 | Free disk | VM: `docker system prune --filter until=168h` (never volumes); run dirs rotated by `runs-prune`. Cluster: only models; keep ≥ 2 GB free on `/data` (swap rule, ADR-0019) |
