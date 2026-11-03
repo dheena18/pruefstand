@@ -1,0 +1,12 @@
+.next
+out
+.sets
+coverage
+node_modules
+public/data
+src/types/generated
+src/content
+src/i18n
+fixtures
+pnpm-lock.yaml
+src/styles/tokens.css

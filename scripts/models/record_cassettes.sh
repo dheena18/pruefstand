@@ -96,9 +96,12 @@ dataset_stage() {
     return 0
   fi
   local dir=packages/pruefstand/tests/cassettes/dataset
-  rm -f "$dir"/*.json
-  PRUEFSTAND_RECORD_DATASET=1 uv run pytest packages/pruefstand/tests/live/dataset -m live -q -p no:cacheprovider
-  uv run pytest packages/pruefstand/tests/unit/dataset/test_generate_cassette.py -q -p no:cacheprovider
+  rm -f "$dir"/*.json "$dir"/support/*.json
+  # T4.3: the support-check test records into $dir/support (PRUEFSTAND_RECORD_SUPPORT=1)
+  PRUEFSTAND_RECORD_DATASET=1 PRUEFSTAND_RECORD_SUPPORT=1 \
+    uv run pytest packages/pruefstand/tests/live/dataset -m live -q -p no:cacheprovider
+  uv run pytest packages/pruefstand/tests/unit/dataset/test_generate_cassette.py \
+    packages/pruefstand/tests/unit/dataset/test_filters_cassette.py -q -p no:cacheprovider
   git --no-pager diff --stat -- "$dir" || true
 }
 
