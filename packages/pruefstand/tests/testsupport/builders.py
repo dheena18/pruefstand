@@ -178,7 +178,7 @@ def _manifest(
         stop_reason="completed" if complete else "aborted",
         stack=stack,  # type: ignore[arg-type]  # Literal checked by pydantic
         workload="pr",
-        judge_mode="skipped",
+        judge_mode="local" if stack == "a40" else "skipped",
     )
 
 
