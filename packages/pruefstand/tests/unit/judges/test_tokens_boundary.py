@@ -51,6 +51,13 @@ def test_hex_and_base64_runs_cost_one_token_per_character() -> None:
     assert estimate_tokens(base64) >= len(base64)
 
 
+def test_single_letter_words_and_newlines_cost_at_least_a_token_each() -> None:
+    words = "a " * 17000
+    lines = "x\n" * 17000
+    assert estimate_tokens(words) >= 17000  # the old estimate gave 11 050 for such text
+    assert estimate_tokens(lines) >= 17000
+
+
 def test_table_text_with_pipes_is_not_undercounted() -> None:
     table = "| Az | 12 C 345/21 | 1.234,56 EUR |\n" * 100
     pipes_digits_punct = sum(not c.isalpha() and not c.isspace() for c in table)

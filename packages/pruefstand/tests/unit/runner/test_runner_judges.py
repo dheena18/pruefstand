@@ -236,9 +236,28 @@ async def test_a_provider_that_cut_the_input_is_a_counted_truncation_and_a_judge
         make_runner(adapter, metrics=registry(), judges=SpyPool(act=cut)), [make_case(0)]
     )
     value = values_of(results, 0)["faithfulness"]
-    assert (value.status, value.details["error"]) == (MetricStatus.ERROR, "JudgeInputTruncated")
+    # candidate-side like judge_input_too_long: worst-filled by the gate, never a judge error
+    assert (value.status, value.details["reason"]) == (
+        MetricStatus.NOT_APPLICABLE,
+        "judge_input_too_long",
+    )
     assert results.manifest.counts["judge_truncated"] == 2  # faithfulness and correctness
-    assert results.manifest.counts["judge_error"] == 2
+    assert results.manifest.counts.get("judge_error", 0) == 0
+
+
+async def test_candidate_text_that_overruns_the_window_cannot_set_judge_degraded(
+    router: respx.MockRouter, adapter: HttpTargetAdapter
+) -> None:
+    router.post("/v1/query").respond(200, json=load_openapi_example("query_ok.json"))
+
+    async def cut(_: JudgeTask) -> None:
+        message = "cut"
+        raise JudgeInputTruncated(message)
+
+    runner = make_runner(adapter, metrics=registry(), judges=SpyPool(act=cut))
+    results = await run_cases(runner, numbered(20))
+    assert results.manifest.judge_degraded is False
+    assert results.manifest.counts.get("judge_error", 0) == 0
 
 
 async def test_the_refusal_flag_mismatch_is_counted_once_per_case(

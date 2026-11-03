@@ -33,28 +33,32 @@ def _word_tokens(word: str) -> float:
     for char in word:
         plain = char.isascii() and char.isalpha()
         total += _LETTER_TOKENS if plain else 1.0  # digits, punctuation, pipes, non-ASCII
-    return total
+    return max(1.0, total)  # every word costs at least one token
 
 
 def estimate_tokens(text: str) -> int:
-    """Return a conservative (high) token count of ``text``.
+    r"""Return a conservative (high) token count of ``text``.
 
-    Letters of an ordinary word count 0.4 token, a space 0.25, everything else (digits,
-    punctuation, table pipes, non-ASCII characters) one token each, and an unbroken run of more
-    than 12 characters (hex, base64, identifiers) one token per character. This over-counts German
-    prose and does not under-count number-, hex- or table-dense text.
+    Letters of an ordinary word count 0.4 token but a word never less than one, a newline one, any
+    other space 0.25, everything else (digits, punctuation, table pipes, non-ASCII characters) one
+    token each, and an unbroken run of more than 12 characters (hex, base64) one per character.
+    This over-counts German prose and does not under-count number-, hex-, table- or
+    single-letter-word-dense text.
 
     Examples:
         >>> estimate_tokens(""), estimate_tokens("abc"), estimate_tokens("4711")
         (0, 2, 4)
         >>> estimate_tokens("Kündigung")
         5
-        >>> estimate_tokens("a" * 40)
-        40
+        >>> estimate_tokens("a" * 40), estimate_tokens("x\n" * 10)
+        (40, 20)
     """
     words = text.split()
-    spaces = len(text) - sum(len(w) for w in words)
-    return math.ceil(sum(_word_tokens(w) for w in words) + spaces * _SPACE_TOKENS)
+    gaps = len(text) - sum(len(w) for w in words)
+    newlines = text.count("\n")
+    return math.ceil(
+        sum(_word_tokens(w) for w in words) + newlines + (gaps - newlines) * _SPACE_TOKENS
+    )
 
 
 def input_cap(model_id: str) -> int:

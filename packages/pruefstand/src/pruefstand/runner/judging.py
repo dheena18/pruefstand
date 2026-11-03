@@ -209,10 +209,13 @@ class JudgeStage:
             except QuotaExhausted:
                 self._quota_exhausted = True
                 return self._skipped(m, "judge_quota", outcome)
+            except JudgeInputTruncated:
+                # the candidate's text overran the window (the estimate missed it): candidate-side
+                # like judge_input_too_long, never a judge error (cannot set judge_degraded)
+                outcome.counts["judge_truncated"] += 1
+                return not_applicable(m, "judge_input_too_long")
             except LLMError as exc:  # incl. PolicyViolation; BudgetExceeded is not an LLMError
                 outcome.counts["judge_error"] += 1
-                if isinstance(exc, JudgeInputTruncated):
-                    outcome.counts["judge_truncated"] += 1  # the provider cut the input
                 outcome.attempted = True
                 return MetricValue(
                     metric=m.name,

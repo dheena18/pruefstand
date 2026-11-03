@@ -4,7 +4,7 @@ import os
 import re
 from collections.abc import Mapping
 
-from pruefstand.core.errors import ConfigError, JudgeInputTruncated, LLMError
+from pruefstand.core.errors import ConfigError, JudgeInputTruncated
 from pruefstand.core.models.judge import JudgeTask, JudgeVerdict
 from pruefstand.core.models.llm import LLMRequest, LLMRole, Message
 from pruefstand.core.settings import PruefstandSettings
@@ -147,7 +147,7 @@ class Judge:
         messages = self._render(task)
         if sum(estimate_tokens(m.content) for m in messages) > self.input_cap:
             msg = f"{task.metric}: the prompt is over the input cap of {self.input_cap} tokens"
-            raise LLMError(msg, transient=False)
+            raise JudgeInputTruncated(msg, transient=False)  # candidate-side, like a cut input
         request = LLMRequest(
             role=LLMRole.JUDGE,
             model=self._model,
