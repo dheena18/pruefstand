@@ -4,7 +4,7 @@ import unicodedata
 from collections.abc import Iterable
 
 from pruefstand.core.config import LLMPolicyConfig
-from pruefstand.core.errors import ConfigError, PolicyViolation
+from pruefstand.core.errors import ConfigError, DataGuardViolation, PolicyViolation
 from pruefstand.core.logging import get_logger
 from pruefstand.core.models.attacks import CanaryRegistry
 from pruefstand.core.models.llm import LLMRequest, LLMRole
@@ -158,7 +158,7 @@ class LLMPolicy:
                 f"prompt '{req.prompt_id}' holds private documents; "
                 f"external provider '{provider}' refused"
             )
-            raise PolicyViolation(msg)
+            raise DataGuardViolation(msg)
         if req.role is LLMRole.DATAGEN and not self._external_datagen:
             msg = f"datagen requests may not use external provider '{provider}' (default deny)"
             raise PolicyViolation(msg)
@@ -167,4 +167,4 @@ class LLMPolicy:
             return
         if contains_canary((m.content for m in req.messages), self._canaries):
             msg = f"canary data in the request; external provider '{provider}' refused"
-            raise PolicyViolation(msg)
+            raise DataGuardViolation(msg)

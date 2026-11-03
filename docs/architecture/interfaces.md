@@ -632,6 +632,7 @@ def eval_fingerprint(*, dataset_name: str, dataset_version: str, splits: Sequenc
 class PruefstandError(Exception); class ConfigError; class TargetError; class LLMError(message, *, transient: bool = False, status: int | None = None); class PolicyViolation(LLMError); class BudgetExceeded
 class QuotaExhausted(LLMError)        # R9 (D9-07): provider quota exhausted (GitHub Models 429 + exhausted headers); raised by
                                       # LLMClient (T5.1), caught by the runner -> counts["judge_skipped"], reason "judge_quota"
+class DataGuardViolation(PolicyViolation)   # T4.5 (D745, additive): the data guard (private prompt / canary) refused an external provider
 class DatasetError; class StoreError; class StoreIntegrityError(StoreError)   # T1.8: stored file does not match its SHA-256; class GateInputError; class PromptError; class CorpusMismatch   # all subclass PruefstandError
 ```
 
@@ -1461,6 +1462,12 @@ class LLMPerturbation(Perturbation, Protocol):
 #                 citation_style, abbreviations, typos, colloquial
 def perturb_case(case: TestCase, p: Perturbation, rng: np.random.Generator) -> TestCase | None   # None if unchanged
 async def perturb_case_async(case: TestCase, p: LLMPerturbation, llm: LLMClient, rng: np.random.Generator) -> TestCase | None
+# T4.5 (D740-D744, additive; no signature above changed): perturb_case_async returns None for a rejected rewrite or an
+#   LLMError (warning `perturb_llm_error`) and re-raises QuotaExhausted. The four LLM perturbations are built with
+#   `build_llm_perturbation(name, Rewriter(model, local=...), RewriteValidator(...))` (`perturb/llm_registry.py`;
+#   `perturbation_names()` / `get_perturbation()` stay the seven deterministic ones). `LLMRewritePerturbation.apply` raises
+#   ConfigError (use `aapply`); `adraft` + `acheck` are the two halves behind `aapply`. `perturb/batch.py`: `RewriteStore`,
+#   `rewrite_pass(items, perturbations, llm=, store=, seed=) -> PassReport`, `validate_pass(...) -> list[Outcome]`.
 ```
 
 ## 13. attacks
@@ -1495,10 +1502,23 @@ def rotate_canaries(registry: CanaryRegistry, release: str, rng: np.random.Gener
 
 ```python
 class QACandidate(BaseModel): question: str; answer: str; citation: str | None; chunk_id: ChunkId; prompt_version: str
+                              evidence_span: str | None = None      # T4.2 (D782): verbatim, inside the cited Absatz, <= 60 tokens
+                              extra_chunk_ids: tuple[ChunkId, ...] = ()   # T4.2 (D785): 2nd chunk of a pair
+                              lang: Lang = Lang.DE; style: Literal["laie", "fachlich"] | None = None
 async def generate_qa(chunks: Sequence[Chunk], llm: LLMClient, model: str, prompt_version: str,
-                      rng: np.random.Generator) -> list[QACandidate]
+                      rng: np.random.Generator, *, concurrency: int = 4, stats: GenStats | None = None,
+                      sink: Callable[[str, QACandidate | None], None] | None = None,
+                      skip: Collection[str] = frozenset()) -> list[QACandidate]
 async def generate_qa_pairs(pairs: Sequence[tuple[Chunk, Chunk]], llm: LLMClient, model: str, prompt_version: str,
-                            rng: np.random.Generator) -> list[QACandidate]     # multi-hop / cross-lingual pairs (T4.2)
+                            rng: np.random.Generator, *, <same keyword options>) -> list[QACandidate]
+    # multi-hop / cross-lingual pairs (T4.2). Datagen = GitHub Models only, family != qwen/gemma, public text only
+    # (check_datagen_model, datagen_policy; ADR-0019); BudgetExceeded / QuotaExhausted stop the batch with the
+    # candidates so far; `skip` holds finished unit keys (resume, D784); GenStats.counts holds the counters.
+    # T4.2 additive (D785): to_test_case(c, chunk, category, *, corpus_version, split=Split.FULL, difficulty=None,
+    #   extra_chunk=None) -> TestCase (dataset.to_case; license_config_of(chunks) -> str | None),
+    #   cross_check(cands, chunks, llm, plan, rng, *, stats, done) -> list[CrossCheckRow] (dataset.cross_check),
+    #   validate_candidates(cands, chunks, judge, judge_model) -> list[ValidationRow] (dataset.generate_validate, pass 2),
+    #   sample_chunks / sample_multi_hop_pairs / sample_cross_lingual_pairs (dataset.sampling), scripts/generate_qa.py
 class FilterResult(BaseModel): kept: bool; reasons: tuple[str, ...]
 async def check_support(c: QACandidate, chunk: Chunk, llm: LLMClient, model: str) -> FilterResult
     # prompt dataset/prompts/support_check_de_v1.txt; no Judge dependency

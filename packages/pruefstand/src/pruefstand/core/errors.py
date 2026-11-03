@@ -43,6 +43,10 @@ class PolicyViolation(LLMError):  # noqa: N818  (name fixed by interfaces §2)
     """An LLM call was refused by ``LLMPolicy`` (provider or data not allowed)."""
 
 
+class DataGuardViolation(PolicyViolation):
+    """The data guard refused an external call: private-document prompt or canary data in it."""
+
+
 class BudgetExceeded(PruefstandError):  # noqa: N818  (name fixed by interfaces §2)
     """A USD or token budget would be exceeded."""
 
