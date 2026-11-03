@@ -182,8 +182,7 @@ def test_stack_run_signalled_tears_down_and_leaves_no_process(
         assert not reader.is_alive(), (
             "stdout still open: a process of the stack survived the signal"
         )
-        # CMD sleeps 600 s: a teardown that waits for it takes longer than this generous bound
-        assert time.monotonic() - t0 < 300, "stack-run returned only after CMD ran to its end"
+        assert time.monotonic() - t0 < 300, "stack-run waited for CMD (sleep 600) to end"
         deadline = time.monotonic() + 30
         while _group_alive(cmd_pgid[0]) and time.monotonic() < deadline:
             time.sleep(0.05)
