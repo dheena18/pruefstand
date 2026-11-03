@@ -32,7 +32,7 @@ from private_doc_plan import (
     check_datagen_model,
     check_output,
     default_model,
-    plan_documents,
+    plan_all,
 )
 
 from pruefstand.attacks.canary import TENANT_PREFIX
@@ -97,9 +97,10 @@ async def generate_one(
 async def _run(args: argparse.Namespace, ref: ModelRef) -> int:
     tenants = list(TENANT_PREFIX) if args.tenant == "all" else [args.tenant]
     client = make_client(ref, len(tenants) * args.n * args.attempts)
+    plans = plan_all(args.n, args.seed)
     failed = 0
     for tenant in tenants:
-        for plan in plan_documents(tenant, args.n, args.seed):
+        for plan in plans[tenant]:
             path = args.drafts / tenant / f"{plan.front.doc_id}.md"
             if path.exists():
                 print(f"skip {path.name} (exists)")

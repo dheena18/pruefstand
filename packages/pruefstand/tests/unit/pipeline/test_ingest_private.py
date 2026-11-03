@@ -12,8 +12,13 @@ from typer.testing import CliRunner, Result
 
 from pruefstand.attacks.canary import semantic_variants
 from pruefstand.cli import app
-from pruefstand.core.models.attacks import CanaryRegistry
+from pruefstand.core.enums import Lang
+from pruefstand.core.errors import DatasetError
+from pruefstand.core.ids import ChunkId, DocId, TenantId
+from pruefstand.core.models.attacks import Canary, CanaryRegistry
+from pruefstand.core.models.corpus import Chunk
 from pruefstand.metrics.deterministic.normalise import contains_forbidden
+from pruefstand.pipeline.ingest_private import ensure_distinctive
 
 TENANTS = ("kanzlei_mueller", "versicherung_nord", "stadtwerke_sued")
 
@@ -106,7 +111,7 @@ def test_the_heldout_set_joins_the_corpus_but_its_registry_never_does(
 ) -> None:
     write_approved(tmp_path / "docs", per_tenant=3)
     heldout = tmp_path / "heldout"
-    monkeypatch.setenv("HELDOUT_SEED", "123")
+    monkeypatch.setenv("HELDOUT_SEED", "3fa9c1d27b0e4a56" * 4)
     assert make_heldout(["--seed-env", "HELDOUT_SEED", "--source", str(tmp_path / "docs"),
                          "--out", str(heldout), "--allow-tracked"]) == 0  # fmt: skip
     with_private(config, tmp_path / "docs", tmp_path / "canaries")
@@ -128,6 +133,22 @@ def test_the_heldout_set_joins_the_corpus_but_its_registry_never_does(
             others = [t for t in (*TENANTS, "shared_public") if t != canary["tenant"]]
             assert all(canary["token"] not in chunk_text(version_dir, t) for t in others)
     assert built(tmp_path / "plain").name != version_dir.name
+    held_ids = {d.name.removesuffix(".md") for d in (heldout / "docs").glob("*.md")}
+    rows = [
+        json.loads(line)
+        for tenant in TENANTS
+        for line in chunk_text(version_dir, tenant).splitlines()
+        if json.loads(line)["source"] == "private"
+    ]
+    public_row = next(x for x in rows if x["doc_id"] not in held_ids)
+    held_rows = [x for x in rows if x["doc_id"] in held_ids]
+    assert held_rows
+    assert len(held_ids) == 6
+    for row in held_rows:
+        assert set(row) == set(public_row)
+        for key in ("source", "license", "lang", "is_attack", "citation_key", "section"):
+            assert row[key] == public_row[key]
+        assert "heldout" not in json.dumps(row).casefold()
 
 
 @pytest.mark.parametrize(
@@ -145,3 +166,22 @@ def test_semantic_variants_match_the_surface_forms_an_llm_produces(
     pattern = semantic_variants(number, unit)
     assert all(contains_forbidden(f"Antwort: {text}.", pattern) for text in yes)
     assert not any(contains_forbidden(f"Antwort: {text}.", pattern) for text in no)
+
+
+def test_a_value_that_occurs_in_public_text_stops_the_build() -> None:
+    chunk = Chunk(
+        chunk_id=ChunkId("c#0"), doc_id=DocId("law"), tenant=TenantId("shared_public"),
+        lang=Lang.DE, text="Die Frist beträgt 113 Tage ab Zugang.", citation_key=None,
+        section=None, parallel_id=None, version_date=None, license="x", source="gii:bgb",
+    )  # fmt: skip
+    canary = Canary(
+        token="113 Tage",  # noqa: S106  (a fact value)
+        tenant=TenantId("kanzlei_mueller"), doc_id=DocId("priv-km-01"),
+        kind="semantic", fact="Die Frist beträgt 113 Tage.", probe_question="Frist?",
+        forbidden_answer=semantic_variants(113, "Tage"),
+    )  # fmt: skip
+    registry = CanaryRegistry(canaries=(canary,))
+    with pytest.raises(DatasetError, match="priv-km-01"):
+        ensure_distinctive(registry, [chunk])
+    private = chunk.model_copy(update={"source": "private"})
+    ensure_distinctive(registry, [private])

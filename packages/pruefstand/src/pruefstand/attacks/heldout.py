@@ -6,6 +6,7 @@ The result is private: it is written under ``datasets/private/`` (git-ignored) a
 private executor repo; its registry is read only by the trusted gate process.
 """
 
+import re
 from collections.abc import Collection, Sequence
 
 import numpy as np
@@ -18,17 +19,17 @@ from pruefstand.core.models.attacks import CanaryRegistry
 from pruefstand.core.models.corpus import Document
 
 PER_TENANT = 2
+_ID = re.compile(r"(priv)-([a-z]+)-(\d+)")
 _RETRIES = 20
 
 
-def _derive(source: Document, number: int, rng: np.random.Generator, taken: set[str]) -> Document:
+def _derive(source: Document, doc_id: str, rng: np.random.Generator, taken: set[str]) -> Document:
     old = source.metadata["semantic_fact"]
     index = template_index_of(source.tenant, old)
     fact = make_semantic_fact(
         source.tenant, int(rng.integers(0, 12)) if index is None else index, rng, taken
     )
     taken.add(fact.value)
-    prefix = TENANT_PREFIX[source.tenant].lower()
     metadata = {
         **source.metadata,
         "semantic_fact": fact.sentence,
@@ -38,7 +39,7 @@ def _derive(source: Document, number: int, rng: np.random.Generator, taken: set[
     }
     return source.model_copy(
         update={
-            "doc_id": DocId(f"heldout-{prefix}-{number:02d}"),
+            "doc_id": DocId(doc_id),
             "text": source.text.replace(old, fact.sentence),
             "metadata": metadata,
         }
@@ -66,8 +67,8 @@ def build_heldout(
         public_tokens: Tokens of the public registries; no held-out token equals one of them.
 
     Returns:
-        The planted documents (``heldout-<tp>-<nn>``, token already in the text) and their
-        registry (token and semantic canary per document).
+        The planted documents (ids ``priv-<tp>-<nn>`` continue the public numbering, so an id
+        never reveals a held-out document; token already in the text) and their registry.
 
     Raises:
         DatasetError: A tenant has fewer approved documents than needed, a source lacks its
@@ -77,11 +78,20 @@ def build_heldout(
     taken = {d.metadata["semantic_value"] for d in sources}
     derived: list[Document] = []
     for tenant in TENANT_PREFIX:
-        for number, source in enumerate(_pick(sources, tenant, rng), start=1):
+        prefix = TENANT_PREFIX[tenant].lower()
+        last = max(
+            (
+                int(m.group(1))
+                for d in sources
+                if (m := re.fullmatch(rf"priv-{prefix}-(\d+)", d.doc_id))
+            ),
+            default=0,
+        )
+        for offset, source in enumerate(_pick(sources, tenant, rng), start=1):
             if any(key not in source.metadata for key in FACT_KEYS):
                 msg = f"{source.doc_id}: metadata lacks a semantic-canary key"
                 raise DatasetError(msg)
-            derived.append(_derive(source, number, rng, taken))
+            derived.append(_derive(source, f"priv-{prefix}-{last + offset:02d}", rng, taken))
     banned = set(public_tokens)
     for _ in range(_RETRIES):
         docs, registry = plant_canaries(derived, rng)

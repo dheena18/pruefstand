@@ -20,6 +20,7 @@ from pathlib import Path
 
 from pydantic import ValidationError
 
+from pruefstand.attacks.collision import public_collisions
 from pruefstand.core.errors import DatasetError
 from pruefstand.core.models.attacks import Canary, CanaryRegistry
 from pruefstand.ingest.corpus_files import FILE_SUFFIX, iter_lines
@@ -93,6 +94,11 @@ def _scan_file(path: Path, canaries: Sequence[Canary], report: Report, found: se
     for line in iter_lines(path):
         chunk = json.loads(line)
         text = str(chunk.get("text", ""))
+        if chunk.get("source") != "private":
+            for doc_id in public_collisions(canaries, [text]):
+                report.problems.append(
+                    f"canary value of {doc_id} occurs in public text ({path.name})"
+                )
         for number, canary in enumerate(canaries):
             if not _hit(canary, text):
                 continue

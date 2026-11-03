@@ -10,6 +10,7 @@ from testsupport.private_docs_support import write_approved
 
 from pruefstand.core.models.attacks import CanaryRegistry
 
+SEED = "3fa9c1d27b0e4a56" * 4  # 256 bits, synthetic test value
 REPO = Path(__file__).resolve().parents[2]
 
 
@@ -22,10 +23,10 @@ def run(source: Path, out: Path, *extra: str) -> int:
     return main(["--seed-env", "HELDOUT_SEED", "--source", str(source), "--out", str(out), *extra])
 
 
-def test_seed_123_builds_six_documents_and_a_registry(
+def test_a_256_bit_seed_builds_six_documents_and_a_registry(
     source: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    monkeypatch.setenv("HELDOUT_SEED", "123")
+    monkeypatch.setenv("HELDOUT_SEED", SEED)
     out = tmp_path / "heldout"
     assert run(source, out, "--allow-tracked") == 0
     assert len(list((out / "docs").glob("*.md"))) == 6
@@ -47,7 +48,7 @@ def test_seed_123_builds_six_documents_and_a_registry(
 def test_same_seed_same_bytes(
     source: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    monkeypatch.setenv("HELDOUT_SEED", "123")
+    monkeypatch.setenv("HELDOUT_SEED", SEED)
     assert run(source, tmp_path / "a", "--allow-tracked") == 0
     assert run(source, tmp_path / "b", "--allow-tracked") == 0
     names = sorted(
@@ -62,7 +63,7 @@ def test_same_seed_same_bytes(
 def test_public_registry_tokens_are_avoided(
     source: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    monkeypatch.setenv("HELDOUT_SEED", "123")
+    monkeypatch.setenv("HELDOUT_SEED", SEED)
     assert run(source, tmp_path / "a", "--allow-tracked") == 0
     first = CanaryRegistry.model_validate_json(
         (tmp_path / "a" / "canaries_heldout.json").read_text("utf-8")
@@ -77,7 +78,7 @@ def test_public_registry_tokens_are_avoided(
     assert taken.token not in {c.token for c in second.canaries}
 
 
-@pytest.mark.parametrize("value", [None, "", "abc", "-5"])
+@pytest.mark.parametrize("value", [None, "", "abc", "-5", "123", "9" * 38, "f" * 31])
 def test_a_missing_or_invalid_seed_is_refused_without_echoing_it(
     source: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, value: str | None,
     capsys: pytest.CaptureFixture[str],
@@ -100,7 +101,50 @@ def test_the_default_output_is_git_ignored_and_tracked_paths_are_refused(
         check=False,
     )
     assert ignored.returncode == 0
-    monkeypatch.setenv("HELDOUT_SEED", "123")
+    monkeypatch.setenv("HELDOUT_SEED", SEED)
     tracked = REPO / "datasets" / "fixtures" / "_heldout_must_not_exist"
     assert run(source, tracked) == 2
     assert not tracked.exists()
+
+
+def test_a_128_bit_hex_seed_is_accepted(
+    source: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("HELDOUT_SEED", "a" * 32)
+    assert run(source, tmp_path / "o", "--allow-tracked") == 0
+
+
+def test_no_heldout_token_or_fact_appears_in_a_tracked_file(
+    source: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("HELDOUT_SEED", SEED)
+    assert run(source, tmp_path / "o", "--allow-tracked") == 0
+    registry = CanaryRegistry.model_validate_json(
+        (tmp_path / "o" / "canaries_heldout.json").read_text("utf-8")
+    )
+    needles = {c.token for c in registry.canaries} | {c.fact for c in registry.canaries if c.fact}
+    tracked = subprocess.run(
+        ["git", "ls-files", "-z"],  # noqa: S607
+        cwd=REPO,
+        check=True,
+        capture_output=True,
+    ).stdout.split(b"\0")
+    for name in filter(None, tracked):
+        path = REPO / name.decode()
+        if path.is_file() and path.stat().st_size < 5_000_000:
+            text = path.read_text("utf-8", errors="ignore")
+            assert not [n for n in needles if n in text], name
+
+
+def test_every_file_of_the_output_folder_must_be_ignored(
+    source: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    subprocess.run(["git", "init", "-q", str(repo)], check=True)  # noqa: S603, S607
+    (repo / ".gitignore").write_text("out/canaries_heldout.json\n", encoding="utf-8")
+    monkeypatch.setenv("HELDOUT_SEED", SEED)
+    assert run(source, repo / "out") == 2  # docs/*.md would be tracked
+    assert not (repo / "out" / "docs").exists()
+    (repo / ".gitignore").write_text("out/\n", encoding="utf-8")
+    assert run(source, repo / "out") == 0

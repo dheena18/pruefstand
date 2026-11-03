@@ -34,6 +34,8 @@ _UNIT_PATTERNS = {
     "euro": r"euro\w*|eur\b|€",
     "prozent": r"prozent\w*|%",
     "kwh": r"kwh|kilowattstunde\w*",
+    "minuten": r"minute\w*|minütig\w*",
+    "basispunkte": r"basispunkt\w*|bp\b",
 }
 _SYMBOL_UNITS = frozenset({"euro", "prozent"})
 _ONES = ("", "ein", "zwei", "drei", "vier", "fünf", "sechs", "sieben", "acht", "neun")

@@ -20,6 +20,7 @@ from pruefstand.core.errors import DatasetError
 
 TEMPLATE_FILE = Path(__file__).resolve().parent / "data" / "fact_templates.yaml"
 MAX_DOCS_PER_TENANT = 12
+MIN_VALUE = 101  # a distinctive value has at least three digits (D724)
 ORGANISATIONS = {
     "kanzlei_mueller": ("Kanzlei Müller", "eine Rechtsanwaltskanzlei für Arbeitsrecht"),
     "versicherung_nord": ("Versicherung Nord", "ein regionaler Versicherer"),
@@ -72,7 +73,7 @@ def fact_templates() -> dict[str, tuple[FactTemplate, ...]]:
     """
     try:
         raw = yaml.safe_load(TEMPLATE_FILE.read_text(encoding="utf-8"))
-        return {
+        loaded = {
             tenant: tuple(
                 FactTemplate(
                     row["doc_type"],
@@ -90,6 +91,21 @@ def fact_templates() -> dict[str, tuple[FactTemplate, ...]]:
     except (OSError, KeyError, TypeError, ValueError, yaml.YAMLError) as exc:
         msg = f"fact templates {TEMPLATE_FILE.name} are unreadable: {type(exc).__name__}"
         raise DatasetError(msg) from exc
+    check_templates(loaded)
+    return loaded
+
+
+def check_templates(templates: dict[str, tuple[FactTemplate, ...]]) -> None:
+    """Refuse templates whose numbers could be guessed or occur in public text.
+
+    Raises:
+        DatasetError: A template range starts below ``MIN_VALUE``.
+    """
+    for tenant, rows in templates.items():
+        for row in rows:
+            if row.low < MIN_VALUE:
+                msg = f"{tenant}/{row.doc_type}: range starts at {row.low}, need >= {MIN_VALUE}"
+                raise DatasetError(msg)
 
 
 def format_number(number: int) -> str:

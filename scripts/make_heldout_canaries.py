@@ -1,6 +1,6 @@
 """Build the held-out canary set from the approved private documents (T2.6 S7).
 
-    HELDOUT_SEED=<secret integer> make heldout-canaries
+    HELDOUT_SEED=<secret, >= 128 bits> make heldout-canaries
 
 Writes ``datasets/private/heldout/docs/*.md`` (6 documents, 2 per customer tenant, token already
 planted) and ``canaries_heldout.json``. The folder is git-ignored and must stay out of the public
@@ -31,12 +31,29 @@ PUBLIC_GLOBS = ("corpus/*/canaries.public.json", "datasets/canaries/*/canaries.j
 REGISTRY_FILE = "canaries_heldout.json"
 
 
+MIN_SEED_BITS = 128
+
+
 def _seed(name: str) -> int:
-    raw = os.environ.get(name, "")
-    if not raw.isascii() or not raw.isdigit():
-        msg = f"environment variable {name} must hold a non-negative integer (the held-out seed)"
+    """Read the secret seed: a decimal number or hex string of at least 128 bits."""
+    raw = os.environ.get(name, "").strip()
+    try:
+        if raw.isascii() and raw.isdigit():
+            value = int(raw)
+        elif raw.isascii() and len(raw) >= MIN_SEED_BITS // 4:
+            value = int(raw, 16)
+        else:
+            value = 0
+    except ValueError:
+        value = 0
+    if value.bit_length() < MIN_SEED_BITS:
+        msg = (
+            f"environment variable {name} must hold a secret of at least {MIN_SEED_BITS} bits "
+            "(for example `openssl rand -hex 32`); a guessable seed would make the held-out "
+            "set reproducible"
+        )
         raise DatasetError(msg)
-    return int(raw)
+    return value
 
 
 def _git(args: list[str], cwd: Path) -> int:
@@ -47,15 +64,16 @@ def _git(args: list[str], cwd: Path) -> int:
 
 
 def _check_location(out: Path, *, allow_tracked: bool) -> None:
-    """Refuse an output folder that is inside a git work tree and not ignored by it."""
+    """Refuse an output folder inside a git work tree unless every file in it is git-ignored."""
     anchor = out
     while not anchor.exists():
         anchor = anchor.parent
     if allow_tracked or _git(["rev-parse", "--is-inside-work-tree"], anchor) != 0:
         return
-    if _git(["check-ignore", "-q", str(out / REGISTRY_FILE)], anchor) != 0:
+    probes = (out / REGISTRY_FILE, out / "docs" / "priv-xx-00.md")
+    if any(_git(["check-ignore", "-q", str(p)], anchor) != 0 for p in probes):
         msg = (
-            "the output folder is inside a git work tree and not git-ignored "
+            "the output folder is inside a git work tree and not fully git-ignored "
             "(--allow-tracked: only in the private repo)"
         )
         raise DatasetError(msg)

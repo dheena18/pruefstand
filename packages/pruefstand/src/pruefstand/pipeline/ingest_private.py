@@ -7,16 +7,18 @@ executor only) join the corpus already planted; their registry is never read or 
 """
 
 import json
+from collections.abc import Iterable
 from pathlib import Path
 
 import numpy as np
 
 from pruefstand.attacks.canary import TENANT_PREFIX, plant_canaries
+from pruefstand.attacks.collision import public_collisions
 from pruefstand.core.config import PrivateDocsConfig
 from pruefstand.core.errors import DatasetError
 from pruefstand.core.logging import get_logger
 from pruefstand.core.models.attacks import CanaryRegistry
-from pruefstand.core.models.corpus import Document
+from pruefstand.core.models.corpus import Chunk, Document
 from pruefstand.ingest.private_docs import PrivateDocsLoader
 
 _log = get_logger(__name__)
@@ -58,6 +60,23 @@ def load_private_documents(
         _log.info("heldout_documents_included", documents=len(held))
         docs.extend(held)
     return docs, registry
+
+
+def ensure_distinctive(registry: CanaryRegistry, chunks: Iterable[Chunk]) -> None:
+    """Fail when a semantic canary pattern matches any non-private chunk.
+
+    Args:
+        registry: The public registry.
+        chunks: All chunks of the corpus (private ones are skipped).
+
+    Raises:
+        DatasetError: A value also occurs in public text; the message names document ids only.
+    """
+    texts = (c.text for c in chunks if c.source != "private")
+    clash = public_collisions(registry.canaries, texts)
+    if clash:
+        msg = f"semantic canary value(s) occur in public text (not distinctive): {', '.join(clash)}"
+        raise DatasetError(msg)
 
 
 def write_registry(registry: CanaryRegistry, directory: Path, version: str) -> Path:

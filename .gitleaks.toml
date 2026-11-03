@@ -55,14 +55,13 @@ regexes = [
 ]
 
 [[allowlists]]
-description = "T2.6 public canary registries and the validator test: synthetic canary tokens (CLAUDE.md section 9), not credentials; the held-out registry is never committed here"
+description = "T2.6 validator test: one synthetic canary token assigned to an argument named token (CLAUDE.md section 9: test data, not a credential)"
 condition = "AND"
 paths = [
-  '''datasets/canaries/''',
-  '''scripts/tests/test_validate_canaries\.py''',
+  '''^scripts/tests/test_validate_canaries\.py$''',
 ]
 regexes = [
-  '''CANARY-(KM|VN|SS)-[0-9a-f]{6}''',
+  '''CANARY-VN-7f3a9c''',
 ]
 
 [[allowlists]]

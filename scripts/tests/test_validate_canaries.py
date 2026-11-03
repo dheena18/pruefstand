@@ -37,8 +37,14 @@ def corpus(tmp_path: Path, **texts: str) -> Path:
     directory.mkdir()
     for tenant in ("kanzlei_mueller", "versicherung_nord", "stadtwerke_sued", "shared_public"):
         text = texts.get(tenant, "Allgemeiner Text ohne Besonderheiten.")
-        line = {"chunk_id": f"{tenant}#0", "doc_id": "d1" if tenant == "versicherung_nord" else "x",
-                "tenant": tenant, "text": text}  # fmt: skip
+        private = tenant in texts
+        line = {
+            "chunk_id": f"{tenant}#0",
+            "doc_id": "d1" if tenant == "versicherung_nord" else "x",
+            "tenant": tenant,
+            "text": text,
+            "source": "private" if private else "gii:bgb",
+        }
         (directory / f"{tenant}.chunks.jsonl").write_text(
             json.dumps(line, ensure_ascii=False) + "\n", "utf-8"
         )
@@ -92,3 +98,15 @@ def test_main_prints_ok_or_fails(tmp_path: Path, capsys: pytest.CaptureFixture[s
     )
     assert main([str(good), "--registry", str(registry)]) == 1
     assert main([str(good), "--registry", str(tmp_path / "none.json")]) == 2
+
+
+def test_a_value_that_occurs_in_a_public_chunk_is_a_problem(tmp_path: Path) -> None:
+    directory = corpus(tmp_path, versicherung_nord=OWN)
+    line = {
+        "text": "Die Frist beträgt siebenundvierzig Tage.",
+        "tenant": "shared_public",
+        "source": "gii:bgb",
+    }
+    (directory / "shared_public.chunks.jsonl").write_text(json.dumps(line) + "\n", "utf-8")
+    report = validate(directory, canaries())
+    assert [p for p in report.problems if "public text" in p]

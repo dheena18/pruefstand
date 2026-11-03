@@ -28,7 +28,11 @@ from pruefstand.ingest.pins import SYNTHETIC_PIN, load_pins, pin_for
 from pruefstand.ingest.tenants import assign_tenants
 from pruefstand.ingest.writer import provisional_manifest, write_corpus
 from pruefstand.pipeline.ingest_chunks import chunk_documents
-from pruefstand.pipeline.ingest_private import load_private_documents, write_registry
+from pruefstand.pipeline.ingest_private import (
+    ensure_distinctive,
+    load_private_documents,
+    write_registry,
+)
 
 _log = get_logger(__name__)
 _DATE = re.compile(r"[0-9]{4}-[0-9]{2}-[0-9]{2}")
@@ -197,6 +201,8 @@ def build_corpus(config_path: Path, out: Path, date_tag: str) -> CorpusManifest:
     for chunk in chunk_documents(extras, cfg.max_tokens):
         chunks.append(chunk)
         _check_limit(chunks, cfg)
+    if registry is not None:
+        ensure_distinctive(registry, chunks)
     empty = sorted(set(cfg.plan.tenants) - {c.tenant for c in chunks})
     if empty:
         msg = f"tenant(s) without any chunk: {', '.join(empty)}"

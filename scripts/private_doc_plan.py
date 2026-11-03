@@ -140,7 +140,7 @@ def default_model(catalogue: Path) -> ModelRef:
     raise ConfigError(msg)
 
 
-def plan_documents(tenant: str, n: int, seed: int) -> list[DocPlan]:
+def plan_documents(tenant: str, n: int, seed: int, taken: set[str] | None = None) -> list[DocPlan]:
     """Plan ``n`` documents of ``tenant``, seeded; every fact value is distinct.
 
     Raises:
@@ -153,7 +153,7 @@ def plan_documents(tenant: str, n: int, seed: int) -> list[DocPlan]:
         msg = f"--n must be at most {MAX_DOCS_PER_TENANT} (templates per tenant), got {n}"
         raise ConfigError(msg)
     org, sector = ORGANISATIONS[tenant]
-    taken: set[str] = set()
+    taken = set() if taken is None else taken
     plans: list[DocPlan] = []
     for number in range(n):
         rng = np.random.default_rng([seed, list(TENANT_PREFIX).index(tenant), number])
@@ -166,6 +166,16 @@ def plan_documents(tenant: str, n: int, seed: int) -> list[DocPlan]:
         )  # fmt: skip
         plans.append(DocPlan(front, fact, org, sector))
     return plans
+
+
+def plan_all(n: int, seed: int) -> dict[str, list[DocPlan]]:
+    """Plan every customer tenant with one shared set of used values (D724).
+
+    The plan of a tenant never depends on which tenants a run selects, so drafts of separate
+    runs stay consistent and no two tenants share a semantic value.
+    """
+    taken: set[str] = set()
+    return {t: plan_documents(t, n, seed, taken) for t in TENANT_PREFIX}
 
 
 def build_messages(plan: DocPlan, attempt: int) -> tuple[Message, ...]:
