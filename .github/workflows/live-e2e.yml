@@ -225,6 +225,8 @@ jobs:
           uv run pruefstand gate --config "$CONFIG" --candidate "$cand" --baseline "$base" || gate_rc=$?
           if [ "$gate_rc" -gt 1 ]; then exit "$gate_rc"; fi
           uv run pruefstand report --run "$cand" --format md > comment.md
+          uv run pruefstand report --run "$cand" --format html
+          uv run pruefstand report --run "$cand" --format evidence --config "$CONFIG"
           # One judge line from run.json (judged metrics never decide this gate, W1.4), after the marker line.
           mode="$(jq -r '.judge_mode' "$cand/run.json")"
           calls="$(jq -r '.cost.llm_calls' "$cand/run.json")"
@@ -290,6 +292,8 @@ jobs:
             comment.md
             ${{ steps.gate.outputs.run_dir }}/gate.json
             ${{ steps.gate.outputs.run_dir }}/run.json
+            ${{ steps.gate.outputs.run_dir }}/report.html
+            ${{ steps.gate.outputs.run_dir }}/evidence.json
           retention-days: 14
       - name: Upload live-baseline
         if: github.event_name == 'push' && steps.gate.outputs.run_dir != ''
