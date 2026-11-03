@@ -61,7 +61,7 @@ def linear_ratio_limit(scale: float) -> float:
         >>> round(linear_ratio_limit(8), 1)
         28.3
     """
-    return 1.25 * scale**1.5
+    return float(1.25 * scale**1.5)
 
 
 def assert_scales_linearly(
