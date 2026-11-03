@@ -248,6 +248,19 @@ jobs:
           mv comment.new comment.md
           { echo "run_dir=$cand"; echo "gate_rc=$gate_rc"; echo "self_baseline=$self"; } >> "$GITHUB_OUTPUT"
           cat comment.md >> "$GITHUB_STEP_SUMMARY"
+      # Report files are best effort: a render failure must not skip the upload, the PR comment or the baseline.
+      - name: Render report.html and evidence.json
+        if: steps.gate.outputs.run_dir != ''
+        continue-on-error: true
+        env:
+          RUN_DIR: ${{ steps.gate.outputs.run_dir }}
+          CONFIG: ${{ github.event_name == 'schedule' && 'examples/live/pruefstand.nightly.yaml' || 'examples/live/pruefstand.yaml' }}
+        run: |
+          rc=0
+          uv run pruefstand report --run "$RUN_DIR" --format html || rc=$?
+          uv run pruefstand report --run "$RUN_DIR" --format evidence --config "$CONFIG" || rc=$?
+          if [ "$rc" -ne 0 ]; then echo "report.html / evidence.json could not be rendered (exit $rc); not fatal." >> "$GITHUB_STEP_SUMMARY"; fi
+          exit "$rc"
       - name: Live tests (stack only)
         env:
           PRUEFSTAND_TARGET_URL: http://localhost:8000
@@ -290,6 +303,8 @@ jobs:
             comment.md
             ${{ steps.gate.outputs.run_dir }}/gate.json
             ${{ steps.gate.outputs.run_dir }}/run.json
+            ${{ steps.gate.outputs.run_dir }}/report.html
+            ${{ steps.gate.outputs.run_dir }}/evidence.json
           retention-days: 14
       - name: Upload live-baseline
         if: github.event_name == 'push' && steps.gate.outputs.run_dir != ''

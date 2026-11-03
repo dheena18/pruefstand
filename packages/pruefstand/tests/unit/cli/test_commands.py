@@ -235,13 +235,6 @@ def test_report_json_is_the_gate_report(cli: CliRunner, gated_pair: Path) -> Non
     assert GateReport.model_validate_json(result.stdout).status is GateStatus.PASS
 
 
-@pytest.mark.parametrize("fmt", ["html", "evidence"])
-def test_report_html_and_evidence_wait_for_t6_4(cli: CliRunner, gated_pair: Path, fmt: str) -> None:
-    result = cli.invoke(app, ["report", "--run", str(gated_pair), "--format", fmt])
-    assert result.exit_code == 2
-    assert "T6.4" in result.output
-
-
 def test_report_without_gate_json_is_a_usage_error(cli: CliRunner, gated_pair: Path) -> None:
     (gated_pair / "gate.json").unlink()
     result = cli.invoke(app, ["report", "--run", str(gated_pair), "--format", "md"])

@@ -134,6 +134,16 @@ erDiagram
 and counts towards `error_rate`. Hard-fail evidence is redacted to 200 characters so canaries never spread
 beyond the artefact that found them.
 
+### 1.1 Report artefacts (T6.4)
+
+`pruefstand report --run runs/<id> --format html|evidence` adds two files to the run directory; they are derived
+(rebuildable from `run.json`, `gate.json`, `responses.jsonl`, `scored.jsonl`) and are not part of `artifact_sha256`.
+
+| File | Content | Public? |
+| --- | --- | --- |
+| `report.html` | single-file report (ui-spec §13), inline CSS + one hashed script, CSP `<meta>` | the full render stays on the VM / in private artefacts; the published copy is rendered from `sanitise_run` output (T8.1) |
+| `evidence.json` | `EvidenceRecord` (schema `evidence_record`): decision, fingerprints, config hash, git SHAs, models, judges, metric versions, thresholds (`GatePolicy`), per-metric results with CIs, security results, SHA-256 of both `run.json` and the candidate `gate.json` | contains no case text; hard-fail evidence is the already redacted `HardFailFinding.evidence` |
+
 ## 2. RunIndex (DuckDB)
 
 Rebuilt by `RunIndex.refresh()` from `runs/*/`. Never written by any other code path.

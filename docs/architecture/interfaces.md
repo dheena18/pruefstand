@@ -1225,6 +1225,21 @@ def write_gate_json(report: GateReport, path: Path) -> None
     # report/json_report.py (T1.9): sorted keys, 2-space indent, UTF-8, trailing newline; round-trips through
     # GateReport.model_validate_json
 def build_evidence_record(report: GateReport, base: RunManifest | None, cand: RunManifest, reviewer: str | None) -> EvidenceRecord
+    # T6.4 (D540, ADR-0021): EvidenceRecord lives in core.models.evidence, schema `evidence_record` (make schemas). Fields:
+    # schema_version "1", statement ("supports documentation for accuracy, robustness and record-keeping ... not a
+    # compliance certificate"), created_at (= candidate RunManifest.created_at: the builder reads no clock), gate_status,
+    # no_baseline, reviewer | None, dataset_name, dataset_version, corpus_version | None (target info), splits, n_cases,
+    # stack, workload, eval_fingerprint, target_fingerprint, config_hash, seed, candidate: EvidenceRun,
+    # baseline: EvidenceRun | None, baseline_run_id | None, gate_json_sha256 | None, model_ids, judge_mode, judge_models,
+    # judge_prompt_versions, metric_versions, thresholds: GatePolicy | None, results: tuple[EvidenceMetric, ...]
+    # (one per decision / absolute check / notable slice with its `table` per ui-spec 11.1, means, CI, p, MDE, max_drop,
+    # max_value, n_clusters, reason), likely_cause, not_applicable_counts, n_unmatched, n_excluded, security: EvidenceSecurity (hard_fail_count, redacted hard_fails,
+    # leak_metrics = rule hard_fail only, unverifiable = rule hard_fail_unverifiable,
+    # injection_success | None). EvidenceRun = run_id, created_at, git_sha, git_ref, pr_number, pruefstand_version,
+    # eval_fingerprint, target_fingerprint, config_hash, complete, stop_reason, run_json_sha256 | None.
+    # The builder only sees manifests: the three artefact hashes (run.json of both runs, gate.json of the candidate)
+    # and `thresholds` are None there and filled by cli/report.py (model_copy). base None (no baseline, or its manifest
+    # is not available) -> baseline None, baseline_run_id keeps the id of the GateReport.
 class GitHubPublisher:
     def __init__(self, token: str, repo: str, api_url: str = "https://api.github.com",
                  *, bot_login: str | None = None, enterprise_host: str | None = None) -> None
@@ -1615,6 +1630,10 @@ pruefstand gate       --candidate runs/<id> [--baseline runs/<id> | --from-store
                       # the executor then posts `failure` "no baseline for <fp>; run baseline-promote" via
                       # set_check(..., no_baseline=True) (D103, §10); it never passes and never runs main's image ad hoc
 pruefstand report     --run runs/<id> --format md|html|json|evidence [--config pruefstand.yaml] [--publish-pr N]   (--config required for evidence: T6.4)
+                      # T6.4 (D541): html / evidence write runs/<id>/report.html / evidence.json atomically (full private
+                      # render, chunk text included) and print the path; evidence without --config -> exit 2, a config whose
+                      # stable_hash differs from RunManifest.config_hash -> exit 2 (same function as pipeline/run.py);
+                      # the baseline run is read from the sibling directory <baseline_run_id>, absent -> base=None
 pruefstand baseline   promote --run runs/<id> --ref main|nightly-b0|nightly-b1|nightly-b2|release-b0|release-b1|release-b2   ·   export-public --run runs/<id> --out <dir>   (T6.1)
                       # R12: --ref nightly-b<k> requires RunManifest.block == k (else exit 2); R13 (D321): --ref
                       # release-b<k> requires block None + stratum "all" (the release run) and writes its block-k

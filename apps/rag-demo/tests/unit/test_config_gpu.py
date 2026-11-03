@@ -13,8 +13,8 @@ from rd_support import CONFIGS, REPO, hit
 from rag_demo.api import create_app
 from rag_demo.config import Settings, config_hash, load_config, parse_config
 from rag_demo.errors import ConfigError
-from rag_demo.generate import build_prompt
-from rag_demo.generate_ollama import OllamaChatGenerator, build_ollama_request
+from rag_demo.generation import OllamaChatGenerator, build_prompt
+from rag_demo.generation.llm_client import build_ollama_request
 from rag_demo.models import Stats
 
 CATALOGUE = REPO / "infra" / "gpu" / "models.yaml"

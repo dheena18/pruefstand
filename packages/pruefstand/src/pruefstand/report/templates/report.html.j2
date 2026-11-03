@@ -1,0 +1,226 @@
+{% macro tbl(t) %}
+<div class="scroll">
+<table{% if t.sortable %} data-sortable="true"{% endif %}>
+<caption>{{ t.caption }}</caption>
+<thead>
+<tr>
+{% for c in t.cols %}
+{% if t.sortable %}
+<th scope="col" aria-sort="none"{% if c.num %} class="num"{% endif %}><button type="button">{{ c.label }}</button></th>
+{% else %}
+<th scope="col"{% if c.num %} class="num"{% endif %}>{{ c.label }}</th>
+{% endif %}
+{% endfor %}
+</tr>
+</thead>
+<tbody>
+{% for r in t.rows %}
+<tr{% if r.cls %} class="{{ r.cls }}"{% endif %}{% if r.key %} data-key="{{ r.key }}"{% endif %}>
+{% for c in r.cells %}
+{% set attrs %}{% if c.num %} num{% endif %}{% if c.mono %} mono{% endif %}{% if c.cls %} {{ c.cls }}{% endif %}{% endset %}
+{% if loop.first %}
+<th scope="row"{% if attrs %} class="{{ attrs|trim }}"{% endif %}{% if c.lang %} lang="{{ c.lang }}"{% endif %}{% if c.sort is not none %} data-sort="{{ c.sort }}"{% endif %}>{{ c.t }}</th>
+{% else %}
+<td{% if attrs %} class="{{ attrs|trim }}"{% endif %}{% if c.lang %} lang="{{ c.lang }}"{% endif %}{% if c.sort is not none %} data-sort="{{ c.sort }}"{% endif %}>{{ c.t }}</td>
+{% endif %}
+{% endfor %}
+</tr>
+{% endfor %}
+</tbody>
+</table>
+</div>
+{% if t.note %}
+<p class="meta">{{ t.note }}</p>
+{% endif %}
+{% endmacro %}
+{% macro answer(a, label) %}
+<p class="label">{{ label }}</p>
+{% if a.error %}
+<p class="text">Error: {{ a.error }}</p>
+{% elif a.refused %}
+<p class="text"><span class="chip">Refused</span> {{ a.text }}</p>
+{% else %}
+<p class="text">{{ a.text if a.text else "no answer" }}</p>
+{% endif %}
+{% endmacro %}
+<!doctype html>
+<html lang="en">
+<head>
+<meta http-equiv="Content-Security-Policy" content="{{ csp|safe }}">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light dark">
+<meta name="referrer" content="no-referrer">
+<title>Prüfstand report {{ run_id }}</title>
+<style>
+{{ css|safe }}
+</style>
+</head>
+<body>
+<header class="top">
+<h1>Prüfstand report</h1>
+<p><span class="badge {{ header.cls }}"><span aria-hidden="true">{{ header.icon }}</span> {{ header.word }}</span>
+<span class="tier">{{ header.tier }}</span>
+{% if header.blocking %}
+<strong>{{ header.blocking }}</strong>
+{% endif %}
+</p>
+{% if header.cause %}
+<p>Likely cause: {{ header.likely_code }} — {{ header.cause }}</p>
+{% endif %}
+<p class="meta">Baseline: <span class="mono">{{ header.baseline }}</span> · Candidate: <span class="mono">{{ header.candidate }}</span></p>
+<p class="meta">{{ header.facts|join(" · ") }}</p>
+{% for bn in banners %}
+<div class="banner {{ bn.cls }}" role="{{ bn.role }}"><span aria-hidden="true">{{ bn.icon }}</span> {{ bn.text }}</div>
+{% endfor %}
+<nav class="toc" aria-label="Report sections">
+<ul>
+<li><a href="#hard-fails">Hard fails</a></li>
+<li><a href="#metrics">Metrics</a></li>
+<li><a href="#slices">Slices</a></li>
+<li><a href="#absolute">Absolute checks</a></li>
+<li><a href="#informational">Informational</a></li>
+<li><a href="#cases">Failing cases</a></li>
+<li><a href="#metadata">Run metadata</a></li>
+</ul>
+</nav>
+</header>
+<main>
+<section id="hard-fails" aria-labelledby="h-hard-fails">
+<h2 id="h-hard-fails">Hard fails</h2>
+{% if hard_fails %}
+{{ tbl(hard_fails) }}
+{% else %}
+<p>No hard fails.</p>
+{% endif %}
+</section>
+<section id="metrics" aria-labelledby="h-metrics">
+<h2 id="h-metrics">Metrics</h2>
+{% if no_baseline %}
+<p>Nothing was compared: there is no baseline.</p>
+{% endif %}
+{% for t in metrics %}
+{{ tbl(t) }}
+{% endfor %}
+</section>
+<section id="slices" aria-labelledby="h-slices">
+<h2 id="h-slices">Slices</h2>
+{% if no_baseline %}
+<p>Nothing was compared: there is no baseline.</p>
+{% elif not slices %}
+<p>No slices.</p>
+{% endif %}
+{% for t in slices %}
+{{ tbl(t) }}
+{% endfor %}
+</section>
+<section id="absolute" aria-labelledby="h-absolute">
+<h2 id="h-absolute">Absolute checks</h2>
+{% if absolute %}
+{{ tbl(absolute) }}
+{% elif tier1 %}
+<p>Tier 1 shows its checks under Metrics.</p>
+{% else %}
+<p>None.</p>
+{% endif %}
+</section>
+<section id="informational" aria-labelledby="h-informational">
+<h2 id="h-informational">Informational</h2>
+<p class="meta">Informational rows never block.</p>
+{% for t in info.tables %}
+{{ tbl(t) }}
+{% endfor %}
+{% if info.skipped %}
+<div class="banner info" role="status">Judge skipped (quota used up). Judged metrics are not shown; the deterministic gate still decided.</div>
+{% endif %}
+{% if info.judged %}
+{% if info.judged.table %}
+{{ tbl(info.judged.table) }}
+{% else %}
+<h3>{{ info.judged.heading }}</h3>
+{% endif %}
+{% endif %}
+{% if info.truncated %}
+<p>{{ info.truncated.text }}</p>
+{% if info.truncated.ids %}
+<p>Truncated cases: {% for i in info.truncated.ids %}<code>{{ i }}</code>{% if not loop.last %}, {% endif %}{% endfor %}</p>
+{% endif %}
+{% endif %}
+</section>
+<section id="cases" aria-labelledby="h-cases">
+<h2 id="h-cases">Top failing cases</h2>
+{% for c in cards %}
+<article class="card" id="case-{{ loop.index }}">
+<h3><code>{{ c.id }}</code></h3>
+{% if not c.known %}
+<p class="meta">Case details are not available in this run.</p>
+{% else %}
+<p class="meta">Category {{ c.category }} · tenant {{ c.tenant }}{% if c.expect_refusal %} · expected: refusal{% endif %}</p>
+<p class="label">Question</p>
+<p class="text" lang="{{ c.lang }}">{{ c.question }}</p>
+{% if c.answer %}
+<div lang="{{ c.lang }}">
+{{ answer(c.answer, "Candidate answer") }}
+</div>
+<p class="label">Citations</p>
+{% if c.answer.citations %}
+<ul lang="de">
+{% for cit in c.answer.citations %}
+<li>{{ cit }}</li>
+{% endfor %}
+</ul>
+{% else %}
+<p class="meta">no citations</p>
+{% endif %}
+{% if c.answer.chunks %}
+<p class="label">Retrieved chunks (rank order)</p>
+<ol>
+{% for ch in c.answer.chunks %}
+<li>
+<code>{{ ch.chunk_id }}</code> · doc <code>{{ ch.doc_id }}</code> · <span class="chip{% if ch.leak %} leak{% endif %}">tenant {{ ch.tenant }}</span> · score {{ ch.score }}
+{% if ch.leak %}
+<span class="chip leak">Leak: chunk from tenant {{ ch.tenant }}</span>
+{% endif %}
+{% if ch.not_used %}
+<span class="chip">not used in prompt</span>
+{% endif %}
+{% if ch.text %}
+<details><summary>Chunk text</summary><div class="text" lang="de">{{ ch.text }}</div></details>
+{% else %}
+<span class="meta">Chunk text is not published (sanitised data).</span>
+{% endif %}
+</li>
+{% endfor %}
+</ol>
+{% endif %}
+{% else %}
+<p class="meta">no answer</p>
+{% endif %}
+{% if c.base_answer %}
+<div lang="{{ c.lang }}">
+{{ answer(c.base_answer, "Baseline answer") }}
+</div>
+{% endif %}
+{% endif %}
+</article>
+{% else %}
+<p>No failing cases listed.</p>
+{% endfor %}
+</section>
+<section id="metadata" aria-labelledby="h-metadata">
+<h2 id="h-metadata">Run metadata</h2>
+{{ tbl(meta) }}
+</section>
+</main>
+<footer>
+<p>{{ licences.footer_line.en }}</p>
+<ul>
+{% for s in licences.sources %}
+<li>{{ s.name }} — {{ s.licence }}</li>
+{% endfor %}
+</ul>
+<p>Prüfstand v{{ version }} · Supports documentation, not a compliance certificate.</p>
+</footer>
+<script>{{ script|safe }}</script>
+</body>
+</html>

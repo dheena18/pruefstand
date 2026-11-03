@@ -6,7 +6,7 @@ import pytest
 from rd_support import CONFIGS, attack_hits, hit
 
 from rag_demo.config import load_config
-from rag_demo.generate import (
+from rag_demo.generation import (
     REFUSAL,
     OpenAICompatGenerator,
     apply_output_guard,
