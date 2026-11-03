@@ -33,7 +33,9 @@ def _pattern(abbreviation: str) -> str:
 
 
 _REGEX = re.compile(
-    r"(?<!\w)(" + "|".join(_pattern(a) for a in sorted(ABBREVIATIONS, key=len, reverse=True)) + ")"
+    r"(?<!\w)("
+    + "|".join(_pattern(a) for a in sorted(ABBREVIATIONS, key=len, reverse=True))
+    + r")(?![^\W\d_])"
 )
 
 

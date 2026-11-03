@@ -33,6 +33,10 @@ class SparseEncoder:
         self.b = b
         self.avg_len = avg_len
 
+    def with_avg_len(self, avg_len: float) -> "SparseEncoder":
+        """Return a copy with another average document length (set at index time)."""
+        return SparseEncoder(self.dim, self.k1, self.b, avg_len)
+
     def encode(self, tokens: list[str]) -> SparseVector:
         """Document-side vector.
 

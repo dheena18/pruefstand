@@ -84,3 +84,15 @@ def test_tokens_are_deterministic_and_never_raise(text: str) -> None:
     first = FULL.tokens(text)
     assert first == FULL.tokens(text)
     assert all(first)
+
+
+def test_fold_umlauts_has_no_effect_when_the_snowball_stemmer_is_on() -> None:
+    """Snowball German folds ä, ö, ü, ue itself, so the flag only matters with stemmer none."""
+    text = "Gebühren Gebuehren Kündigungen Kuendigungen"
+    off = GermanAnalyzer(compound_split=False, stemmer="snowball_de", fold_umlauts=False)
+    assert off.tokens(text) == NO_SPLIT.tokens(text)
+
+
+def test_overlong_tokens_are_not_stemmed() -> None:
+    word = "a" * 80 + "en"
+    assert NO_SPLIT.tokens(word) == [word]

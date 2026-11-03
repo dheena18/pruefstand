@@ -13,6 +13,7 @@ from rag_demo.analysis.abbreviations import expand_abbreviations
 from rag_demo.analysis.normalise import fold, nfc_lower, normalise_numbers, tokenise
 
 _MEMO_LIMIT = 50_000
+_MAX_STEM_LEN = 64  # longer tokens are left as they are (bounded work per token)
 
 
 def _load_stopwords() -> frozenset[str]:
@@ -35,7 +36,8 @@ class GermanAnalyzer:
         compound_split: Emit the parts of dictionary compounds besides the compound (mutation M4
             turns this off).
         stemmer: ``"snowball_de"`` or ``"none"``.
-        fold_umlauts: Fold ä, ö, ü, ß to ae, oe, ue, ss so "Gebühren" matches "Gebuehren".
+        fold_umlauts: Fold ä, ö, ü, ß to ae, oe, ue, ss so "Gebühren" matches "Gebuehren". With
+            ``stemmer="snowball_de"`` the flag has no effect: Snowball German folds umlauts itself.
     """
 
     def __init__(
@@ -82,7 +84,7 @@ class GermanAnalyzer:
         return [word] if parts == [word] else [word, *parts]
 
     def _stemmed(self, word: str) -> str:
-        if self._stem is None or not word.isalpha():
+        if self._stem is None or not word.isalpha() or len(word) > _MAX_STEM_LEN:
             return word
         with self._lock:
             cached = self._memo.get(word)

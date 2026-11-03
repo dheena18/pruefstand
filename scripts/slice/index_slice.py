@@ -1,7 +1,7 @@
 """Index ``corpus/slice_v1`` into the running Qdrant and write the snapshot (T1.13 S6).
 
 ``make index-slice`` calls this with ``QDRANT_URL`` and ``EMBED_URL`` of the local stack. The
-snapshot (``.cache/pruefstand/qdrant/slice_v1.snapshot``) holds only document vectors; T1.12 and the
+snapshot (``.cache/pruefstand/qdrant/slice_v2.snapshot``) holds only document vectors; T1.12 and the
 integration tests restore it instead of re-embedding.
 """
 
@@ -19,7 +19,7 @@ from rag_demo.dense import TeiDenseEncoder
 from rag_demo.index import Indexer
 
 ROOT = Path(__file__).resolve().parents[2]
-SNAPSHOT = ROOT / ".cache" / "pruefstand" / "qdrant" / "slice_v1.snapshot"
+SNAPSHOT = ROOT / ".cache" / "pruefstand" / "qdrant" / "slice_v2.snapshot"
 
 
 def write_snapshot(qdrant_url: str, collection: str, dest: Path) -> int:

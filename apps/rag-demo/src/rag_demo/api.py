@@ -11,9 +11,10 @@ from fastapi import FastAPI, HTTPException, Request, Response
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 
+from rag_demo.analysis.fingerprint import check_fingerprint
 from rag_demo.catalogue import CatalogueEntry
 from rag_demo.config import Settings, load_config
-from rag_demo.errors import RagDemoError
+from rag_demo.errors import IndexMismatchError, RagDemoError
 from rag_demo.info import build_info, cpu_model
 from rag_demo.models import GenOutput, Hit, RagConfig, Stats
 from rag_demo.protocols import Generator
@@ -23,6 +24,7 @@ from rag_demo.wiring import (
     build_catalogue,
     build_generator,
     build_retriever,
+    expected_fingerprint,
     info_env,
     resolve_urls,
 )
@@ -71,10 +73,15 @@ def build_health(stats: Stats) -> dict[str, Any]:
 
 
 class _CorpusMeta:
-    """Corpus version and tenant list, read once from the Qdrant collection metadata."""
+    """Corpus version and tenants from the collection metadata, read once.
 
-    def __init__(self, qdrant_url: str, collection: str) -> None:
+    Only a collection whose analyzer fingerprint matches is accepted; a stale or differently
+    analysed index is refused with 503.
+    """
+
+    def __init__(self, qdrant_url: str, collection: str, expected: dict[str, Any]) -> None:
         self._url = f"{qdrant_url.rstrip('/')}/collections/{collection}"
+        self._expected = expected
         self._value: dict[str, Any] | None = None
 
     def get(self) -> dict[str, Any]:
@@ -86,6 +93,10 @@ class _CorpusMeta:
                     raise KeyError("metadata")  # noqa: EM101, TRY301
             except (httpx.HTTPError, KeyError, TypeError, ValueError):
                 raise HTTPException(503, "index unavailable") from None
+            try:
+                check_fingerprint(meta.get("analyzer"), self._expected)
+            except IndexMismatchError as err:
+                raise HTTPException(503, str(err)) from None
             self._value = meta
         return self._value
 
@@ -110,7 +121,7 @@ def _build_parts(cfg: RagConfig, s: Settings) -> _Parts:
         stats=stats,
         retriever=build_retriever(cfg, s, urls.embed),
         generator=build_generator(cfg, urls.llm, stats),
-        corpus=_CorpusMeta(s.qdrant_url, s.collection),
+        corpus=_CorpusMeta(s.qdrant_url, s.collection, expected_fingerprint(cfg)),
         env=info_env(s),
         catalogue=build_catalogue(cfg, s),
     )

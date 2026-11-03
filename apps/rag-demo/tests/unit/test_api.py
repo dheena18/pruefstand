@@ -10,13 +10,14 @@ from rd_support import CONFIGS, REPO, SLICE
 
 from rag_demo.api import create_app
 from rag_demo.config import Settings, load_config
+from rag_demo.wiring import expected_fingerprint
 
 MANIFEST = json.loads((SLICE / "manifest.json").read_text(encoding="utf-8"))
 SETTINGS = Settings(
     qdrant_url="http://qdrant.test:6333",
     llm_url="http://llm:8080",
     embed_url="http://embed:8090",
-    collection="slice_v1",
+    collection="slice_v2",
 )
 COLLECTION = {
     "result": {
@@ -24,6 +25,7 @@ COLLECTION = {
             "metadata": {
                 "corpus_version": MANIFEST["corpus_version"],
                 "tenants": sorted(MANIFEST["tenants"]),
+                "analyzer": expected_fingerprint(load_config(CONFIGS / "rag.yaml")),
             }
         }
     }
@@ -41,7 +43,7 @@ def _request(tenant: str = "kanzlei_mueller", question: str = "Frist?") -> dict[
 
 @respx.mock
 def test_unknown_tenant_is_422_and_names_no_other_tenant(client: TestClient) -> None:
-    respx.get("http://qdrant.test:6333/collections/slice_v1").mock(
+    respx.get("http://qdrant.test:6333/collections/slice_v2").mock(
         return_value=httpx.Response(200, json=COLLECTION)
     )
     resp = client.post("/v1/query", json=_request(tenant="gibt_es_nicht"))
@@ -67,7 +69,7 @@ def test_unknown_request_field_is_422(client: TestClient) -> None:
 
 @respx.mock
 def test_info_fields(client: TestClient) -> None:
-    respx.get("http://qdrant.test:6333/collections/slice_v1").mock(
+    respx.get("http://qdrant.test:6333/collections/slice_v2").mock(
         return_value=httpx.Response(200, json=COLLECTION)
     )
     info = client.get("/v1/info").json()
@@ -116,7 +118,7 @@ def test_oversized_body_is_413(client: TestClient) -> None:
 @respx.mock
 def test_collection_metadata_without_tenants_is_503(client: TestClient) -> None:
     body = {"result": {"config": {"metadata": {"corpus_version": "slice-x"}}}}
-    respx.get("http://qdrant.test:6333/collections/slice_v1").mock(
+    respx.get("http://qdrant.test:6333/collections/slice_v2").mock(
         return_value=httpx.Response(200, json=body)
     )
     assert client.post("/v1/query", json=_request()).status_code == 503
@@ -124,7 +126,7 @@ def test_collection_metadata_without_tenants_is_503(client: TestClient) -> None:
 
 GPU_SETTINGS = Settings(
     qdrant_url="http://qdrant.test:6333",
-    collection="slice_v1",
+    collection="slice_v2",
     rag_model_catalogue=REPO / "infra" / "gpu" / "models.yaml",
     serving_engine_version="0.x",
     serving_gpu="A40",
@@ -138,7 +140,7 @@ def test_gpu_info_serving_comes_from_the_catalogue_and_env(
     monkeypatch.setenv("OLLAMA_GPU0_URL", "http://127.0.0.1:11434")
     cfg = load_config(CONFIGS / "rag.gpu.yaml", catalogue_path=GPU_SETTINGS.rag_model_catalogue)
     client = TestClient(create_app(cfg, settings=GPU_SETTINGS))
-    respx.get("http://qdrant.test:6333/collections/slice_v1").mock(
+    respx.get("http://qdrant.test:6333/collections/slice_v2").mock(
         return_value=httpx.Response(200, json=COLLECTION)
     )
     before = client.get("/v1/info")
@@ -164,3 +166,36 @@ def test_gpu_info_serving_comes_from_the_catalogue_and_env(
     health = client.get("/v1/health").json()["stats"]
     assert health["requests"] == stats_before + 3
     assert all(isinstance(v, int) for v in health.values())
+
+
+def _collection_with(analyzer: object) -> dict[str, object]:
+    meta = dict(COLLECTION["result"]["config"]["metadata"])
+    if analyzer is None:
+        meta.pop("analyzer")
+    else:
+        meta["analyzer"] = analyzer
+    return {"result": {"config": {"metadata": meta}}}
+
+
+@respx.mock
+def test_stale_collection_without_fingerprint_is_refused_not_served_dense_only(
+    client: TestClient,
+) -> None:
+    respx.get("http://qdrant.test:6333/collections/slice_v2").mock(
+        return_value=httpx.Response(200, json=_collection_with(None))
+    )
+    resp = client.post("/v1/query", json=_request())
+    assert resp.status_code == 503
+    assert "re-index" in resp.text
+
+
+@respx.mock
+def test_collection_built_with_another_compound_split_is_refused(client: TestClient) -> None:
+    fp = dict(COLLECTION["result"]["config"]["metadata"]["analyzer"])
+    fp["compound_split"] = not fp["compound_split"]
+    respx.get("http://qdrant.test:6333/collections/slice_v2").mock(
+        return_value=httpx.Response(200, json=_collection_with(fp))
+    )
+    resp = client.post("/v1/query", json=_request())
+    assert resp.status_code == 503
+    assert "compound_split" in resp.text

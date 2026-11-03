@@ -12,10 +12,12 @@ MANIFEST = json.loads((SLICE / "manifest.json").read_text(encoding="utf-8"))
 
 
 def test_collection_holds_every_chunk_with_a_tenant_payload_index(qdrant_url: str) -> None:
-    info = httpx.get(f"{qdrant_url}/collections/slice_v1", timeout=10).json()["result"]
+    info = httpx.get(f"{qdrant_url}/collections/slice_v2", timeout=10).json()["result"]
     assert info["points_count"] == sum(MANIFEST["tenants"].values())
     assert "tenant_id" in info["payload_schema"]
     assert info["config"]["metadata"]["corpus_version"] == MANIFEST["corpus_version"]
+    assert info["config"]["metadata"]["avgdl"] > 0
+    assert info["config"]["metadata"]["analyzer"]["scheme"] == "xxhash64-mod-dim"
 
 
 def test_kuendigungsfrist_question_finds_paragraph_622(make_retriever) -> None:  # type: ignore[no-untyped-def]

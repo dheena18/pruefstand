@@ -2,7 +2,9 @@
 
 The lexicon ``lexicon_de.txt`` is package data (own list of German legal and everyday word stems,
 MIT like the rest of the repo, a few kB). A word is split only if the lexicon covers it completely;
-parts are joined by the linking elements (Fugenelemente) ``s es n en e er ens``. Among all complete
+parts are joined by the linking elements (Fugenelemente) ``s es n en e er ens``; the last part
+may carry an inflection ending (``n en e er ern s es ses``: "Kündigungsfristen" gives ``frist``).
+Among all complete
 segmentations the one with the fewest parts wins, then the fewest linking characters (so
 "Rahmenvertrag" is rahmen+vertrag, not rahm+en+vertrag), then the alphabetically first.
 """
@@ -16,6 +18,8 @@ MIN_WORD = 10
 MIN_PART = 3
 MAX_WORD = 60
 _FUGEN = ("", "s", "es", "n", "en", "e", "er", "ens")
+# Inflection of the last part: plural, genitive and dative endings ("Kündigungsfristen" -> frist).
+_INFLECTION = ("", "n", "en", "e", "er", "ern", "s", "es", "ses")
 
 
 def _load() -> frozenset[str]:
@@ -33,7 +37,7 @@ def _best(word: str, start: int) -> _Plan | None:
     best: _Plan | None = None
     for end in range(start + MIN_PART, len(word) + 1):
         segment = word[start:end]
-        for fugen in _FUGEN if end < len(word) else ("",):
+        for fugen in _FUGEN if end < len(word) else _INFLECTION:
             stem = segment[: len(segment) - len(fugen)]
             if len(stem) < MIN_PART or not segment.endswith(fugen) or stem not in _LEXICON:
                 continue

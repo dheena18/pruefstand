@@ -98,8 +98,8 @@ folding, Snowball German stemming. The three switches live in the `analyzer:` se
 (`compound_split`, `fold_umlauts`, `stemmer`; defaults `true`, `true`, `snowball_de`) and are part of
 `config_hash`; `compound_split: false` is mutation M4. `SparseEncoder` hashes a token to
 `xxhash64(token) mod 2**31` and weights it with BM25 term-frequency saturation (k1 1.2, b 0.75); Qdrant applies
-the IDF. Changing the analyzer or the hash changes the index: re-index (the integration slice is now
-`slice_v2`).
+the IDF. The Indexer stores `avgdl` and an analyzer fingerprint in the collection metadata; the app refuses a
+collection with a missing or different fingerprint (503, "re-index"). Collection and snapshot are `slice_v2`.
 
 `uv run python -m rag_demo.analysis.analyzer "Kündigungsschutzgesetz"` prints the token list.
 Benchmark (`uv run pytest -m slow apps/rag-demo/tests/unit/analysis/test_benchmark.py -s`): 10 000 chunks

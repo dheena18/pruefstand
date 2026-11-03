@@ -102,7 +102,10 @@ class GenerationCfg(_Frozen):
 
 
 class AnalyzerCfg(_Frozen):
-    """The German analyzer switches (T3.3); part of ``config_hash``, so a change re-keys the index.
+    """The German analyzer switches (T3.3); part of ``config_hash`` (the run identity).
+
+    The index is protected separately: the Indexer writes an analyzer fingerprint into the
+    collection metadata and the app refuses a collection whose fingerprint differs (503).
 
     ``compound_split: false`` is mutation M4 (compound words stay one token).
     """
