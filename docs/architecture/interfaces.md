@@ -1497,10 +1497,23 @@ def check_attack_versions(sources, prompt_versions, *, expect_secret_markers: bo
 
 ```python
 class QACandidate(BaseModel): question: str; answer: str; citation: str | None; chunk_id: ChunkId; prompt_version: str
+                              evidence_span: str | None = None      # T4.2 (D782): verbatim, inside the cited Absatz, <= 60 tokens
+                              extra_chunk_ids: tuple[ChunkId, ...] = ()   # T4.2 (D785): 2nd chunk of a pair
+                              lang: Lang = Lang.DE; style: Literal["laie", "fachlich"] | None = None
 async def generate_qa(chunks: Sequence[Chunk], llm: LLMClient, model: str, prompt_version: str,
-                      rng: np.random.Generator) -> list[QACandidate]
+                      rng: np.random.Generator, *, concurrency: int = 4, stats: GenStats | None = None,
+                      sink: Callable[[str, QACandidate | None], None] | None = None,
+                      skip: Collection[str] = frozenset()) -> list[QACandidate]
 async def generate_qa_pairs(pairs: Sequence[tuple[Chunk, Chunk]], llm: LLMClient, model: str, prompt_version: str,
-                            rng: np.random.Generator) -> list[QACandidate]     # multi-hop / cross-lingual pairs (T4.2)
+                            rng: np.random.Generator, *, <same keyword options>) -> list[QACandidate]
+    # multi-hop / cross-lingual pairs (T4.2). Datagen = GitHub Models only, family != qwen/gemma, public text only
+    # (check_datagen_model, datagen_policy; ADR-0019); BudgetExceeded / QuotaExhausted stop the batch with the
+    # candidates so far; `skip` holds finished unit keys (resume, D784); GenStats.counts holds the counters.
+    # T4.2 additive (D785): to_test_case(c, chunk, category, *, corpus_version, split=Split.FULL, difficulty=None,
+    #   extra_chunk=None) -> TestCase (dataset.to_case; license_config_of(chunks) -> str | None),
+    #   cross_check(cands, chunks, llm, plan, rng, *, stats, done) -> list[CrossCheckRow] (dataset.cross_check),
+    #   validate_candidates(cands, chunks, judge, judge_model) -> list[ValidationRow] (dataset.generate_validate, pass 2),
+    #   sample_chunks / sample_multi_hop_pairs / sample_cross_lingual_pairs (dataset.sampling), scripts/generate_qa.py
 class FilterResult(BaseModel): kept: bool; reasons: tuple[str, ...]
 async def check_support(c: QACandidate, chunk: Chunk, llm: LLMClient, model: str) -> FilterResult
     # prompt dataset/prompts/support_check_de_v1.txt; no Judge dependency
