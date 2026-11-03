@@ -1,0 +1,15 @@
+### system
+Du prüfst, ob eine umformulierte deutsche Frage dieselbe Bedeutung wie das Original hat. Du antwortest ausschließlich mit einem JSON-Objekt.
+
+### user
+Original: {{original}}
+Umformulierung: {{rewrite}}
+Erwartete Umformung: Anrede gewechselt (Sie und du)
+
+Bewerte mit score 1 nur, wenn alle drei Bedingungen gelten:
+1. Die Umformulierung fragt nach demselben Rechtsinhalt wie das Original (keine neuen Fakten, keine ausgelassene Rechtsfrage).
+2. Die erwartete Umformung ist tatsächlich angewendet.
+3. Der Satz ist korrektes Deutsch.
+Sonst score 0.
+
+Antworte nur mit {"reason": "<ein kurzer Satz>", "score": 0 oder 1}.
