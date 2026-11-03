@@ -632,6 +632,7 @@ def eval_fingerprint(*, dataset_name: str, dataset_version: str, splits: Sequenc
 class PruefstandError(Exception); class ConfigError; class TargetError; class LLMError(message, *, transient: bool = False, status: int | None = None); class PolicyViolation(LLMError); class BudgetExceeded
 class QuotaExhausted(LLMError)        # R9 (D9-07): provider quota exhausted (GitHub Models 429 + exhausted headers); raised by
                                       # LLMClient (T5.1), caught by the runner -> counts["judge_skipped"], reason "judge_quota"
+class DataGuardViolation(PolicyViolation)   # T4.5 (D745, additive): the data guard (private prompt / canary) refused an external provider
 class DatasetError; class StoreError; class StoreIntegrityError(StoreError)   # T1.8: stored file does not match its SHA-256; class GateInputError; class PromptError; class CorpusMismatch   # all subclass PruefstandError
 ```
 
@@ -1455,6 +1456,12 @@ class LLMPerturbation(Perturbation, Protocol):
 #                 citation_style, abbreviations, typos, colloquial
 def perturb_case(case: TestCase, p: Perturbation, rng: np.random.Generator) -> TestCase | None   # None if unchanged
 async def perturb_case_async(case: TestCase, p: LLMPerturbation, llm: LLMClient, rng: np.random.Generator) -> TestCase | None
+# T4.5 (D740-D744, additive; no signature above changed): perturb_case_async returns None for a rejected rewrite or an
+#   LLMError (warning `perturb_llm_error`) and re-raises QuotaExhausted. The four LLM perturbations are built with
+#   `build_llm_perturbation(name, Rewriter(model, local=...), RewriteValidator(...))` (`perturb/llm_registry.py`;
+#   `perturbation_names()` / `get_perturbation()` stay the seven deterministic ones). `LLMRewritePerturbation.apply` raises
+#   ConfigError (use `aapply`); `adraft` + `acheck` are the two halves behind `aapply`. `perturb/batch.py`: `RewriteStore`,
+#   `rewrite_pass(items, perturbations, llm=, store=, seed=) -> PassReport`, `validate_pass(...) -> list[Outcome]`.
 ```
 
 ## 13. attacks
@@ -1473,14 +1480,21 @@ def number_word(n: int) -> str                         # T2.6: German word for 1
 class PrivateDocsConfig(BaseModel): dir: Path; seed: int; registry_dir: Path   # core.config.build; corpus.yaml `private_docs` (T2.6, D723)
 class PrivateDocsLoader:  def __init__(self, *, nested: bool = True); def load(self, raw_dir: Path) -> Iterator[Document]   # ingest/private_docs.py
 def build_heldout(sources: Sequence[Document], seed: int, public_tokens: Collection[str]) -> tuple[list[Document], CanaryRegistry]  # attacks/heldout.py
-class InjectionPlacement(StrEnum): PLAIN, TABLE_CELL, FOOTNOTE, METADATA, MIXED_LANG, BASE64
+class InjectionPlacement(StrEnum): PLAIN, TABLE_CELL, FOOTNOTE, METADATA, MIXED_LANG, BASE64   # core.models.attacks (T4.6)
+class AttacksConfig(BaseModel): seed: int; seeds_per_tenant: int = 8; placements: tuple[InjectionPlacement, ...]   # core.config.attacks; corpus.yaml `attacks` (T4.6, D761)
 def make_injection_docs(seeds: Sequence[str], placements: Sequence[InjectionPlacement], tenant: TenantId,
-                        rng: np.random.Generator) -> tuple[list[Document], list[TestCase]]
+                        rng: np.random.Generator, *, key: bytes | None = None) -> tuple[list[Document], list[TestCase]]   # key: marker values not recomputable from public data, shape still strippable (D766)
 def make_leak_probes(registry: CanaryRegistry, tenants: Sequence[TenantId]) -> list[TestCase]
 def make_filter_bypass_probes(registry: CanaryRegistry, tenants: Sequence[TenantId]) -> list[TestCase]
 def make_system_prompt_probes() -> list[TestCase]
 def rotate_canaries(registry: CanaryRegistry, release: str, rng: np.random.Generator) -> tuple[CanaryRegistry, list[Canary]]
     # attacks/rotation.py (T4.6); retired canaries in datasets/canaries/retired.json
+class RetiredCanary(BaseModel): token: str; tenant: str; fact: str | None; retired_in: str; probe_question: str | None; forbidden_answer: str | None   # last two additive (D764)
+def load_retired(path: Path) -> list[RetiredCanary]; def retire(path: Path, canaries: Iterable[Canary], retired_in: str) -> list[RetiredCanary]
+def unanswerable_from_germanrag(rows, tenants, *, limit=None) -> list[TestCase]; def make_own_unanswerable(indexed: Mapping[str, Collection[str]], rng) -> list[TestCase]   # attacks/refusal.py (D763)
+def check_injection_set(cases: Iterable[TestCase], chunks: Sequence[Chunk]) -> None   # attacks/injection_check.py; DatasetError
+def build_attack_set(cfg: AttacksConfig, tenants: Sequence[str], key: bytes | None = None) -> AttackSet   # docs, cases, version, markers_public
+def check_attack_versions(sources, prompt_versions, *, expect_secret_markers: bool | None = None) -> None   # None: derived from PRUEFSTAND_ATTACK_KEY
     # owner (D93): the maintainer runs it (+ re-plant via plant_canaries) in a release-prep PR before each
     # dataset release >= v2; retired.json is updated only from T9.1b's `retired-json` artefact; dataset-release.yml only checks
 ```
@@ -1489,10 +1503,23 @@ def rotate_canaries(registry: CanaryRegistry, release: str, rng: np.random.Gener
 
 ```python
 class QACandidate(BaseModel): question: str; answer: str; citation: str | None; chunk_id: ChunkId; prompt_version: str
+                              evidence_span: str | None = None      # T4.2 (D782): verbatim, inside the cited Absatz, <= 60 tokens
+                              extra_chunk_ids: tuple[ChunkId, ...] = ()   # T4.2 (D785): 2nd chunk of a pair
+                              lang: Lang = Lang.DE; style: Literal["laie", "fachlich"] | None = None
 async def generate_qa(chunks: Sequence[Chunk], llm: LLMClient, model: str, prompt_version: str,
-                      rng: np.random.Generator) -> list[QACandidate]
+                      rng: np.random.Generator, *, concurrency: int = 4, stats: GenStats | None = None,
+                      sink: Callable[[str, QACandidate | None], None] | None = None,
+                      skip: Collection[str] = frozenset()) -> list[QACandidate]
 async def generate_qa_pairs(pairs: Sequence[tuple[Chunk, Chunk]], llm: LLMClient, model: str, prompt_version: str,
-                            rng: np.random.Generator) -> list[QACandidate]     # multi-hop / cross-lingual pairs (T4.2)
+                            rng: np.random.Generator, *, <same keyword options>) -> list[QACandidate]
+    # multi-hop / cross-lingual pairs (T4.2). Datagen = GitHub Models only, family != qwen/gemma, public text only
+    # (check_datagen_model, datagen_policy; ADR-0019); BudgetExceeded / QuotaExhausted stop the batch with the
+    # candidates so far; `skip` holds finished unit keys (resume, D784); GenStats.counts holds the counters.
+    # T4.2 additive (D785): to_test_case(c, chunk, category, *, corpus_version, split=Split.FULL, difficulty=None,
+    #   extra_chunk=None) -> TestCase (dataset.to_case; license_config_of(chunks) -> str | None),
+    #   cross_check(cands, chunks, llm, plan, rng, *, stats, done) -> list[CrossCheckRow] (dataset.cross_check),
+    #   validate_candidates(cands, chunks, judge, judge_model) -> list[ValidationRow] (dataset.generate_validate, pass 2),
+    #   sample_chunks / sample_multi_hop_pairs / sample_cross_lingual_pairs (dataset.sampling), scripts/generate_qa.py
 class FilterResult(BaseModel): kept: bool; reasons: tuple[str, ...]
 async def check_support(c: QACandidate, chunk: Chunk, llm: LLMClient, model: str) -> FilterResult
     # prompt dataset/prompts/support_check_de_v1.txt; no Judge dependency

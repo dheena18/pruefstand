@@ -87,6 +87,25 @@ rag_demo_inner() {
   uv run pytest apps/rag-demo/tests/unit -q -p no:cacheprovider
 }
 
+dataset_stage() {
+  # T4.2 S7: records the REAL GitHub Models datagen calls used by the dataset cassette tests. Skipped
+  # unless PRUEFSTAND_GH_MODELS_TOKEN (Models: read, D333) is set; models.github.ai must be reachable
+  # (not from the VM, D604: run it on the owner's laptop or in an Actions job with models: read).
+  if [ -z "${PRUEFSTAND_GH_MODELS_TOKEN:-}" ]; then
+    echo "record_cassettes: dataset stage skipped (PRUEFSTAND_GH_MODELS_TOKEN is not set)" >&2
+    return 0
+  fi
+  local dir=packages/pruefstand/tests/cassettes/dataset
+  rm -f "$dir"/*.json
+  PRUEFSTAND_RECORD_DATASET=1 uv run pytest packages/pruefstand/tests/live/dataset -m live -q -p no:cacheprovider
+  uv run pytest packages/pruefstand/tests/unit/dataset/test_generate_cassette.py -q -p no:cacheprovider
+  git --no-pager diff --stat -- "$dir" || true
+}
+
+if [ "${1:-}" = "--dataset" ]; then
+  dataset_stage
+  exit $?
+fi
 if [ "${1:-}" = "--judges" ]; then
   # T5.2a: real answers of the A40 judge for packages/pruefstand/tests/unit/judges/test_judge_cassette.py.
   # Run on the VM under the GPU lock with the judge loaded: pruefstand-lock bash scripts/models/record_cassettes.sh --judges
@@ -120,3 +139,21 @@ git --no-pager diff --stat -- apps/rag-demo/tests/cassettes packages/pruefstand/
 # T1.10: third stage, the CLI target cassettes (good rag-demo + two bug instances; make cassettes-target).
 make --no-print-directory cassettes-target
 git --no-pager diff --stat -- packages/pruefstand/tests/cassettes/target || true
+
+# T4.2: fourth stage, the datagen cassettes (real GitHub Models calls; skipped without the token).
+dataset_stage
+
+# T4.5: fifth stage, the LLM-assisted perturbations (compound_split, register, gender, colloquial).
+# Rewrites come from the pinned GitHub Models datagen model, equivalence checks from the A40 judge in day
+# mode, so this stage needs PRUEFSTAND_GH_MODELS_TOKEN, PRUEFSTAND_PERTURB_REWRITE_MODEL (github/<model>),
+# PRUEFSTAND_PERTURB_JUDGE_MODEL (ollama/<tag>) and the tunnel; run it as `pruefstand-lock make cassettes`
+# on the VM. Without them the stage is skipped (the unit replay test then skips as well).
+if [ -n "${PRUEFSTAND_GH_MODELS_TOKEN:-}" ] && [ -n "${PRUEFSTAND_PERTURB_REWRITE_MODEL:-}" ] \
+  && [ -n "${PRUEFSTAND_PERTURB_JUDGE_MODEL:-}" ]; then
+  rm -rf packages/pruefstand/tests/cassettes/perturb
+  uv run pytest packages/pruefstand/tests/live/perturb/test_record_perturb.py --record-mode=rewrite -q -p no:cacheprovider
+  uv run pytest packages/pruefstand/tests/unit/perturb/test_cassettes.py -q -p no:cacheprovider
+  git --no-pager diff --stat -- packages/pruefstand/tests/cassettes/perturb || true
+else
+  echo "record_cassettes: perturb stage skipped (needs PRUEFSTAND_GH_MODELS_TOKEN and PRUEFSTAND_PERTURB_{REWRITE,JUDGE}_MODEL)" >&2
+fi

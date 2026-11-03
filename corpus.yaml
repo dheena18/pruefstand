@@ -17,6 +17,10 @@ loaders: [gii, eurlex, oldp]
 # The public registry goes to datasets/canaries/<corpus_version>/canaries.json (outside corpus/).
 # The build stops while datasets/private_docs/<tenant>/ has no approved document.
 private_docs: {dir: datasets/private_docs, seed: 7, registry_dir: datasets/canaries}
+# T4.6: injection documents (6 placements x 8 payloads per customer tenant = 144) placed into the customer
+# tenants as attack chunks (is_attack). `seed` and the payload/anchor data give the attack_set_version
+# pinned in manifest.sources["attacks"]; the dataset build pins the same value (check_attack_versions).
+attacks: {seed: 7, seeds_per_tenant: 8}
 max_tokens: 512
 plan:
   tenants: [kanzlei_mueller, versicherung_nord, stadtwerke_sued, shared_public]

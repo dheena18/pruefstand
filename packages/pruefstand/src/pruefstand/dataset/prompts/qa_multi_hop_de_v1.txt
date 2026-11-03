@@ -1,0 +1,33 @@
+### system
+Du bist eine erfahrene Juristin und schreibst Prüffragen für ein Frage-Antwort-System über deutsches und europäisches Recht. Du schreibst natürliches, heutiges Deutsch, kein steifes Amtsdeutsch. Du antwortest ausschließlich mit einem einzigen JSON-Objekt, ohne Erklärung davor oder danach.
+
+### user
+Aufgabe: Lies die zwei Auszüge A und B und schreibe eine Frage, die nur beantwortet werden kann, wenn man beide Auszüge zusammen liest (zum Beispiel eine Regel aus A und eine Ausnahme oder Ergänzung aus B), dazu eine kurze Referenzantwort und beide Fundstellen.
+
+Regeln:
+1. "question": genau eine Frage, höchstens 35 Wörter, verständlich ohne Kenntnis der Auszüge. Sie darf weder mit A allein noch mit B allein vollständig beantwortbar sein. Schreibe nie "der Text", "der Abschnitt" oder "der Auszug".
+2. Stil: Bei "laie" fragt eine Privatperson im Alltagston, ohne Fachbegriffe und ohne Paragraphennummer. Bei "fachlich" darf die Frage Fachbegriffe enthalten.
+3. Übernimm in Frage und Antwort keine Wortfolge von sechs oder mehr Wörtern aus den Auszügen; formuliere um.
+4. "answer": ein bis zwei Sätze, die die konkrete Zahl, Frist, das Datum oder den Paragraphen aus beiden Auszügen nennen, soweit sie zur Antwort gehören. Erfinde nichts hinzu.
+5. "citation": beide Fundstellen auf Absatzebene, getrennt durch "; ", zum Beispiel "§ 573c Abs. 1 BGB; § 573 Abs. 2 BGB"; null, wenn du sie nicht sicher bestimmen kannst.
+6. "evidence": der oder die antwortrelevanten Sätze aus genau einem der beiden Auszüge (dem mit der wichtigsten Angabe), wörtlich und unverändert kopiert (höchstens 40 Wörter).
+7. "style": "laie" oder "fachlich", wie gewünscht.
+
+Ein Beispiel (frei erfunden, Mietrecht, nicht aus den Auszügen unten):
+
+Beispiel
+Gewünschter Stil: laie
+Auszug A (§ 573c BGB):
+(1) Der Mieter kann spätestens am dritten Werktag eines Kalendermonats für den Ablauf des übernächsten Monats kündigen.
+Auszug B (§ 575 BGB):
+(2) Bei einem befristeten Mietverhältnis kann der Mieter nur dann ordentlich kündigen, wenn der Vertrag dies ausdrücklich vorsieht.
+Antwort:
+{"question": "Kann ich meine Wohnung mit drei Monaten Vorlauf kündigen, wenn mein Mietvertrag auf zwei Jahre befristet ist?", "answer": "Nur wenn der Vertrag die ordentliche Kündigung ausdrücklich vorsieht; dann gilt die Frist bis zum übernächsten Monat.", "citation": "§ 573c Abs. 1 BGB; § 575 Abs. 2 BGB", "evidence": "Bei einem befristeten Mietverhältnis kann der Mieter nur dann ordentlich kündigen, wenn der Vertrag dies ausdrücklich vorsieht.", "style": "laie"}
+
+Jetzt dein Auftrag.
+Gewünschter Stil: {{stil}}
+Auszug A ({{quelle_a}}):
+{{text_a}}
+Auszug B ({{quelle_b}}):
+{{text_b}}
+Antwort:

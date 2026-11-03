@@ -121,5 +121,10 @@ The owner checked the real machines on 2026-10-31 and decided to "manage with wh
   stops with exit 17 when it is below model size + the 2 GB reserve, asking the owner to free space; it never starts the pull then.
 - T3.1e addendum (D560-D562): the wrapper's op set grows by the read-only `log [N]` (redacted Ollama log tail,
   produced on the cluster, fail closed); the sudoers file does not change.
+- T4.2 addendum (D780-D788): the datagen model is pinned provisionally to `github/openai/gpt-4.1-mini` (family `gpt`)
+  with `github/meta/Llama-3.3-70B-Instruct` (family `llama`) for the 10 % cross-check; both are checked by
+  `check_datagen_model` (GitHub Models only, never `qwen`/`gemma`, no local datagen model for public text). The
+  quota is handled by resumable batches with a ledger, `--max-requests` and a clean stop on `QuotaExhausted`.
+  Private documents, canaries and held-out data still never go to GitHub Models (client data guard).
 - Follow-ups: T3.1b pins `gemma3:12b` and measures VRAM/time; T4.2 pins the GitHub Models datagen model;
   the NAS dataset `/mnt/SDD/SSD/Ollama` held Ollama's identity key; moved out of the share on 2026-11-01 (setup log §7).

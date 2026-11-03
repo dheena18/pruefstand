@@ -51,3 +51,6 @@ mutants/
 !apps/dashboard/src/app/**/runs/
 # T2.6: draft private documents (reviewed, then moved to datasets/private_docs/<tenant>/)
 datasets/private_docs/_drafts/
+
+# T4.2: QA generation work dirs (candidates, ledger, cross-check; regenerated)
+datasets/_work/
