@@ -330,7 +330,7 @@ cluster scripts (infra/cluster/, copied over SSH to /data/dheena/pruefstand-bin/
   stop-ollama.sh                   stops the one server (pid found as below), only under the lock via the wrapper;
                                    normally the owner restarts it by hand (runbook §2a)
   status.sh                        CSV check,status,detail: server pid (pgrep -u $USER -x ollama + listener on :11434),
-                                   free space on /data (< 2 GB -> WARN, ADR-0019),
+                                   free space on /data (< reserve + 1 GB = 3 GB -> WARN, D662; was 2 GB, ADR-0019),
                                    its OLLAMA_* env from /proc/<pid>/environ (WARN on a difference from
                                    cluster.env), /api/tags, /api/ps (size, size_vram), nvidia-smi per card, and the
                                    card(s) of each resident model (compute-apps pid/gpu_uuid joined with the
@@ -1427,7 +1427,7 @@ def provisional_manifest(chunks: Iterable[Chunk], sources: Mapping[str, str]) ->
     # corpus_version "", input of core.fingerprint.corpus_version; created_at of the final manifest = midnight UTC of the version date
 def verify_corpus(directory: Path) -> CorpusManifest   # ingest/corpus_verify.py (D437): DatasetError on any inconsistency
 def build_corpus(config_path: Path, out: Path, date_tag: str) -> CorpusManifest   # pipeline/ingest.py; hook
-    # _extra_documents(cfg) -> list[Document] (empty; T2.6 canary-planted private docs, T4.6 injection docs; pin "synthetic")
+    # _extra_documents(cfg) -> list[Document] (empty; T4.6 injection docs; pin "synthetic"); T2.6 private docs come from corpus.yaml `private_docs` via pipeline/ingest_private.py (D723)
 ```
 
 ## 12. perturb
@@ -1460,6 +1460,13 @@ class CanaryRegistry(BaseModel): canaries: tuple[Canary, ...]
                                  def foreign_to(self, tenant: TenantId) -> tuple[Canary, ...]
 def make_canary_token(tenant: TenantId, rng: np.random.Generator) -> str     # "CANARY-<TP>-<6 hex>"
 def plant_canaries(docs: Sequence[Document], rng: np.random.Generator) -> tuple[list[Document], CanaryRegistry]
+    # T2.6: doc.metadata needs semantic_fact (exactly once in the text), semantic_value, probe_question, forbidden_answer;
+    # returns docs with the token planted (those keys removed); per doc a token canary then a semantic canary (token = value)
+def semantic_variants(number: int, unit: str) -> str   # T2.6, attacks/canary.py: the `re:` forbidden pattern of a semantic canary
+def number_word(n: int) -> str                         # T2.6: German word for 1..999 (ValueError outside)
+class PrivateDocsConfig(BaseModel): dir: Path; seed: int; registry_dir: Path   # core.config.build; corpus.yaml `private_docs` (T2.6, D723)
+class PrivateDocsLoader:  def __init__(self, *, nested: bool = True); def load(self, raw_dir: Path) -> Iterator[Document]   # ingest/private_docs.py
+def build_heldout(sources: Sequence[Document], seed: int, public_tokens: Collection[str]) -> tuple[list[Document], CanaryRegistry]  # attacks/heldout.py
 class InjectionPlacement(StrEnum): PLAIN, TABLE_CELL, FOOTNOTE, METADATA, MIXED_LANG, BASE64
 def make_injection_docs(seeds: Sequence[str], placements: Sequence[InjectionPlacement], tenant: TenantId,
                         rng: np.random.Generator) -> tuple[list[Document], list[TestCase]]

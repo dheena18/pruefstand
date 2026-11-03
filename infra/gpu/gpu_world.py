@@ -52,14 +52,14 @@ def status_csv(
     extra: Sequence[str] = (),
 ) -> str:
     """The CSV a healthy ``status.sh`` prints (generator + bge-m3 on gpu 0, the judge on gpu 1)."""
-    disk_state = "OK" if free_kb >= 2 * 1024 * 1024 else "WARN"
+    disk_state = "OK" if free_kb >= 3 * 1024 * 1024 else "WARN"  # reserve 2 GB + 1 GB (D662)
     rows = [
         "check,status,detail",
         "server,OK,pid=4242",
         "start-script,OK,the start script of record exists",
         "listener,OK,127.0.0.1 pid=4242",
         "env,OK,matches cluster.env",
-        f"disk-models,{disk_state},free_kb={free_kb} min_free_gb=2",
+        f"disk-models,{disk_state},free_kb={free_kb} min_free_gb=2 warn_below_gb=3",
         "api-tags,OK,models=3",
         f"gpu:0,INFO,uuid=GPU-aaa used_mib={gpu_used[0]} total_mib=46068",
         f"gpu:1,INFO,uuid=GPU-bbb used_mib={gpu_used[1]} total_mib=46068",
