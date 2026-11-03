@@ -14,6 +14,7 @@ disk, `<models-dir>` (ADR-0019). Everything in this directory runs **on the VM**
 | `unload-all.sh` | unload every catalogue model; the server keeps running (`make gpu-down`) |
 | `deploy-cluster-bin.sh [--check] [--bin-dev] [--print-sums]` | copy `infra/cluster/*.sh` + the rendered `cluster.env` over SSH, write `SHA256SUMS` |
 | `pruefstand-cluster`, `install-cluster-wrapper.sh`, `lib/cluster_ssh.sh` | the only way to reach the cluster as the owner; fixed ops, lock proof for the mutating ones |
+| `compose.rag-demo.yml` | dev service `rag-demo-dev` (T3.2; profiles `gpu` + `dev`, host network, `127.0.0.1:18000`, no GPU device) |
 | `rerank/`, `compose.gpu.yml` | `rerank-cpu` (TEI-compatible `POST /rerank`, no auth) for compose profile `gpu` |
 | `lib/gpu_common.sh`, `gpu_catalogue.py`, `gpu_health.py` | shared helpers; JSON bodies and checks come from Python, never from shell string building |
 

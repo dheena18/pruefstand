@@ -1,7 +1,7 @@
-r"""Prompt building, guards and the llama.cpp generator.
+r"""Prompt building, guards and the OpenAI-compatible (llama.cpp) generator.
 
 The pure functions (``build_prompt``, ``build_chat_request``, ``strip_think``,
-``apply_output_guard``, ``extract_citations``) hold the logic; ``LlamaCppGenerator`` is the thin
+``apply_output_guard``, ``extract_citations``) hold the logic; ``OpenAICompatGenerator`` is the thin
 HTTP wrapper around them. Token counts for the chunk budget use the word-and-symbol count of
 ``\\w+|[^\\w\\s]`` as a conservative proxy for model tokens (T3.6 switches to the model tokenizer).
 """
@@ -158,8 +158,8 @@ def extract_citations(text: str) -> list[str]:
     return list(dict.fromkeys(m.group(0) for m in _CITATION.finditer(text)))
 
 
-class LlamaCppGenerator:
-    """Call a llama.cpp server (OpenAI-compatible chat API) and post-process the answer.
+class OpenAICompatGenerator:
+    """Call an OpenAI-compatible chat server (llama.cpp, tier 1) and post-process the answer.
 
     Args:
         cfg: Active configuration.
@@ -168,6 +168,8 @@ class LlamaCppGenerator:
         client: Optional ``httpx.AsyncClient`` (tests).
         timeout_s: Request timeout.
     """
+
+    PATH = "/v1/chat/completions"
 
     def __init__(
         self,
@@ -179,10 +181,28 @@ class LlamaCppGenerator:
         timeout_s: float = 180.0,
     ) -> None:
         self._cfg = cfg
-        self._url = f"{base_url.rstrip('/')}/v1/chat/completions"
+        self._url = f"{base_url.rstrip('/')}{self.PATH}"
         self._stats = stats
         self._headers = auth_headers(cfg.generator.api_key_env)  # read once, never logged
         self._client = client or httpx.AsyncClient(timeout=timeout_s)
+
+    def _body(self, messages: list[dict[str, str]]) -> dict[str, Any]:
+        return build_chat_request(messages, self._cfg)
+
+    def _parse(self, data: dict[str, Any]) -> tuple[str, str, int, int]:
+        """Return ``(text, model, prompt_tokens, completion_tokens)`` of a response body."""
+        try:
+            raw = str(data["choices"][0]["message"]["content"])
+            usage = data.get("usage") or {}
+        except (KeyError, IndexError, TypeError):
+            msg = "generator response has an unexpected shape"
+            raise GenerationError(msg) from None
+        return (
+            raw,
+            str(data.get("model") or self._cfg.generator.model),
+            int(usage.get("prompt_tokens", 0)),
+            int(usage.get("completion_tokens", 0)),
+        )
 
     async def answer(self, question: str, hits: list[Hit]) -> GenOutput:
         """Generate the answer for ``question`` from ``hits``.
@@ -199,13 +219,9 @@ class LlamaCppGenerator:
         """
         messages = build_prompt(question, hits, self._cfg)
         self._stats.truncated_chunks += count_truncated(hits, self._cfg)
-        data = await self._post(build_chat_request(messages, self._cfg))
-        try:
-            raw = str(data["choices"][0]["message"]["content"])
-            usage = data.get("usage") or {}
-        except (KeyError, IndexError, TypeError):
-            msg = "generator response has an unexpected shape"
-            raise GenerationError(msg) from None
+        raw, model, prompt_tokens, completion_tokens = self._parse(
+            await self._post(self._body(messages))
+        )
         text, stripped = strip_think(raw)
         self._stats.think_stripped += stripped
         answer = apply_output_guard(text, messages[0]["content"], self._cfg)
@@ -213,9 +229,9 @@ class LlamaCppGenerator:
             answer=answer,
             citations=extract_citations(answer),
             refused=answer.strip() == REFUSAL,
-            model=str(data.get("model") or self._cfg.generator.model),
-            prompt_tokens=int(usage.get("prompt_tokens", 0)),
-            completion_tokens=int(usage.get("completion_tokens", 0)),
+            model=model,
+            prompt_tokens=prompt_tokens,
+            completion_tokens=completion_tokens,
             prompt_chunk_ids=[h.chunk_id for h in hits],
         )
 

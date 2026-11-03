@@ -11,7 +11,7 @@ from rd_support import CONFIGS, hit
 
 from rag_demo.config import load_config
 from rag_demo.dense import TeiDenseEncoder
-from rag_demo.generate import LlamaCppGenerator
+from rag_demo.generate import OpenAICompatGenerator
 from rag_demo.models import Stats
 
 pytestmark = [
@@ -27,7 +27,9 @@ QUESTION = "Welche Kündigungsfrist gilt nach zwei Jahren Betriebszugehörigkeit
 @pytest.mark.vcr
 async def test_record_generator_answer() -> None:
     cfg = load_config(CONFIGS / "rag.yaml")
-    out = await LlamaCppGenerator(cfg, LLM, stats=Stats()).answer(QUESTION, [hit("gii-bgb-622#1")])
+    out = await OpenAICompatGenerator(cfg, LLM, stats=Stats()).answer(
+        QUESTION, [hit("gii-bgb-622#1")]
+    )
     assert out.answer
 
 

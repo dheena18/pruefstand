@@ -120,14 +120,14 @@ reader validated by `schemas/chunk.schema.json` and never imports `pruefstand`.
 
 **v0 layout (T1.13).** `rag_demo` is flat: `models`, `config`, `schemas` (wire models), `api`, `protocols`, `analysis`,
 `sparse`, `dense` (`TeiDenseEncoder`), `index` (corpus reader, `Indexer`), `retrieve` (`build_query`, `Retriever`),
-`generate` (`build_prompt`, guards, `LlamaCppGenerator`), `auth`, `errors`; the request and response logic is in pure
+`generate` (`build_prompt`, guards, `OpenAICompatGenerator`), `auth`, `errors`; the request and response logic is in pure
 functions that the unit tests cover, the classes that talk HTTP are thin wrappers (integration and `live` tests).
 Retriever and indexer speak the Qdrant REST API through `httpx` (no client library). T3.x may regroup the modules.
 
 | Component | Responsibility |
 | --- | --- |
 | `create_app` | Implements Target HTTP API v1; computes `config_hash`; exposes `/v1/info` incl. `serving` with **static fields only** (engine, engine_version, quantization, GPU model, model file sha256, X3.13) and `/v1/health` with runtime counters (stripped `<think>` blocks, truncated passages) |
-| `RagConfig` | Typed `rag.yaml` (tier 1, CPU) / `rag.gpu.yaml` (tier 2: Ollama via `LLM_PROXY_URL`, `RERANK_URL`; X3.15) |
+| `RagConfig` | Typed `rag.yaml` (`profile: live`, tier 1, CPU) / `rag.gpu.yaml` (`profile: gpu`, tier 2: Ollama via `LLM_PROXY_URL`, `RERANK_URL`; X3.15); the `gpu` profile is validated against `infra/gpu/models.yaml` (`catalogue.py`, D453) and its endpoints against the no-hosted-provider rule (`endpoints.py`, D454) |
 | `GermanAnalyzer` | NFC, lowercase, optional ß folding, Snowball German stemming, optional compound split |
 | `SparseEncoder` | Hashed vocabulary + term weights; IDF applied by Qdrant |
 | `DenseEncoder` | small multilingual CPU model (v0, tier 1) or `bge-m3` via Ollama `/api/embed` on the generator card (tier 2, through `llm-proxy`); e5-family models get `query: ` / `passage: ` prefixes and truncation with a logged count (D121) |

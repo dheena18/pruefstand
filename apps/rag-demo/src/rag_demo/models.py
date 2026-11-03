@@ -5,6 +5,8 @@ from typing import Literal, Self
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
+from rag_demo.endpoints import check_endpoint, check_served
+
 CANDIDATE_KEY_ENV = "PRUEFSTAND_CANDIDATE_API_KEY"
 
 
@@ -13,11 +15,14 @@ class _Frozen(BaseModel):
 
 
 class GeneratorCfg(_Frozen):
-    """The generator model (llama.cpp, OpenAI-compatible chat API).
+    """The generator model: llama.cpp (tier 1, OpenAI-compatible) or Ollama (tier 2, native API).
 
     ``api_key_env`` names the environment variable holding the bearer key (D216); when it is
     unset or empty no ``Authorization`` header is sent. ``enable_thinking`` is part of the config
     hash (D95); for Qwen3 families it is sent as ``chat_template_kwargs.enable_thinking``.
+    Tier 2: ``catalogue_id`` (``ollama/<tag>``, D221) names the catalogue entry, ``model`` is the
+    bare tag, ``endpoint_env`` the variable holding the URL (read at app start), ``options`` the
+    load-time options that must equal the catalogue (``num_ctx``, ``top_p``).
     """
 
     model: str
@@ -26,10 +31,29 @@ class GeneratorCfg(_Frozen):
     api_key_env: str | None = CANDIDATE_KEY_ENV
     temperature: float = 0.0
     seed: int = 0
+    engine: Literal["llama.cpp", "ollama"] = "llama.cpp"
+    catalogue_id: str | None = None
+    endpoint_env: str | None = None
+    base_url: str | None = None
+    options: dict[str, int | float] = Field(default_factory=dict)
+
+    @model_validator(mode="after")
+    def _served(self) -> Self:
+        check_served(
+            engine=self.engine,
+            catalogue_id=self.catalogue_id,
+            endpoint_env=self.endpoint_env,
+            base_url=self.base_url,
+            options=self.options,
+        )
+        if self.engine == "ollama" and self.enable_thinking:
+            msg = "Qwen3 thinking is always disabled (think: false); enable_thinking must be false"
+            raise ValueError(msg)
+        return self
 
 
 class EmbedCfg(_Frozen):
-    """The embedding model (TEI): prefixes, input limit and vector size from the model pin."""
+    """The embedding model: TEI (tier 1) or Ollama ``/api/embed`` (tier 2); see ``GeneratorCfg``."""
 
     model: str
     query_prefix: str = ""
@@ -37,13 +61,54 @@ class EmbedCfg(_Frozen):
     max_input_tokens: int = 512
     dim: int = 384
     api_key_env: str | None = CANDIDATE_KEY_ENV
+    engine: Literal["tei", "ollama"] = "tei"
+    catalogue_id: str | None = None
+    endpoint_env: str | None = None
+    base_url: str | None = None
+    options: dict[str, int | float] = Field(default_factory=dict)
+
+    @model_validator(mode="after")
+    def _served(self) -> Self:
+        check_served(
+            engine=self.engine,
+            catalogue_id=self.catalogue_id,
+            endpoint_env=self.endpoint_env,
+            base_url=self.base_url,
+            options=self.options,
+        )
+        return self
+
+
+class RerankCfg(_Frozen):
+    """The reranker placeholder (T3.5 fills it); ``rerank-cpu`` has no auth, so no key (D217)."""
+
+    enabled: bool = False
+    endpoint_env: str | None = "RERANK_URL"
+    base_url: str | None = None
+
+    @model_validator(mode="after")
+    def _endpoint(self) -> Self:
+        if self.base_url is not None:
+            check_endpoint(self.base_url, engine="cpu")
+        return self
+
+
+class GenerationCfg(_Frozen):
+    """Sampling options sent to Ollama: ``temperature``, ``seed``, ``num_predict`` (R12 N2)."""
+
+    temperature: float = 0.0
+    seed: int = 1234
+    max_tokens: int = Field(ge=1)
 
 
 class RagConfig(_Frozen):
     """``configs/rag.yaml``; the bug switches default to the correct behaviour (interfaces §16)."""
 
+    profile: Literal["live", "gpu"] = "live"
     generator: GeneratorCfg
     embed: EmbedCfg
+    rerank: RerankCfg = Field(default_factory=RerankCfg)
+    generation: GenerationCfg | None = None
     top_k: int = Field(default=8, ge=1, le=50)
     chunk_prompt_tokens: int = Field(default=256, ge=16)
     max_tokens: int = Field(default=256, ge=16)
@@ -59,6 +124,18 @@ class RagConfig(_Frozen):
     def _no_reranker_yet(self) -> Self:
         if self.reranker == "on":
             msg = "reranker 'on' arrives with T3.5; v0 has no reranker"
+            raise ValueError(msg)
+        return self
+
+    @model_validator(mode="after")
+    def _ollama_generation(self) -> Self:
+        if self.generator.engine != "ollama":
+            return self
+        if self.generation is None:
+            msg = "generation (temperature, seed, max_tokens) is required for engine ollama"
+            raise ValueError(msg)
+        if self.generation.max_tokens != self.max_tokens:
+            msg = "generation.max_tokens must equal max_tokens (one value, sent as num_predict)"
             raise ValueError(msg)
         return self
 

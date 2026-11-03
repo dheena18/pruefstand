@@ -1,0 +1,51 @@
+# Dev service of the tier-2 reference app on the VM (T3.2 S4, Y1.4, D242). Use it with the root file:
+#   make up COMPOSE_FILES="infra/gpu/compose.gpu.yml infra/gpu/compose.rag-demo.yml" PROFILES="gpu dev" SERVICES=rag-demo-dev
+# network_mode host: the tunnel's 172.17.0.1 bind is firewalled to the proxy-egress subnet, so the dev container
+# reaches Ollama on 127.0.0.1:11434 (OLLAMA_GPU0_URL from .env), Qdrant and rerank-cpu on their dev host ports, and
+# listens on 127.0.0.1:${RAG_DEMO_HOST_PORT} (18000 with PORT_OFFSET=10000). No GPU device: the models run in Ollama
+# on the cluster. Never OLLAMA_GPU1_URL (the judge lane). The gate variant (internal gate-net, LLM_PROXY_URL, key)
+# is T6.2a's compose.executor.yml; this service is the owner's / agents' dev stack only.
+services:
+  rag-demo-dev:
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    logging:
+      driver: json-file
+      options:
+        max-size: 10m
+        max-file: "3"
+    profiles: [dev]
+    pull_policy: build
+    build:
+      context: .
+      dockerfile: apps/rag-demo/Dockerfile
+      args:
+        GIT_SHA: ${GIT_SHA:-unknown}
+    network_mode: host
+    depends_on:
+      qdrant:
+        condition: service_healthy
+    entrypoint:
+      - uvicorn
+      - rag_demo.api:create_default_app
+      - --factory
+      - --host
+      - 127.0.0.1
+      - --port
+      - "${RAG_DEMO_HOST_PORT:-8000}"
+    environment:
+      RAG_DEMO_HOST_PORT: ${RAG_DEMO_HOST_PORT:-8000}
+      RAG_CONFIG: ${RAG_DEMO_GPU_CONFIG:-/app/configs/rag.gpu.yaml}
+      OLLAMA_GPU0_URL: ${OLLAMA_GPU0_URL:?set OLLAMA_GPU0_URL in .env (the VM tunnel, http://127.0.0.1:11434)}
+      RERANK_URL: http://127.0.0.1:${RERANK_HOST_PORT:?use make up (it exports the dev ports)}
+      QDRANT_URL: http://127.0.0.1:${QDRANT_HTTP_PORT:?use make up (it exports the dev ports)}
+      SERVING_ENGINE_VERSION: ${SERVING_ENGINE_VERSION:-unknown}
+      SERVING_GPU: ${SERVING_GPU:-A40}
+    mem_limit: 1g
+    healthcheck:
+      test: ["CMD", "python", "-c", "import os,urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:%s/v1/health' % os.environ.get('RAG_DEMO_HOST_PORT', '8000'), timeout=2).status==200 else 1)"]
+      interval: 10s
+      timeout: 3s
+      retries: 6
+      start_period: 10s

@@ -13,7 +13,7 @@ from rag_demo.api import create_app
 from rag_demo.config import Settings, load_config
 
 T3_5 = {"/v1/retrieve", "RetrieveResponse"}
-SETTINGS = Settings(qdrant_url="http://q.test", llm_url="http://l.test", embed_url="http://e.test")
+SETTINGS = Settings(qdrant_url="http://q.test", llm_url="http://llm", embed_url="http://embed")
 
 
 def _types(schema: dict[str, Any]) -> frozenset[str]:

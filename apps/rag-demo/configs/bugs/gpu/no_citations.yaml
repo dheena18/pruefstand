@@ -1,0 +1,45 @@
+# BUG CONFIG no_citations (tier 2): rag.gpu.yaml with exactly one switch changed.
+# Tier-2 A40 profile of the reference RAG app (T3.2, R9 X3.15): catalogue models served by the ONE Ollama server
+# (native /api/chat and /api/embed only, D219), reached through RAG_MODEL_CATALOGUE-checked ids (D221). The URLs
+# come from the environment at app start (OLLAMA_GPU0_URL on the dev stack, LLM_PROXY_URL in gate runs), never from
+# this file. Qwen3 thinking is off (think: false). Values are provisional until T3.1b pins them. Every bug switch is
+# at its correct value; configs/bugs/gpu/*.yaml differ from this file in exactly one line. The reranker arrives with
+# T3.5 (reranker: "off" and rerank.enabled: false until then).
+profile: gpu
+generator:
+  model: qwen3.8:27b-q8_0
+  family: qwen
+  engine: ollama
+  catalogue_id: ollama/qwen3.8:27b-q8_0
+  endpoint_env: OLLAMA_GPU0_URL
+  api_key_env: PRUEFSTAND_CANDIDATE_API_KEY
+  enable_thinking: false
+  options: {num_ctx: 8192, top_p: 1.0}
+embed:
+  model: bge-m3
+  engine: ollama
+  catalogue_id: ollama/bge-m3
+  endpoint_env: OLLAMA_GPU0_URL
+  api_key_env: PRUEFSTAND_CANDIDATE_API_KEY
+  query_prefix: ""
+  doc_prefix: ""
+  max_input_tokens: 1024
+  dim: 1024
+  options: {num_ctx: 1024}
+rerank:
+  enabled: false
+  endpoint_env: RERANK_URL
+generation:
+  temperature: 0.0
+  seed: 1234
+  max_tokens: 256
+top_k: 8
+chunk_prompt_tokens: 256
+max_tokens: 256
+reranker: "off"
+tenant_filter: inside
+shared_public_merge: filtered
+prompt_file: prompts/answer_no_citations_de_v1.txt
+answer_language: auto
+injection_guard: "on"
+system_prompt_guard: "on"

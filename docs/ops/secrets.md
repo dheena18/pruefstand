@@ -119,7 +119,8 @@ owner's `~/start-ollama.sh`, setup log §7), **public secret**
 | `PRUEFSTAND_RECORD_START_CMD` | set by `scripts/models/record_cassettes.sh` only | script | `make --no-print-directory up SERVICES=llm`: how the 503 recording test starts the llama.cpp service while it watches the model load; never set by hand and **never set in CI** (a workflow that sets it would run its command) | T1.4 | n/a |
 | `PRUEFSTAND_DATAGEN_URL` | local .env (optional) | owner | Ollama URL of the local judge model for private-doc datagen cassette recording (T2.6; ADR-0019); empty = skip | T2.6 | n/a |
 | `RAG_CONFIG`, `LIVE_MODEL_DIR`, `LIVE_LLM_GGUF`, `LIVE_LLM_THREADS` | local .env | owner | compose `live` profile: rag-demo profile file, CPU model dir (`~/.cache/pruefstand/models`), GGUF name, threads | T0.3 / T1.13 | n/a |
-| `SERVING_ENGINE_VERSION`, `SERVING_GPU` | candidate container env | orchestrator | static `/v1/info.serving` fields (X3.13) | T3.2 | n/a |
+| `RAG_DEMO_GPU_CONFIG` | local / VM .env | owner | config inside the image used by the dev service `rag-demo-dev` (default `/app/configs/rag.gpu.yaml`; bugs under `/app/configs/bugs/gpu/`) | T3.2 | n/a |
+| `SERVING_ENGINE_VERSION`, `SERVING_GPU` | candidate container env (dev: VM .env) | orchestrator | static `/v1/info.serving` fields (X3.13) | T3.2 | n/a |
 | `ACTIONS_RUNNER_HOOK_JOB_STARTED` / `_COMPLETED` | VM `runner.env` | T6.2a install script | job hygiene hooks | T6.2a | n/a |
 | `PRUEFSTAND_SIM_GRID` | workflow, local .env | `ci.yml` nightly | `reduced` (default) or `full` | T1.6 | n/a |
 | `PRUEFSTAND_ANNOTATOR` | local .env | annotator | pseudonym for optional human labels | T5.3-opt | n/a |

@@ -4,7 +4,7 @@
   "image_digest": null,
   "config_hash": "sha256:example",
   "corpus_version": "example-2026-01",
-  "models": {"generator": "qwen3-1.7b-q4_k_m", "embedding": "bge-m3"},
+  "models": {"generator": "qwen3-1.7b-q4_k_m", "embed": "bge-m3"},
   "serving": {
     "engine": "llama.cpp",
     "engine_version": "b4000",
