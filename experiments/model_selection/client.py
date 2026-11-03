@@ -22,6 +22,7 @@ NATIVE_PATHS = {
     "chat": "/api/chat",
     "embed": "/api/embed",
     "ps": "/api/ps",
+    "tags": "/api/tags",
     "show": "/api/show",
     "version": "/api/version",
 }

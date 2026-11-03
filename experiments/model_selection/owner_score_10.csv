@@ -1,0 +1,56 @@
+question,answer,score,case_id,kind,context
+Wofür steht die Abkürzung BGB?,"Die Abkürzung **BGB** steht für das **Bürgerliche Gesetzbuch**.
+
+Es ist das zentrale Gesetz des deutschen Zivilrechts und regelt unter anderem:
+*   Das Vertragsrecht
+*   Das Sachenrecht (z. B. Eigentum)
+*   Das Familienrecht
+*   Das Erbrecht
+*   Das Schuldrecht
+
+Das BGB trat am 1. Januar 1900 in Kraft und ist bis heute die Grundlage für die meisten zivilrechtlichen Beziehungen in Deutschland.",,ge02,general,
+Fasse den folgenden Absatz in zwei Sätzen in einfacher Sprache zusammen.,"Die normale Frist, innerhalb derer man einen Anspruch geltend machen kann, beginnt erst am Ende des Jahres zu laufen. Voraussetzung dafür ist, dass man weiß, dass der Anspruch besteht und wer der Schuldner ist.",,su06,summary,"§ 199 Abs. 1 BGB: Die regelmäßige Verjährungsfrist beginnt, soweit nicht ein anderer Verjährungsbeginn bestimmt ist, mit dem Schluss des Jahres, in dem der Anspruch entstanden ist und der Gläubiger von den den Anspruch begründenden Umständen und der Person des Schuldners Kenntnis erlangt oder ohne grobe Fahrlässigkeit erlangen müsste."
+Wann beginnt die regelmaessige Verjaehrungsfrist?,"Die regelmäßige Verjährungsfrist beginnt mit dem Schluss des Jahres, in dem der Anspruch entstanden ist und der Gläubiger von den den Anspruch begründenden Umständen und der Person des Schuldners Kenntnis erlangt oder ohne grobe Fahrlässigkeit erlangen müsste.",,um08,umlaut,"§ 199 Abs. 1 BGB: Die regelmaessige Verjaehrungsfrist beginnt, soweit nicht ein anderer Verjaehrungsbeginn bestimmt ist, mit dem Schluss des Jahres, in dem der Anspruch entstanden ist und der Glaeubiger von den den Anspruch begruendenden Umstaenden und der Person des Schuldners Kenntnis erlangt oder ohne grobe Fahrlaessigkeit erlangen muesste."
+"Antworte nur mit JSON {""reason"": str, ""score"": int}: Ist die Antwort ""Das Stammkapital muss mindestens 25 000 Euro betragen."" durch den Kontext gestützt? Gib score 1 für ja und 0 für nein.","{
+""reason"": ""Die Antwort ist eine direkte und korrekte Zusammenfassung der im Kontext genannten gesetzlichen Vorgabe aus § 5 Abs. 1 GmbHG."",
+""score"": 1
+}",,js03,json,§ 5 Abs. 1 GmbHG: Das Stammkapital der Gesellschaft muss mindestens 25 000 Euro betragen.
+"Kannst du mir sagen, wofür ein Betriebsrat zuständig ist?","Der Betriebsrat ist das gewählte Gremium der Belegschaft in einem Unternehmen. Seine Hauptaufgabe ist es, die **Interessen der Arbeitnehmer** gegenüber dem Arbeitgeber zu vertreten und zu wahren.
+
+Die Zuständigkeiten des Betriebsrats sind in Deutschland vor allem im **Betriebsverfassungsgesetz (BetrVG)** geregelt. Man kann seine Aufgaben in drei große Bereiche unterteilen:
+
+### 1. Mitbestimmungsrecht
+Der Betriebsrat muss bei vielen Entscheidungen des Arbeitgebers **zustimmen** oder wird zumindest angehört. Ohne seine Zustimmung sind viele Maßnahmen unwirksam.
+
+*   **Soziale Angelegenheiten (Zustimmungspflichtig):**
+    *   Arbeitszeitregelungen (z. B. Schichtpläne, Überstunden)
+    *   Urlaubsplanung
+    *   Kündigungen (der Betriebsrat muss zustimmen, bevor eine Kündigung ausgesprochen werden kann)
+    *   Eingruppierung und Vergütung (innerhalb der tariflichen Rahmenbedingungen)
+    *   Arbeitsverträge und Arbeitsbedingungen
+*   **Technische Angelegenheiten (Anhörungspflichtig):**
+    *   Einführung neuer Arbeitsmittel oder Verfahren
+    *   Umstrukturierungen der Arbeitsplätze
+    *   Der Arbeitgeber muss den Betriebsrat anhören, muss aber nicht zwingend zustimmen (es sei denn, es geht um soziale Folgen).
+*   **Wirtschaftliche Angelegenheiten (Informations- und Anhörungspflicht):**
+    *   Der Betriebsrat hat Anspruch auf regelmäßige Informationen über die wirtschaftliche Lage des Unternehmens.
+    *   Bei geplanten Massenentlassungen oder Betriebsstilllegungen muss er frühzeitig informiert und angehört werden.
+
+### 2. Überwachung der Einhaltung von Gesetzen und Vereinbarungen
+Der Betriebsrat wacht darüber, dass der Arbeitgeber die geltenden Vorschriften einhält:
+*   Arbeitszeitgesetz
+*   Arbeitsschutzgesetze (z. B. Unfallverhütung, Gesundheitsschutz)
+*   Tarifverträge
+*   Betriebsvereinbarungen (vereinbarte Regeln zwischen Arbeitgeber und Betriebsrat)
+
+### 3. Mitwirkung bei der Personalplanung und -auswahl
+*   Bei Einstellungen muss der Betriebsrat angehört werden.
+*   Er kann Vorschläge für die Personalplanung machen.
+*   Er hat ein **Vorschlagsrecht** bei der Besetzung von Stellen, wenn er geeignete Mitarbeiter aus dem Betrieb vorschlägt",,rg04,register,
+Innerhalb welcher Frist muss auf einen Auskunftsantrag reagiert werden?,Innerhalb eines Monats nach Eingang des Antrags.,,lq32,law_qa,"Art. 12 Abs. 3 DSGVO (gekürzt): Der Verantwortliche stellt der betroffenen Person Informationen über die auf Antrag ergriffenen Maßnahmen unverzüglich, in jedem Fall aber innerhalb eines Monats nach Eingang des Antrags zur Verfügung."
+Wie viele Werktage Mindesturlaub gibt es?,Die Dokumente enthalten keine Information zur Anzahl der Werktage Mindesturlaub.,,rf10,refusal,"Art. 33 Abs. 1 DSGVO (gekürzt): Im Falle einer Verletzung des Schutzes personenbezogener Daten meldet der Verantwortliche unverzüglich und möglichst binnen 72 Stunden, nachdem ihm die Verletzung bekannt wurde, diese der zuständigen Aufsichtsbehörde."
+Wofür steht die Abkürzung DSGVO?,"Die Abkürzung **DSGVO** steht für **Datenschutz-Grundverordnung**.
+
+Es handelt sich um die europäische Verordnung (EU) 2016/679, die am 25. Mai 2018 in Kraft getreten ist und die Regeln zum Schutz personenbezogener Daten in der Europäischen Union vereinheitlicht.",,ge04,general,
+Fasse den folgenden Absatz in zwei Sätzen in einfacher Sprache zusammen.,"Man kann einen Arbeitsvertrag sofort beenden, wenn ein sehr wichtiger Grund vorliegt. Dabei muss die Kündigung nicht angekündigt werden, wenn das Weiterarbeiten bis zum regulären Ende für eine Seite nicht mehr zumutbar ist.",,su05,summary,"§ 626 Abs. 1 BGB: Das Dienstverhältnis kann von jedem Vertragsteil aus wichtigem Grund ohne Einhaltung einer Kündigungsfrist gekündigt werden, wenn Tatsachen vorliegen, auf Grund derer dem Kündigenden unter Berücksichtigung aller Umstände des Einzelfalles und unter Abwägung der Interessen beider Vertragsteile die Fortsetzung des Dienstverhältnisses bis zum Ablauf der Kündigungsfrist nicht zugemutet werden kann."
+Wie lang ist die regelmaessige Verjaehrungsfrist?,Die regelmäßige Verjährungsfrist beträgt drei Jahre.,,um07,umlaut,§ 195 BGB: Die regelmaessige Verjaehrungsfrist betraegt drei Jahre.
