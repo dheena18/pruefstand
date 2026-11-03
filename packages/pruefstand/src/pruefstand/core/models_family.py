@@ -58,7 +58,7 @@ def model_family(model_id: str) -> str:
         model_id: A provider-qualified model id such as ``ollama/gemma3:12b``.
 
     Returns:
-        The family name, or ``"unknown"`` when no row matches (for example embedding models).
+        The family name, or ``"unknown"`` when no row matches (for example an unlisted model).
 
     Examples:
         >>> model_family("ollama/gemma3:12b")
@@ -66,7 +66,7 @@ def model_family(model_id: str) -> str:
         >>> model_family("github/mistral-ai/mistral-small-2503")
         'mistral'
         >>> model_family("ollama/bge-m3")
-        'unknown'
+        'bge'
     """
     rest = _strip_provider(unicodedata.normalize("NFKC", model_id))
     for pattern, family in _compiled():

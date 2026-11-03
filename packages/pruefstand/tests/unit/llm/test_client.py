@@ -19,6 +19,7 @@ from pruefstand.llm.client import LLMClient, cache_key, repair_max_tokens
 from pruefstand.llm.json_extract import extract_json_object
 from pruefstand.llm.policy import LLMPolicy
 from pruefstand.llm.recorder import CallRecorder
+from pruefstand.llm.retry import RetryPolicy
 
 
 class Probe(BaseModel):
@@ -27,12 +28,19 @@ class Probe(BaseModel):
 
 
 def _client(
-    cache: DictCache | None = None, budget: Budget | None = None
+    cache: DictCache | None = None, budget: Budget | None = None, retries: int = 3
 ) -> tuple[LLMClient, CallRecorder, Budget]:
     backend = LiteLLMBackend(TEST_MODEL, api_base=TEST_API_BASE, api_key_env=None, timeout_s=30)
     recorder = CallRecorder()
     used = budget or Budget(max_usd=None, max_tokens=None, max_requests=5)
-    client = LLMClient(backend, cache, used, recorder, LLMPolicy(LLMPolicyConfig()))
+    client = LLMClient(
+        backend,
+        cache,
+        used,
+        recorder,
+        LLMPolicy(LLMPolicyConfig()),
+        retry=RetryPolicy(max_retries=retries),
+    )
     return client, recorder, used
 
 
@@ -122,7 +130,7 @@ async def test_truncated_json_is_repaired_with_doubled_max_tokens() -> None:
 @pytest.mark.default_cassette("server_503.yaml")
 @pytest.mark.vcr
 async def test_server_503_is_a_transient_llm_error() -> None:
-    client, recorder, _ = _client()
+    client, recorder, _ = _client(retries=0)  # the cassette holds the one recorded 503
     with pytest.raises(LLMError) as info:
         await client.complete(echo_request())
     assert info.value.transient is True

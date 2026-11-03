@@ -42,6 +42,8 @@ def _tier_one(policy: GatePolicy) -> dict[str, str]:
 
 def _judge_reason(baseline: RunManifest, candidate: RunManifest) -> str | None:
     """First matching reason why judged metrics do not gate (tier 2)."""
+    if baseline.judge_fallback or candidate.judge_fallback:
+        return "judge_fallback"  # R11 Y4.4: never compared across judges
     if baseline.judge_degraded or candidate.judge_degraded:
         return "judge_degraded"
     if baseline.judge_drift or candidate.judge_drift:
@@ -59,7 +61,8 @@ def informational_mapping(
 
     First match wins: (1) tier 1 (``stack == "live"``): judged metrics ``tier1_judged``,
     ``injection_success`` ``tier1_injection_reported``, every other metric with ``max_drop``
-    ``tier1_deterministic_only``; (2) tier 2: judged metrics ``judge_degraded`` /
+    ``tier1_deterministic_only``; (2) tier 2: judged metrics ``judge_fallback`` /
+    ``judge_degraded`` /
     ``judge_drift`` / ``judge_truncated``; (3) ``refusal_correct`` unless the run is the nightly
     on ``full`` (``refusal_outside_nightly_full``). ``false_refusal`` is gated like any answerable
     metric. Only metrics of ``policy`` appear.

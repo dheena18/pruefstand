@@ -29,7 +29,7 @@ def table() -> dict[str, Any]:
         ("ollama/qwen35", "qwen"),
         ("ollama/gemma3:12b", "gemma"),
         ("ollama/gemma3:4b", "gemma"),
-        ("ollama/bge-m3", "unknown"),
+        ("ollama/bge-m3", "bge"),
         ("foo/bar", "unknown"),
         ("OLLAMA/GEMMA3:12B", "gemma"),
         ("gemini/gemma-3-27b-it", "gemma"),
