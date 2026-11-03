@@ -6,6 +6,12 @@ import subprocess
 import time
 from pathlib import Path
 
+import pytest
+
+# Several tests spawn real subprocesses and take about 20 s: the repo convention for > 10 s is `slow`
+# (excluded from `make test`, run by `make test-slow`), so they cannot disturb the timing-sensitive unit tests.
+pytestmark = pytest.mark.slow
+
 SCRIPT = Path(__file__).resolve().parents[1] / "vm_check.sh"
 
 
