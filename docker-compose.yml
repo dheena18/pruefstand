@@ -77,7 +77,7 @@ services:
   # revision, license MIT); infra/models/live-models.yaml holds the pin and the SHA-256 of its weights.
   embed:
     <<: *service-defaults
-    image: ghcr.io/huggingface/text-embeddings-inference:cpu-1.8@sha256:8de25e75ce39617f17f2f6c77d60a4f75b65e779ed5005420eb1400072a15c1c
+    image: ghcr.io/huggingface/text-embeddings-inference:cpu-1.9@sha256:2538ea1c9640d3763b15af668039d24172d063b42337b0c27796fc2be180c78d
     profiles: [live]
     command: >-
       --model-id intfloat/multilingual-e5-small
