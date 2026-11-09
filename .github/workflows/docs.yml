@@ -70,7 +70,7 @@ jobs:
           persist-credentials: false
       - name: Install lychee (pinned release, SHA-256 checked)
         run: |
-          curl -fsSL -o lychee.tar.gz \
+          curl -fsSL --retry 3 --retry-all-errors --retry-delay 5 -o lychee.tar.gz \
             https://github.com/lycheeverse/lychee/releases/download/lychee-v0.24.2/lychee-x86_64-unknown-linux-gnu.tar.gz
           echo "1f4e0ef7f6554a6ed33dd7ac144fb2e1bbed98598e7af973042fc5cd43951c9a  lychee.tar.gz" | sha256sum -c -
           tar -xzf lychee.tar.gz --strip-components=1 lychee-x86_64-unknown-linux-gnu/lychee

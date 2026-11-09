@@ -12,6 +12,7 @@ from collections.abc import Iterator, Sequence
 from pathlib import Path
 
 import yaml
+from workflow_curl import curl_retries
 from workflow_model import Doc, all_uses, environment, jobs, steps, strings, triggers
 from workflow_no_repo_code import no_repo_code
 from workflow_policy import (
@@ -32,6 +33,7 @@ from workflow_policy import (
     STATUSES_WRITE,
     UNTRUSTED,
 )
+from workflow_schedule import crons as _crons
 
 SHA_USES = re.compile(r"^[\w.-]+/[\w./-]+@[0-9a-f]{40}$")
 DOCKER_USES = re.compile(r"^docker://\S+@sha256:[0-9a-f]{64}$")
@@ -55,23 +57,6 @@ def _pins(doc: Doc, text: str) -> list[str]:
         ):
             out.append(f"uses: {match.group(1)} lacks a trailing '# vX.Y.Z' comment")
     return out
-
-
-def _crons(doc: Doc) -> list[str]:
-    schedule = triggers(doc).get("schedule")
-    out = []
-    for entry in schedule if isinstance(schedule, list) else []:
-        cron = str(entry.get("cron", "")) if isinstance(entry, dict) else ""
-        field = cron.split()[0] if cron.split() else ""
-        if any(_busy_minute(part) for part in field.split(",")):
-            out.append(f"schedule '{cron}': off-minute crons only (minute 0, * or */N)")
-    return out
-
-
-def _busy_minute(part: str) -> bool:
-    """True for `*`, `*/N` and any range, list item or step starting at minute 0."""
-    start = part.split("/", maxsplit=1)[0].split("-", maxsplit=1)[0]
-    return start.startswith("*") or (start.isdigit() and int(start) == 0)
 
 
 def _self_hosted(job: Doc) -> bool:
@@ -247,6 +232,7 @@ def check_text(name: str, text: str) -> list[str]:
         _build_images(name, doc),
         _gate_router(name, doc),
         no_repo_code(name, doc),
+        curl_retries(doc),
     ]
     return [f"{name}: {message}" for found in rules for message in found]
 
