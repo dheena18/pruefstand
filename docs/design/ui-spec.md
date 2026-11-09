@@ -427,7 +427,7 @@ same sum as the PR comment and the report); GPU-s = `cost.gpu_seconds`, shown on
 `stack == "a40"`; cases = `run.json.n_cases` (this is the run size, not the exported case count);
 workload = `workload`, then ` · block <k>` (`summary.block`) when `run.json.block` is set (UI13-19).
 When `run.json.judged_subset` is true, the judged heading (block J, `summary.judged`) is followed by
-`summary.judged_subset` "judged subset (150 cases)" (`{n}` = 150, the fixed subset size, D199), so the judged numbers are never read as covering
+`summary.judged_subset` "judged subset (150 cases)" (`{n}` = 150, the fixed subset size, D199): tier 1 in the block J caption, tier 2 as a line before the judged rows of block I (those with reason `tier1_judged` or `judge_*`; §12.3), so the judged numbers are never read as covering
 `n_cases`.
 
 Baseline line (UI11-08): `baseline_run_id == null` → `Baseline –`. `baseline_run_id` set and in the
@@ -1251,6 +1251,7 @@ parity test covers both locales.
 | `summary.clusters` | {n} clusters | {n} Cluster |
 | `summary.top_failing` | Top failing cases | Häufigste fehlschlagende Fälle |
 | `summary.open_case` | Open case | Fall öffnen |
+| `finding.unverifiable` | (unverifiable) | (nicht verifizierbar) |
 | `summary.report_open` / `.report_download` | Open HTML report / Download HTML report | HTML-Bericht öffnen / HTML-Bericht herunterladen |
 | `summary.view_diff` | View diff | Vergleich ansehen |
 | `col.metric` / `.base` / `.pr` / `.delta_ci` / `.delta` / `.threshold` / `.mde` / `.max` / `.value` / `.status` / `.slice` / `.reason` / `.judged_cases` / `.check` / `.rule` / `.case` / `.evidence` | Metric / Base / PR / Δ (95% CI) / Δ / δ / MDE / Max / Value / Status / Slice / Reason / Judged cases / Check / Rule / Case / Evidence | Metrik / Basis / PR / Δ (95%-KI) / Δ / δ / MDE / Max / Wert / Status / Slice / Grund / Bewertete Fälle / Prüfung / Regel / Fall / Beleg |
@@ -1259,6 +1260,7 @@ parity test covers both locales.
 | `diff.na` | n/a | n. a. |
 | `chart.show_table` / `chart.show_chart` | Show as table / Show as chart | Als Tabelle zeigen / Als Diagramm zeigen |
 | `licences.title` | Sources and licences | Quellen und Lizenzen |
+| `licences.shown_yes` / `licences.shown_no` | yes / no | ja / nein |
 | `licences.col.source` / `.shown` / `.licence` / `.attribution` / `.link` | Source / Shown here / Licence / Attribution / Link | Quelle / Hier gezeigt / Lizenz / Namensnennung / Link |
 
 #### 10.4.3 Stop reasons and data labels (de; en from `labels.json`; `stop_reason.*` in both files)
@@ -1392,6 +1394,7 @@ Rendering per block:
     row is PASS, the line is `Absolute checks: all PASS (<n>)`. Block C (tier 1) always shows every row.
   - PR comment, block I: reason-less `absolute_checks` slice rows are omitted (shown on the notable line when `notable == true`; D387);
   Renderer tests count an omitted row as "accounted for" only under one of these rules.
+- Run summary (dashboard, D656): tier-1 blocks **R** and **J** list only the `overall` rows (when a block has no `overall` row, all its rows, so it never vanishes); block **I** lists only rows with an `informational_reason` (a reason-less non-gated absolute-check row is on the Slices page). The slice rows of `injection_success`, `language_match` and other reported metrics are therefore intentionally not in the summary; T8.2b's Slices page shows them. A finding whose `rule` is not `hard_fail` carries `finding.unverifiable` after the rule name (as in the PR comment and report).
 - `no_baseline == true`: no block is rendered (nothing was compared). Hard fails are rendered when
   present.
 - **No baseline run available (Y7.4, UI11-08).** `render_pr_comment` and `render_html` take

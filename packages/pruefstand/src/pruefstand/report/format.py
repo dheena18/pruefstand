@@ -7,11 +7,10 @@ linear in the input size (single passes, bounded character classes) and cap thei
 
 import math
 import re
-import unicodedata
 from urllib.parse import urlsplit
 
+from pruefstand.core.canary import mask_canaries
 from pruefstand.core.models.run import CostSummary, RunManifest
-from pruefstand.metrics.deterministic.folding import CONFUSABLES, IGNORABLE
 
 DASH = "–"
 ZWSP = "\u200b"
@@ -27,9 +26,6 @@ _HTML_RE = re.compile(r"[<>&]")
 _AUTOLINK = re.compile(r"(?i)(://|www\.)")
 _REF = re.compile(r"#(?=\d)")
 _GHREF = re.compile(r"(?i)(gh)(?=-\d)")
-_CANARY = re.compile(r"canary[a-z]{2}(?:(?!canary)[0-9a-f]){6,}")
-CANARY_MASK = "CANARY-**-******"
-MAX_INPUT = 8000
 _URL_BAD = re.compile(r"[\s<>\"\\\x00-\x1f\x7f-\x9f\u200b-\u200f\u2028-\u202e\u2060-\u2069\ufeff]")
 
 
@@ -90,54 +86,6 @@ def fmt_tokens(cost: CostSummary) -> str:
 def fmt_gpu(seconds: float) -> str:
     """Return ``~2,100 GPU-s`` (tier 2 only; the caller checks the stack)."""
     return f"~{round(seconds):,} GPU-s" if math.isfinite(seconds) and seconds > 0 else "~0 GPU-s"
-
-
-def _token_end(text: str, index: list[int], first_hex: int, end: int) -> int:
-    """Return where the hex run of a token ends: after six digits it stops at a white-space gap."""
-    for k in range(first_hex + 6, end):
-        if any(c.isspace() for c in text[index[k - 1] + 1 : index[k]]):
-            return k
-    return end
-
-
-def mask_canaries(text: str) -> str:
-    """Replace every canary token in ``text`` by ``CANARY-**-******``, whatever hides it.
-
-    The text is folded the way the detector does (NFKD, ignorable and combining characters
-    dropped, case folded, look-alike letters mapped, only letters and digits kept) and searched for
-    ``canary`` + two letters + at least six hex digits with any separators between them. Each
-    hit is cut out of the *original* text (first to last character of the token). Input beyond
-    8 000 characters is ignored. Linear in the input size.
-
-    Example:
-        >>> mask_canaries("x CAN\u200bARY-VN-7f3a9c y")
-        'x CANARY-**-****** y'
-    """
-    text = text[:MAX_INPUT]
-    chars: list[str] = []
-    index: list[int] = []
-    for i, ch in enumerate(text):
-        for part in unicodedata.normalize("NFKD", ch):
-            if IGNORABLE.match(part):
-                continue
-            # the detector's order: casefold, then drop marks, then map look-alikes
-            for folded in part.casefold():
-                if unicodedata.category(folded) == "Mn":
-                    continue
-                for letter in folded.translate(CONFUSABLES):
-                    if letter.isalnum():
-                        chars.append(letter)
-                        index.append(i)
-    out: list[str] = []
-    pos = 0
-    for match in _CANARY.finditer("".join(chars)):
-        last = _token_end(text, index, match.start() + len("canary") + 2, match.end())
-        start, end = index[match.start()], index[last - 1] + 1
-        out.append(text[pos:start])
-        out.append(CANARY_MASK)
-        pos = end
-    out.append(text[pos:])
-    return "".join(out)
 
 
 def _clean(text: str, limit: int) -> str:

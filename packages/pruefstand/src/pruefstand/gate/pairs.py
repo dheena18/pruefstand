@@ -22,21 +22,19 @@ from numpy.typing import NDArray
 from pruefstand.core.config import GatePolicy
 from pruefstand.core.enums import GateStatus
 from pruefstand.core.models.gate import BootstrapResult, SliceDecision
-from pruefstand.gate._validate import fail
+from pruefstand.gate._baseline import MAX_EXCLUDED_FRACTION, check_baseline_slice
 from pruefstand.gate.correction import bh_adjust, holm_adjust
 from pruefstand.gate.decision import decide
-from pruefstand.gate.slices import slice_members, slice_values, universe_members
+from pruefstand.gate.slices import slice_members, slice_specs
 from pruefstand.gate.stats import minimum_detectable_effect, paired_cluster_bootstrap
-from pruefstand.gate.tables import OVERALL, PERTURBED_ALL, PairedTable
+from pruefstand.gate.tables import OVERALL, PairedTable
 
 RERUN_RESAMPLES = 200_000
 MC_SIGMAS = 3.0
 MIN_APPLICABLE_CLUSTERS = 30  # D117: fewer applicable clusters on `overall` -> informational
-RETRIEVAL_METRICS = ("context_recall", "ndcg_at_k")
 BH_NOTABLE_Q = 0.10
 POWER = 0.8
 APPLICABLE_REASON = "applicable_clusters<30"
-MAX_EXCLUDED_FRACTION = 0.20  # judge errors beyond this share of a slice are worst-filled
 
 
 @dataclass
@@ -63,6 +61,8 @@ def informational_reason(
         return informational[metric]
     members = slice_members(table, OVERALL, OVERALL)
     if np.unique(table.cluster_ids[members]).size < MIN_APPLICABLE_CLUSTERS:
+        # baseline errors must not demote a metric silently (T1.7a)
+        check_baseline_slice(table, OVERALL, OVERALL, MIN_APPLICABLE_CLUSTERS, cap=False)
         return APPLICABLE_REASON
     return None
 
@@ -81,24 +81,10 @@ def _over_cap(table: PairedTable, members: NDArray[np.bool_], min_clusters: int)
 
 
 def _check_baseline(table: PairedTable, specs: list[tuple[str, str]], policy: GatePolicy) -> None:
-    """Fail when baseline ``error`` values cover more than the cap of a testable gated slice.
-
-    Slices that can never be testable (fewer than ``min_clusters`` clusters) are skipped: their
-    row is ``INSUFFICIENT_DATA`` anyway and a few random baseline errors must not make every PR
-    against that baseline fail.
-    """
+    """Fail when baseline ``error`` values make a testable gated slice unjudgeable (T1.7a)."""
     for dimension, value in specs:
-        if dimension not in policy.gated_slices:
-            continue
-        universe = universe_members(table, dimension, value)
-        if np.unique(table.all_clusters[universe]).size < policy.min_clusters:
-            continue
-        bad = int((universe & table.all_base_error).sum())
-        if bad > MAX_EXCLUDED_FRACTION * int(universe.sum()) + 1e-9:
-            fail(
-                f"{table.metric}: baseline errors on {bad} of {int(universe.sum())} cases of "
-                f"{dimension}={value}; the baseline cannot judge this slice"
-            )
+        if dimension in policy.gated_slices:
+            check_baseline_slice(table, dimension, value, policy.min_clusters)
 
 
 def _forced_fill(
@@ -125,11 +111,7 @@ def metric_pairs(
     """Return the pairs of one metric in the contractual order (step 6)."""
     metric = table.metric
     gated_metric = reason is None
-    specs: list[tuple[str, str]] = [(OVERALL, OVERALL)]
-    if metric in RETRIEVAL_METRICS and slice_members(table, PERTURBED_ALL, PERTURBED_ALL).any():
-        specs.append((PERTURBED_ALL, PERTURBED_ALL))
-    for dimension in policy.slices:
-        specs.extend((dimension, value) for value in slice_values(table, dimension))
+    specs = slice_specs(table, policy)
     if gated_metric:
         _check_baseline(table, specs, policy)
     dropped = table.judge_error & ~_forced_fill(table, specs, policy)

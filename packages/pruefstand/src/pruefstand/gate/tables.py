@@ -33,6 +33,7 @@ class Universe:
 
     attrs: dict[str, tuple[str, ...]]
     base_error: NDArray[np.bool_]
+    base_applicable: NDArray[np.bool_]
     clusters: NDArray[np.str_]
 
 
@@ -59,6 +60,7 @@ class PairedTable:
     judge_error: NDArray[np.bool_]
     all_attrs: dict[str, tuple[str, ...]]
     all_base_error: NDArray[np.bool_]
+    all_base_applicable: NDArray[np.bool_]
     all_clusters: NDArray[np.str_]
 
 
@@ -142,6 +144,12 @@ def score_table(
     return _build(run, metric, higher_is_better=higher_is_better, fill_worst=fill_worst)[0]
 
 
+def _paired_universe(attrs: dict[str, tuple[str, ...]], clusters: list[str]) -> Universe:
+    """Universe of the paired rows themselves (no baseline errors, all applicable)."""
+    none = np.zeros(len(clusters), dtype=np.bool_)
+    return Universe(attrs, none, ~none, np.asarray(clusters, dtype=np.str_))
+
+
 def pair_tables(
     base: ScoreTable,
     cand: ScoreTable,
@@ -180,41 +188,51 @@ def pair_tables(
     base_idx = np.array([position[cid] for cid, _ in rows], dtype=np.intp)
     base_values = np.asarray(base.values, dtype=np.float64)[base_idx]
     cand_values = np.asarray(cand.values, dtype=np.float64)[cand_idx]
-    sign = 1.0 if cand.higher_is_better else -1.0
     case_ids = tuple(str(cid) for cid, _ in rows)
     cand_clusters = [cand.cluster_ids[j] for j in cand_idx]
     attrs = {k: tuple(v[j] for j in cand_idx) for k, v in cand.slices.items()}
-    shared = n_shared if n_shared is not None else len(case_ids)
+    universe = universe or _paired_universe(attrs, cand_clusters)
     return PairedTable(
         metric=cand.metric,
         higher_is_better=cand.higher_is_better,
         case_ids=case_ids,
         cluster_ids=np.asarray(cand_clusters, dtype=np.str_),
-        diffs=sign * (cand_values - base_values),
+        diffs=(1.0 if cand.higher_is_better else -1.0) * (cand_values - base_values),
         base_values=base_values,
         cand_values=cand_values,
         attrs=attrs,
         n_unmatched=n_unmatched,
-        n_excluded=shared - len(case_ids),
+        n_excluded=(len(case_ids) if n_shared is None else n_shared) - len(case_ids),
         n_worst_filled=len((filled - judge_errors).intersection(case_ids)),
         judge_error=np.array([cid in judge_errors for cid in case_ids], dtype=np.bool_),
-        all_attrs=universe.attrs if universe else attrs,
-        all_base_error=universe.base_error if universe else np.zeros(len(case_ids), dtype=np.bool_),
-        all_clusters=universe.clusters if universe else np.asarray(cand_clusters, dtype=np.str_),
+        all_attrs=universe.attrs,
+        all_base_error=universe.base_error,
+        all_base_applicable=universe.base_applicable,
+        all_clusters=universe.clusters,
     )
 
 
 def _universe(base: RunResults, cand: RunResults, metric: str, shared: list[str]) -> Universe:
-    """Slice columns of the shared cases and which of them have a baseline ``error``."""
+    """Slice columns of the shared cases, their baseline ``error`` flags and applicability.
+
+    Applicable = the baseline value is ``ok`` or ``error`` (``not_applicable`` or absent: no).
+    """
     by_id = {str(sc.case.id): sc for sc in cand.values}
     base_bad = {
         str(sc.case.id)
         for sc in base.values
         if (v := lookup(sc, metric)) is not None and v.status is MetricStatus.ERROR
     }
+    base_used = {
+        str(sc.case.id)
+        for sc in base.values
+        if (v := lookup(sc, metric)) is not None
+        and v.status in (MetricStatus.OK, MetricStatus.ERROR)
+    }
     return Universe(
         attrs=_columns(by_id[i] for i in shared),
         base_error=np.array([i in base_bad for i in shared], dtype=np.bool_),
+        base_applicable=np.array([i in base_used for i in shared], dtype=np.bool_),
         clusters=np.asarray([by_id[i].case.cluster_id for i in shared], dtype=np.str_),
     )
 

@@ -1126,8 +1126,8 @@ overall `fail` with the case id and ≤ 200 chars of redacted evidence. A candid
 a `GateInputError`, and judge errors beyond 20 % of a slice (or `overall`) are worst-filled, not excluded
 (a metric that cannot be judged must not pass). Selective exclusion is bounded: a candidate judge error is
 dropped only if every gated slice holding it stays within 20 % of the slice's cases that have a usable baseline
-value, so a candidate can hide at most 20 % of those cases (W3.9). Baseline `error` values beyond 20 % of all
-cases of a **testable** gated slice (at least `min_clusters` clusters) are a `GateInputError`; smaller slices
+value, so a candidate can hide at most 20 % of those cases (W3.9). Baseline `error` values beyond 20 % of the
+**applicable** cases (`ok` or `error`) of a **testable** gated slice (at least `min_clusters` clusters), or that leave it under `min_clusters` clusters, are a `GateInputError` (D870; `baseline promote` refuses such a run); smaller slices
 are `INSUFFICIENT_DATA` anyway. Baseline `not_applicable` on a whole gated slice yields `INSUFFICIENT_DATA`
 (the baseline is trusted). A hard-fail metric that is `error` (or absent) on an answered case, or `not_applicable` for a reason other than
 "nothing to test" (`category`, `no_forbidden_strings`) on a target that **declares chunk support** (at least one
