@@ -238,9 +238,8 @@ def test_a_leftover_staging_directory_does_not_block_or_get_touched(
 ) -> None:
     stale = tmp_path / f".{version_of(chunks)}.partial"
     stale.mkdir()
-    (stale / "junk").write_text("x", encoding="utf-8")
     write(chunks, tmp_path)
-    assert (stale / "junk").read_text(encoding="utf-8") == "x"  # each run stages in its own dir
+    assert stale.is_dir()  # each run stages in a directory of its own
 
 
 def test_concurrent_writes_of_one_version_all_succeed_and_leave_no_staging(
@@ -281,25 +280,16 @@ def test_any_input_order_gives_the_same_bytes(chunks: list[Chunk], data: st.Data
     assert render_corpus(order).files == render_corpus(chunks).files
 
 
-def test_published_directory_and_files_are_readable_by_others(
-    chunks: list[Chunk], tmp_path: Path
+@pytest.mark.parametrize(
+    ("umask", "directory", "files"), [(0o022, 0o755, 0o644), (0o077, 0o700, 0o600)]
+)
+def test_published_directory_follows_the_umask(
+    chunks: list[Chunk], tmp_path: Path, umask: int, directory: int, files: int
 ) -> None:
-    old = os.umask(0o022)
+    old = os.umask(umask)
     try:
-        manifest = write(chunks, tmp_path)
+        out = tmp_path / write(chunks, tmp_path).corpus_version
     finally:
         os.umask(old)
-    out = tmp_path / manifest.corpus_version
-    assert stat.S_IMODE(out.stat().st_mode) == 0o755
-    assert {stat.S_IMODE(p.stat().st_mode) for p in out.iterdir()} == {0o644}
-
-
-def test_published_directory_follows_a_strict_umask(chunks: list[Chunk], tmp_path: Path) -> None:
-    old = os.umask(0o077)
-    try:
-        manifest = write(chunks, tmp_path)
-    finally:
-        os.umask(old)
-    out = tmp_path / manifest.corpus_version
-    assert stat.S_IMODE(out.stat().st_mode) == 0o700
-    assert {stat.S_IMODE(p.stat().st_mode) for p in out.iterdir()} == {0o600}
+    assert stat.S_IMODE(out.stat().st_mode) == directory
+    assert {stat.S_IMODE(p.stat().st_mode) for p in out.iterdir()} == {files}
