@@ -100,9 +100,6 @@ def test_glued_german_numbers_count_as_leftovers(text: str) -> None:
         ("rund 2,25 Milliarden Euro", "rund 2.25 Milliarden EUR"),
         ("Es sind 1.000 Euro und 250 €", "Es sind 1000 EUR und 250 EUR"),
         ("Es sind 5 Euro", "Es sind 5 EUR"),
-        ("Rechnung über 1\u00a0000,50 €", "Rechnung über 1000.50 EUR"),
-        ("Rechnung über 1\u00a0000,50 EUR", "Rechnung über 1000.50 EUR"),
-        ("Rechnung über 12\u202f345 €", "Rechnung über 12345 EUR"),
     ],
 )
 def test_amounts_scale_words_and_one_currency_code(text: str, expected: str) -> None:
@@ -130,7 +127,7 @@ def test_ambiguous_or_junk_currency_text_is_left_alone(text: str) -> None:
 
 
 def test_the_converted_text_is_stable() -> None:
-    once = P.apply("10.000,- € und 3,5 Mio. € und 1\u00a0000,50 €", RNG).text
+    once = P.apply("10.000,- € und 3,5 Mio. € und 1.000,50 €", RNG).text
     assert once == "10000 EUR und 3.5 Mio. EUR und 1000.50 EUR"
     assert not P.apply(once, RNG).changed
 
@@ -150,7 +147,7 @@ def test_the_converted_text_is_stable() -> None:
         "Rechnung über 1 000,50 €",  # a plain blank never groups; ambiguous, so the text stays
     ],
 )
-def test_a_plain_blank_never_groups_digits(text: str) -> None:
+def test_blank_grouped_digits_are_never_merged(text: str) -> None:
     out = P.apply(text, RNG).text
     for token in re.findall(r"\d+", text.split("€", maxsplit=1)[0].split("Euro", maxsplit=1)[0]):
         assert token in re.findall(r"\d+", out.replace(",", " ").replace(".", " ")), (text, out)
@@ -158,20 +155,35 @@ def test_a_plain_blank_never_groups_digits(text: str) -> None:
 
 
 REFERENCES = st.sampled_from(
-    ["§", "Art.", "Abs.", "Nr.", "Satz", "Ziff.", "Stufe", "Tel.", "unter"]
+    ["§", "Art.", "Abs.", "Nr.", "Satz", "Ziff.", "S.", "Stufe", "Tel.", "Az."]
 )
-
-
+BLANKS = st.sampled_from([" ", "\u00a0", "\u202f"])
 UNITS = st.sampled_from(["€", "Euro", "EUR"])
 
 
-@given(REFERENCES, st.integers(1, 99), st.integers(100, 999), UNITS)
+@given(REFERENCES, st.integers(1, 99), st.integers(100, 999), BLANKS, UNITS)
 def test_the_reference_number_stays_its_own_token(
-    ref: str, number: int, amount: int, unit: str
+    ref: str, number: int, amount: int, blank: str, unit: str
 ) -> None:
-    out = P.apply(f"{ref} {number} {amount} {unit}", RNG).text
-    assert re.search(rf"(?<![\d.,]){number} ", out), out
+    """Blank-grouped digits are ambiguous (D891): never merged, whatever the blank is."""
+    out = P.apply(f"{ref} {number}{blank}{amount} {unit}", RNG).text
+    assert f"{number}{blank}{amount}" in out, out
     assert str(number * 1000 + amount) not in out
+
+
+@pytest.mark.parametrize("blank", [" ", "\u00a0", "\u202f"])
+def test_a_leading_zero_group_is_not_glued_to_the_number_before_it(blank: str) -> None:
+    text = f"Tel. 030{blank}123{blank}456 €"
+    out = P.apply(text, RNG).text
+    assert out == f"Tel. 030{blank}123{blank}456 EUR"
+    assert "030123456" not in out
+
+
+@pytest.mark.parametrize("blank", ["\u00a0", "\u202f"])
+def test_no_break_space_groups_are_left_alone_too(blank: str) -> None:
+    ambiguous = f"Rechnung über 1{blank}000,50 €"
+    assert not P.apply(ambiguous, RNG).changed  # a decimal comma would stay: whole text unchanged
+    assert P.apply(f"Rechnung über 12{blank}345 €", RNG).text == f"Rechnung über 12{blank}345 EUR"
 
 
 PIECES = ["1.000,50€", "2,5", "10.000,-", "€", "a", "/", "?p=", "1.000", "x@y.de", "%"]

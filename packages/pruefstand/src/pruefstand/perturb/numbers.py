@@ -10,8 +10,8 @@ remain after the rewrite (``zwischen 1.000 und 5.000 €``, ``Abs. 2,3 und 13,7 
 is left unchanged: a half-converted sentence reads differently (D394).
 
 T4.4a (D891): ``10.000,- €`` becomes ``10000 EUR``, ``3,5 Mio. €`` becomes ``3.5 Mio. EUR``,
-a number grouped with a no-break space (``1 000,50 €``, only with a unit) becomes ``1000.50 EUR``
-(a plain blank never groups: ``§ 3 100 €`` is two numbers), and ``Euro`` after a number is written
+a number grouped with blanks (``1 000,50 €``, ``§ 3 100 €``) is ambiguous and stays (only ``.``
+groups thousands), and ``Euro`` after a number is written
 ``EUR`` like ``€``. A euro sign glued to a letter or doubled (``€uro``, ``€€``) is not a currency:
 the text stays. Tokens with ``://`` or ``@`` (URLs, addresses) are never touched.
 """
@@ -23,7 +23,7 @@ import numpy as np
 from pruefstand.core.models.perturb import PerturbResult
 from pruefstand.perturb._common import finish, nfc
 
-_GROUP = r"[.\u00a0\u202f]"  # dot, no-break space, narrow no-break space (never a plain blank)
+_GROUP = r"\."  # blanks (plain, no-break, narrow) never group: ambiguous
 _NUMBER = re.compile(
     rf"(?<![\w.,§])(?<!\d[ \u00a0\u202f])(?P<int>\d{{1,3}}(?:{_GROUP}\d{{3}})+|\d+)"
     r"(?:,(?:(?P<dec>\d+)|(?P<dash>[-–]{1,2})))?(?!\d|[.,]\d)"
@@ -49,11 +49,8 @@ def _convert(m: re.Match[str]) -> str:
         or _UNIT_BEFORE.search(text, max(0, m.start() - 6), m.start())
     )
     whole = decimals is None  # no decimals: an integer, or an amount written ``10.000,-``
-    if re.search(_GROUP, integer):
-        spaced = "." not in integer  # ``1 000``: also a plain list of numbers, needs a unit
-        if (whole and not m.group("dash") and not unit and integer.count(".") < 2) or (
-            spaced and not unit
-        ):
+    if "." in integer:
+        if whole and not m.group("dash") and not unit and integer.count(".") < 2:
             return m.group(0)
     elif (whole and not m.group("dash")) or not unit:
         return m.group(0)
