@@ -112,3 +112,25 @@ describe("refKey", () => {
     expect(refKey({ pr_number: null, git_ref: null })).toBe("–");
   });
 });
+
+describe("rounding follows the exact binary value, ties half-even, like Python's format()", () => {
+  // Python: f"{0.125:.2f}" == "0.12", "0.38", "0.62", "0.88"; f"{0.005:.2f}" == "0.01"; f"{2.675:.2f}" == "2.67"
+  it.each([
+    [0.125, "0.12"],
+    [0.375, "0.38"],
+    [0.625, "0.62"],
+    [0.875, "0.88"],
+    [0.135, "0.14"], // not a tie in binary (0.13500000000000000888…)
+    [0.005, "0.01"], // 0.005000000000000000104…: above the tie, so up (Intl would give 0.00)
+    [2.675, "2.67"], // 2.67499999999999982236…: below the tie (Intl would give 2.68)
+    [1.005, "1.00"],
+  ])("%s → %s", (value, text) => {
+    expect(formatValue(value, "en")).toBe(text);
+    expect(formatPlain(value, "en")).toBe(text);
+    expect(formatDelta(value, "en")).toBe(`+${text}`);
+  });
+  it("de uses the comma and the same ties", () => {
+    expect(formatValue(0.125, "de")).toBe("0,12");
+    expect(formatDelta(-0.375, "de")).toBe("−0,38");
+  });
+});

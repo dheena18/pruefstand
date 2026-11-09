@@ -64,11 +64,26 @@ function shortRef(ref: string | null | undefined): string | null {
 const DASH = "–";
 const LOCALE_TAG = { de: "de-DE", en: "en-US" } as const;
 
+/**
+ * `abs` rounded to `digits` decimals like Python's `format()`: the exact binary value decides, and an exact tie
+ * (`0.125`, `0.375`, …) goes to the even digit (`0.12`, `0.38`). `toFixed` is exact but breaks ties upward and
+ * `Intl.NumberFormat` rounds the shortest decimal text instead of the binary value (`2.675` → `2.68`, Python `2.67`).
+ */
+function roundExact(abs: number, digits: number): number {
+  const wide = abs.toFixed(digits + 20);
+  const cut = wide.indexOf(".") + 1 + digits;
+  const isTie = /^50{19}$/.test(wide.slice(cut));
+  const kept = wide.slice(0, digits === 0 ? cut - 1 : cut);
+  const lastDigit = Number(kept.charAt(kept.length - 1));
+  return Number(isTie && lastDigit % 2 === 0 ? kept : abs.toFixed(digits));
+}
+
 function fixed(value: number, locale: Locale, digits = 2): string {
+  const rounded = roundExact(Math.abs(value), digits);
   return new Intl.NumberFormat(LOCALE_TAG[locale], {
     minimumFractionDigits: digits,
     maximumFractionDigits: digits,
-  }).format(value);
+  }).format(value < 0 ? -rounded : rounded);
 }
 
 /** A metric value: 2 decimals with the locale's separator (ui-spec §10.2); `null` → `–`. */

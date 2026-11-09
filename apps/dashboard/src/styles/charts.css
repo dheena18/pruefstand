@@ -1,0 +1,159 @@
+/* Diff and Slices charts (ui-spec §4.3, §4.4, §7.1, §8). Positions are SVG attributes; colours come from tokens. */
+.chart {
+  margin: var(--space-4) 0 var(--space-6);
+}
+.chart figcaption {
+  margin-bottom: var(--space-2);
+  color: var(--text-muted);
+  font-size: var(--text-sm);
+}
+.chart__toggle {
+  margin-top: var(--space-2);
+}
+.chart__table {
+  margin-top: var(--space-2);
+}
+.chart[data-view="table"] .chart__plot {
+  display: none;
+}
+.diff-controls,
+.slice-controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-4);
+  margin: var(--space-3) 0;
+}
+.slices-section {
+  margin: var(--space-6) 0;
+}
+.slices-section h2 {
+  font-size: var(--text-xl);
+  font-weight: 650;
+}
+
+/* Diff: one row per gated pair on a shared x scale */
+.ciplot__rows {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+.ciplot__row {
+  display: grid;
+  grid-template-columns: minmax(9rem, 1.1fr) minmax(10rem, 2fr) minmax(11rem, 1.3fr);
+  align-items: center;
+  gap: var(--space-2) var(--space-4);
+  padding: var(--space-2) 0;
+  border-bottom: 1px solid var(--border);
+}
+.ciplot__row--axis {
+  border-bottom: 0;
+  padding-bottom: 0;
+}
+.ciplot__axis {
+  display: block;
+  fill: var(--text-muted);
+  font-size: var(--text-xs);
+}
+.ciplot__label {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-1) var(--space-2);
+}
+.ciplot__row[data-status="insufficient_data"] {
+  color: var(--text-muted);
+}
+.cibar {
+  display: contents;
+}
+.cibar__plot {
+  display: block;
+  min-width: 0;
+}
+.cibar__zero {
+  stroke: var(--chart-zero);
+  stroke-width: 1;
+}
+.cibar__threshold {
+  stroke: var(--chart-threshold);
+  stroke-width: 1.5;
+  stroke-dasharray: 4 3;
+}
+.cibar__whisker,
+.cibar__cap {
+  stroke: var(--chart-candidate);
+  stroke-width: 2;
+}
+.cibar__point {
+  fill: var(--chart-candidate);
+}
+.cibar__text {
+  font-variant-numeric: tabular-nums;
+  font-size: var(--text-sm);
+}
+.cibar[data-status="insufficient_data"] .cibar__text {
+  color: var(--text-muted);
+}
+
+/* Slices: grouped horizontal bars, baseline hatched, candidate solid */
+.sliceplot {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+.sliceplot__row {
+  display: grid;
+  grid-template-columns: minmax(7rem, 0.8fr) minmax(8rem, 2fr) minmax(10rem, 1.8fr);
+  align-items: center;
+  gap: var(--space-2) var(--space-4);
+  padding: var(--space-2) 0;
+  border-bottom: 1px solid var(--border);
+}
+.sliceplot__row[data-status="insufficient_data"] {
+  color: var(--text-muted);
+}
+.sliceplot__svg {
+  display: block;
+  min-width: 0;
+}
+.sliceplot__bar--base {
+  stroke: var(--chart-baseline);
+  stroke-width: 1;
+}
+.sliceplot__bar--cand {
+  fill: var(--chart-candidate);
+}
+.sliceplot__hatch {
+  stroke: var(--chart-baseline);
+  stroke-width: 1.5;
+}
+.sliceplot__bar--dotted {
+  fill: none;
+  stroke: var(--chart-baseline);
+  stroke-dasharray: 2 2;
+}
+.sliceplot__text {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-1) var(--space-3);
+  font-size: var(--text-sm);
+  font-variant-numeric: tabular-nums;
+}
+.sliceplot__notable {
+  font-weight: 650;
+}
+.sliceplot__reason,
+.sliceplot__limit {
+  color: var(--text-muted);
+}
+
+@media (max-width: 639px) {
+  .ciplot__row,
+  .sliceplot__row {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .ciplot__row--axis > span {
+    display: none;
+  }
+}
