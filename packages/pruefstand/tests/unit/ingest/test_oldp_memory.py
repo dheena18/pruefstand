@@ -11,6 +11,7 @@ import pyarrow.parquet as pq
 import pytest
 from testsupport.rss import PeakRss
 
+from pruefstand.ingest import records_child
 from pruefstand.ingest.citation_graph import load_citation_graph
 from pruefstand.ingest.oldp import OldpLimits, OldpLoader
 from pruefstand.ingest.records import OldpDataError, Problem, data_files, iter_rows
@@ -105,13 +106,13 @@ def test_delta_byte_array_bomb_is_read_one_row_per_batch(
 
 
 def test_the_memory_backstop_ends_an_unknown_bomb_with_a_named_problem(tmp_path: Path) -> None:
-    """One row that decodes to 200 MB against a 128 MiB reader limit (footer cap raised)."""
+    """One row that decodes to 64 MB against a 32 MiB reader limit (footer cap raised)."""
     path = tmp_path / "d" / "x.parquet"
     path.parent.mkdir()
-    table = pa.table({"id": [1], "content": ["a" * 200_000_000]})
+    table = pa.table({"id": [1], "content": ["a" * 64_000_000]})
     pq.write_table(table, path, compression="zstd", use_dictionary=False)
     limits = OldpLimits(
-        max_parquet_memory_bytes=128 * MIB, max_group_bytes=4096 * MIB, max_record_bytes=4096 * MIB
+        max_parquet_memory_bytes=32 * MIB, max_group_bytes=4096 * MIB, max_record_bytes=4096 * MIB
     )
     loader = OldpLoader(limits)
     assert list(loader.load(path.parent)) == []
@@ -212,3 +213,59 @@ def test_date_objects_in_parquet_make_title_and_version_date(tmp_path: Path) -> 
     assert doc.title == "Amtsgericht Köln 2020-03-04 1 C 1/20"
     assert doc.version_date == date(2020, 3, 4)
     assert data_files(target)
+
+
+def test_the_reader_ignores_modules_in_the_working_directory(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    path = tmp_path / "d" / "x.parquet"
+    path.parent.mkdir()
+    pq.write_table(pa.table({"id": [1], "content": ["x"]}), path)
+    work = tmp_path / "cwd"
+    work.mkdir()
+    for name in ("json", "resource", "pickle"):
+        (work / f"{name}.py").write_text("raise SystemExit(99)\n", encoding="utf-8")
+    monkeypatch.chdir(work)
+    loader = OldpLoader()
+    assert [d.doc_id for d in loader.load(path.parent)] == ["oldp-1"]
+    assert loader.stats.problems.total == 0
+
+
+class FakeResource:
+    """Stands in for the ``resource`` module: records the limit that is set."""
+
+    RLIMIT_AS = 9
+    RLIM_INFINITY = -1
+
+    def __init__(self, hard: int) -> None:
+        self.hard = hard
+        self.set_to: tuple[int, int] | None = None
+
+    def getrlimit(self, _which: int) -> tuple[int, int]:
+        return (self.hard, self.hard)
+
+    def setrlimit(self, _which: int, limits: tuple[int, int]) -> None:
+        self.set_to = limits
+
+    def getpagesize(self) -> int:
+        return 4096
+
+
+def test_the_memory_limit_is_clamped_to_an_existing_hard_limit(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    fake = FakeResource(hard=3_000_000_000)
+    monkeypatch.setattr(records_child, "resource", fake)
+    monkeypatch.setattr(records_child, "_virtual_bytes", lambda: 2_900_000_000)
+    assert records_child._limit_memory(512 * MIB) is None
+    assert fake.set_to == (3_000_000_000, 3_000_000_000)  # not base + 512 MiB: that raises
+    unlimited = FakeResource(hard=-1)
+    monkeypatch.setattr(records_child, "resource", unlimited)
+    assert records_child._limit_memory(512 * MIB) is None
+    assert unlimited.set_to == (2_900_000_000 + 512 * MIB, -1)
+
+
+def test_a_limit_that_cannot_be_set_is_reported_not_silent(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(records_child, "_virtual_bytes", lambda: 0)
+    assert "unavailable" in str(records_child._limit_memory(512 * MIB))
+    assert records_child._limit_memory(0) is None  # in-process reading asked for no limit

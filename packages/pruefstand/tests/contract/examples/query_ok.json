@@ -5,30 +5,21 @@
   ],
   "chunks": [
     {
-      "chunk_id": "gii-bgb-624#0",
-      "doc_id": "gii-bgb-624",
-      "tenant_id": "shared_public",
-      "text": "Ist das Dienstverhältnis für die Lebenszeit einer Person oder für längere Zeit als fünf Jahre eingegangen, so kann es von dem Verpflichteten nach dem Ablauf von fünf Jahren gekündigt werden. Die Kündigungsfrist beträgt sechs Monate.",
-      "score": 0.8333334,
-      "rank": 1,
-      "used_in_prompt": true
-    },
-    {
       "chunk_id": "gii-bgb-622#1",
       "doc_id": "gii-bgb-622",
       "tenant_id": "shared_public",
       "text": "(2) Für eine Kündigung durch den Arbeitgeber beträgt die Kündigungsfrist, wenn das Arbeitsverhältnis in dem Betrieb oder Unternehmen\n1. zwei Jahre bestanden hat, einen Monat zum Ende eines Kalendermonats,\n2. fünf Jahre bestanden hat, zwei Monate zum Ende eines Kalendermonats,\n3. acht Jahre bestanden hat, drei Monate zum Ende eines Kalendermonats,\n4. zehn Jahre bestanden hat, vier Monate zum Ende eines Kalendermonats,\n5. zwölf Jahre bestanden hat, fünf Monate zum Ende eines Kalendermonats,\n6. 15 Jahre bestanden hat, sechs Monate zum Ende eines Kalendermonats,\n7. 20 Jahre bestanden hat, sieben Monate zum Ende eines Kalendermonats.",
-      "score": 0.75,
-      "rank": 2,
+      "score": 0.033333335,
+      "rank": 1,
       "used_in_prompt": true
     },
     {
-      "chunk_id": "gii-bgb-621#0",
-      "doc_id": "gii-bgb-621",
+      "chunk_id": "gii-bgb-624#0",
+      "doc_id": "gii-bgb-624",
       "tenant_id": "shared_public",
-      "text": "Bei einem Dienstverhältnis, das kein Arbeitsverhältnis im Sinne des § 622 ist, ist die Kündigung zulässig,\n1. wenn die Vergütung nach Tagen bemessen ist, an jedem Tag für den Ablauf des folgenden Tages;\n2. wenn die Vergütung nach Wochen bemessen ist, spätestens am ersten Werktag einer Woche für den Ablauf des folgenden Sonnabends;\n3. wenn die Vergütung nach Monaten bemessen ist, spätestens am 15. eines Monats für den Schluss des Kalendermonats;\n4. wenn die Vergütung nach Vierteljahren oder längeren Zeitabschnitten bemessen ist, unter Einhaltung einer Kündigungsfrist von sechs Wochen für den Schluss eines Kalendervierteljahrs;\n5. wenn die Vergütung nicht nach Zeitabschnitten bemessen ist, jederzeit; bei einem die Erwerbstätigkeit des Verpflichteten vollständig oder hauptsächlich in Anspruch nehmenden Dienstverhältnis ist jedoch eine Kündigungsfrist von zwei Wochen einzuhalten.",
-      "score": 0.4761905,
-      "rank": 3,
+      "text": "Ist das Dienstverhältnis für die Lebenszeit einer Person oder für längere Zeit als fünf Jahre eingegangen, so kann es von dem Verpflichteten nach dem Ablauf von fünf Jahren gekündigt werden. Die Kündigungsfrist beträgt sechs Monate.",
+      "score": 0.032522473,
+      "rank": 2,
       "used_in_prompt": true
     },
     {
@@ -36,7 +27,16 @@
       "doc_id": "gii-bgb-626",
       "tenant_id": "shared_public",
       "text": "(1) Das Dienstverhältnis kann von jedem Vertragsteil aus wichtigem Grund ohne Einhaltung einer Kündigungsfrist gekündigt werden, wenn Tatsachen vorliegen, auf Grund derer dem Kündigenden unter Berücksichtigung aller Umstände des Einzelfalles und unter Abwägung der Interessen beider Vertragsteile die Fortsetzung des Dienstverhältnisses bis zum Ablauf der Kündigungsfrist oder bis zu der vereinbarten Beendigung des Dienstverhältnisses nicht zugemutet werden kann.\n(2) Die Kündigung kann nur innerhalb von zwei Wochen erfolgen. Die Frist beginnt mit dem Zeitpunkt, in dem der Kündigungsberechtigte von den für die Kündigung maßgebenden Tatsachen Kenntnis erlangt. Der Kündigende muss dem anderen Teil auf Verlangen den Kündigungsgrund unverzüglich schriftlich mitteilen.",
-      "score": 0.36666667,
+      "score": 0.03125,
+      "rank": 3,
+      "used_in_prompt": true
+    },
+    {
+      "chunk_id": "gii-bgb-621#0",
+      "doc_id": "gii-bgb-621",
+      "tenant_id": "shared_public",
+      "text": "Bei einem Dienstverhältnis, das kein Arbeitsverhältnis im Sinne des § 622 ist, ist die Kündigung zulässig,\n1. wenn die Vergütung nach Tagen bemessen ist, an jedem Tag für den Ablauf des folgenden Tages;\n2. wenn die Vergütung nach Wochen bemessen ist, spätestens am ersten Werktag einer Woche für den Ablauf des folgenden Sonnabends;\n3. wenn die Vergütung nach Monaten bemessen ist, spätestens am 15. eines Monats für den Schluss des Kalendermonats;\n4. wenn die Vergütung nach Vierteljahren oder längeren Zeitabschnitten bemessen ist, unter Einhaltung einer Kündigungsfrist von sechs Wochen für den Schluss eines Kalendervierteljahrs;\n5. wenn die Vergütung nicht nach Zeitabschnitten bemessen ist, jederzeit; bei einem die Erwerbstätigkeit des Verpflichteten vollständig oder hauptsächlich in Anspruch nehmenden Dienstverhältnis ist jedoch eine Kündigungsfrist von zwei Wochen einzuhalten.",
+      "score": 0.03076923,
       "rank": 4,
       "used_in_prompt": true
     }

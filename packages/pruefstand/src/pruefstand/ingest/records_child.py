@@ -29,11 +29,24 @@ def _virtual_bytes() -> int:
     return pages * resource.getpagesize()
 
 
-def _limit_memory(extra: int) -> None:
+def _limit_memory(extra: int) -> str | None:
+    """Limit the address space to its current size plus ``extra``; return a warning if it fails.
+
+    The new soft limit is clamped to an existing finite hard limit (``ulimit -v``); without
+    ``/proc`` or when the limit cannot be set, the reader runs unlimited and says so.
+    """
+    if extra <= 0:
+        return None
     base = _virtual_bytes()
-    if extra > 0 and base > 0:
-        hard = resource.getrlimit(resource.RLIMIT_AS)[1]
-        resource.setrlimit(resource.RLIMIT_AS, (base + extra, hard))
+    if base <= 0:
+        return "memory limit not set: /proc/self/statm is unavailable"
+    hard = resource.getrlimit(resource.RLIMIT_AS)[1]
+    soft = base + extra if hard == resource.RLIM_INFINITY else min(base + extra, hard)
+    try:
+        resource.setrlimit(resource.RLIMIT_AS, (soft, hard))
+    except (ValueError, OSError) as error:
+        return f"memory limit not set: {error}"
+    return None
 
 
 def _send(out: BinaryIO, event: tuple[object, ...]) -> None:
@@ -49,7 +62,9 @@ def run(argv: list[str], out: BinaryIO) -> int:
     problems: list[Problem] = []
     pa.set_cpu_count(1)
     pa.set_io_thread_count(1)
-    _limit_memory(limits.max_parquet_memory_bytes)
+    warning = _limit_memory(limits.max_parquet_memory_bytes)
+    if warning is not None:
+        _send(out, ("warning", warning))
     try:
         for number, row in parquet_rows_local(
             Path(spec["path"]), spec["columns"], limits, problems, budget

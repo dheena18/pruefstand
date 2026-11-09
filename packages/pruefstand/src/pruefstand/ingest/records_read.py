@@ -18,9 +18,11 @@ from typing import IO
 import pyarrow as pa
 import pyarrow.parquet as pq
 
+from pruefstand.core.logging import get_logger
 from pruefstand.ingest.records_model import OldpLimits, Problem, RowBudget
 
 _DRAIN_CHUNK = 64 * 1024
+_log = get_logger(__name__)
 _BATCH_ROWS = 64
 _BATCH_BYTES = 1024 * 1024
 _BOUNDED_ENCODINGS = frozenset(
@@ -168,10 +170,20 @@ def parquet_rows(
         "limits": dataclasses.asdict(limits),
         "left": budget.left,
     }
-    command = [sys.executable, "-m", "pruefstand.ingest.records_child", json.dumps(spec)]
+    # -I: isolated mode, so a file named like a standard module in the working directory is never
+    # imported by the reader
+    command = [sys.executable, "-I", "-m", "pruefstand.ingest.records_child", json.dumps(spec)]
     # one malloc arena and the system allocator: per-thread arenas reserve address space that the
     # address-space limit of the child would count
-    env = {**os.environ, "ARROW_DEFAULT_MEMORY_POOL": "system", "MALLOC_ARENA_MAX": "1"}
+    env = {
+        **os.environ,
+        "ARROW_DEFAULT_MEMORY_POOL": "system",
+        "MALLOC_ARENA_MAX": "1",
+        # numpy would start one BLAS thread per core (seconds of CPU on a big machine)
+        "OPENBLAS_NUM_THREADS": "1",
+        "OMP_NUM_THREADS": "1",
+        "MKL_NUM_THREADS": "1",
+    }
     with subprocess.Popen(  # noqa: S603 (our own module, arguments are data)
         command,
         stdin=subprocess.DEVNULL,
@@ -205,6 +217,8 @@ def _child_events(
             yield event[1], event[2]
         elif event[0] == "problem":
             problems.append(event[1])
+        elif event[0] == "warning":
+            _log.warning("parquet_reader_unlimited", file=path.name, reason=event[1])
         elif event[0] == "memory":
             mib = limits.max_parquet_memory_bytes // (1024 * 1024)
             detail = f"{event[1]}; the reader may use {mib} MiB more than it starts with"
