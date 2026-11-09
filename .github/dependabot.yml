@@ -14,6 +14,7 @@ updates:
     groups:
       uv:
         patterns: ["*"]
+        update-types: [minor, patch]
   - package-ecosystem: npm
     directory: /apps/dashboard
     schedule:
@@ -31,9 +32,17 @@ updates:
         update-types: ["version-update:semver-major"]
       - dependency-name: "eslint-config-next"
         update-types: ["version-update:semver-major"]
+      # Toolchain majors (typescript 7, eslint 10, vitest 5) break ui-unit; take them in a dedicated task.
+      - dependency-name: "typescript"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "eslint"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "vitest"
+        update-types: ["version-update:semver-major"]
     groups:
       npm:
         patterns: ["*"]
+        update-types: [minor, patch]
   - package-ecosystem: github-actions
     directory: /
     schedule:
@@ -45,6 +54,7 @@ updates:
     groups:
       github-actions:
         patterns: ["*"]
+        update-types: [minor, patch]
   - package-ecosystem: docker
     directories:
       - /infra/docker
@@ -57,9 +67,14 @@ updates:
     commit-message:
       prefix: chore
       include: scope
+    ignore:
+      # Python base stays on 3.12-slim-bookworm (project pins Python 3.12).
+      - dependency-name: "python"
+        update-types: ["version-update:semver-major", "version-update:semver-minor"]
     groups:
       docker:
         patterns: ["*"]
+        update-types: [minor, patch]
   - package-ecosystem: docker-compose
     directories:
       - /
@@ -73,3 +88,4 @@ updates:
     groups:
       docker:
         patterns: ["*"]
+        update-types: [minor, patch]
