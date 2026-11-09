@@ -181,8 +181,8 @@ targets and experiment wrappers do exactly this. The three scripts are created b
 dispatches of non-gated PRs) → `flock -w` → **preflight** (under the lock, so a legitimate holder never
 makes it fail): `health.sh --repair` checks the tunnel (`$OLLAMA_GPU0_URL` and `$OLLAMA_GPU1_URL`, both `127.0.0.1:11434`, ADR-0018);
 if no Ollama server answers it runs
-`ssh $CLUSTER_SSH_HOST bash /data/dheena/pruefstand-bin/start-ollama.sh` (starts the owner's `~/start-ollama.sh` detached with
-`setsid nohup` only if none runs, Y5.4; `OLLAMA_MODELS=/data/dheena/Models` on the cluster disk, ADR-0019) and waits ≤ 5 min for `/api/tags`; then `/api/ps` must show **exactly** the mode's
+`ssh $CLUSTER_SSH_HOST bash $CLUSTER_DATA_ROOT/pruefstand-bin/start-ollama.sh` (starts the owner's `~/start-ollama.sh` detached with
+`setsid nohup` only if none runs, Y5.4; `OLLAMA_MODELS=$CLUSTER_DATA_ROOT/Models` on the cluster disk, ADR-0019) and waits ≤ 5 min for `/api/tags`; then `/api/ps` must show **exactly** the mode's
 catalogue models with the catalogue digests, each with `size_vram == size` (exit 15 otherwise; the card per model is
 reported): `--repair <mode>` first unloads every non-mode catalogue model (e.g. an e5 or RQ2
 candidate left by a job killed before its `finally`, A12-M12), then loads the missing ones with the catalogue
@@ -387,7 +387,7 @@ PR. Demo rollback: dispatch `demo-nightly.yml` with `mode: pin` (previous demo-r
 | Live slice index (tier 1) | Qdrant snapshot of the 5-law slice, key = corpus version + embedding model + hash of the rag-demo indexing code (`hashFiles('apps/rag-demo/src/rag_demo/**')`: analyzer, sparse encoder, indexer); saved only on `main` | `live-e2e`, `action-selftest` |
 | Live judge cache (tier 1) | `~/.cache/pruefstand/llm`, key = judge model + provider version + prompt versions (entries keyed per W3.2); saved only on `main`, restore-keys from `main` | `live-e2e` |
 | **Cache budget** | Actions cache is 10 GB per repo (LRU). Target ≤ 7 GB in total; model files ≤ 4 GB (pinned sizes recorded in T1.13). T1.12 Done-when prints `gh cache list --json sizeInBytes` total in the job summary | public repo |
-| Model weights (tier 2) | cluster disk `/data/dheena/Models` (`OLLAMA_MODELS` of the one Ollama server, ADR-0019; generator + `bge-m3` + `gemma3:12b`, ≥ 2 GB free; pulled by `fetch-model.sh`, pinned by digest; other models only by the swap rule); `rerank-cpu` weights in its image or a VM volume | cluster (Ollama) / VM |
+| Model weights (tier 2) | cluster disk `$CLUSTER_DATA_ROOT/Models` (`OLLAMA_MODELS` of the one Ollama server, ADR-0019; generator + `bge-m3` + `gemma3:12b`, ≥ 2 GB free; pulled by `fetch-model.sh`, pinned by digest; other models only by the swap rule); `rerank-cpu` weights in its image or a VM volume | cluster (Ollama) / VM |
 | Target + LLM caches (tier 2) | `$PRUEFSTAND_HOME/pruefstand-cache/main/{target,llm}` on the VM disk, written **only** by `baseline-promote.yml` and `nightly.yml`; PR jobs mount it **read-only** plus a fresh overlay `$PRUEFSTAND_HOME/pruefstand-cache/pr-<N>-<run_id>/` that `cleanup` (and the runner's job-completed hook) deletes | VM runner |
 
 ## 5. Required checks and the gate

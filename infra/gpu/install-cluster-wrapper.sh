@@ -4,7 +4,9 @@
 #   make gpu-install-wrapper        (exports origin/main with `git archive`, then runs this script with sudo)
 #   sudo infra/gpu/install-cluster-wrapper.sh   (from a checkout: it then insists on a tree equal to origin/main)
 #
-# Installs infra/gpu/pruefstand-cluster to /usr/local/bin/pruefstand-cluster (root:root 0755), the allow-list
+# Installs infra/gpu/pruefstand-cluster to /usr/local/bin/pruefstand-cluster (root:root 0755) with @BIN_DIR@ rendered to
+# <data root>/pruefstand-bin from the owner-supplied cluster data root (lib/cluster_paths.sh: /etc/pruefstand/cluster-data-root
+# or PRUEFSTAND_CLUSTER_DATA_ROOT; T3.1c, D950; exit 78 when missing), the allow-list
 # /usr/local/lib/pruefstand-cluster.allow (generated here from models.yaml: "tag<TAB>bytes", the only tags and sizes the
 # wrapper accepts) and ONE sudoers file, /etc/sudoers.d/pruefstand-cluster (0440), checked with `visudo -c -f` BEFORE it is
 # moved into place. The sudoers file lets group pruefstand run exactly that one wrapper as user pruefstand and keeps
@@ -16,7 +18,7 @@
 # lives in the owner's tree. The real protection is that the owner installs from a checkout agents did not touch, which
 # the make target guarantees by exporting the fetched main instead of the working tree.
 # --print-sudoers prints the sudoers file and changes nothing. DESTDIR (a test seam) installs below that directory
-# without root. Exit: 0 ok, 1 refused (tree, foreign file, visudo), 2 not run with sudo, 64 usage.
+# without root. Exit: 0 ok, 1 refused (tree, foreign file, visudo), 2 not run with sudo, 64 usage, 78 data root missing.
 set -euo pipefail
 
 GPU_DIR="$(cd "$(dirname "$0")" && pwd)"
@@ -57,6 +59,9 @@ fi
 # shellcheck source=lib/git_verify.sh
 . "$GPU_DIR/lib/git_verify.sh"
 verify_reviewed_tree "$REPO"
+# shellcheck source=lib/cluster_paths.sh
+. "$GPU_DIR/lib/cluster_paths.sh"
+ROOT="$(cluster_data_root)" || exit 78
 commit="$(git -c "safe.directory=$REPO" -C "$REPO" rev-parse HEAD 2>/dev/null || cat "$REPO/COMMIT" 2>/dev/null || echo unknown)"
 
 stage="$(mktemp -d)"
@@ -66,6 +71,9 @@ trap 'rm -rf "$stage"' EXIT
   "${PRUEFSTAND_PYTHON:-python3}" "$GPU_DIR/gpu_catalogue.py" allowlist
 } >"$stage/allow"
 sudoers >"$stage/sudoers"
+# render the one placeholder line (ROOT is validated plain characters: nothing special to sed)
+sed "s|^bin=\"@BIN_DIR@\"\$|bin=\"$ROOT/pruefstand-bin\"|" "$GPU_DIR/pruefstand-cluster" >"$stage/wrapper"
+chmod 0755 "$stage/wrapper"
 if ! visudo -c -f "$stage/sudoers"; then
   echo "install-cluster-wrapper.sh: visudo refused the sudoers file; nothing installed" >&2
   exit 1
@@ -91,7 +99,7 @@ check_target() { # source target marker-text
   changed=1
 }
 ok=0
-check_target "$GPU_DIR/pruefstand-cluster" "$wrapper_dst" "$WRAPPER_MARK" || ok=1
+check_target "$stage/wrapper" "$wrapper_dst" "$WRAPPER_MARK" || ok=1
 check_target "$stage/allow" "$allow_dst" "$ALLOW_MARK" || ok=1
 check_target "$stage/sudoers" "$sudoers_dst" "$SUDOERS_MARK" || ok=1
 if [ "$ok" -ne 0 ]; then exit 1; fi
@@ -103,7 +111,7 @@ fi
 owner=()
 if [ -z "$dest" ]; then owner=(-o root -g root); fi
 mkdir -p "$dest/usr/local/bin" "$dest/usr/local/lib" "$dest/etc/sudoers.d"
-install -m 0755 "${owner[@]}" "$GPU_DIR/pruefstand-cluster" "$wrapper_dst"
+install -m 0755 "${owner[@]}" "$stage/wrapper" "$wrapper_dst"
 install -m 0644 "${owner[@]}" "$stage/allow" "$allow_dst"
 install -m 0440 "${owner[@]}" "$stage/sudoers" "$sudoers_dst"
 echo "installed $wrapper_dst, $allow_dst and $sudoers_dst (commit $commit)"

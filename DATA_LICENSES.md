@@ -119,7 +119,7 @@ every row on the pinning day against the model card):
 
 Model weights are never committed or redistributed; they are downloaded at pinned revisions with
 SHA-256 (Hugging Face) or pulled as Ollama tags pinned by manifest digest into the cluster's model store
-`/data/dheena/Models` (ADR-0019). An Ollama tag is checked against the licence of the checkpoint it was
+`$CLUSTER_DATA_ROOT/Models` (ADR-0019). An Ollama tag is checked against the licence of the checkpoint it was
 converted from (`ollama show --license`); GGUF quantisation does not change the licence. A tag that
 cannot be re-pulled from the registry (built locally or from a user namespace; T0.6 C3) is copied once with
 its manifest over SSH to the VM data root `backups/models/`, digest-checked (AI11-08). No model under a non-commercial licence (e.g. CC BY-NC) is used in any default profile;

@@ -28,7 +28,7 @@ def test_enough_free_space_pulls_once_and_accepts_the_pinned_digest(gpu: GpuWorl
     pulls = _remote(gpu, "ollama-op.sh pull bge-m3")
     assert len(pulls) == 1
     assert pulls[0].endswith("ollama-op.sh pull bge-m3 1157672605")  # the cluster re-checks size
-    assert "/data/dheena/pruefstand-bin/ollama-op.sh" in pulls[0]
+    assert "/data/example/pruefstand-bin/ollama-op.sh" in pulls[0]
     assert not _remote(gpu, "ollama-op.sh rm")
     assert "digest matches" in res.out  # Ollama listed it as bge-m3:latest
 

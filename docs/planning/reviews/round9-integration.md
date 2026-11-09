@@ -30,7 +30,7 @@ owns `docs/engineering/gpu-cluster.md`, `prompts/T0.6*`, `T3.1a*`, `T3.1b*`, `ta
   (default `${HOME}/.cache/pruefstand/models`) in docker.md and T0.3. testing-strategy §3.9 endpoints →
   `OLLAMA_GPU0_URL`/`OLLAMA_GPU1_URL`.
 - New `.env.example` (sections LOCAL = VM via VS Code Remote-SSH, WSL optional; VM = executor; CLUSTER = Ollama
-  only, incl. `OLLAMA_MODELS=/data/dheena/truenas-ollama/ollama-models`). `OLLAMA_BASE_URL` from the original
+  only, incl. `OLLAMA_MODELS=$CLUSTER_DATA_ROOT/truenas-ollama/ollama-models`). `OLLAMA_BASE_URL` from the original
   brief is replaced by `OLLAMA_GPU0_URL`/`OLLAMA_GPU1_URL` (round 10 Z1).
 - New `docs/ops/secrets.md`: one table for secrets, one for variables; SSH key created on the VM in T0.7,
   never in GitHub; no password stored anywhere; App keys/PATs only as repo/environment secrets.

@@ -144,11 +144,11 @@ def test_only_port_11434_no_spread_no_tmux_in_the_cluster_files() -> None:
 def test_template_keys_match_the_expected_names() -> None:
     text = (CLUSTER_DIR / "cluster.env.template").read_text(encoding="utf-8")
     pairs = dict(ln.split("=", 1) for ln in text.splitlines() if ln and not ln.startswith("#"))
-    assert pairs["OLLAMA_MODELS"] == "/data/dheena/Models"
+    assert pairs["OLLAMA_MODELS"] == "@MODELS_DIR@"
     assert pairs["OLLAMA_KV_CACHE_TYPE"] == "q8_0"
     assert pairs["OLLAMA_CONTEXT_LENGTH"] == "8192"
     assert pairs["OLLAMA_START_SCRIPT"] == "$HOME/start-ollama.sh"
-    assert pairs["OLLAMA_LOG"] == "/data/dheena/ollama.log"
+    assert pairs["OLLAMA_LOG"] == "@LOG@"
     assert pairs["MODELS_MIN_FREE_GB"] == "2"
     assert pairs["CUDA_VISIBLE_DEVICES"] == "0,1"
     assert pairs["OLLAMA_MAX_LOADED_MODELS"] == "3"

@@ -96,7 +96,7 @@ flowchart TB
 
     subgraph CLU["TRUST: shared A40 cluster cairo-s101lp (Ollama only)"]
         oll["one Ollama server 127.0.0.1:11434 (GPU0 + GPU1, ADR-0018)<br/>generator qwen3.8:27b-q8_0 + bge-m3 + one judge gemma3:12b (PR and nightly, ADR-0019)"]
-        models[("/data/dheena/Models (cluster disk)")]
+        models[("$CLUSTER_DATA_ROOT/Models (cluster disk)")]
     end
 
     subgraph DRX["TRUST: data root on the VM disk (/mnt/pruefstand)"]
@@ -165,7 +165,7 @@ touches the gate network, the LAN, the TrueNAS host, the GPU lock or the cluster
 | `gate_orchestrator` | Selects jobs, takes `/var/lib/pruefstand/gpu.lock` once per job, runs the preflight under it (starts the Ollama server over SSH only if none runs, checks digests and GPU placement), switches Ollama modes, runs and reports, refreshes the heartbeat every 15 min, turns infra failures into `error` + one retry (T6.2a) | Python (`infra/gate-executor/orchestrator`) | GitHub API, Ollama via the tunnel, cluster `bin/` scripts over SSH |
 | rag-demo | System under test, multi-tenant German RAG | FastAPI, Qdrant client, httpx | Qdrant; tier 1: llama.cpp + TEI (CPU); tier 2: `llm-proxy` (Ollama, generator lane) + `rerank-cpu` |
 | Qdrant | Dense + sparse vectors, tenant payload filter, PR-scoped collections | Qdrant | – |
-| Ollama server (cluster, one for both GPUs, ADR-0018) | Tier-2 LLM + embedding serving: generator + `bge-m3` and the one judge `gemma3:12b` on the two cards (placed by Ollama, checked via `/api/ps`; catalogue models only, pinned by digest; ADR-0019) | Ollama (existing server reused, else the owner's `~/start-ollama.sh` with `setsid nohup`), models on the cluster disk `/data/dheena/Models` | – (reached only through the VM tunnel) |
+| Ollama server (cluster, one for both GPUs, ADR-0018) | Tier-2 LLM + embedding serving: generator + `bge-m3` and the one judge `gemma3:12b` on the two cards (placed by Ollama, checked via `/api/ps`; catalogue models only, pinned by digest; ADR-0019) | Ollama (existing server reused, else the owner's `~/start-ollama.sh` with `setsid nohup`), models on the cluster disk `$CLUSTER_DATA_ROOT/Models` | – (reached only through the VM tunnel) |
 | `llm-proxy` | Candidate's only route to Ollama: normal container on `gate-net` + `proxy-egress` (`http://llm-proxy:11500`, upstream `172.17.0.1:11434` firewalled to `proxy-egress`), bearer key, generator + embed tags only (no judge), native `/api/chat`, `/api/embed`, `/api/tags`, catalogue tags; enforces `num_ctx`/`keep_alive`, sampling options pass within the catalogue `option_bounds` (403 outside, R12 N2); no admin API (D206, D242, D220) | Python (T6.2a) | the Ollama server via the tunnel |
 | `rerank-cpu` | `bge-reranker-v2-m3` on the VM CPU, TEI-compatible `/rerank` (tier 2) | sentence-transformers (T3.1a) | – |
 | TEI (CPU) | CPU embeddings (tier 1, demo) | text-embeddings-inference | – |

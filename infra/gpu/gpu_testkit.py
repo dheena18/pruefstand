@@ -64,8 +64,21 @@ def run_script(
     return Result(proc.returncode, proc.stdout, proc.stderr)
 
 
+SYNTH_ROOT = "/data/example"  # synthetic cluster data root: the real one is owner-supplied (T3.1c)
+
+
+def rendered_wrapper(dest: Path, root: str = SYNTH_ROOT) -> Path:
+    """Copy ``pruefstand-cluster`` to ``dest``, ``@BIN_DIR@`` rendered like the installer."""
+    text = (GPU_DIR / "pruefstand-cluster").read_text(encoding="utf-8")
+    target = dest / "pruefstand-cluster"
+    rendered = text.replace('bin="@BIN_DIR@"', f'bin="{root}/pruefstand-bin"')
+    target.write_text(rendered, encoding="utf-8")
+    target.chmod(0o755)
+    return target
+
+
 def fake_ssh(stubs: Stubs, remote_root: Path) -> None:
-    """A local ``ssh``: runs the remote command in bash, ``/data/dheena`` mapped to ``remote_root``.
+    """A local ``ssh``: runs the remote command in bash, ``/data/example`` mapped to a dir.
 
     Options (``-o x``, ``-q``, ``--``) and the host are dropped; stdin is passed through. Every call
     is logged as ``ssh <args>``.
@@ -77,7 +90,7 @@ while [ $# -gt 0 ]; do
 done
 shift  # the host
 cmd="$*"
-cmd="${{cmd//\\/data\\/dheena/{remote_root}}}"
+cmd="${{cmd//\\/data\\/example/{remote_root}}}"
 exec bash -c "$cmd"
 """
     target = stubs.bin / "ssh"

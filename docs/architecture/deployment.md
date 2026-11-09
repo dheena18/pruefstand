@@ -12,7 +12,7 @@ and operations in `docs/ops/runbook.md`. This page only summarises them.
 | Hosted CI tier 1 live (public repo) | `live-e2e.yml`: real Qdrant + rag-demo + llama.cpp generator + CPU embeddings, split `smoke_live`, deterministic gate, informational judge via GitHub Models (`GITHUB_TOKEN` `models: read`, ≤ 10 calls per PR), real PR comment; `executor-health.yml` hourly; `gate-router.yml` (`pull_request_target`, no checkout, environment `gate-router`) posts `pruefstand/gate` with the `pruefstand-bot` App token: success "not gated" for PRs without gated paths, `pending` "gated: awaiting tier-2 dispatch" otherwise (round 13 P1.1) | only `GITHUB_TOKEN`, except the App key in environment `gate-router` (deployment branch `main`, used only by `gate-router.yml`); forks get no judge (`judge_mode=skipped`); public data only; `gate-router.yml` runs no PR code |
 | Private executor repo `pruefstand-gate` | gate (owner `workflow_dispatch` only, round 13 P1.2), nightly, baseline (polls public `main`) and backup workflows; holds the baseline `index.json` (branch `baselines`), processed-work state and `state/nightly_counter`, and held-out canaries | trusted, owner only; the VM token has no access |
 | Executor VM `pruefstand-exec` (TrueNAS) | system user `pruefstand` (Y1): persistent executor runner, orchestrator, Qdrant, `rerank-cpu`, `llm-proxy` (`gate-net` + `proxy-egress`, `http://llm-proxy:11500`, D242), candidate rag-demo (no GPU, no egress, no canary registry), `/var/lib/pruefstand/gpu.lock` + state + run dirs + caches on the VM disk, `pruefstand-tunnel.service` (no storage dependency), `pruefstand-runner.service` (no mount dependency; data root = plain directory, ADR-0019), `pruefstand-firewall.service` (rules in Docker's `DOCKER-USER` chain, N4.2), VM → cluster SSH key; optional demo on the `--internal` `demo-net` (+ `cloudflared` on `demo-egress`) behind a Cloudflare Tunnel | runs only private-repo workflows; the candidate is isolated on `gate-net`, the demo on `demo-net` with RFC 1918 and VM addresses dropped (P2.2) |
-| A40 cluster `cairo-s101lp` (shared) | only **one** Ollama server for both GPUs on loopback `:11434` (ADR-0018; the existing server is reused, else started with `setsid nohup`) | no code, data or state of ours beyond the scripts in `/data/dheena/pruefstand-bin` (copied over SSH) and the models in `/data/dheena/Models` (ADR-0019); other local users can reach loopback Ollama (accepted risk, `security.md` C14) |
+| A40 cluster `cairo-s101lp` (shared) | only **one** Ollama server for both GPUs on loopback `:11434` (ADR-0018; the existing server is reused, else started with `setsid nohup`) | no code, data or state of ours beyond the scripts in `$CLUSTER_DATA_ROOT/pruefstand-bin` (copied over SSH) and the models in `$CLUSTER_DATA_ROOT/Models` (ADR-0019); other local users can reach loopback Ollama (accepted risk, `security.md` C14) |
 | Data root (VM disk, ADR-0019) | `/mnt/pruefstand`, a plain directory on the VM's zvol: baselines, backups (+ laptop receipt), data, corpus, datasets; TrueNAS periodic snapshots of the zvol | single writer per path; no locks or state |
 | Dashboard-data repo `pruefstand-dashboard-data` (public) | sanitised run data, `runs/index.json`, sha256 manifest on `main`; `heartbeat.json` on branch `heartbeat` (single force-pushed commit) | written only by the executor (repo-scoped PAT); read anonymously |
 | Public web | dashboard on **GitHub Pages** (Y7.1); optional demo API + llama.cpp generator on the VM (4 vCPU / 8 GB limits) behind a free **Cloudflare Tunnel** (Y7.5) | public internet |
@@ -131,8 +131,8 @@ flowchart TB
     end
     subgraph CLUSTER["TRUST: shared A40 cluster cairo-s101lp (plain SSH, Ollama only via setsid nohup, no Docker)"]
         oll["one Ollama server 127.0.0.1:11434 · GPU0 + GPU1 (ADR-0018)<br/>generator qwen3.8:27b-q8_0 + bge-m3 + one judge gemma3:12b (ADR-0019);<br/>placement by Ollama, checked via /api/ps"]
-        models[("/data/dheena/Models (cluster disk, ≥ 2 GB free)")]
-        bin[("/data/dheena/pruefstand-bin: scripts, cluster.env + SHA256SUMS")]
+        models[("$CLUSTER_DATA_ROOT/Models (cluster disk, ≥ 2 GB free)")]
+        bin[("$CLUSTER_DATA_ROOT/pruefstand-bin: scripts, cluster.env + SHA256SUMS")]
     end
     gh(["github.com / ghcr.io<br/>outbound HTTPS only"])
 
@@ -156,7 +156,7 @@ flowchart TB
 The runner, orchestrator, Qdrant, `rerank-cpu`, `llm-proxy` and the candidate all run on the VM as the
 system user `pruefstand` (Y1); the cluster runs only **one** Ollama server for both GPUs (ADR-0018: the
 existing server is reused; only if none runs is it started detached with `setsid nohup`, Y5.4; no Docker, no
-linger), started by the owner's `~/start-ollama.sh`, with `OLLAMA_MODELS=/data/dheena/Models` on the cluster's own
+linger), started by the owner's `~/start-ollama.sh`, with `OLLAMA_MODELS=$CLUSTER_DATA_ROOT/Models` on the cluster's own
 small disk (ADR-0019) and `OLLAMA_HOST=127.0.0.1:11434`. The VM
 reaches it through the system unit `pruefstand-tunnel.service`, logging in with a key that only `pruefstand`
 holds. In day and night mode the server holds the generator, `bge-m3` and the one judge `gemma3:12b` (ADR-0019); Ollama places them, and since

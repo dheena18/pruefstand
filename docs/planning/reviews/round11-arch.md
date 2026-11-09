@@ -5,7 +5,7 @@ Reviewer stance: principal architect + DevOps/security engineer, reading the pac
 `pruefstand-exec` (Ubuntu 24.04, 64 GB, Docker), which runs the self-hosted runner, orchestrator,
 Qdrant, candidate, `rerank-cpu` and `llm-proxy`; the cluster `cairo-s101lp` (plain SSH, `Linger=no`,
 nearly full local disk) runs only two Ollama servers in `tmux` with models on the NAS mount
-`/data/dheena/truenas-ollama`; the VM mounts the same dataset at `/mnt/pruefstand`; `autossh` tunnels
+`$CLUSTER_DATA_ROOT/truenas-ollama`; the VM mounts the same dataset at `/mnt/pruefstand`; `autossh` tunnels
 VM → cluster.
 
 Read: `CLAUDE.md`, `docs/decisions.md` (superseded rows ignored), `docs/architecture/*.md`,

@@ -104,7 +104,10 @@ class GpuWorld:
         proc = subprocess.run(  # noqa: S603
             [shutil.which("bash") or "bash", script, "--print-sums"],
             capture_output=True,
-            env={"PATH": str(self.stubs.bin), "HOME": str(self.root)},
+            env={
+                "PATH": str(self.stubs.bin), "HOME": str(self.root),
+                "PRUEFSTAND_CLUSTER_DATA_ROOT": "/data/example",
+            },
             check=False,
         )  # fmt: skip
         return hashlib.sha256(proc.stdout).hexdigest()
@@ -193,6 +196,7 @@ esac
             "PRUEFSTAND_LOCK_HELD": "1", "PRUEFSTAND_LOCK_DIR": str(self.lock_dir),
             "PRUEFSTAND_DATA_ROOT": str(self.data_root), "PRUEFSTAND_PYTHON": sys.executable,
             "PRUEFSTAND_SERVICE_USER": getpass.getuser(), "CLUSTER_SSH_HOST": "cairo-s101lp",
+            "PRUEFSTAND_CLUSTER_DATA_ROOT": "/data/example",
             "OLLAMA_GPU0_URL": "http://127.0.0.1:11434", "OLLAMA_GPU1_URL": "http://127.0.0.1:11434",
             "REPAIR_POLL_S": "0.05", "REPAIR_WAIT_S": "3", "SERVER_WAIT_S": "3",
         }  # fmt: skip

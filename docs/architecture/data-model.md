@@ -365,7 +365,7 @@ by `push: main` runs of the 20-case `smoke_live` PR shape; the only one PRs comp
 
 | Data | Where | Retention | Backup |
 | --- | --- | --- | --- |
-| Raw corpora / model weights | local / data root (`data/`, `corpus/`); model weights only in the cluster's model store `/data/dheena/Models` (ADR-0019) | never in git; re-downloadable from pinned manifests | none needed (pinned downloads) |
+| Raw corpora / model weights | local / data root (`data/`, `corpus/`); model weights only in the cluster's model store `$CLUSTER_DATA_ROOT/Models` (ADR-0019) | never in git; re-downloadable from pinned manifests | none needed (pinned downloads) |
 | Corpus + dataset versions | local, HF (dataset) | keep every released version; drafts deleted after release | HF + git tags |
 | PR run dirs (incl. `responses.jsonl`) | VM `$PRUEFSTAND_HOME/runs/` | 14 days (nightly `runs-prune`) | none |
 | PR / promote artefacts (`run.json`, `gate.json`, `comment.md`) | private-repo Actions artefacts | 14 days (`retention-days: 14`, D110) | none |

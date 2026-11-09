@@ -19,14 +19,14 @@ The owner checked the real machines on 2026-10-31 and decided to "manage with wh
 (`docs/ops/setup-log.md` §6, §7):
 
 - **Cluster disk.** `/data` on `cairo-s101lp` has about **14 GB free** next to the 29 GB generator
-  `qwen3.8:27b-q8_0`. The NAS can be mounted on the cluster (rclone WebDAV, `/data/dheena/truenas-ollama`),
+  `qwen3.8:27b-q8_0`. The NAS can be mounted on the cluster (rclone WebDAV, `$CLUSTER_DATA_ROOT/truenas-ollama`),
   and `OLLAMA_MODELS` on it worked, but the link gave **~6 MB/s** (≈ 80 min to load the generator after every
   Ollama restart). That is not usable for gates.
 - **Model set.** With ~14 GB free, the cluster can hold the generator, `bge-m3` (~1.2 GB) and **one** judge of
   ~8 GB, keeping ≥ 2 GB free. A 24B PR judge plus a 27B nightly judge (~15 + ~17 GB) and a 70B datagen model
   (~43 GB) do not fit.
 - **Owner's start script.** The cluster already runs one server from `~/start-ollama.sh` with
-  `OLLAMA_MODELS=/data/dheena/Models`, `OLLAMA_MAX_LOADED_MODELS=3`, `OLLAMA_KEEP_ALIVE=24h`,
+  `OLLAMA_MODELS=$CLUSTER_DATA_ROOT/Models`, `OLLAMA_MAX_LOADED_MODELS=3`, `OLLAMA_KEEP_ALIVE=24h`,
   `OLLAMA_NUM_PARALLEL=4`, `OLLAMA_CONTEXT_LENGTH=8192`, `OLLAMA_KV_CACHE_TYPE=q8_0`,
   `OLLAMA_FLASH_ATTENTION=1`, `OLLAMA_NOPRUNE=1`, `OLLAMA_HOST=127.0.0.1:11434`, `CUDA_VISIBLE_DEVICES=0,1`
   (setup log §7).
@@ -37,7 +37,7 @@ The owner checked the real machines on 2026-10-31 and decided to "manage with wh
 
 ## Decision
 
-1. **Models on the cluster's own disk.** `OLLAMA_MODELS=/data/dheena/Models`. The NAS/rclone path is rejected
+1. **Models on the cluster's own disk.** `OLLAMA_MODELS=$CLUSTER_DATA_ROOT/Models`. The NAS/rclone path is rejected
    (~6 MB/s). Model set that fits:
 
    | Role | Tag | Family (Ollama → plan) | Size |
@@ -54,7 +54,7 @@ The owner checked the real machines on 2026-10-31 and decided to "manage with wh
    (replaces ADR-0018's `f16`; the KV type is part of the serving facts, so a change is a new
    `eval_fingerprint`), `OLLAMA_FLASH_ATTENTION=1`, `OLLAMA_NOPRUNE=1`. T3.1a **reuses** this script: when no
    server answers, `start-ollama.sh` from the Prüfstand bin dir runs `setsid nohup ~/start-ollama.sh >
-   /data/dheena/ollama.log 2>&1 < /dev/null &`; it never starts a second server and never writes its own server
+   $CLUSTER_DATA_ROOT/ollama.log 2>&1 < /dev/null &`; it never starts a second server and never writes its own server
    environment. `cluster.env` holds only the expected values that `status.sh` compares (WARN on a difference)
    and the paths.
 3. **One judge for PR and nightly.** The separate PR judge (`mistral`) and nightly judge (`gemma` 27B) are
@@ -91,9 +91,9 @@ The owner checked the real machines on 2026-10-31 and decided to "manage with wh
    the VM zvol (daily, keep 14) plus the weekly `age`-encrypted bundle copied to the owner's laptop.
 7. **Cluster scripts over SSH.** `deploy-cluster-bin.sh` copies `infra/cluster/*.sh`, `cluster.env` and
    `SHA256SUMS` from the VM checkout over SSH (`ssh cairo-s101lp 'cat > …partial && mv …'`) into
-   `/data/dheena/pruefstand-bin` on the cluster (a few KB). The VM invokes them as
-   `ssh "$CLUSTER_SSH_HOST" bash /data/dheena/pruefstand-bin/<script>.sh`. The Ollama log is
-   `/data/dheena/ollama.log` (owner's start command).
+   `$CLUSTER_DATA_ROOT/pruefstand-bin` on the cluster (a few KB). The VM invokes them as
+   `ssh "$CLUSTER_SSH_HOST" bash $CLUSTER_DATA_ROOT/pruefstand-bin/<script>.sh`. The Ollama log is
+   `$CLUSTER_DATA_ROOT/ollama.log` (owner's start command).
 8. **Budgets.** VRAM and time numbers for the one-judge set are planning values: **verify in T3.1b**.
 
 ## Alternatives considered
@@ -128,3 +128,13 @@ The owner checked the real machines on 2026-10-31 and decided to "manage with wh
   Private documents, canaries and held-out data still never go to GitHub Models (client data guard).
 - Follow-ups: T3.1b pins `gemma3:12b` and measures VRAM/time; T4.2 pins the GitHub Models datagen model;
   the NAS dataset `/mnt/SDD/SSD/Ollama` held Ollama's identity key; moved out of the share on 2026-11-01 (setup log §7).
+
+## Amendment 2026-11-09 (T3.1c, D950-D951): the cluster data root is not in the public repo
+
+The path of the cluster data root (it names the cluster account) is supplied by the owner on the VM, as
+`PRUEFSTAND_CLUSTER_DATA_ROOT` or the world-readable one-line file `/etc/pruefstand/cluster-data-root`, and rendered
+into `cluster.env` (`@MODELS_DIR@`, `@BIN_DIR@`, `@LOG@`) by `deploy-cluster-bin.sh` and into the `bin=` line of the
+`pruefstand-cluster` wrapper by `install-cluster-wrapper.sh`; docs write `$CLUSTER_DATA_ROOT`. The layout below the
+root (`Models`, `pruefstand-bin`, `ollama.log`) and the integrity check (`SHA256SUMS` over the rendered files) are
+unchanged. The ssh alias `cairo-s101lp` stays in the repo: it is a public, non-routable label (host, user and
+port are in the service user's `~/.ssh/config`), already used by the tunnel unit and the check scripts.
