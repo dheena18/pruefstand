@@ -1508,6 +1508,13 @@ Top failing cases: law-0042
   both tiers.
 - `Not applicable:` from `GateReport.not_applicable_counts` as `metric (n cases)`, comma-separated;
   omitted when empty (also in the SPEC §7.6 example, UI9-15).
+- `Not paired:` (D880) from `GateReport.n_unmatched` / `n_excluded`, one item per metric
+  `metric (n in one run only, m excluded)` (a zero part is left out), separated by ` · `, after the
+  `Not applicable:` line; omitted when both maps are empty. The HTML report has the table "Not paired
+  (dropped from the comparison)" (Metric, In one run only, Excluded) after "Not applicable".
+- Under "Judge input truncated on n cases; …" a line `Truncated cases: id, id, …` (D880; capped like
+  the top failing cases, ids escaped) when `render_pr_comment(..., truncated_cases=...)` is given; the
+  HTML report always lists them.
 - Refs line (UI9-14): ref labels per §2.2; tokens = `prompt_tokens + completion_tokens`; GPU-s only for
   tier 2. **Block / judged subset (UI13-19):** `cand.block` set → the splits part reads
   `<splits> block <k>` (e.g. `… · Candidate: main@a1b2c3d · full block 1 · 1500 cases · …`);

@@ -102,6 +102,8 @@ def test_dependabot_has_one_group_per_ecosystem_and_node_ignores() -> None:
     for block in doc["updates"]:
         assert block["schedule"]["interval"] == "weekly"
         assert len(block["groups"]) == 1
+        (group,) = block["groups"].values()
+        assert group["update-types"] == ["minor", "patch"]  # majors stay single PRs
         assert block["open-pull-requests-limit"] <= 3
     npm = next(b for b in doc["updates"] if b["package-ecosystem"] == "npm")
     ignored = {i["dependency-name"] for i in npm["ignore"]}

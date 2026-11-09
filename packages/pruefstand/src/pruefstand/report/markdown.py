@@ -6,6 +6,7 @@ lines. Rendering is linear in the size of the report.
 """
 
 import re
+from collections.abc import Sequence
 from functools import cache
 from typing import Any
 
@@ -13,7 +14,7 @@ from jinja2 import Environment, PackageLoader, StrictUndefined, Template
 
 from pruefstand.core.models.gate import GateReport
 from pruefstand.core.models.run import RunManifest
-from pruefstand.report._context import FULL, MINIMAL, TIGHT, Builder, Limits
+from pruefstand.report._context import FULL, MINIMAL, TIGHT, Builder
 from pruefstand.report._lines import tier1_lines, tier2_lines
 
 MAX_CHARS = 60_000
@@ -35,10 +36,7 @@ def _template() -> Template:
     return env.get_template("pr_comment.md.j2")
 
 
-def _context(
-    report: GateReport, base: RunManifest | None, cand: RunManifest, url: str | None, lim: Limits
-) -> dict[str, Any]:
-    b = Builder(report, base, cand, url, lim)
+def _context(b: Builder) -> dict[str, Any]:
     overall, slices, thin = b.gated_tables()
     lines = (tier1_lines if b.tier1 else tier2_lines)(b, thin)
     return {
@@ -68,7 +66,12 @@ def _hard_cut(text: str) -> str:
 
 
 def render_pr_comment(
-    report: GateReport, base: RunManifest | None, cand: RunManifest, *, report_url: str | None
+    report: GateReport,
+    base: RunManifest | None,
+    cand: RunManifest,
+    *,
+    report_url: str | None,
+    truncated_cases: Sequence[str] = (),
 ) -> str:
     """Render the PR comment for ``report`` (ui-spec §12.1 tier 2, §12.2 tier 1).
 
@@ -84,6 +87,9 @@ def render_pr_comment(
         cand: Candidate manifest.
         report_url: Link to the full report; only ``http(s)`` URLs without white space or ``<>``
             are used, otherwise the private-run note is shown.
+        truncated_cases: Ids of the cases whose judge input was truncated
+            (``report.truncation.judge_truncated_case_ids(results)``); listed under the
+            truncation line, capped and escaped. The manifest only counts them.
 
     Returns:
         Markdown whose first line is the hidden marker ``<!-- pruefstand:pr-comment -->``.
@@ -91,7 +97,8 @@ def render_pr_comment(
     template = _template()
     text = ""
     for lim in _STEPS:
-        text = _normalise(template.render(_context(report, base, cand, report_url, lim)))
+        builder = Builder(report, base, cand, report_url, lim, truncated_ids=tuple(truncated_cases))
+        text = _normalise(template.render(_context(builder)))
         if len(text) <= MAX_CHARS:
             return text
     return _hard_cut(text)
