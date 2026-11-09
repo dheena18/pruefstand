@@ -47,8 +47,9 @@ def promote_command(
 ) -> None:
     """Promote a complete run to the baseline of its fingerprint and ref.
 
-    A run whose gate.json says FAIL, or that has a hard fail, is refused (exit 1) unless
-    --allow-failed-gate is given (D881).
+    main and nightly runs need their gate.json (run `pruefstand gate` first); a run whose gate
+    FAILed or that has a hard-fail finding is refused (exit 1) unless --allow-failed-gate is
+    given; an invalid gate.json is exit 3 (D881).
     """
     with guarded(ctx):
         artifacts = ArtifactStore(run.parent).read_run(run)
@@ -56,7 +57,7 @@ def promote_command(
         try:
             prepared = prepare_promotion(artifacts, ref)
             check_gate_for_promotion(
-                run, artifacts.results, cfg.gate, allow_failed_gate=allow_failed_gate
+                run, artifacts.results, cfg.gate, ref=ref, allow_failed_gate=allow_failed_gate
             )
             build_baseline_store(cfg.baseline_store).put(prepared, ref)
         except BaselineRefused as exc:

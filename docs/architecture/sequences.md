@@ -216,8 +216,9 @@ sequenceDiagram
     Exec->>Exec: flock gpu.lock once, then preflight
     Exec->>RAG: anonymous pull of the main image by digest, cosign verify, start (no GPU, no egress)
     Exec->>RAG: pruefstand run --tier pr
+    Exec->>Exec: pruefstand gate (writes gate.json; promote refuses without it, D881)
     Exec->>Exec: require complete=true, no hard fails, error_rate <= 0.02
-    Exec->>Disk: pruefstand baseline promote --run RUN_ID --ref main (also the nightly run under its own fingerprint)
+    Exec->>Disk: pruefstand baseline promote --run RUN_ID --ref main (also the nightly run under its own fingerprint; refuses gate FAIL / hard fails, never with --allow-failed-gate, D881)
     Exec->>Disk: write history/RUN_ID.partial, then rename, baselines/EVAL_FP/main/ + manifest.json (sha256 per file), keep the last 20
     Exec->>Base: commit index.json (per fp and ref: ordered run ids + manifest sha256), GITHUB_TOKEN
     opt first poll after 00:00 UTC on day 1 of the month
@@ -238,7 +239,7 @@ and the sha256 manifest is checked on every read. Nightly runs are promoted by t
 the current fingerprint) is promoted by this poll three times, as `release-b0`, `release-b1`, `release-b2`
 (each the block-*k* projection under the block-*k* fingerprint). Runs with `judge_fallback`, `judge_drift`,
 `judge_degraded`, a judged metric informational for `judge_truncated` or `infra_error` are never promoted
-(AI13-08, D321).
+(AI13-08, D321), nor is a run whose gate FAILed or that has a hard-fail finding (`baseline promote` refuses it, D881).
 
 ## 4. Nightly run and drift check
 

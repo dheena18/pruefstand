@@ -1732,6 +1732,12 @@ pruefstand baseline   promote --run runs/<id> --ref main|nightly-b0|nightly-b1|n
                       # release-b<k> requires block None + stratum "all" (the release run) and writes its block-k
                       # projection; --ref release -> exit 2; a run flagged judge_fallback / judge_drift /
                       # judge_degraded / judge_truncated-informational / infra_error is never promoted (exit 1, D321)
+                      # D881 (T6.1a): main / nightly-b<k> need <run>/gate.json (absent -> exit 1); status FAIL or any
+                      # hard-fail finding (hard_fail, hard_fail_unverifiable; recomputed from the run) -> exit 1,
+                      # store unchanged; gate.json unreadable / invalid / of another run -> exit 3; release-b<k> may
+                      # lack gate.json (never gated) but is checked for hard-fail findings. Option
+                      # --allow-failed-gate (owner only, by hand; never in a workflow) waives FAIL and hard-fail
+                      # findings, never a missing or unusable gate.json
                       prune --keep 20 [--unused-days 90]   (T6.1; run by the monthly `baseline-prune` step of baseline-promote.yml)
 pruefstand judge-drift --judge <model> --anchors <file>   (T5.4, pre-approved addition, D9-30): re-judges the 50 anchors
                       with the cache bypassed; drift per §6 is_drift -> writes judge_drift.json + invalidate_judge; exit 0
