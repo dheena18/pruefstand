@@ -39,7 +39,7 @@ def _offline(monkeypatch: pytest.MonkeyPatch) -> None:
 
 def test_the_command_is_registered_and_not_a_stub() -> None:
     env = {"NO_COLOR": "1", "COLUMNS": "200", "TERM": "dumb", "FORCE_COLOR": None}
-    result = CliRunner().invoke(app, ["build-dataset", "--help"], env=env)  # type: ignore[arg-type]
+    result = CliRunner().invoke(app, ["build-dataset", "--help"], env=env)
     assert result.exit_code == 0
     text = re.sub(r"\x1b\[[0-9;]*m", "", result.output)
     for option in ("--stage", "--resume", "--only", "--config"):
