@@ -132,3 +132,12 @@ def cites_chunk(citation: str | None, chunk: Chunk) -> bool:
     if not found or key is None:
         return True
     return any((f.kind, f.number, f.law) == (key.kind, key.number, key.law) for f in found)
+
+
+def absatz_scope(body: str, absatz: str | None) -> str | None:
+    """Return the text of Absatz ``absatz`` in the normalised ``body`` (all of it if it has none).
+
+    None means the chunk does not hold that Absatz. T4.7a uses it to limit the fact check of a
+    reference answer to the Absatz its citation names.
+    """
+    return _scope(body, absatz)

@@ -155,19 +155,6 @@ def test_a_missing_option_is_a_usage_error() -> None:
     )
 
 
-@pytest.mark.parametrize(
-    ("args", "needle"),
-    [
-        (["build-dataset", "--config", "d.yaml"], "T4.7a"),
-    ],
-)
-def test_stub_commands_exit_two(args: list[str], needle: str) -> None:
-    result = CliRunner().invoke(app, args)
-    assert result.exit_code == 2
-    assert "not implemented yet" in result.output
-    assert needle in result.output
-
-
 def test_a_run_that_stops_early_prints_its_directory_and_exits_three(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
