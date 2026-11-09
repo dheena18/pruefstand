@@ -30,6 +30,7 @@ _WORD = {
 }
 _HEAD_WORD = {"§": "Paragraph", "Art.": "Artikel"}
 _MAX_QUALIFIERS = 6
+_JOINERS = ("-", "–", "\u2011")  # hyphen, en dash, non-breaking hyphen glued to a law name
 
 
 def genitive_phrase(law: str) -> str | None:
@@ -78,7 +79,7 @@ def _rewrite(text: str) -> str:
         found = match_law(text, pos)
         if found is None or (head.group("head") == "§" and not is_national(found[0])):
             continue
-        if text[found[1] : found[1] + 1] == "-":  # DSGVO-konform, BGB-Gesellschaft
+        if text[found[1] : found[1] + 1] in _JOINERS:  # DSGVO-konform, BGB–Gesellschaft
             continue
         genitive = genitive_phrase(found[0])
         if genitive is None:
@@ -95,7 +96,7 @@ class CitationStyle:
     """Write § and Art. citations out in words."""
 
     name = "citation_style"
-    version = "1"
+    version = "2"
     uses_llm = False
 
     def apply(self, text: str, rng: np.random.Generator) -> PerturbResult:

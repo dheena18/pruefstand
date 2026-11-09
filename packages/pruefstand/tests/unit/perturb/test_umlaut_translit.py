@@ -37,3 +37,20 @@ def test_decomposed_umlaut_is_folded_first() -> None:
 def test_metadata() -> None:
     assert (P.name, P.uses_llm) == ("umlaut_translit", False)
     assert P.version
+
+
+@pytest.mark.parametrize(
+    ("text", "expected"),
+    [
+        ("ÄRGER", "AERGER"),
+        ("GRÖSSE", "GROESSE"),
+        ("ÜBER ALLES", "UEBER ALLES"),
+        ("KÜNDIGUNG § 622", "KUENDIGUNG § 622"),
+        ("Ärger", "Aerger"),
+        ("Übung", "Uebung"),
+        ("Öl und ÖL", "Oel und OEL"),
+        ("Ä", "Ae"),
+    ],
+)
+def test_capital_umlauts_follow_the_case_of_their_word(text: str, expected: str) -> None:
+    assert P.apply(text, RNG).text == expected

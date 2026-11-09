@@ -64,9 +64,9 @@ def test_spacing_after_expansion(text: str, expected: str) -> None:
     assert P.apply(text, RNG).text == expected
 
 
-def test_capitalised_z_b_is_not_expanded() -> None:
-    """Known limit (D394): only the lower-case spelling is expanded."""
-    assert not P.apply("Z. B. Azubis", RNG).changed
+def test_all_caps_abs_and_nr_stay() -> None:
+    """``Abs.`` / ``Nr.`` only match in their usual spelling (no ``ABS.`` brake system)."""
+    assert not P.apply("ABS. und NR. bleiben", RNG).changed
 
 
 @pytest.mark.parametrize(
@@ -74,6 +74,24 @@ def test_capitalised_z_b_is_not_expanded() -> None:
     [("Abs.Nr.", "Absatz Nummer"), ("bzw.ggf.", "beziehungsweise gegebenenfalls")],
 )
 def test_glued_abbreviations_are_fully_expanded_and_stable(text: str, expected: str) -> None:
+    once = P.apply(text, RNG).text
+    assert once == expected
+    assert not P.apply(once, RNG).changed
+
+
+@pytest.mark.parametrize(
+    ("text", "expected"),
+    [
+        ("Z. B. Azubis", "Zum Beispiel Azubis"),
+        ("Z.B. Azubis", "Zum Beispiel Azubis"),
+        ("Ggf. gilt das nicht. Bzw. doch", "Gegebenenfalls gilt das nicht. Beziehungsweise doch"),
+        ("I.V.m. § 1", "In Verbindung mit § 1"),
+        ("usw. bzw.ggf.", "und so weiter beziehungsweise gegebenenfalls"),
+        ("Azubis, Praktikanten usw.", "Azubis, Praktikanten und so weiter"),
+        ("Das gilt (Z. B. hier)", "Das gilt (Zum Beispiel hier)"),
+    ],
+)
+def test_capitalised_abbreviations_and_usw_are_expanded(text: str, expected: str) -> None:
     once = P.apply(text, RNG).text
     assert once == expected
     assert not P.apply(once, RNG).changed
