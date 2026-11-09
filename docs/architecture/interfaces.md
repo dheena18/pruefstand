@@ -48,7 +48,8 @@ uses it. Modules only implement behaviour. Concretely, these live in `core`:
 | `core.config.gate` | `GatePolicy`, `MetricPolicy` |
 | `core.models.perturb` | `PerturbResult` |
 | `core.models.attacks` (also) | `InjectionPlacement` |
-| `core.config.build` | `TenantPlan`, `CorpusBuildConfig` (T2.5), `SplitPlan`, `DatasetBuildConfig` (T4.1) |
+| `core.config.build` | `TenantPlan`, `CorpusBuildConfig` (T2.5), `SplitPlan` (T4.1) |
+| `core.config.build_dataset`, `core.config.build_models` | `DatasetBuildConfig` (T4.1; moved and extended by T4.7a, D754), `BuildModels`, `GenerationConfig`, `PerturbConfig`, `EmbedConfig`, `ReviewConfig`, `ReviewersConfig` (T4.7a); all re-exported by `core.config` |
 | `core.citations` | `Citation`, `extract_citations`, `normalise`, `citations_match`, `citation_credit` (R9), `parse_one` (pure parser; used by `ingest` to set `Chunk.citation_key` and by `metrics`) |
 | `core.protocols` (structural helpers) | `JudgeLike` (`score`, **T5.2b:** `input_cap`, `prompt_tokens`), `JudgePoolLike`, `LLMClientLike` — minimal Protocols so `JudgedMetric` / `LLMPerturbation` can be typed in core without importing judges/llm |
 | `core.protocols` | `KVCache`, `TargetAdapter`, `LLMBackend`, `BaselineStore`, `Metric`, `DeterministicMetric`, `JudgedMetric`, `Perturbation`, `LLMPerturbation`, `Loader`, `Chunker` |
@@ -1578,6 +1579,19 @@ class SplitPlan(BaseModel):         # core.config.build, frozen, extra forbid, s
 class DatasetBuildConfig(BaseModel):  # core.config.build (T4.1, D482)
     version: Literal[1] = 1; name: str; dataset_version: str; corpus_dir: Path; out_dir: Path = Path("datasets")
     split_plan: SplitPlan = SplitPlan(); seed: int = 0; prompt_versions: dict[str, str] = {}
+# T4.7a (D754, additive; every T4.1 call stays valid): DatasetBuildConfig also has corpus_config: Path | None, models: BuildModels | None
+#   (datagen, generator, support, rewriter, perturb_validator, rewrite_local: ModelRef), generation: GenerationConfig (units per category,
+#   prompt_versions, exclude_file, citation_graph, candidates_from, concurrency, max_requests), filters: FilterConfig, embed: EmbedConfig | None,
+#   perturb: PerturbConfig, review: ReviewConfig | None (reviewers core_smoke/full, prompt_version, full_fraction, min_per_category,
+#   error_threshold, spotcheck_size, spotcheck_max_flag_rate), work_dir: Path = datasets/_work, check_refusal_laws: bool = True.
+#   core.models.dataset gains ReviewChecks, ModelVerdict (the reviewer's JSON), ReviewItem (final result per case: verdict ok|fix|reject,
+#   reason, reasons = deterministic findings, fixed_question, fixed_answer, model, model_verdict) and SpotDecision (case_id, citation_ok,
+#   plausible, note, reviewer = "owner-spotcheck:<pseudonym>", ts).
+#   dataset.review: sample_for_review, apply_decisions -> ApplyResult, error_rates -> {stratum: StratumRate}, normalise_item, select_smoke,
+#   sample_spotcheck, spotcheck_trust (D749-D752); dataset.model_review: review_with_model -> ReviewOutcome, check_reviewer,
+#   check_reviewer_for_case (+ review_checks: finalise, citation_matches, lost_facts, source_chunks_of); pipeline.build_dataset:
+#   build_dataset(cfg, *, stage=None, only=None, resume=False, clients=None, root=None) -> DatasetManifest (the interface above plus keyword
+#   options), run_build(...) -> BuildResult; pipeline.review_run: run_model_review, write_spotcheck_sample, summarise, apply_review.
 class DatasetManifest(BaseModel): name: str; version: str; created_at: datetime; corpus_version: str
                                   splits: dict[Split, int]; license_configs: dict[str, str]; prompt_versions: dict[str, str]
                                   review: tuple[ReviewRound, ...]
@@ -1722,7 +1736,7 @@ pruefstand baseline   promote --run runs/<id> --ref main|nightly-b0|nightly-b1|n
 pruefstand judge-drift --judge <model> --anchors <file>   (T5.4, pre-approved addition, D9-30): re-judges the 50 anchors
                       with the cache bypassed; drift per §6 is_drift -> writes judge_drift.json + invalidate_judge; exit 0
                       publish-dashboard --src <dir> --repo dheena18/pruefstand-dashboard-data   (T6.1; token from env DASHBOARD_DATA_PAT)
-pruefstand build-dataset --config dataset.yaml
+pruefstand build-dataset --config dataset.yaml [--stage S] [--only <prompt id>] [--resume]   # T4.7a; prints splits: and dropped_mixed_license=<n>
 pruefstand ingest     --config corpus.yaml --out corpus/ [--date YYYY-MM-DD]
                       # T2.5: writes corpus/<corpus_version>/ (<tenant>.chunks.jsonl + manifest.json); --out defaults to corpus/, --date to today
                       # (UTC) so CI can pin it; prints `corpus_version=<v>` and `<tenant>: <chunks>` per tenant; exit 0; 2 invalid config/date or

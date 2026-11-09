@@ -1,0 +1,53 @@
+# A small build (about 30 cases) on the real 5-law slice corpus for the tier-1 stack (T4.7a S5).
+#   make up PROFILES="core live dev" WAIT=1
+#   uv run pruefstand build-dataset --config packages/pruefstand/tests/fixtures/dataset_small.yaml
+# Datagen needs PRUEFSTAND_GH_MODELS_TOKEN (models.github.ai is not reachable from the VM, D604); the
+# support model is the CPU llama.cpp model of the `live` stack; embeddings come from its TEI server.
+# The output goes below datasets/_work/ in a datasets/fixtures/ path, so quota findings are warnings.
+version: 1
+name: pruefstand-de-small
+dataset_version: v1
+corpus_dir: corpus/slice_v1
+out_dir: datasets/_work/slice-out/datasets/fixtures
+work_dir: datasets/_work
+seed: 7
+check_refusal_laws: false         # the slice has three laws; the refusal templates name more
+
+models:
+  datagen: {id: github/openai/gpt-4.1-mini, family: gpt}
+  generator: {id: openai_compatible_local/qwen2.5-0.5b-instruct, family: qwen}
+  support: {id: openai_compatible_local/qwen2.5-0.5b-instruct, family: qwen}
+
+generation:
+  units: {factual: 5, comparison: 2, multi_hop: 2}
+  exclude_file: experiments/model_selection/indomain_dev_sources.json
+  concurrency: 2
+
+embed: {url: "http://127.0.0.1:8090", api: tei, model: bge-m3}
+
+perturb:
+  deterministic: [umlaut_translit, eszett, numbers, dates, citation_style]
+
+review:
+  reviewers:
+    core_smoke: {id: "ollama/gemma3:12b", family: gemma}
+    full: {id: "ollama/gemma3:12b", family: gemma}
+
+split_plan:
+  smoke_size: 4
+  smoke_min_per_category: 1
+  core_answerable: 6
+  core_unanswerable: 2
+  core_injection: 0
+  core_min_cross_lingual: 0
+  core_min_answerable_clusters: 0
+  min_clusters_per_tenant: 0
+  judged_subset_size: 3
+  robust_pr_bases: 2
+  robust_pr_min_bases_per_type: 0
+  robust_pr_min_perturbed: 0
+  robust_pr_types: []
+  full_refusal: 0
+  full_block_unperturbed: 0
+  full_block_perturbed: 0
+  rq1_bases: 0

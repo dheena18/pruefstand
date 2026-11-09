@@ -130,3 +130,75 @@ class FilterConfig(BaseModel):
     min_laie_share: float = Field(default=0.6, ge=0.0, le=1.0)
     style_min_n: int = Field(default=20, ge=1)
     concurrency: int = Field(default=4, ge=1)
+
+
+class ReviewChecks(BaseModel):
+    """The five yes/no criteria of the model review (T4.7a, ``review_item_de_v1``).
+
+    natural: a real user could ask the question; correct: the answer is correct and complete per
+    the source text; citation_exact: the gold citation names the right provision;
+    perturbation_equivalent: a perturbed question keeps the meaning of its base question;
+    unanswerable_ok: an unanswerable case really cannot be answered from the tenant corpus.
+    """
+
+    model_config = ConfigDict(frozen=True, extra="ignore")
+
+    natural: bool
+    correct: bool
+    citation_exact: bool
+    perturbation_equivalent: bool
+    unanswerable_ok: bool
+
+
+class ModelVerdict(BaseModel):
+    """The JSON object the review model returns for one case (T4.7a).
+
+    ``fixed_question`` and ``fixed_answer`` are only meaningful for ``verdict == "fix"``.
+    """
+
+    model_config = ConfigDict(frozen=True, extra="ignore")
+
+    reason: str = Field(min_length=1, max_length=600)
+    checks: ReviewChecks
+    verdict: Literal["ok", "fix", "reject"]
+    fixed_question: str | None = None
+    fixed_answer: str | None = None
+
+
+class ReviewItem(BaseModel):
+    """The final review result of one case: model verdict after the deterministic overrides.
+
+    ``reasons`` holds the deterministic findings that overrode the model (``citation_mismatch``,
+    ``reference_rewrite_forbidden``, ``fix_lost_fact``, ``fix_copies_source``, ...). ``model`` is
+    the reviewer id or ``"deterministic"`` for a case without a model call. ``verdict`` is the
+    final one: ``ok``, ``fix`` (``fixed_question`` set; ``fixed_answer`` only from a reviewer
+    that may rewrite references) or ``reject``.
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    case_id: str
+    cluster_id: str
+    category: str
+    prompt_version: str
+    split: str
+    verdict: Literal["ok", "fix", "reject"]
+    reason: str
+    reasons: tuple[str, ...] = ()
+    fixed_question: str | None = None
+    fixed_answer: str | None = None
+    model: str
+    model_verdict: Literal["ok", "fix", "reject"] | None = None
+
+
+class SpotDecision(BaseModel):
+    """One owner spot-check decision (one line of ``spotcheck_decisions.jsonl``, T4.7a)."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    case_id: str
+    citation_ok: bool
+    plausible: bool
+    note: str = ""
+    reviewer: str
+    ts: dt.datetime
