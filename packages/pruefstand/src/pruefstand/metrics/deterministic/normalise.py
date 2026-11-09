@@ -27,13 +27,8 @@ from functools import cached_property, lru_cache
 
 import regex
 
-from pruefstand.metrics.deterministic.folding import (
-    CONFUSABLES,
-    CONFUSABLES_ANY_CASE,
-    IGNORABLE,
-    fold_letters,
-    strip_marks,
-)
+from pruefstand.core.canary import CONFUSABLES, IGNORABLE
+from pruefstand.metrics.deterministic.folding import CONFUSABLES_ANY_CASE, fold_letters, strip_marks
 from pruefstand.metrics.deterministic.regex_safety import assert_safe_pattern
 
 REGEX_PREFIX = "re:"

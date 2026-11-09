@@ -6,6 +6,9 @@ from pathlib import Path
 from typing import Any
 
 import pytest
+from testsupport.builders import make_case as make_gate_case
+from testsupport.builders import make_record
+from testsupport.builders import make_run as make_gate_run
 from testsupport.pipeline_support import config_file, mini_config
 from testsupport.report_builders import gate_report
 from testsupport.run_builders import make_case
@@ -21,6 +24,7 @@ from testsupport.store_support import (
 from typer.testing import CliRunner, Result
 
 from pruefstand.cli import app
+from pruefstand.cli.baseline import _informational_metrics
 from pruefstand.core.config import BaselineStoreConfig
 from pruefstand.core.enums import GateStatus
 from pruefstand.core.models.run import RunArtifacts
@@ -246,3 +250,47 @@ def test_publish_dashboard_rejects_a_bad_repo_name(cli: CliRunner, tmp_path: Pat
         app, ["baseline", "publish-dashboard", "--src", str(tmp_path), "--repo", "not a repo"]
     )
     assert result.exit_code == 2
+
+
+def _unjudgeable_run(tmp_path: Path) -> RunArtifacts:
+    """300 one-case clusters, 31 of them lang=en; 2 en cases have a context_recall error."""
+    cases = [make_gate_case(i, cluster=i, lang="en" if i < 31 else "de") for i in range(300)]
+    recall: list[float | None] = [0.9] * 300
+    recall[0] = recall[1] = None
+    results = make_gate_run(
+        run_id(2),
+        cases,
+        {"context_recall": recall},
+        eval_fingerprint=FP,
+        records=[make_record(c) for c in cases],
+    )
+    return RunArtifacts(results=results, root=tmp_path / "runs" / run_id(2))
+
+
+def test_a_run_the_gate_could_not_judge_is_refused_and_the_baseline_stays(
+    cli: CliRunner, tmp_path: Path
+) -> None:
+    store_of(tmp_path).put(run_of(tmp_path, 1), "main")
+    result = promote(cli, tmp_path, write(tmp_path, _unjudgeable_run(tmp_path)), "main")
+    assert result.exit_code == 1, result.output
+    assert "not promoted, the gate could not judge this run as a baseline" in result.output
+    assert "29 of 31 clusters of lang=en" in result.output
+    assert "re-run the baseline" in result.output
+    back = store_of(tmp_path).get(FP, "main")
+    assert back is not None
+    assert back.results.manifest.run_id == run_id(1)
+
+
+@pytest.mark.parametrize(
+    ("stack", "ref", "skipped"),
+    [
+        ("live", "main", {"context_recall", "refusal_correct", "error_rate"}),
+        ("a40", "main", {"refusal_correct"}),
+        ("a40", "nightly-b1", set()),
+        ("a40", "release-b0", set()),
+    ],
+)
+def test_informational_metrics_by_stack_and_ref(stack: str, ref: str, skipped: set[str]) -> None:
+    policy = mini_config().gate
+    got = _informational_metrics(stack, ref, policy)
+    assert (got & {"context_recall", "refusal_correct", "error_rate"}) == skipped

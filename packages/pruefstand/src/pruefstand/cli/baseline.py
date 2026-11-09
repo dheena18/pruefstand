@@ -8,8 +8,12 @@ from typing import Annotated
 import typer
 
 from pruefstand.cli._common import EXIT_FAIL, EXIT_USAGE, fail, guarded
+from pruefstand.core.config import GatePolicy
 from pruefstand.core.config_loader import load_config
+from pruefstand.core.errors import GateInputError
 from pruefstand.core.protocols import BaselineStore
+from pruefstand.gate.baseline_run import check_baseline_run
+from pruefstand.metrics.registry import MetricRegistry
 from pruefstand.pipeline.promotion import check_gate_for_promotion
 from pruefstand.store.artifacts import ArtifactStore
 from pruefstand.store.baseline_index import REFS
@@ -29,6 +33,17 @@ _Config = Annotated[
         "--config", envvar="PRUEFSTAND_CONFIG", help="pruefstand.yaml (its baseline_store is used)."
     ),
 ]
+
+
+def _informational_metrics(stack: str, ref: str, policy: GatePolicy) -> frozenset[str]:
+    """Metrics the gate treats as informational against this baseline (not checked at promote).
+
+    Tier 1 (``live``): every paired metric. Ref ``main`` (PR runs): ``refusal_correct``, which is
+    gated only in the nightly ``full`` runs (``nightly-b*``, ``release-b*``).
+    """
+    if stack == "live":
+        return frozenset(policy.metrics)
+    return frozenset({"refusal_correct"}) if ref == "main" else frozenset()
 
 
 def promote_command(
@@ -59,9 +74,20 @@ def promote_command(
             check_gate_for_promotion(
                 run, artifacts.results, cfg.gate, ref=ref, allow_failed_gate=allow_failed_gate
             )
+            check_baseline_run(
+                prepared.results,
+                cfg.gate,
+                MetricRegistry.full().directions(),
+                skip=_informational_metrics(prepared.results.manifest.stack, ref, cfg.gate),
+            )
             build_baseline_store(cfg.baseline_store).put(prepared, ref)
         except BaselineRefused as exc:
             fail(f"error: {exc}", EXIT_FAIL)
+        except GateInputError as exc:
+            fail(
+                f"error: not promoted, the gate could not judge this run as a baseline: {exc}",
+                EXIT_FAIL,
+            )
         manifest = prepared.results.manifest
         typer.echo(f"promoted {manifest.run_id} to {manifest.eval_fingerprint}/{ref}")
 
