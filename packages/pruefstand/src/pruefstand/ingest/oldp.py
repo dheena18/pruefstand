@@ -24,6 +24,7 @@ is 1 when any problem was counted.
 """
 
 import argparse
+import re
 import sys
 from collections.abc import Iterator, Sequence
 from dataclasses import dataclass, field
@@ -73,13 +74,33 @@ def _text(value: object) -> str:
     return " ".join(value.split()) if isinstance(value, str) else ""
 
 
+_ISO_DATE = re.compile(
+    r"(\d{4}-\d{2}-\d{2})(?:[T ]\d{2}:\d{2}(?::\d{2}(?:\.\d{1,9})?)?(?:Z|[+-]\d{2}:?\d{2})?)?"
+)
+
+
+def _blank(value: object) -> bool:
+    return value is None or (isinstance(value, str) and not value.strip())
+
+
 def _decision_date(value: object) -> date | None:
+    """The date of a ``date`` / ``datetime`` or of an ISO string (``2020-01-01``, optional time).
+
+    Anything else, including ``2020-01-01garbage``, an integer or ``NaN``, is ``None``.
+
+    Examples:
+        >>> _decision_date("2020-01-01T10:30:00Z")
+        datetime.date(2020, 1, 1)
+        >>> _decision_date("2020-01-01garbage") is None
+        True
+    """
     if isinstance(value, datetime):
         return value.date()
     if isinstance(value, date):
         return value
+    found = _ISO_DATE.fullmatch(value.strip()) if isinstance(value, str) else None
     try:
-        return date.fromisoformat(str(value).strip()[:10])
+        return date.fromisoformat(found.group(1)) if found else None
     except ValueError:
         return None
 
@@ -182,11 +203,10 @@ class OldpLoader:
             level_field if isinstance(level_field, str) else None,
         )
         file_number = _text(row.get("file_number"))
-        decided = _decision_date(row.get("date"))
-        if decided is None and _text(row.get("date")):
-            self._fail(
-                f"oldp-{number}", "bad_date", f"not a date: {_text(row.get('date'))!r}"[:100]
-            )
+        raw_date = row.get("date")
+        decided = _decision_date(raw_date)
+        if decided is None and not _blank(raw_date):
+            self._fail(f"oldp-{number}", "bad_date", f"not a date: {raw_date!r}"[:100])
         day = decided.isoformat() if decided else ""
         metadata = {
             "court": name, "court_level": kind.level, "jurisdiction": kind.jurisdiction,
