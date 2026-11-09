@@ -1,0 +1,262 @@
+name: cassettes-models
+
+# Real GitHub Models calls for public-text data (D900): `indomain_dev.jsonl` (T3.1b S4), the T4.2 dataset
+# cassettes and the T4.5 perturbation cassettes. models.github.ai answers a bare `200 OK` from the VM and
+# from the cloud sandbox (D604), so these calls run here, with the job's own token (`models: read`).
+# Manual dispatch only; the owner decides about the daily schedule below. Nothing is committed from this
+# workflow: the result is an artefact; the owner or lead downloads it and opens the PR
+# (docs/ops/cassettes-actions.md). Public data only: the corpora are the pinned GII law texts and the
+# committed slice corpus; private docs, canaries and held-out data never enter this job and LLMPolicy
+# (datagen_policy) still refuses them. The weekly llama.cpp re-recording stays in cassettes.yml.
+on:
+  workflow_dispatch:
+    inputs:
+      target:
+        description: "What to record"
+        type: choice
+        options: [indomain_dev, t42_dataset, t45_perturb, all]
+        default: indomain_dev
+      budget_calls:
+        description: "Max GitHub Models calls for this run (also capped by the daily budget below)"
+        type: number
+        default: 100
+      rewrite_model:
+        description: "T4.5 rewrite model (github/<id>)"
+        type: string
+        default: "github/openai/gpt-4.1-mini"
+      perturb_judge_model:
+        description: "T4.5 equivalence judge (github/<id>, another family; there is no A40 here)"
+        type: string
+        default: "github/meta/Llama-3.3-70B-Instruct"
+  # Not enabled. To run daily, remove the dispatch-only comment markers below (the guard wants an
+  # off-minute cron) and keep budget_calls at its default:
+  # schedule:
+  #   - cron: "17 4 * * *"
+
+permissions: {}
+
+concurrency:
+  group: ${{ github.workflow }}
+  cancel-in-progress: false
+
+env:
+  DAILY_CAP: "120"  # calls per UTC day over all runs; the free tier allows 150 (low) / 50 (high) requests
+  PAUSE_S: "4.5"    # 13 requests per minute < the 15 rpm limit
+  LEDGER: .gh-models-state/ledger.json
+
+jobs:
+  record:
+    name: record
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    permissions:
+      contents: read
+      models: read
+    env:
+      TARGET: ${{ inputs.target || 'indomain_dev' }}
+      REQUESTED: ${{ inputs.budget_calls || 100 }}
+      REWRITE_MODEL: ${{ inputs.rewrite_model || 'github/openai/gpt-4.1-mini' }}
+      JUDGE_MODEL: ${{ inputs.perturb_judge_model || 'github/meta/Llama-3.3-70B-Instruct' }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
+        with:
+          version: "0.13.6"
+      - name: Install
+        run: uv sync --all-packages --all-extras
+      - name: Quota day
+        id: day
+        run: echo "day=$(date -u +%F)" >> "$GITHUB_OUTPUT"
+      # The ledger of the day: a new key per run, restored by prefix, so same-day runs add up and a new
+      # UTC day starts at zero. Caches are evicted after 7 days without access (10 GB cap per repository,
+      # oldest first); every run that restores an entry renews it.
+      - name: Restore the daily ledger
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: .gh-models-state
+          key: gh-models-ledger-${{ steps.day.outputs.day }}-${{ github.run_id }}-${{ github.run_attempt }}
+          restore-keys: gh-models-ledger-${{ steps.day.outputs.day }}-
+      - name: Header of the job summary
+        run: |
+          case "$REQUESTED" in '' | *[!0-9]*) echo "::error::budget_calls must be a whole number"; exit 1 ;; esac
+          {
+            echo "## cassettes-models: target \`$TARGET\`"
+            echo
+            echo "| step | new calls | cache hits | hit ratio | day total / cap |"
+            echo "| --- | --- | --- | --- | --- |"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      # ---- (a) indomain_dev.jsonl -------------------------------------------------------------
+      # Cache key = hash of the two prompts (the answer depends on model, prompt and passage; the
+      # model and the passage are part of every entry key). Entries are added run by run until all
+      # 240 passages are cached, so the key carries the run id and restore-keys finds the newest entry.
+      - name: Restore the in-domain answer cache
+        if: env.TARGET == 'indomain_dev' || env.TARGET == 'all'
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: data/raw/indomain_dev_cache
+          key: gh-models-indomain-${{ hashFiles('experiments/model_selection/prompts/indomain_gen_v1.txt', 'experiments/model_selection/prompts/indomain_check_v1.txt') }}-${{ github.run_id }}-${{ github.run_attempt }}
+          restore-keys: gh-models-indomain-${{ hashFiles('experiments/model_selection/prompts/indomain_gen_v1.txt', 'experiments/model_selection/prompts/indomain_check_v1.txt') }}-
+      - name: indomain_dev (generate, spot-check, assemble)
+        id: indomain
+        if: env.TARGET == 'indomain_dev' || env.TARGET == 'all'
+        env:
+          PRUEFSTAND_GH_MODELS_TOKEN: ${{ github.token }}  # models: read; never printed (D333)
+          PYTHONPATH: experiments
+        run: |
+          set -uo pipefail
+          budget=scripts/models/gh_models_budget.py
+          cache=data/raw/indomain_dev_cache
+          hits="$(uv run python $budget count --dir $cache)"
+          left="$(uv run python $budget remaining --ledger "$LEDGER" --daily-cap "$DAILY_CAP" --requested "$REQUESTED")"
+          echo "indomain_dev: $hits answers cached, $left calls allowed"
+          # public GII law texts at their pinned versions (data/sources.yaml, SHA-256 checked)
+          uv run python data/download.py $(uv run python -c "import sys; sys.path.insert(0, 'experiments'); from model_selection import indomain_cli as c; print(' '.join('--only ' + i for i in c.source_ids()))")
+          rc=0
+          if [ "$left" -gt 0 ]; then
+            uv run python -m model_selection.indomain_cli generate --max-calls "$left" --pause-s "$PAUSE_S" || rc=$?
+          fi
+          after_gen="$(uv run python $budget count --dir $cache)"
+          made=$(( after_gen - hits ))
+          check_left=$(( left - made ))
+          if [ "$rc" -eq 0 ] && [ "$check_left" -gt 0 ]; then
+            uv run python -m model_selection.indomain_cli check --max-calls "$check_left" --pause-s "$PAUSE_S" || rc=$?
+          fi
+          after="$(uv run python $budget count --dir $cache)"
+          new=$(( after - hits ))
+          uv run python $budget add --ledger "$LEDGER" --calls "$new" > /dev/null
+          total="$(uv run python $budget used --ledger "$LEDGER")"
+          uv run python $budget summary --target indomain_dev --calls "$new" --hits "$hits" --used "$total" --cap "$DAILY_CAP" >> "$GITHUB_STEP_SUMMARY"
+          # assemble only succeeds once all 200 items exist (exit 1 otherwise: not an error of this run)
+          if uv run python -m model_selection.indomain_cli assemble; then
+            echo "assembled=true" >> "$GITHUB_OUTPUT"
+            echo "indomain_dev.jsonl assembled: download the artefact." >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "assembled=false" >> "$GITHUB_OUTPUT"
+            echo "indomain_dev not complete yet: run again after the daily quota resets." >> "$GITHUB_STEP_SUMMARY"
+          fi
+          # exit 3 = clean quota stop (HTTP 429): the answers so far are cached; anything else fails the step
+          if [ "$rc" -ne 0 ] && [ "$rc" -ne 3 ]; then exit "$rc"; fi
+      - name: Save the in-domain answer cache
+        if: always() && (env.TARGET == 'indomain_dev' || env.TARGET == 'all')
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: data/raw/indomain_dev_cache
+          key: gh-models-indomain-${{ hashFiles('experiments/model_selection/prompts/indomain_gen_v1.txt', 'experiments/model_selection/prompts/indomain_check_v1.txt') }}-${{ github.run_id }}-${{ github.run_attempt }}
+
+      # ---- (b) T4.2 dataset cassettes ---------------------------------------------------------
+      # Exact key = hash of the pins, prompts and recording tests: same inputs, same cassettes, no calls.
+      - name: Restore the T4.2 cassettes
+        id: t42cache
+        if: env.TARGET == 't42_dataset' || env.TARGET == 'all'
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: packages/pruefstand/tests/cassettes/dataset
+          key: gh-models-t42-${{ hashFiles('packages/pruefstand/src/pruefstand/dataset/datagen_pins.py', 'packages/pruefstand/src/pruefstand/dataset/prompts/**', 'packages/pruefstand/tests/testsupport/qa_support.py', 'packages/pruefstand/tests/live/dataset/test_generate_live.py', 'packages/pruefstand/tests/live/dataset/test_filters_live.py') }}
+      - name: t42_dataset (datagen and support-check cassettes)
+        id: t42
+        if: (env.TARGET == 't42_dataset' || env.TARGET == 'all') && steps.t42cache.outputs.cache-hit != 'true'
+        env:
+          PRUEFSTAND_GH_MODELS_TOKEN: ${{ github.token }}  # models: read; never printed (D333)
+        run: |
+          set -uo pipefail
+          budget=scripts/models/gh_models_budget.py
+          need=18  # test_generate_live Budget(max_requests=12) + test_filters_live Budget(max_requests=6)
+          left="$(uv run python $budget remaining --ledger "$LEDGER" --daily-cap "$DAILY_CAP" --requested "$REQUESTED")"
+          if [ "$left" -lt "$need" ]; then
+            echo "::warning::t42_dataset needs up to $need calls, only $left are left today: skipped"
+            echo "recorded=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          rc=0
+          bash scripts/models/record_cassettes.sh --dataset || rc=$?
+          new="$(uv run python $budget count --dir packages/pruefstand/tests/cassettes/dataset)"
+          total="$(uv run python $budget add --ledger "$LEDGER" --calls "$new")"
+          uv run python $budget summary --target t42_dataset --calls "$new" --hits 0 --used "$total" --cap "$DAILY_CAP" >> "$GITHUB_STEP_SUMMARY"
+          if [ "$rc" -ne 0 ]; then exit "$rc"; fi
+          echo "recorded=true" >> "$GITHUB_OUTPUT"
+      - name: Save the T4.2 cassettes
+        if: steps.t42.outputs.recorded == 'true'
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: packages/pruefstand/tests/cassettes/dataset
+          key: gh-models-t42-${{ hashFiles('packages/pruefstand/src/pruefstand/dataset/datagen_pins.py', 'packages/pruefstand/src/pruefstand/dataset/prompts/**', 'packages/pruefstand/tests/testsupport/qa_support.py', 'packages/pruefstand/tests/live/dataset/test_generate_live.py', 'packages/pruefstand/tests/live/dataset/test_filters_live.py') }}
+
+      # ---- (c) T4.5 perturbation cassettes (shared_public questions only) ---------------------
+      - name: Restore the T4.5 cassettes
+        id: t45cache
+        if: env.TARGET == 't45_perturb' || env.TARGET == 'all'
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: packages/pruefstand/tests/cassettes/perturb
+          key: gh-models-t45-${{ env.REWRITE_MODEL }}-${{ env.JUDGE_MODEL }}-${{ hashFiles('packages/pruefstand/src/pruefstand/perturb/**', 'packages/pruefstand/tests/testsupport/perturb_pilot.py', 'packages/pruefstand/tests/live/perturb/test_record_perturb.py', 'datasets/fixtures/perturb_pilot_questions.txt') }}
+      - name: t45_perturb (rewrite and equivalence-check cassettes)
+        id: t45
+        if: (env.TARGET == 't45_perturb' || env.TARGET == 'all') && steps.t45cache.outputs.cache-hit != 'true'
+        env:
+          PRUEFSTAND_GH_MODELS_TOKEN: ${{ github.token }}  # models: read; never printed (D333)
+          PRUEFSTAND_PERTURB_REWRITE_MODEL: ${{ env.REWRITE_MODEL }}
+          PRUEFSTAND_PERTURB_JUDGE_MODEL: ${{ env.JUDGE_MODEL }}
+        run: |
+          set -uo pipefail
+          budget=scripts/models/gh_models_budget.py
+          need=70  # 8 pilot questions x 4 perturbations x (rewrite + equivalence check), rule-only drafts need none
+          left="$(uv run python $budget remaining --ledger "$LEDGER" --daily-cap "$DAILY_CAP" --requested "$REQUESTED")"
+          if [ "$left" -lt "$need" ]; then
+            echo "::warning::t45_perturb needs up to $need calls, only $left are left today: skipped"
+            echo "recorded=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          rc=0
+          bash scripts/models/record_cassettes.sh --perturb || rc=$?
+          new="$(uv run python $budget count --dir packages/pruefstand/tests/cassettes/perturb)"
+          total="$(uv run python $budget add --ledger "$LEDGER" --calls "$new")"
+          uv run python $budget summary --target t45_perturb --calls "$new" --hits 0 --used "$total" --cap "$DAILY_CAP" >> "$GITHUB_STEP_SUMMARY"
+          if [ "$rc" -ne 0 ]; then exit "$rc"; fi
+          echo "recorded=true" >> "$GITHUB_OUTPUT"
+      - name: Save the T4.5 cassettes
+        if: steps.t45.outputs.recorded == 'true'
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: packages/pruefstand/tests/cassettes/perturb
+          key: gh-models-t45-${{ env.REWRITE_MODEL }}-${{ env.JUDGE_MODEL }}-${{ hashFiles('packages/pruefstand/src/pruefstand/perturb/**', 'packages/pruefstand/tests/testsupport/perturb_pilot.py', 'packages/pruefstand/tests/live/perturb/test_record_perturb.py', 'datasets/fixtures/perturb_pilot_questions.txt') }}
+
+      # ---- results -----------------------------------------------------------------------------
+      - name: Save the daily ledger
+        if: always()
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: .gh-models-state
+          key: gh-models-ledger-${{ steps.day.outputs.day }}-${{ github.run_id }}-${{ github.run_attempt }}
+      - name: Collect the results
+        if: always()
+        env:
+          ASSEMBLED: ${{ steps.indomain.outputs.assembled }}
+        run: |
+          set -uo pipefail
+          mkdir -p out
+          paths=""
+          case "$TARGET" in indomain_dev | all)
+            paths="data/raw/indomain_dev_cache"
+            # the committed copies of these four files are the planned state: ship them only once assembled
+            if [ "$ASSEMBLED" = true ]; then
+              paths="$paths experiments/model_selection/indomain_dev.jsonl experiments/model_selection/indomain_dev_checks.jsonl experiments/model_selection/indomain_dev_sources.json experiments/model_selection/indomain_dev_card.md"
+            fi ;;
+          esac
+          case "$TARGET" in t42_dataset | all) paths="$paths packages/pruefstand/tests/cassettes/dataset" ;; esac
+          case "$TARGET" in t45_perturb | all) paths="$paths packages/pruefstand/tests/cassettes/perturb" ;; esac
+          # data/raw/indomain_dev_cache = the raw answers (public law text, model answers) to seed a local cache
+          for p in $paths; do
+            if [ -e "$p" ]; then cp -r --parents "$p" out/; fi
+          done
+          (cd out && find . -type f ! -name SHA256SUMS.txt | sort | xargs -r sha256sum > SHA256SUMS.txt)
+          echo "Artefact files: $(wc -l < out/SHA256SUMS.txt)" >> "$GITHUB_STEP_SUMMARY"
+      - name: Upload the results
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: cassettes-models-${{ github.run_id }}
+          path: out
+          if-no-files-found: warn
+          retention-days: 14

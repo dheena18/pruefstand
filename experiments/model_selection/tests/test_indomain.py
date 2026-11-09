@@ -237,3 +237,13 @@ def test_committed_dev_set_matches_its_rules_when_present() -> None:
     checked = [r["checked"] for r in rows if r["checked"] is not None]
     assert checked
     assert all(data.verdict_passes(v) for v in checked)
+
+
+@pytest.mark.parametrize("step", ["generate", "check"])
+def test_calls_can_be_paced_for_the_free_tier(
+    step: str, capsys: pytest.CaptureFixture[str]
+) -> None:
+    with pytest.raises(SystemExit) as stop:
+        cli.main([step, "--help"])
+    assert stop.value.code == 0
+    assert "--pause-s" in capsys.readouterr().out
