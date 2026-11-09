@@ -60,7 +60,16 @@ jobs:
             https://github.com/gitleaks/gitleaks/releases/download/v8.30.1/gitleaks_8.30.1_linux_x64.tar.gz
           echo "551f6fc83ea457d62a0d98237cbad105af8d557003051f41f3e7ca7b3f2470eb  gitleaks.tar.gz" | sha256sum -c -
           tar -xzf gitleaks.tar.gz gitleaks
-      - name: Scan the history
+      # Pull requests scan only their own commit range (D853): a synthetic secret-looking test string on another
+      # branch must not fail every PR. Push to main and the weekly run scan the full history. No allowlist is widened.
+      - name: Scan the PR commit range
+        if: github.event_name == 'pull_request'
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: ./gitleaks git --verbose --redact --no-banner --exit-code 1 --log-opts="${BASE_SHA}..${HEAD_SHA}" .
+      - name: Scan the full history
+        if: github.event_name != 'pull_request'
         run: ./gitleaks git --verbose --redact --no-banner --exit-code 1 .
 
   pip-audit:
