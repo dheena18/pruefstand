@@ -1,0 +1,22 @@
+# compounds of the committed corpus and fixture text that SHOULD split but do not (T3.3a, D912); sorted, unique.
+# Input for the independent recall figure of RQ1 (proposed task T3.3b); not asserted to split.
+beitragsermäßigung
+benutzungsordnung
+beteiligungsrechte
+betroffenenrechte
+bundesfreiwilligendienstgesetz
+büroleitung
+freigabecode
+fußballvereins
+höchstpunktzahl
+jugendmannschaft
+kleingartenanlage
+krankenhäusern
+musikschule
+recyclinghof
+saisonende
+stufenvertretung
+teamleiter
+vereinsbus
+verhandlungspartner
+volkshochschule

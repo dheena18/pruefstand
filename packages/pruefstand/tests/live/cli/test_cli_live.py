@@ -11,7 +11,9 @@ from typer.testing import CliRunner
 
 from pruefstand.cli import app
 
-pytestmark = pytest.mark.live
+# VM-only: needs two running rag-demo instances (scripts/live/two_targets.sh); `e2e` keeps it out of
+# the hosted tier-1 job, which selects `live and not e2e` (T1.10a).
+pytestmark = [pytest.mark.live, pytest.mark.e2e]
 
 # On the VM the stack runs with PORT_OFFSET: scripts/live/two_targets.sh prints the two URLs.
 GOOD = os.environ.get("PRUEFSTAND_LIVE_GOOD_URL") or GOOD_URL

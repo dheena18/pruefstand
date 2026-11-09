@@ -220,10 +220,12 @@ async def test_request_ids_are_random_and_never_the_case_id(
 async def test_retrieve_ok_sends_same_body_shape_to_v1_retrieve(
     router: respx.MockRouter, adapter: HttpTargetAdapter
 ) -> None:
-    route = router.post("/v1/retrieve").respond(200, json=load_example("retrieve_ok.json"))
+    example = load_example("retrieve_ok.json")  # recorded from the real app (T3.5a)
+    route = router.post("/v1/retrieve").respond(200, json=example)
     response = await adapter.retrieve(request())
     assert response is not None
-    assert [c.rank for c in response.chunks] == [1, 2]
+    assert [c.rank for c in response.chunks] == [c["rank"] for c in example["chunks"]]
+    assert response.chunks
     sent = json.loads(route.calls[0].request.content)
     assert set(sent) == {"tenant_id", "question", "top_k", "request_id"}
     assert sent["request_id"] != "case-0001"

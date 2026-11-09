@@ -136,6 +136,20 @@ def _without_baseline(candidate: RunResults, policy: GatePolicy) -> GateReport:
     )
 
 
+def _require_same_stack(base: RunResults | None, cand: RunResults) -> None:
+    """Tier 1 and tier 2 results are never compared (the stack is not part of the fingerprint).
+
+    Raises:
+        GateInputError: The two runs ran on different stacks.
+    """
+    if base is not None and base.manifest.stack != cand.manifest.stack:
+        msg = (
+            f"the baseline ran on stack {base.manifest.stack!r}, the candidate on "
+            f"{cand.manifest.stack!r}: tier 1 and tier 2 results are never compared"
+        )
+        raise GateInputError(msg)
+
+
 def _decide(cand: RunResults, base: RunResults | None, cfg: PruefstandConfig) -> GateReport:
     """The report for two verified runs, or for a candidate without baseline."""
     if stable_hash(cfg) != cand.manifest.config_hash:
@@ -146,6 +160,9 @@ def _decide(cand: RunResults, base: RunResults | None, cfg: PruefstandConfig) ->
         )
     from_base = cand.manifest.counts.get("cached_from_base", 0)
     if from_base > 0 and from_base >= cand.manifest.n_cases:
+        leaked = _without_baseline(cand, cfg.gate)  # a leak in cached answers is still a FAIL
+        if leaked.hard_fails:
+            return leaked
         msg = (
             f"all {from_base} answers of the candidate came from the baseline cache: "
             "the candidate never ran, so there is nothing to gate"
@@ -197,11 +214,12 @@ def run_gate(candidate: Path, baseline: Path | None, cfg: PruefstandConfig) -> G
 
     Raises:
         StoreError: A run directory is missing or invalid.
-        GateInputError: The runs cannot be compared (fingerprint, incomplete run, unknown
+        GateInputError: The runs cannot be compared (fingerprint, stack, incomplete run, unknown
             metric direction, ...).
     """
     cand = _read(candidate)
     base = None if baseline is None else _read(baseline)
+    _require_same_stack(base, cand)
     return _finish(_decide(cand, base, cfg), candidate)
 
 
@@ -245,10 +263,5 @@ def gate_from_store(
         cand.manifest.eval_fingerprint, ref
     )
     base = None if found is None else found.results
-    if base is not None and base.manifest.stack != cand.manifest.stack:
-        msg = (
-            f"the baseline ran on stack {base.manifest.stack!r}, the candidate on "
-            f"{cand.manifest.stack!r}: tier 1 and tier 2 results are never compared"
-        )
-        raise GateInputError(msg)
+    _require_same_stack(base, cand)
     return _finish(_decide(cand, base, cfg), candidate)

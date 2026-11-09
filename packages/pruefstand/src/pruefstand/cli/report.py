@@ -12,10 +12,12 @@ from pruefstand.cli._common import EXIT_USAGE, fail, guarded
 from pruefstand.cli._report_files import (
     EVIDENCE_FILE,
     HTML_FILE,
+    baseline_dir,
+    check_gate_matches_run,
     evidence_json,
     write_atomic,
 )
-from pruefstand.core.errors import ConfigError, StoreError
+from pruefstand.core.errors import ConfigError, StoreError, StoreIntegrityError
 from pruefstand.core.logging import get_logger
 from pruefstand.core.models.gate import GateReport
 from pruefstand.core.models.run import RunResults
@@ -53,10 +55,13 @@ def _gate_bytes(run: Path) -> bytes:
 
 
 def _baseline_results(run: Path, report: GateReport) -> RunResults | None:
-    if report.baseline_run_id is None:
+    directory = baseline_dir(run, report)
+    if directory is None:
         return None
     try:
-        return ArtifactStore(run.parent).read_run(run.parent / report.baseline_run_id).results
+        return ArtifactStore(run.parent).read_run(directory).results
+    except StoreIntegrityError:
+        raise  # a tampered baseline is an error, never "no baseline"
     except StoreError:
         _log.warning("baseline_run_unavailable", run_id=report.baseline_run_id)
         return None
@@ -119,6 +124,7 @@ def register(app: typer.Typer) -> None:
                 report = GateReport.model_validate_json(text)
             except ValidationError:
                 fail(f"error: {run / GATE_FILE} is not a valid gate report", EXIT_USAGE)
+            check_gate_matches_run(run, report)
             if fmt is Format.JSON:
                 typer.echo(text.rstrip("\n"))
             elif fmt in {Format.HTML, Format.EVIDENCE}:
