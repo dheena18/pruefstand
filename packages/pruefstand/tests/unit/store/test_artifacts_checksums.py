@@ -22,7 +22,9 @@ CRAFTED_FOOTER = bytes([0x15, 0x02, 0x19, 0xFC, 0xFF, 0xFF, 0xFF, 0xFF, 0x07, 0x
 
 
 def crafted_parquet() -> bytes:
-    return b"PAR1" + CRAFTED_FOOTER + len(CRAFTED_FOOTER).to_bytes(4, "little") + b"PAR1"
+    """The 222-byte file class that aborted polars: padding, the crafted footer, its length."""
+    tail = CRAFTED_FOOTER + len(CRAFTED_FOOTER).to_bytes(4, "little") + b"PAR1"
+    return b"PAR1" + b"\x00" * (222 - 4 - len(tail)) + tail
 
 
 def written(base: Path, count: int = 2) -> tuple[ArtifactStore, Path]:

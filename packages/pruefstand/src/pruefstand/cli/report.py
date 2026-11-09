@@ -27,6 +27,7 @@ from pruefstand.pipeline.gate import GATE_FILE
 from pruefstand.report.github import GitHubPublisher
 from pruefstand.report.html import render_html
 from pruefstand.report.markdown import render_pr_comment
+from pruefstand.report.truncation import judge_truncated_case_ids
 from pruefstand.store.artifacts import ArtifactStore
 
 _log = get_logger(__name__)
@@ -129,10 +130,14 @@ def register(app: typer.Typer) -> None:
             elif fmt in {Format.HTML, Format.EVIDENCE}:
                 _write_file(run, fmt, report, raw, config)
             else:
-                candidate = ArtifactStore(run.parent).read_run(run).results.manifest
                 base = _baseline_results(run, report)
+                results = ArtifactStore(run.parent).read_run(run).results
                 body = render_pr_comment(
-                    report, None if base is None else base.manifest, candidate, report_url=None
+                    report,
+                    None if base is None else base.manifest,
+                    results.manifest,
+                    report_url=None,
+                    truncated_cases=judge_truncated_case_ids(results),
                 )
                 typer.echo(body.rstrip("\n"))
                 if publish_pr is not None:

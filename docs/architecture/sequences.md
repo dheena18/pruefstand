@@ -216,9 +216,9 @@ sequenceDiagram
     Exec->>Exec: flock gpu.lock once, then preflight
     Exec->>RAG: anonymous pull of the main image by digest, cosign verify, start (no GPU, no egress)
     Exec->>RAG: pruefstand run --tier pr
-    Exec->>Exec: pruefstand gate (writes gate.json; promote refuses without it, D881)
+    Exec->>Exec: pruefstand gate (writes gate.json, promote refuses without it - D881)
     Exec->>Exec: require complete=true, no hard fails, error_rate <= 0.02
-    Exec->>Disk: pruefstand baseline promote --run RUN_ID --ref main (also the nightly run under its own fingerprint; refuses gate FAIL / hard fails, never with --allow-failed-gate, D881)
+    Exec->>Disk: pruefstand baseline promote --run RUN_ID --ref main (also the nightly run under its own fingerprint), refuses gate FAIL and hard fails, never run with --allow-failed-gate (D881)
     Exec->>Disk: write history/RUN_ID.partial, then rename, baselines/EVAL_FP/main/ + manifest.json (sha256 per file), keep the last 20
     Exec->>Base: commit index.json (per fp and ref: ordered run ids + manifest sha256), GITHUB_TOKEN
     opt first poll after 00:00 UTC on day 1 of the month
