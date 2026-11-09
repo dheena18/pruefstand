@@ -18,6 +18,7 @@ from pruefstand.report._context import FULL, Builder
 from pruefstand.report._html_text import clean
 from pruefstand.report.format import DASH, fmt_duration, fmt_gpu, fmt_tokens, fmt_usd
 from pruefstand.report.tables import Block
+from pruefstand.report.truncation import judge_truncated_case_ids
 
 GATED_COLS = (
     ("Metric", False), ("Base", True), ("PR", True), ("Δ (95% CI)", True), ("δ", True),
@@ -199,7 +200,25 @@ def slices(b: Builder) -> list[ht.Table]:
             for k, v in sorted(counts.items())
         ]
         out.append(ht.table("Not applicable", (("Metric", False), ("Cases", True)), rows))
+    out.extend(_not_paired(b))
     return out
+
+
+def _not_paired(b: Builder) -> list[ht.Table]:
+    """Return the table of cases dropped from a paired metric's comparison, or nothing."""
+    names = sorted(set(b.report.n_unmatched) | set(b.report.n_excluded))
+    if not names:
+        return []
+    rows = [
+        ht.row(
+            ht.cell(ht.label(k)),
+            ht.cell(str(b.report.n_unmatched.get(k, 0)), num=True),
+            ht.cell(str(b.report.n_excluded.get(k, 0)), num=True),
+        )
+        for k in names
+    ]
+    cols = (("Metric", False), ("In one run only", True), ("Excluded", True))
+    return [ht.table("Not paired (dropped from the comparison)", cols, rows)]
 
 
 def absolute(b: Builder) -> ht.Table | None:
@@ -242,7 +261,7 @@ def informational(b: Builder, cand: RunResults) -> dict[str, Any]:
         noun = "case" if cut == 1 else "cases"
         out["truncated"] = {
             "text": f"Judge input truncated on {cut} {noun}; those judgments may be incomplete.",
-            "ids": hc.truncated_cases(cand),
+            "ids": [clean(i, 80) for i in judge_truncated_case_ids(cand)],
         }
     return out
 

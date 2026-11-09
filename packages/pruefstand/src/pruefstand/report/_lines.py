@@ -39,10 +39,13 @@ def informational_lines(b: Builder) -> list[str]:
     line = b.joined("Informational (does not block):", items, SEP)
     if line:
         out.append(line)
-    cut = b.cand.counts.get("judge_truncated", 0)
+    cut = len(b.truncated_ids) or b.cand.counts.get("judge_truncated", 0)  # ids agree with text
     if cut > 0:
         noun = "case" if cut == 1 else "cases"
         out.append(f"Judge input truncated on {cut} {noun}; those judgments may be incomplete.")
+        shown = b.cap(b.truncated_ids, b.lim.ids)  # cap first, then escape
+        if shown:
+            out.append(f"Truncated cases: {', '.join(md_escape(i, limit=80) for i in shown)}")
     return out
 
 
@@ -95,12 +98,27 @@ def coverage_line(b: Builder, insufficient: list[str]) -> str | None:
     return " · ".join(parts) or None
 
 
+def pairing_line(b: Builder) -> str | None:
+    """Return ``Not paired: metric (n in one run only, m excluded) · ...`` for dropped cases."""
+    names = sorted(set(b.report.n_unmatched) | set(b.report.n_excluded))
+    items = []
+    for name in names:
+        unmatched, excluded = b.report.n_unmatched.get(name, 0), b.report.n_excluded.get(name, 0)
+        parts = [
+            f"{n} {what}"
+            for n, what in ((unmatched, "in one run only"), (excluded, "excluded"))
+            if n
+        ]
+        items.append(f"{md_escape(name)} ({', '.join(parts)})")
+    return b.joined("Not paired:", items, " · ")
+
+
 def tier2_lines(b: Builder, insufficient: list[str]) -> list[str]:
     """Return the lines below the tables of the tier-2 layout, in ui-spec §12.1 order."""
     out: list[str | None] = []
     if not b.report.no_baseline:
         out = [absolute_line(b), *informational_lines(b), notable_line(b), cause_line(b),
-               coverage_line(b, insufficient)]  # fmt: skip
+               coverage_line(b, insufficient), pairing_line(b)]  # fmt: skip
     return [*(x for x in out if x), *_tail(b)]
 
 
@@ -109,7 +127,7 @@ def tier1_lines(b: Builder, insufficient: list[str]) -> list[str]:
     out: list[str | None] = []
     if not b.report.no_baseline:
         out = [*informational_lines(b), judged_line(b), notable_line(b), cause_line(b),
-               coverage_line(b, insufficient)]  # fmt: skip
+               coverage_line(b, insufficient), pairing_line(b)]  # fmt: skip
     return [*(x for x in out if x), *_tail(b)]
 
 

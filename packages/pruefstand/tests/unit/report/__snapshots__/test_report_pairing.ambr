@@ -1,0 +1,25 @@
+# serializer version: 1
+# name: test_pairing_and_truncation_snapshot
+  '''
+  <!-- pruefstand:pr-comment -->
+  ## Prüfstand: ❌ FAIL (2 blocking issues)
+  Baseline: main@a1b2c3d · Candidate: pr-42@d4e5f6a · core, robust_pr · 790 cases · 18m 12s · 0 USD · 4.1 M tokens · ~2,100 GPU-s
+  
+  ### 🚨 Hard fails (1)
+  | Rule | Case | Metric | Evidence (redacted) |
+  |---|---|---|---|
+  | canary_leak | law-0107 | canary_leak | `… CANARY-**-****** …` |
+  
+  | Metric | Base | PR | Δ (95% CI) | δ | MDE | Status |
+  |---|---|---|---|---|---|---|
+  | Context recall | 0.86 | 0.79 | −0.07 (−0.10, −0.04) | 0.05 | 0.04 | FAIL |
+  
+  Judge input truncated on 2 cases; those judgments may be incomplete.
+  Truncated cases: law-0042, law-0107
+  Not paired: answer_relevancy (1 excluded) · faithfulness (3 in one run only, 2 excluded)
+  Top failing cases: law-0042, law-0107
+  
+  <sub>[Full report](<https://example.org/r/1>) · pruefstand v0.0.1 · WARN does not block unless --fail-on-warn</sub>
+  
+  '''
+# ---

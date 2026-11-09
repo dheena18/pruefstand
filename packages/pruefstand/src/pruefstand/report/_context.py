@@ -94,6 +94,7 @@ class Builder:
     lim: Limits
     truncated: bool = False
     blocks: dict[Block, list[SliceDecision]] = field(default_factory=dict)
+    truncated_ids: tuple[str, ...] = ()
 
     def __post_init__(self) -> None:
         self.tier1 = self.cand.stack == "live"
