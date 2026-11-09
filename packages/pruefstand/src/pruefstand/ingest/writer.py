@@ -160,7 +160,8 @@ def write_corpus(
     written corpus. A corpus version is immutable: if ``out_dir`` exists it must hold exactly
     these bytes (then nothing changes), otherwise the call fails. Every call stages in a directory
     of its own (``.<version>.<random>.partial``), so concurrent ingests of one version do not share
-    files and the loser of the final rename compares with the winner's bytes.
+    files and the loser of the final rename compares with the winner's bytes. A killed run leaves
+    its ``.<version>.<random>.partial`` directory behind; it is safe to delete by hand.
 
     Args:
         chunks: All chunks of the corpus in any order.
@@ -195,6 +196,7 @@ def _publish(out_dir: Path, files: dict[str, bytes], manifest: CorpusManifest) -
         raise DatasetError(msg)
     parent.mkdir(parents=True, exist_ok=True)
     staging = Path(tempfile.mkdtemp(prefix=f".{out_dir.name}.", suffix=".partial", dir=parent))
+    staging.chmod(0o755)  # mkdtemp makes it 0700; the published directory must be readable
     try:
         for name, data in files.items():
             _write_new(staging / name, data)

@@ -1,9 +1,13 @@
 """Parquet input is read in bounded batches (T2.3 review M2) and dates may be date objects (m3)."""
 
+from collections.abc import Iterator
 from datetime import date
 from pathlib import Path
+from typing import Any
 
 import polars as pl
+import pyarrow as pa
+import pyarrow.parquet as pq
 import pytest
 from testsupport.rss import PeakRss
 
@@ -22,16 +26,62 @@ def bomb(path: Path, rows: int = 20, chars: int = 5_000_000) -> Path:
     return path
 
 
-def test_dictionary_bomb_is_refused_row_by_row(tmp_path: Path) -> None:
-    """Twelve 20M-character cells in a few KB: the footer says 20 MB, decoding gives 240 MB."""
-    path = bomb(tmp_path / "d" / "x.parquet", rows=12, chars=20_000_000)
+def spy_batches(monkeypatch: pytest.MonkeyPatch) -> list[tuple[int, int]]:
+    """Record (batch_size, decoded nbytes) of every batch ParquetFile.iter_batches yields."""
+    seen: list[tuple[int, int]] = []
+    real = pq.ParquetFile.iter_batches
+
+    def wrapper(self: pq.ParquetFile, batch_size: int = 65536, **kwargs: Any) -> Iterator[Any]:
+        for batch in real(self, batch_size=batch_size, **kwargs):
+            seen.append((batch_size, batch.nbytes))
+            yield batch
+
+    monkeypatch.setattr(pq.ParquetFile, "iter_batches", wrapper)
+    return seen
+
+
+def test_dictionary_bomb_is_read_one_row_per_batch(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Many rows share one big dictionary value: the footer counts it once, each row decodes it."""
+    path = tmp_path / "d" / "x.parquet"
+    path.parent.mkdir()
+    frame = pl.DataFrame({"id": list(range(1, 301)), "content": ["a" * 3_000_000] * 300})
+    frame.write_parquet(path, compression="zstd")
     assert path.stat().st_size < 1 * MIB
-    loader = OldpLoader()
-    with PeakRss() as rss:
-        docs = list(loader.load(path.parent))
-    assert docs == []
-    assert [p.kind for p in loader.stats.problems] == ["record_too_large"] * 12
-    assert rss.grown_kib < 150 * 1024  # one row at a time, never all twelve
+    assert pq.ParquetFile(path).metadata.row_group(0).column(1).has_dictionary_page
+    seen = spy_batches(monkeypatch)
+    loader = OldpLoader(OldpLimits(max_record_bytes=1 * MIB))
+    assert list(loader.load(path.parent)) == []
+    assert loader.stats.problems.counts == {"record_too_large": 300}
+    assert {size for size, _ in seen} == {1}  # never 64 rows of 3 MB at once
+    assert max(nbytes for _, nbytes in seen) < 4 * MIB
+
+
+def test_plain_row_groups_keep_the_larger_batches(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    path = tmp_path / "d" / "x.parquet"
+    path.parent.mkdir()
+    table = pa.table({"id": list(range(1, 501)), "content": [f"text {i}" for i in range(500)]})
+    pq.write_table(table, path, use_dictionary=False)
+    seen = spy_batches(monkeypatch)
+    assert len(list(OldpLoader().load(path.parent))) == 500
+    assert {size for size, _ in seen} == {64}
+
+
+def test_row_numbers_stay_aligned_with_the_file_after_a_dropped_row_group(tmp_path: Path) -> None:
+    path = tmp_path / "d" / "x.parquet"
+    path.parent.mkdir()
+    ids = [1, 2, 3, 4, 0, 6]  # row 5 has a bad id; the first group (rows 1-3) is too large
+    content = [f"{i}" * 5000 for i in range(3)] + ["y"] * 3
+    pq.write_table(
+        pa.table({"id": ids, "content": content}), path, row_group_size=3, use_dictionary=False
+    )
+    loader = OldpLoader(OldpLimits(max_group_bytes=10_000))
+    assert [d.doc_id for d in loader.load(path.parent)] == ["oldp-4", "oldp-6"]
+    sources = [(p.source, p.kind) for p in loader.stats.problems]
+    assert sources == [("x.parquet[0]", "row_group_too_large"), ("x.parquet:5", "bad_record")]
 
 
 def test_row_group_above_the_uncompressed_cap_is_skipped_unread(tmp_path: Path) -> None:
@@ -44,13 +94,15 @@ def test_row_group_above_the_uncompressed_cap_is_skipped_unread(tmp_path: Path) 
     assert [p.kind for p in loader.stats.problems] == ["row_group_too_large"]
 
 
-def test_normal_row_groups_are_streamed_in_batches(tmp_path: Path) -> None:
+def test_normal_row_groups_are_streamed_in_batches(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     path = bomb(tmp_path / "d" / "x.parquet", rows=200, chars=100_000)  # 20 MB uncompressed
+    seen = spy_batches(monkeypatch)
     problems: list[Problem] = []
-    with PeakRss() as rss:
-        count = sum(1 for _ in iter_rows(path, ("id", "content"), OldpLimits(), problems))
+    count = sum(1 for _ in iter_rows(path, ("id", "content"), OldpLimits(), problems))
     assert (count, problems) == (200, [])
-    assert rss.grown_kib < 40 * 1024  # not the whole row group at once
+    assert max(nbytes for _, nbytes in seen) < 1 * MIB  # never the whole 20 MB row group
 
 
 def test_graph_edges_are_bounded_too(tmp_path: Path) -> None:

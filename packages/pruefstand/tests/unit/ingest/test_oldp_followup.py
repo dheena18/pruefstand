@@ -109,6 +109,10 @@ def test_reused_problem_log_does_not_turn_an_empty_graph_into_an_error(
     (graph / "e.jsonl").write_text("{not json\n", encoding="utf-8")
     with pytest.raises(OldpDataError, match="no readable edge row"):
         load_citation_graph(graph, problems=ProblemLog())
+    reused = ProblemLog()
+    reused.append(Problem("earlier", "bad_file", "from a previous load"))
+    with pytest.raises(OldpDataError, match=r"bad_json \(e\.jsonl:1\)"):  # the first NEW problem
+        load_citation_graph(graph, problems=reused)
 
 
 @pytest.mark.parametrize(
@@ -151,3 +155,15 @@ def test_graph_result_type_is_unchanged(oldp_graph_raw: Path) -> None:
     result = load_citation_graph(oldp_graph_raw)
     assert all(isinstance(k, str) for k in result)
     assert DocId("oldp-446202") in result
+
+
+def test_bad_date_detail_is_cut_before_a_huge_value_becomes_text(
+    tmp_path: Path, oldp_record: Rec
+) -> None:
+    row = {**oldp_record("labour_lag_hessen"), "date": "x" * 5_000_000}
+    (tmp_path / "a.jsonl").write_text(json.dumps(row) + "\n", encoding="utf-8")
+    loader = OldpLoader()
+    list(loader.load(tmp_path))
+    (problem,) = loader.stats.problems
+    assert problem.kind == "bad_date"
+    assert len(problem.detail) <= 100

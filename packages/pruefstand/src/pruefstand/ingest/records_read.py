@@ -22,23 +22,38 @@ _CONVERT_ERRORS = (ArithmeticError, ValueError, KeyError, pa.ArrowException)
 
 
 def _parquet_groups(
-    path: Path, parquet: pq.ParquetFile, limits: OldpLimits, problems: list[Problem]
-) -> list[tuple[int, int]]:
-    """``(row group, batch size)`` for the groups below the uncompressed cap.
+    path: Path,
+    parquet: pq.ParquetFile,
+    wanted: Sequence[str],
+    limits: OldpLimits,
+    problems: list[Problem],
+) -> list[tuple[int, int, int]]:
+    """``(row group, batch size, rows before the group)`` for groups below the uncompressed cap.
 
-    The batch size is the number of rows whose footer size stays below ``_BATCH_BYTES`` (at most
-    ``_BATCH_ROWS``, at least 1), so a dictionary bomb is decoded a few rows at a time.
+    A row group with a dictionary page in a wanted column is read one row per batch: the footer
+    counts a dictionary value once, so it says nothing about the decoded size of many rows that
+    share it (a dictionary bomb). Other groups use up to ``_BATCH_ROWS`` rows whose footer size
+    stays below ``_BATCH_BYTES``. The third item keeps row numbers aligned with the file when a
+    group is dropped.
     """
-    groups: list[tuple[int, int]] = []
+    groups: list[tuple[int, int, int]] = []
+    before = 0
     for index in range(parquet.metadata.num_row_groups):
         group = parquet.metadata.row_group(index)
+        start, before = before, before + group.num_rows
         size = sum(group.column(c).total_uncompressed_size for c in range(group.num_columns))
         if size > limits.max_group_bytes:
             detail = f"{size} uncompressed bytes > {limits.max_group_bytes}"
             problems.append(Problem(f"{path.name}[{index}]", "row_group_too_large", detail))
             continue
+        dictionary = any(
+            group.column(c).has_dictionary_page
+            for c in range(group.num_columns)
+            if group.column(c).path_in_schema in wanted
+        )
         per_row = max(1, size // max(1, group.num_rows))
-        groups.append((index, max(1, min(_BATCH_ROWS, _BATCH_BYTES // per_row))))
+        rows = 1 if dictionary else max(1, min(_BATCH_ROWS, _BATCH_BYTES // per_row))
+        groups.append((index, rows, start))
     return groups
 
 
@@ -91,9 +106,9 @@ def parquet_rows(
     try:
         parquet = pq.ParquetFile(path)
         wanted = [name for name in columns if name in parquet.schema_arrow.names]
-        groups = _parquet_groups(path, parquet, limits, problems)
-        examined = 0
-        for index, size in groups:
+        groups = _parquet_groups(path, parquet, wanted, limits, problems)
+        for index, size, start in groups:
+            examined = start
             for batch in parquet.iter_batches(batch_size=size, row_groups=[index], columns=wanted):
                 granted = budget.take(batch.num_rows)
                 part = batch if granted == batch.num_rows else batch.slice(0, granted)

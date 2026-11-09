@@ -90,8 +90,9 @@ class OldpLimits:
         max_files: Most data files one directory pass opens (the sample has 1 to 3); the rest
             are ignored with one counted ``too_many_files``.
         max_group_bytes: Largest *uncompressed* parquet row group read (from the footer, before
-            decoding). Parquet is streamed one row at a time; dictionary pages can decode far
-            larger than the footer says, so ``max_record_bytes`` also caps the decoded row.
+            decoding). Row groups with a dictionary-encoded column are read one row per
+            batch (a dictionary value is counted once in the footer but decodes once per row), the
+            others in batches of up to 64 rows; ``max_record_bytes`` also caps the decoded row.
     """
 
     max_content_chars: int = 2_000_000

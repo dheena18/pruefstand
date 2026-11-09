@@ -79,6 +79,11 @@ _ISO_DATE = re.compile(
 )
 
 
+def _short(value: object) -> str:
+    """``repr`` of a value, cut to 80 characters before a long string is turned into text."""
+    return (repr(value[:80]) if isinstance(value, str) else repr(value))[:80]
+
+
 def _blank(value: object) -> bool:
     return value is None or (isinstance(value, str) and not value.strip())
 
@@ -206,7 +211,7 @@ class OldpLoader:
         raw_date = row.get("date")
         decided = _decision_date(raw_date)
         if decided is None and not _blank(raw_date):
-            self._fail(f"oldp-{number}", "bad_date", f"not a date: {raw_date!r}"[:100])
+            self._fail(f"oldp-{number}", "bad_date", f"not a date: {_short(raw_date)}")
         day = decided.isoformat() if decided else ""
         metadata = {
             "court": name, "court_level": kind.level, "jurisdiction": kind.jurisdiction,

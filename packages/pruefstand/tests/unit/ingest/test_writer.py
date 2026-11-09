@@ -2,7 +2,9 @@
 
 import hashlib
 import json
+import os
 import re
+import stat
 import threading
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
@@ -277,3 +279,16 @@ def test_rendering_scales_linearly(chunks: list[Chunk]) -> None:
 def test_any_input_order_gives_the_same_bytes(chunks: list[Chunk], data: st.DataObject) -> None:
     order = data.draw(st.permutations(chunks))
     assert render_corpus(order).files == render_corpus(chunks).files
+
+
+def test_published_directory_and_files_are_readable_by_others(
+    chunks: list[Chunk], tmp_path: Path
+) -> None:
+    old = os.umask(0o022)
+    try:
+        manifest = write(chunks, tmp_path)
+    finally:
+        os.umask(old)
+    out = tmp_path / manifest.corpus_version
+    assert stat.S_IMODE(out.stat().st_mode) == 0o755
+    assert {stat.S_IMODE(p.stat().st_mode) for p in out.iterdir()} == {0o644}
