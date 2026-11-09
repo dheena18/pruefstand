@@ -1,7 +1,11 @@
 """numbers: German number format to international (T4.4)."""
 
+import re
+
 import numpy as np
 import pytest
+from hypothesis import given
+from hypothesis import strategies as st
 
 from pruefstand.perturb.numbers import Numbers
 
@@ -96,9 +100,9 @@ def test_glued_german_numbers_count_as_leftovers(text: str) -> None:
         ("rund 2,25 Milliarden Euro", "rund 2.25 Milliarden EUR"),
         ("Es sind 1.000 Euro und 250 €", "Es sind 1000 EUR und 250 EUR"),
         ("Es sind 5 Euro", "Es sind 5 EUR"),
-        ("Rechnung über 1 000,50 €", "Rechnung über 1000.50 EUR"),
+        ("Rechnung über 1\u00a0000,50 €", "Rechnung über 1000.50 EUR"),
         ("Rechnung über 1\u00a0000,50 EUR", "Rechnung über 1000.50 EUR"),
-        ("Rechnung über 12 345 €", "Rechnung über 12345 EUR"),
+        ("Rechnung über 12\u202f345 €", "Rechnung über 12345 EUR"),
     ],
 )
 def test_amounts_scale_words_and_one_currency_code(text: str, expected: str) -> None:
@@ -126,6 +130,64 @@ def test_ambiguous_or_junk_currency_text_is_left_alone(text: str) -> None:
 
 
 def test_the_converted_text_is_stable() -> None:
-    once = P.apply("10.000,- € und 3,5 Mio. € und 1 000,50 €", RNG).text
+    once = P.apply("10.000,- € und 3,5 Mio. € und 1\u00a0000,50 €", RNG).text
     assert once == "10000 EUR und 3.5 Mio. EUR und 1000.50 EUR"
     assert not P.apply(once, RNG).changed
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "§ 3 100 € Bußgeld",
+        "Abs. 2 500 Euro",
+        "Nr. 1 500 €",
+        "Art. 6 100 € DSGVO",
+        "Stufe 3 200 Euro",
+        "unter 6 100 Euro",
+        "Tel. 030 123 456 €",
+        "Satz 2 100,50 €",
+        "Ziff. 4 000,- €",
+        "Rechnung über 1 000,50 €",  # a plain blank never groups; ambiguous, so the text stays
+    ],
+)
+def test_a_plain_blank_never_groups_digits(text: str) -> None:
+    out = P.apply(text, RNG).text
+    for token in re.findall(r"\d+", text.split("€", maxsplit=1)[0].split("Euro", maxsplit=1)[0]):
+        assert token in re.findall(r"\d+", out.replace(",", " ").replace(".", " ")), (text, out)
+    assert not re.search(r"\b(?:3100|2500|1500|6100|3200|030123456|2100|4000|1000)\b", out)
+
+
+REFERENCES = st.sampled_from(
+    ["§", "Art.", "Abs.", "Nr.", "Satz", "Ziff.", "Stufe", "Tel.", "unter"]
+)
+
+
+UNITS = st.sampled_from(["€", "Euro", "EUR"])
+
+
+@given(REFERENCES, st.integers(1, 99), st.integers(100, 999), UNITS)
+def test_the_reference_number_stays_its_own_token(
+    ref: str, number: int, amount: int, unit: str
+) -> None:
+    out = P.apply(f"{ref} {number} {amount} {unit}", RNG).text
+    assert re.search(rf"(?<![\d.,]){number} ", out), out
+    assert str(number * 1000 + amount) not in out
+
+
+PIECES = ["1.000,50€", "2,5", "10.000,-", "€", "a", "/", "?p=", "1.000", "x@y.de", "%"]
+URL_PIECES = st.lists(st.sampled_from(PIECES), max_size=8)
+
+
+@given(URL_PIECES, URL_PIECES)
+def test_urls_and_addresses_are_never_touched(path: list[str], tail: list[str]) -> None:
+    url = "https://x.de/" + "".join(path)
+    mail = "kontakt@kanzlei.de" + "".join(tail)
+    out = P.apply(f"Siehe {url} oder {mail} für 1.000,50 €", RNG).text
+    assert url in out
+    assert mail in out
+
+
+def test_a_url_with_german_numbers_is_left_alone() -> None:
+    url = "https://x.de/a?p=1.000,50€"
+    assert not P.apply(url, RNG).changed
+    assert P.apply(f"{url} kostet 1.000,50 €", RNG).text == f"{url} kostet 1000.50 EUR"

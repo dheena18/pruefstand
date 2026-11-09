@@ -30,7 +30,12 @@ _WORD = {
 }
 _HEAD_WORD = {"§": "Paragraph", "Art.": "Artikel"}
 _MAX_QUALIFIERS = 6
-_JOINERS = ("-", "–", "\u2011")  # hyphen, en dash, non-breaking hyphen glued to a law name
+_JOINERS = (
+    "-",
+    "–",
+    "\u2011",
+    "\u2014",
+)  # hyphen, en dash, non-breaking hyphen glued to a law name
 
 
 def genitive_phrase(law: str) -> str | None:

@@ -10,9 +10,10 @@ remain after the rewrite (``zwischen 1.000 und 5.000 €``, ``Abs. 2,3 und 13,7 
 is left unchanged: a half-converted sentence reads differently (D394).
 
 T4.4a (D891): ``10.000,- €`` becomes ``10000 EUR``, ``3,5 Mio. €`` becomes ``3.5 Mio. EUR``,
-``1 000,50 €`` (space or no-break space as thousands separator, only with a unit) becomes
-``1000.50 EUR``, and ``Euro`` after a number is written ``EUR`` like ``€`` (one currency code).
-A euro sign glued to a letter or doubled (``€uro``, ``€€``) is not a currency: the text stays.
+a number grouped with a no-break space (``1 000,50 €``, only with a unit) becomes ``1000.50 EUR``
+(a plain blank never groups: ``§ 3 100 €`` is two numbers), and ``Euro`` after a number is written
+``EUR`` like ``€``. A euro sign glued to a letter or doubled (``€uro``, ``€€``) is not a currency:
+the text stays. Tokens with ``://`` or ``@`` (URLs, addresses) are never touched.
 """
 
 import re
@@ -22,9 +23,9 @@ import numpy as np
 from pruefstand.core.models.perturb import PerturbResult
 from pruefstand.perturb._common import finish, nfc
 
-_GROUP = r"[. \u00a0\u202f]"
+_GROUP = r"[.\u00a0\u202f]"  # dot, no-break space, narrow no-break space (never a plain blank)
 _NUMBER = re.compile(
-    rf"(?<![\w.,§])(?P<int>\d{{1,3}}(?:{_GROUP}\d{{3}})+|\d+)"
+    rf"(?<![\w.,§])(?<!\d[ \u00a0\u202f])(?P<int>\d{{1,3}}(?:{_GROUP}\d{{3}})+|\d+)"
     r"(?:,(?:(?P<dec>\d+)|(?P<dash>[-–]{1,2})))?(?!\d|[.,]\d)"
 )
 _LEFTOVER = re.compile(r"\d,\d|\d\.\d{3}(?!\d)")  # no lookbehind: glued numbers count too
@@ -37,6 +38,7 @@ _JUNK_EURO = re.compile(r"€(?=[^\W\d_€])|(?<=[^\W\d_])€|€€")  # €uro
 _EURO_WORD = re.compile(r"(?P<pre>\d|Mio\.|Mrd\.|Tsd\.|Millionen|Milliarden)\s*Euro(?!\w)")
 _EURO_AFTER_DIGIT = re.compile(r"(?<=\d)\s*€")
 _EURO_BEFORE_DIGIT = re.compile(r"€\s*(?=\d)")
+_TOKEN = re.compile(r"\S+")
 
 
 def _convert(m: re.Match[str]) -> str:
@@ -57,6 +59,19 @@ def _convert(m: re.Match[str]) -> str:
         return m.group(0)
     digits = re.sub(_GROUP, "", integer)
     return digits if decimals is None else f"{digits}.{decimals}"
+
+
+def _rewrite(part: str) -> str | None:
+    """Rewrite one URL-free piece of text; ``None`` when the whole text must stay unchanged."""
+    if _JUNK_EURO.search(part):
+        return None  # ``€uro`` / ``€€``: not a currency sign
+    out = _NUMBER.sub(_convert, part)
+    if _LEFTOVER.search(out):
+        return None  # a German-format number would stay: mixed readings
+    out = _EURO_WORD.sub(r"\g<pre> EUR", out)
+    out = _EURO_AFTER_DIGIT.sub(" EUR", out)
+    out = _EURO_BEFORE_DIGIT.sub("EUR ", out)
+    return out.replace("€", "EUR")
 
 
 class Numbers:
@@ -82,12 +97,19 @@ class Numbers:
         """
         del rng  # deterministic rule
         source = nfc(text)
-        if _JUNK_EURO.search(source):
-            return finish(source, source)  # ``€uro`` / ``€€``: not a currency sign
-        out = _NUMBER.sub(_convert, source)
-        if _LEFTOVER.search(out):
-            return finish(source, source)  # a German-format number would stay: mixed readings
-        out = _EURO_WORD.sub(r"\g<pre> EUR", out)
-        out = _EURO_AFTER_DIGIT.sub(" EUR", out)
-        out = _EURO_BEFORE_DIGIT.sub("EUR ", out)
-        return finish(source, out.replace("€", "EUR"))
+        out: list[str] = []
+        cursor = 0
+        for token in _TOKEN.finditer(source):  # linear: a URL or address is never touched
+            if "://" in token.group(0) or "@" in token.group(0):
+                out.append(source[cursor : token.start()])
+                out.append(token.group(0))
+                cursor = token.end()
+        out.append(source[cursor:])
+        pieces = [(at % 2 == 1) for at in range(len(out))]
+        for at, protected in enumerate(pieces):
+            if not protected:
+                rewritten = _rewrite(out[at])
+                if rewritten is None:
+                    return finish(source, source)
+                out[at] = rewritten
+        return finish(source, "".join(out))

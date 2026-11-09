@@ -105,6 +105,7 @@ def test_cyberresilienz_phrase() -> None:
         "Art. 6 DSGVO–konform",
         "§ 1 KSchG\u2011konform",
         "§ 622 BGB-Gesellschaft",
+        "§ 622 BGB\u2014Gesellschaft",
     ],
 )
 def test_a_dash_glued_to_the_law_name_makes_a_compound_and_stays(text: str) -> None:

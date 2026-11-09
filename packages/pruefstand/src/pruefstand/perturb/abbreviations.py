@@ -30,8 +30,14 @@ _MAX_PASSES = 4
 def _expand(m: re.Match[str]) -> str:
     found = m.group(0)
     word = _FULL[re.sub(r"[\s.]", "", found).casefold()]
-    if found[0].isupper():
+    letters = re.sub(r"[\s.]", "", found)
+    if len(letters) >= 3 and letters.isupper():
+        word = word.upper()  # ``USW.`` -> ``UND SO WEITER``
+    elif found[0].isupper():
         word = word[0].upper() + word[1:]  # sentence start: ``Z. B.`` -> ``Zum Beispiel``
+    rest = m.string[m.end() :].lstrip(" ")
+    if letters.casefold() == "usw" and (not rest or rest[0].isupper() or rest[0] == "\n"):
+        word += "."  # ``usw.`` closes the sentence: keep the full stop
     following = m.string[m.end() : m.end() + 1]
     needs_space = bool(following) and (following.isalnum() or following in "§(€")
     return word + " " if needs_space else word

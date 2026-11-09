@@ -87,11 +87,27 @@ def test_glued_abbreviations_are_fully_expanded_and_stable(text: str, expected: 
         ("Ggf. gilt das nicht. Bzw. doch", "Gegebenenfalls gilt das nicht. Beziehungsweise doch"),
         ("I.V.m. § 1", "In Verbindung mit § 1"),
         ("usw. bzw.ggf.", "und so weiter beziehungsweise gegebenenfalls"),
-        ("Azubis, Praktikanten usw.", "Azubis, Praktikanten und so weiter"),
+        ("Azubis, Praktikanten usw.", "Azubis, Praktikanten und so weiter."),
         ("Das gilt (Z. B. hier)", "Das gilt (Zum Beispiel hier)"),
     ],
 )
 def test_capitalised_abbreviations_and_usw_are_expanded(text: str, expected: str) -> None:
+    once = P.apply(text, RNG).text
+    assert once == expected
+    assert not P.apply(once, RNG).changed
+
+
+@pytest.mark.parametrize(
+    ("text", "expected"),
+    [
+        ("Azubis usw. Dann geht es los", "Azubis und so weiter. Dann geht es los"),
+        ("Azubis usw.\nNeu", "Azubis und so weiter.\nNeu"),
+        ("Azubis usw., Praktikanten", "Azubis und so weiter, Praktikanten"),
+        ("AZUBIS USW.", "AZUBIS UND SO WEITER."),
+        ("GGF. BZW. Z. B.", "GEGEBENENFALLS BEZIEHUNGSWEISE Zum Beispiel"),
+    ],
+)
+def test_usw_keeps_the_full_stop_of_a_sentence_end_and_case(text: str, expected: str) -> None:
     once = P.apply(text, RNG).text
     assert once == expected
     assert not P.apply(once, RNG).changed
