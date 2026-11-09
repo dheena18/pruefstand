@@ -69,3 +69,26 @@ def test_reference_like_and_out_of_range_dates_are_unchanged(text: str) -> None:
 
 def test_year_range_bounds_are_inclusive() -> None:
     assert P.apply("1.1.1900 und 31.12.2100", RNG).text == "1. Januar 1900 und 31. Dezember 2100"
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "Aktenzeichen: 12.03.2020",
+        "Aktenzeichen 12.03.2020",
+        "Az.: 12.03.2020",
+        "Az 12.03.2020",
+        "Nr.: 1.2.2020",
+        "Version 1.2.2020",
+        "Release 3.4.2021",
+    ],
+)
+def test_a_file_number_or_version_that_looks_like_a_date_stays(text: str) -> None:
+    result = P.apply(text, RNG)
+    assert not result.changed
+    assert result.text == text
+
+
+def test_a_real_date_next_to_a_reference_still_changes() -> None:
+    result = P.apply("Aktenzeichen: 12.03.2020 vom 03.10.2026", RNG)
+    assert result.text == "Aktenzeichen: 12.03.2020 vom 3. Oktober 2026"

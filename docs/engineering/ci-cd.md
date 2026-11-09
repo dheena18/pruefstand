@@ -49,7 +49,7 @@ every other job; only the aggregate job is a required check, so adding jobs late
 branch protection.
 
 `id-token: write` is allowed **only** in `build-images.yml`, `docs.yml` (Pages) and `release.yml`, and within them only in the named jobs (`push-sign`; `deploy`; `publish-pypi`, `publish-testpypi`, `sign`, `attest`), never at workflow level; `pages: write` only in `docs.yml`/`deploy` (`scripts/workflow_policy.py`, per (file, job) like `actions: read`)
-(`deploy.yml` only runs `cosign verify`, which needs no OIDC token; R12 A12-M7, matches `security.md` S2). The workflow-guard test (`scripts/check_workflows.py`, T0.2) enforces exactly
+(`deploy.yml` only runs `cosign verify`, which needs no OIDC token; R12 A12-M7, matches `security.md` S2). The workflow guard also requires `--retry 3 --retry-all-errors --retry-delay 5` on every `curl` in a `run:` step (D926). The workflow-guard test (`scripts/check_workflows.py`, T0.2) enforces exactly
 this allowlist, plus: no `pull_request_target` **except exactly `gate-router.yml`**, which must have
 no `actions/checkout` step (and no step that fetches PR code), job permissions exactly
 `pull-requests: read` and `environment: gate-router` (X2.2, round 13 P1.1, the single documented exception;

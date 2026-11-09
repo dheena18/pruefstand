@@ -96,3 +96,22 @@ def test_law_followed_by_hyphen_is_unchanged(text: str) -> None:
 
 def test_cyberresilienz_phrase() -> None:
     assert genitive_phrase("CRA") == "der Cyberresilienz-Verordnung"
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "§ 622 BGB–Gesellschaft",
+        "Art. 6 DSGVO–konform",
+        "§ 1 KSchG\u2011konform",
+        "§ 622 BGB-Gesellschaft",
+        "§ 622 BGB\u2014Gesellschaft",
+    ],
+)
+def test_a_dash_glued_to_the_law_name_makes_a_compound_and_stays(text: str) -> None:
+    assert not P.apply(text, RNG).changed
+
+
+def test_a_spaced_en_dash_after_a_law_is_punctuation_and_is_rewritten() -> None:
+    result = P.apply("§ 622 BGB – Kündigungsfristen", RNG)
+    assert result.text == "Paragraph 622 des Bürgerlichen Gesetzbuchs – Kündigungsfristen"
