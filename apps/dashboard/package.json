@@ -39,7 +39,7 @@
     "eslint": "9.39.5",
     "eslint-config-next": "15.5.28",
     "jsdom": "26.1.0",
-    "json-schema-to-typescript": "15.0.4",
+    "json-schema-to-typescript": "16.0.0",
     "postcss": "8.5.32",
     "prettier": "3.9.10",
     "tailwindcss": "4.3.4",
