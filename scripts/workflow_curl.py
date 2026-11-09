@@ -6,7 +6,13 @@ from workflow_model import Doc, jobs, steps
 
 RETRY_FLAGS = ("--retry 3", "--retry-all-errors", "--retry-delay 5")
 _CONTINUATION = re.compile(r"\\\n\s*")
-_CURL = re.compile(r"(?:^|[;&|(]\s*|\bsudo\s+)curl\b([^\n;&|]*)", re.MULTILINE)
+# A curl command word: at line start, after a separator, a shell keyword or `!`, and after
+# `VAR=value` assignments; `curl-config`, `curlish` and `echo curl` are not commands.
+_CURL = re.compile(
+    r"(?:^|[;&|(`]|\b(?:then|do|else|if|elif|while|until|time|sudo|xargs|exec)\b|!)\s*"
+    r"(?:[A-Za-z_]\w*=\S*\s+)*curl(?![\w.-])([^\n;&|`)]*)",
+    re.MULTILINE,
+)
 
 
 def curl_retries(doc: Doc) -> list[str]:

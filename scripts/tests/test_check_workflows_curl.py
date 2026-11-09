@@ -36,10 +36,41 @@ def test_multiline_curl_with_flags_passes() -> None:
         "cd /tmp && curl -fsSL -o t https://example.org/t",
         "sudo curl -fsSL -o t https://example.org/t",
         "curl -fsSL -o t \\\n  https://example.org/t",
+        "if true; then\n  curl -fsSL -o t https://example.org/t\nfi",
+        "if curl -fsSL -o t https://example.org/t; then echo ok; fi",
+        "if true; then curl -fsSL -o t https://example.org/t; fi",
+        "x=`curl -fsSL https://example.org/t`",
+        "FOO=1 curl -fsSL -o t https://example.org/t",
+        "time curl -fsSL -o t https://example.org/t",
+        "echo u | xargs curl -fsSL -o t",
+        "for i in 1 2; do curl -fsSL -o t https://example.org/t; done",
     ],
 )
 def test_curl_without_full_retry_flags_fails(run: str) -> None:
     assert len(_check(run)) == 1
+
+
+@pytest.mark.parametrize(
+    "run",
+    [
+        f"if true; then\n  curl -fsSL {FLAGS} -o t https://example.org/t\nfi",
+        f"if curl -fsSL {FLAGS} -o t https://example.org/t; then echo ok; fi",
+        f"x=`curl -fsSL {FLAGS} https://example.org/t`",
+        f"FOO=1 curl -fsSL {FLAGS} -o t https://example.org/t",
+        f"time curl -fsSL {FLAGS} -o t https://example.org/t",
+        f"echo u | xargs curl -fsSL {FLAGS} -o t",
+    ],
+)
+def test_curl_forms_with_flags_pass(run: str) -> None:
+    assert _check(run) == []
+
+
+@pytest.mark.parametrize(
+    "run",
+    ["echo curl is used", "python -m curlish", "# curl -fsSL x", "curl-config --version"],
+)
+def test_non_curl_mentions_are_ignored(run: str) -> None:
+    assert _check(run) == []
 
 
 def test_non_command_mentions_of_curl_are_ignored() -> None:
