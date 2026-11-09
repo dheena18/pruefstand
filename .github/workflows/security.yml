@@ -60,7 +60,21 @@ jobs:
             https://github.com/gitleaks/gitleaks/releases/download/v8.30.1/gitleaks_8.30.1_linux_x64.tar.gz
           echo "551f6fc83ea457d62a0d98237cbad105af8d557003051f41f3e7ca7b3f2470eb  gitleaks.tar.gz" | sha256sum -c -
           tar -xzf gitleaks.tar.gz gitleaks
-      - name: Scan the history
+      # Pull requests scan only their own commit range (D853): a synthetic secret-looking test string on another
+      # branch must not fail every PR. Push to main and the weekly run scan the full history. No allowlist is widened.
+      - name: Scan the PR commit range
+        if: github.event_name == 'pull_request'
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          # An unreachable range would scan 0 commits and pass silently: fail instead.
+          git rev-parse --verify --quiet "${BASE_SHA}^{commit}" > /dev/null
+          git rev-parse --verify --quiet "${HEAD_SHA}^{commit}" > /dev/null
+          [ "$(git rev-list --count "${BASE_SHA}..${HEAD_SHA}")" -gt 0 ]
+          ./gitleaks git --verbose --redact --no-banner --exit-code 1 --log-opts="${BASE_SHA}..${HEAD_SHA}" .
+      - name: Scan the full history
+        if: github.event_name != 'pull_request'
         run: ./gitleaks git --verbose --redact --no-banner --exit-code 1 .
 
   pip-audit:
@@ -152,7 +166,7 @@ jobs:
           results_file: results.sarif
           results_format: sarif
           publish_results: false
-      - uses: github/codeql-action/upload-sarif@9b3254085494b55a0f7c4c2b3d2d52cc712ce370 # v4.39.1
+      - uses: github/codeql-action/upload-sarif@33d7b85da1a04171e211befe2c739303b9a4c066 # v4.39.3
         with:
           sarif_file: results.sarif
           category: scorecard

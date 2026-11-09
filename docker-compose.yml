@@ -50,7 +50,7 @@ services:
   llm:
     <<: *service-defaults
     # CPU llama.cpp server, OpenAI-compatible /v1. T1.13 pins the exact server-<version> tag (decisions.md).
-    image: ghcr.io/ggml-org/llama.cpp:server@sha256:d9e9e74ba3f7ef119b1939162b1631f99b75ec703c310d140cfa2fdac8907389
+    image: ghcr.io/ggml-org/llama.cpp:server@sha256:ca40726778c25a7fadce42c09bada8484eab22e28bc283bdbf212e87b1555390
     profiles: [live]
     # --parallel 1: greedy outputs must not depend on batch composition (AI-36); --jinja: the chat template
     # honours enable_thinking=false for Qwen3 (W1.2). The model file comes from scripts/models/fetch.py (T1.4).
@@ -77,7 +77,7 @@ services:
   # revision, license MIT); infra/models/live-models.yaml holds the pin and the SHA-256 of its weights.
   embed:
     <<: *service-defaults
-    image: ghcr.io/huggingface/text-embeddings-inference:cpu-1.8@sha256:8de25e75ce39617f17f2f6c77d60a4f75b65e779ed5005420eb1400072a15c1c
+    image: ghcr.io/huggingface/text-embeddings-inference:cpu-1.9@sha256:2538ea1c9640d3763b15af668039d24172d063b42337b0c27796fc2be180c78d
     profiles: [live]
     command: >-
       --model-id intfloat/multilingual-e5-small

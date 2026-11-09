@@ -2,7 +2,7 @@
 # Build context = repository root:  docker build -f apps/rag-demo/Dockerfile --build-arg GIT_SHA="$(git rev-parse HEAD)" .
 # Plain Dockerfile syntax only (the VM's docker has no buildx). The configs are copied next to the venv:
 # RAG_CONFIG=/app/configs/rag.yaml (or /app/configs/bugs/<name>.yaml); tier 2: /app/configs/rag.gpu.yaml (or bugs/gpu/<name>.yaml).
-FROM python:3.12-slim-bookworm@sha256:e697c81897302a4c4333bade000d98038fbb21eb064f8ee1fd42d02ebcd9d337 AS base
+FROM python:3.12-slim-bookworm@sha256:935c3c5b12357a7e10caa9c1e6ca5692344d97cf229832ef584be2cec9fc03df AS base
 
 FROM ghcr.io/astral-sh/uv:0.13.6@sha256:af22a52f5eafef3d78e551599d405c02df61919d18028f0cea8eda93bc9986d0 AS uv
 
