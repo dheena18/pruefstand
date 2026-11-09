@@ -5,7 +5,7 @@ from typing import Protocol
 from pydantic import BaseModel, ValidationError
 
 from pruefstand.core.errors import LLMError
-from pruefstand.core.models.llm import LLMRequest, LLMResponse
+from pruefstand.core.models.llm import LLMRequest, LLMResponse, LLMRole
 from pruefstand.llm.json_extract import MAX_CANDIDATES, MAX_SCAN_CHARS, extract_json_object
 from pruefstand.llm.prompts import PromptRegistry
 
@@ -55,7 +55,8 @@ async def complete_json_response[T: BaseModel](
         The validated object and the response it was parsed from (``cached``, ``fallback``).
 
     Raises:
-        LLMError: Both answers are invalid (message holds a 200-character excerpt).
+        LLMError: Both answers are invalid (the message holds a 200-character excerpt, except
+            for a judge request, whose output is never echoed).
     """
     first = req.model_copy(update={"response_format": "json"})
     pending: Pending = []
@@ -78,11 +79,19 @@ async def complete_json_response[T: BaseModel](
         msg = (
             "invalid JSON after one repair "
             f"(only the first {MAX_SCAN_CHARS // 1024} KiB are scanned, at most "
-            f"{MAX_CANDIDATES} candidates tried): {resp.text[:_EXCERPT]!r}"
+            f"{MAX_CANDIDATES} candidates tried){_excerpt(req, resp.text)}"
         )
         raise LLMError(msg, transient=False)
     client.flush(pending[invalid:])  # the invalid first answer is never cached
     return parsed, resp
+
+
+def _excerpt(req: LLMRequest, text: str) -> str:
+    """Return ``: <excerpt>`` of the answer, or nothing for a judge.
+
+    A judge's output can echo canary or private text, so only the error type is kept (D708).
+    """
+    return "" if req.role is LLMRole.JUDGE else f": {text[:_EXCERPT]!r}"
 
 
 def _parse[M: BaseModel](text: str, schema: type[M]) -> M | None:
