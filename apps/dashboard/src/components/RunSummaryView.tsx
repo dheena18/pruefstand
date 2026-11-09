@@ -1,7 +1,7 @@
 import Link from "next/link";
 
 import { summaryBanners } from "@/lib/banners";
-import { refLabel } from "@/lib/format";
+import { formatDate, refLabel } from "@/lib/format";
 import { t, type Locale } from "@/lib/i18n";
 import type { RunContext } from "@/lib/run-context";
 import { blockingCount, partition } from "@/lib/summary";
@@ -13,7 +13,6 @@ import { RunMetaBlock } from "./RunMetaBlock";
 import { RunSubNav } from "./RunSubNav";
 import { SummaryHeader } from "./SummaryHeader";
 import { Tier1Body, Tier2Body } from "./SummaryBodies";
-import { formatDate } from "@/lib/format";
 
 export interface RunSummaryViewProps {
   locale: Locale;

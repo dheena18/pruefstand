@@ -39,7 +39,8 @@ export function summaryBanners({ locale, run, gate, baselineInIndex }: BannerInp
   }
   if (gate?.no_baseline === true) add("S-NO-BASELINE", "error", "banner.no_baseline");
   if (run.judge_mode === "skipped") add("S-JUDGE-SKIPPED", "info", "banner.judge_skipped");
-  if (run.judge_fallback === true) add("S-JUDGE-FALLBACK", "warn", "banner.judge_fallback");
+  if (run.judge_fallback === true && run.stack === "a40")
+    add("S-JUDGE-FALLBACK", "warn", "banner.judge_fallback");
   if (run.judge_degraded === true) add("S-JUDGE-DEGRADED", "warn", "banner.judge_degraded");
   if (run.judge_drift === true) add("S-JUDGE-DRIFT", "warn", "banner.judge_drift");
   if (gate?.status === "unsupported_config") add("S-UNSUPPORTED", "warn", "banner.unsupported");

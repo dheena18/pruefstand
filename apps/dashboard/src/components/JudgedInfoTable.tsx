@@ -1,6 +1,7 @@
 import { formatDelta, formatValue } from "@/lib/format";
 import { metricLabel } from "@/lib/labels";
 import { t, type Locale } from "@/lib/i18n";
+import { sliceSuffix } from "@/lib/summary";
 import type { LabelsDocument, SliceDecision } from "@/lib/types";
 
 export interface JudgedInfoTableProps {
@@ -56,7 +57,10 @@ export function JudgedInfoTable(props: JudgedInfoTableProps) {
         <tbody>
           {rows.map((row, i) => (
             <tr key={`${row.metric}-${String(i)}`}>
-              <th scope="row">{metricLabel(locale, labels, row.metric)}</th>
+              <th scope="row">
+                {metricLabel(locale, labels, row.metric)}
+                {sliceSuffix(row) === "" ? null : <span className="mono">{sliceSuffix(row)}</span>}
+              </th>
               <td className="num">{formatValue(row.baseline_mean, locale)}</td>
               <td className="num">{formatValue(row.candidate_mean, locale)}</td>
               <td className="num">{formatDelta(row.result?.mean_diff, locale)}</td>

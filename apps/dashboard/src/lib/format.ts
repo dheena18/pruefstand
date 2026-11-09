@@ -84,8 +84,9 @@ export function formatPlain(value: number | null | undefined, locale: Locale): s
 /** Δ: sign always, Unicode minus, 2 decimals (`−0.07`, `+0.01`); a value that rounds to zero reads `+0.00`. */
 export function formatDelta(value: number | null | undefined, locale: Locale): string {
   if (value == null) return DASH;
-  const negative = Math.round(value * 100) < 0;
-  return `${negative ? "−" : "+"}${fixed(Math.abs(value), locale)}`;
+  const text = fixed(Math.abs(value), locale);
+  const zero = /^0[.,]0+$/.test(text);
+  return `${value < 0 && !zero ? "−" : "+"}${text}`;
 }
 
 /** `Δ (low, high)` from a bootstrap result, e.g. `−0.07 (−0.10, −0.04)`; no result → `–`. */
@@ -116,7 +117,8 @@ export function totalTokens(cost: { prompt_tokens: number; completion_tokens: nu
 
 /** Tokens: `4.1 M`, `812 k`, `< 1 k`. */
 export function formatTokens(tokens: number, locale: Locale): string {
-  if (tokens >= 1_000_000) return `${fixed(tokens / 1_000_000, locale, 1)} M`;
+  if (tokens >= 1_000_000 || Math.round(tokens / 1_000) >= 1_000)
+    return `${fixed(tokens / 1_000_000, locale, 1)} M`;
   if (tokens >= 1_000) return `${String(Math.round(tokens / 1_000))} k`;
   return "< 1 k";
 }

@@ -1,27 +1,12 @@
-import { render, screen, within } from "@testing-library/react";
-import { beforeAll, describe, expect, it } from "vitest";
+import { screen, within } from "@testing-library/react";
+import { describe, expect, it } from "vitest";
 
-import { RunSummaryView } from "@/components/RunSummaryView";
-import type { Locale } from "@/lib/i18n";
 import type { RunContext } from "@/lib/run-context";
-import type { SliceDecision } from "@/lib/types";
 
-import { IDS, POPULATED, ctxOf, decision, gateWith, indexOf } from "../fixtures";
+import { IDS, POPULATED, decision, gateWith, indexOf } from "../fixtures";
+import { loadFixtureContexts, view } from "../summary-helpers";
 
-const view = (ctx: RunContext, locale: Locale = "en", basePath = "") =>
-  render(
-    <RunSummaryView
-      locale={locale}
-      ctx={ctx}
-      basePath={basePath}
-      githubUrl="https://example.org/r"
-    />,
-  );
-
-const ctxs: Record<string, RunContext> = {};
-beforeAll(async () => {
-  for (const [name, id] of Object.entries(IDS)) ctxs[name] = await ctxOf(id);
-});
+const ctxs = loadFixtureContexts();
 
 describe("S-TIER1 (F-T1)", () => {
   it.each(["en", "de"] as const)(
@@ -231,104 +216,6 @@ describe("report link, failing count, no inventions", () => {
       screen.getByRole("link", { name: `Cases (${String(ctx.failing)} failing)` }),
     ).toBeInTheDocument();
     expect(ctx.failing).toBeGreaterThan(0);
-  });
-});
-
-describe("tier-2 body (inline gate; T8.3 fixtures not yet present)", () => {
-  const ctx = (): RunContext => {
-    const base = ctxs["tier1"] as RunContext;
-    const rows: SliceDecision[] = [
-      decision({ metric: "context_recall", status: "fail" }),
-      decision({ metric: "faithfulness", status: "pass", result: null, max_drop: null }),
-      decision({
-        metric: "citation_f1",
-        dimension: "tenant",
-        value: "stadtwerke_sued",
-        status: "warn",
-      }),
-      decision({
-        metric: "ndcg_at_k",
-        dimension: "tenant",
-        value: "kanzlei_mueller",
-        status: "insufficient_data",
-        n_clusters: 22,
-        result: null,
-      }),
-    ];
-    const gate = gateWith({
-      status: "fail",
-      decisions: rows,
-      absolute_checks: [
-        decision({
-          metric: "error_rate",
-          status: "pass",
-          max_value: 0.02,
-          gated: true,
-          result: null,
-        }),
-      ],
-      notable_slices: [
-        decision({
-          metric: "language_match",
-          dimension: "perturbation",
-          value: "compound_split",
-          gated: false,
-          notable: true,
-          status: "pass",
-          result: {
-            ...(rows[0]?.result as NonNullable<SliceDecision["result"]>),
-            mean_diff: -0.18,
-          },
-        }),
-      ],
-      not_applicable_counts: { answer_correctness: 12 },
-      hard_fails: [],
-      top_failing_cases: ["law-0042"],
-      likely_cause: "retrieval",
-    });
-    return {
-      ...base,
-      run: {
-        ...base.run,
-        stack: "a40",
-        judge_models: { faithfulness: "gemma3:12b" },
-        judge_mode: "local",
-      },
-      gate,
-    };
-  };
-  it("renders G overall, G others not passing, A, N, not applicable, insufficient, top failing, cause", () => {
-    const { container } = view(ctx());
-    expect(container).toHaveTextContent("1 blocking issue");
-    expect(container).toHaveTextContent(
-      "Likely cause: Retrieval (chunking, embeddings, top-k, reranker, filter, analyzer)",
-    );
-    expect(screen.getByRole("table", { name: "Gated metrics (overall)" })).toHaveTextContent(
-      "FAIL",
-    );
-    expect(screen.getByRole("table", { name: "Gated slices not passing" })).toHaveTextContent(
-      "tenant=stadtwerke_sued",
-    );
-    expect(screen.getByRole("table", { name: "Absolute checks" })).toHaveTextContent("Error rate");
-    expect(container).toHaveTextContent("perturbation=compound_split −0.18");
-    expect(container).toHaveTextContent("Not applicable: Answer correctness (12 cases)");
-    expect(container).toHaveTextContent(
-      "Insufficient data: nDCG@k · tenant=kanzlei_mueller (22 clusters)",
-    );
-    expect(container.querySelector("[data-block='top-failing'] a")).toHaveAttribute(
-      "href",
-      `/en/runs/${IDS.tier1}/cases/law-0042/`,
-    );
-    expect(container).toHaveTextContent("judges: faithfulness=gemma3:12b");
-  });
-  it("counts hard fails plus FAIL rows of the gated table", () => {
-    const c = ctx();
-    const gate = {
-      ...(c.gate ?? gateWith({})),
-      hard_fails: [{ case_id: "x-1", evidence: "e", metric: "canary_leak", rule: "hard_fail" }],
-    };
-    view({ ...c, gate });
-    expect(screen.getByText("2 blocking issues")).toBeInTheDocument();
   });
 });
 

@@ -18,6 +18,7 @@ const EVERYTHING = async (locale: Locale) => {
     stop_reason: "budget_exceeded",
     judge_mode: "skipped",
     judge_fallback: true,
+    stack: "a40",
     judge_degraded: true,
     judge_drift: true,
   });

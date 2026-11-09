@@ -18,7 +18,14 @@ function columns(locale: Locale): Column<Source>[] {
     {
       id: "shown",
       header: t(locale, "licences.col.shown"),
-      render: (s) => (s.shown_here ? "✓" : "–"),
+      render: (s) => (
+        <>
+          <span aria-hidden="true">{s.shown_here ? "✓" : "–"}</span>
+          <span className="sr-only">
+            {t(locale, s.shown_here ? "licences.shown_yes" : "licences.shown_no")}
+          </span>
+        </>
+      ),
     },
     {
       id: "licence",

@@ -22,7 +22,10 @@ function Finding({ f, ...p }: { f: HardFailFinding } & HardFailListProps) {
   const linkable = p.casesPublished && SAFE_ID.test(f.case_id);
   return (
     <li className="finding">
-      <strong>{ruleLabel(p.locale, p.labels, f.rule, f.metric)}</strong>
+      <strong>
+        {ruleLabel(p.locale, p.labels, f.rule, f.metric)}
+        {f.rule === "hard_fail" ? "" : ` ${t(p.locale, "finding.unverifiable")}`}
+      </strong>
       <span>
         {t(p.locale, "col.case")} <span className="mono">{f.case_id}</span>
       </span>

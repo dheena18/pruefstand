@@ -45,7 +45,7 @@ function Header({ locale, variant }: Pick<MetricTableProps, "locale" | "variant"
   return (
     <tr>
       {cols.map((c) => (
-        <th key={c} scope="col" className={c === "metric" ? "" : "num"}>
+        <th key={c} scope="col" className={c === "metric" || c === "reason" ? "" : "num"}>
           {t(locale, `col.${c}`)}
         </th>
       ))}

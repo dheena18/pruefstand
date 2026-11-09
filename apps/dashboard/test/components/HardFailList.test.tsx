@@ -95,6 +95,28 @@ describe("HardFailList", () => {
     expect(container.querySelectorAll("a")).toHaveLength(0);
     expect(container).toHaveTextContent("new_rule");
   });
+  it("marks a finding whose rule is not hard_fail as unverifiable (M1)", () => {
+    const odd: HardFailFinding[] = [
+      {
+        case_id: "slice-009",
+        evidence: "x",
+        metric: "tenant_leak",
+        rule: "hard_fail_unverifiable",
+      },
+      { case_id: "slice-010", evidence: "x", metric: "tenant_leak", rule: "hard_fail" },
+    ];
+    const { container, rerender } = render(
+      <HardFailList locale="en" labels={labels} runId="r1" hardFails={odd} casesPublished />,
+    );
+    const names = [...container.querySelectorAll("strong")].map((e) => e.textContent);
+    expect(names).toEqual(["Tenant leak (unverifiable)", "Tenant leak"]);
+    rerender(
+      <HardFailList locale="de" labels={labels} runId="r1" hardFails={odd} casesPublished />,
+    );
+    expect(container.querySelector("strong")).toHaveTextContent(
+      "Mandanten-Leck (nicht verifizierbar)",
+    );
+  });
   it("renders nothing without findings", () => {
     const { container } = render(
       <HardFailList locale="en" labels={labels} runId="r" hardFails={[]} casesPublished />,

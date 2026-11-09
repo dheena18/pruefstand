@@ -127,6 +127,10 @@ describe("LicenceNotice", () => {
     );
     expect(container).toHaveTextContent("Questions derived from GermanQuAD/GermanDPR");
   });
+  it("the shown-here cell has accessible text, not only a check mark", () => {
+    const { container } = render(<LicenceNotice locale="en" licences={licences} />);
+    expect(container.querySelector("td .sr-only")).toHaveTextContent(/^(yes|no)$/);
+  });
   it("full lists every source and the ODbL offer, not MEMERAG", () => {
     const { container } = render(<LicenceNotice locale="de" licences={licences} />);
     for (const source of licences.sources) expect(container).toHaveTextContent(source.name);

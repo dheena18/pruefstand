@@ -55,6 +55,9 @@ describe("number formats (ui-spec §10.2)", () => {
     expect(formatDelta(-0.07, "en")).toBe("−0.07");
     expect(formatDelta(0.014, "en")).toBe("+0.01");
     expect(formatDelta(-0.004, "en")).toBe("+0.00");
+    expect(formatDelta(-0.005, "en")).toBe("−0.01");
+    expect(formatDelta(-0.014, "de")).toBe("−0,01");
+    expect(formatDelta(0, "en")).toBe("+0.00");
     expect(formatDelta(-0.07, "de")).toBe("−0,07");
     expect(formatDelta(null, "de")).toBe("–");
   });
@@ -85,6 +88,8 @@ describe("number formats (ui-spec §10.2)", () => {
     expect(formatTokens(4_100_000, "en")).toBe("4.1 M");
     expect(formatTokens(4_100_000, "de")).toBe("4,1 M");
     expect(formatTokens(812_000, "en")).toBe("812 k");
+    expect(formatTokens(999_999, "en")).toBe("1.0 M");
+    expect(formatTokens(999_400, "en")).toBe("999 k");
     expect(formatTokens(300, "en")).toBe("< 1 k");
     expect(formatTokens(0, "en")).toBe("< 1 k");
   });

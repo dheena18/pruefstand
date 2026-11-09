@@ -26,11 +26,11 @@ export async function generateStaticParams() {
 }
 
 export async function generateMetadata({ params }: { params: Params }): Promise<Metadata> {
-  const { locale, id } = await params;
+  const { id } = await params;
   if (id === EMPTY_ID) return { robots: { index: false }, title: "Prüfstand" };
   const ctx = await loadRunContext(id).catch(() => null);
   return {
-    title: `Prüfstand · ${ctx === null ? id : refLabel(ctx.run)}${isLocale(locale) ? "" : ""}`,
+    title: `Prüfstand · ${ctx === null ? id : refLabel(ctx.run)}`,
     alternates: alternatesFor(`runs/${id}`),
   };
 }
