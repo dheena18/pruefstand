@@ -162,3 +162,49 @@ def test_written_out_law_name_in_lowercase_is_skipped() -> None:
 def test_each_protection_rule_on_its_own(text: str) -> None:
     for seed in range(40):
         assert not P.apply(text, np.random.default_rng(seed)).changed
+
+
+# --- T4.4a (D891) ---------------------------------------------------------------------------------
+@pytest.mark.parametrize(
+    "text",
+    [
+        "Nach dem Bürgerlichen Gesetzbuch gilt das",
+        "Nach dem Gesetz gegen den unlauteren Wettbewerb gilt das",
+        "Nach Handelsgesetzbuch und Kündigungsschutzgesetz",
+        "Gilt § 1 des Allgemeinen Gleichbehandlungsgesetzes",
+        "Das Teilzeit- und Befristungsgesetz gilt",
+        "Under the German Civil Code",
+    ],
+)
+def test_every_word_of_a_multi_word_law_name_is_protected(text: str) -> None:
+    for seed in range(40):
+        assert not P.apply(text, np.random.default_rng(seed)).changed
+
+
+def test_words_next_to_a_multi_word_law_name_are_still_edited() -> None:
+    text = "Kündigungsfrist nach dem Bürgerlichen Gesetzbuch"
+    for seed in range(20):
+        out = P.apply(text, np.random.default_rng(seed)).text
+        assert out.endswith("nach dem Bürgerlichen Gesetzbuch")
+        assert out != text
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "Mehr unter kanzlei.köln bitte",
+        "Mehr unter kanzlei.münchen bitte",
+        "Mail an info@kanzlei.köln bitte",
+        "Siehe CANARY VN abcdef bitte",
+        "Siehe CANARY-VN abcdef bitte",
+        "Siehe CANARY KM facade, bitte",
+        "Siehe CANARY VN a1b2c3d4 bitte",
+    ],
+)
+def test_domains_with_non_ascii_endings_and_spaced_canaries_are_never_edited(text: str) -> None:
+    for seed in range(40):
+        assert not P.apply(text, np.random.default_rng(seed)).changed
+
+
+def test_hex_looking_words_after_normal_words_are_still_words() -> None:
+    assert any(P.apply("Das facade Haus", np.random.default_rng(s)).changed for s in range(20))
