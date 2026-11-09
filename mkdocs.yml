@@ -122,6 +122,7 @@ nav:
   - Operations:
       - Runbook: ops/runbook.md
       - Secrets: ops/secrets.md
+      - GitHub Models recordings: ops/cassettes-actions.md
       - Bypass log: ops/bypass-log.md
   - Tasks: _external/tasks.md
   - Prompts: _external/prompts.md
