@@ -101,5 +101,14 @@ def replace_dataset(directory: Path, cases: Sequence[TestCase], manifest: Datase
             f"{directory}: {len(problems)} problems, first: {problems[0]}; the old dataset is kept"
         )
         raise DatasetError(msg)
-    shutil.rmtree(directory, ignore_errors=True)
-    staging.rename(directory)
+    aside = directory.with_name(directory.name + ".old")
+    shutil.rmtree(aside, ignore_errors=True)
+    if directory.exists():
+        directory.rename(aside)  # rename aside, rename in, remove aside: no step loses both copies
+    try:
+        staging.rename(directory)
+    except OSError:
+        if aside.exists():
+            aside.rename(directory)
+        raise
+    shutil.rmtree(aside, ignore_errors=True)

@@ -20,6 +20,7 @@ from pruefstand.dataset.model_review import (
     lost_facts,
     source_chunks_of,
 )
+from pruefstand.dataset.review_checks import unsupported_facts
 from pruefstand.perturb.rewriter import private_text
 
 GEMMA = ModelRef(id=REVIEWER, family="gemma")
@@ -251,3 +252,46 @@ def test_the_config_refuses_an_external_reviewer() -> None:
     external = ModelRef(id="github/meta/Llama-3.3-70B-Instruct", family="llama")
     with pytest.raises(ValidationError, match="local model"):
         DatasetBuildConfig.model_validate(_config(external))
+
+
+def test_digits_and_number_words_are_one_form() -> None:
+    assert unsupported_facts("Mindestens 11 Stunden.", "eine Ruhezeit von elf Stunden") == []
+    assert unsupported_facts("Mindestens elf Stunden.", "eine Ruhezeit von 11 Stunden") == []
+    assert unsupported_facts("Höchstens 8 Stunden.", "darf acht Stunden nicht überschreiten") == []
+    assert unsupported_facts("Zehn Stunden.", "darf acht Stunden nicht überschreiten") == [
+        "Zehn Stunden"
+    ]
+
+
+def test_a_fact_of_the_question_is_not_invented() -> None:
+    q = "Was gilt nach zwei Jahren Betriebszugehörigkeit?"
+    assert unsupported_facts("Nach zwei Jahren gilt ein Monat.", f"{q} Frist: ein Monat") == []
+
+
+def test_facts_are_looked_up_in_every_chunk_of_the_gold_document() -> None:
+    cited_elsewhere = _case().model_copy(
+        update={"reference_answer": "Nach zwei Jahren einen Monat, nach 20 Jahren sieben Monate."}
+    )  # Abs. 2 sits in chunk #1, the citation key names the paragraph only
+    first, second = chunk("gii-bgb-622#0"), chunk("gii-bgb-622#1")
+    only_first = finalise(cited_elsewhere, [first], _verdict("ok"), model=REVIEWER)
+    assert "answer_fact_not_in_source" in only_first.reasons
+    whole_doc = finalise(
+        cited_elsewhere, [first], _verdict("ok"), model=REVIEWER, facts_from=[first, second]
+    )
+    assert "answer_fact_not_in_source" not in whole_doc.reasons
+
+
+def test_the_cited_absatz_limits_the_facts_to_that_absatz() -> None:
+    """ "Drei Monate" stands in Abs. 2 of § 622, but a citation of Abs. 3 does not support it."""
+    wrong = _case(citations=("§ 622 Abs. 3 BGB",)).model_copy(
+        update={"reference_answer": "Drei Monate zum Quartalsende."}
+    )
+    pool = [chunk(f"gii-bgb-622#{n}") for n in range(6)]
+    item = finalise(wrong, [pool[2]], _verdict("ok"), model=REVIEWER, facts_from=pool)
+    assert item.reasons == ("answer_fact_not_in_source",)
+    right = _case(citations=("§ 622 Abs. 3 BGB",)).model_copy(
+        update={"reference_answer": "Mit einer Frist von zwei Wochen."}
+    )
+    assert (
+        finalise(right, [pool[2]], _verdict("ok"), model=REVIEWER, facts_from=pool).verdict == "ok"
+    )

@@ -196,6 +196,7 @@ def test_a_second_apply_of_the_same_review_is_refused(built: DatasetBuildConfig)
     again = read_dataset(dataset_dir(built)).manifest
     assert again is not None
     assert len(again.review) == len(manifest.review)  # no round was appended twice
+    assert not dataset_dir(built).with_name("v1.old").exists()  # the swap left nothing behind
 
 
 def test_apply_on_a_real_directory_keeps_the_dataset_when_a_quota_breaks(
@@ -216,3 +217,4 @@ def test_apply_on_a_real_directory_keeps_the_dataset_when_a_quota_breaks(
         apply_review(real, today=TODAY)
     assert {p.name: p.read_bytes() for p in dataset_dir(real).iterdir()} == before
     assert not dataset_dir(real).with_name("v1.new").exists()
+    assert not dataset_dir(real).with_name("v1.old").exists()

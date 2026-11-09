@@ -16,11 +16,12 @@ The model reads the case and gives a verdict; these rules run on top and win:
 import re
 from collections.abc import Mapping, Sequence
 
-from pruefstand.core.citations import parse_one
+from pruefstand.core.citations import extract_citations, parse_one
 from pruefstand.core.enums import Category
 from pruefstand.core.models.corpus import Chunk
 from pruefstand.core.models.dataset import ModelVerdict, QACandidate, ReviewItem
 from pruefstand.core.models.testcase import TestCase
+from pruefstand.dataset.evidence import absatz_scope, normalise_text
 from pruefstand.dataset.filters_text import check_overlap
 from pruefstand.dataset.review import ATTACK_CATEGORIES, REWRITE_FORBIDDEN
 
@@ -37,12 +38,16 @@ _INTERROGATIVE = re.compile(
     r"\b(?:wie|was|wann|wer|wen|wem|wo|woher|wohin|warum|wieso|weshalb|welche[rsmn]?|wodurch|womit)\b",
     re.IGNORECASE,
 )
-_NUMBER_WORDS = (
-    "ein|eine|einen|einem|einer|zwei|drei|vier|fünf|sechs|sieben|acht|neun|zehn|elf|zwölf"
-)
+_WORD_VALUE = {
+    "ein": 1, "eine": 1, "einen": 1, "einem": 1, "einer": 1, "zwei": 2, "drei": 3, "vier": 4,
+    "fünf": 5, "sechs": 6, "sieben": 7, "acht": 8, "neun": 9, "zehn": 10, "elf": 11, "zwölf": 12,
+    "dreizehn": 13, "vierzehn": 14, "fünfzehn": 15, "sechzehn": 16, "siebzehn": 17,
+    "achtzehn": 18, "neunzehn": 19, "zwanzig": 20, "dreißig": 30,
+}  # fmt: skip
+_NUMBER = "|".join(sorted(_WORD_VALUE, key=len, reverse=True))
+_UNIT = r"(?:Tag\w*|Woche\w*|Monat\w*|Jahr\w*|Stunde\w*|Minute\w*)"
 _FACT = re.compile(
-    rf"§\s*\d+\w*|\b\d+(?:[.,]\d+)?\b|\b(?:{_NUMBER_WORDS})\s+"
-    r"(?:Tag\w*|Woche\w*|Monat\w*|Jahr\w*|Stunde\w*)",
+    rf"§\s*\d+\w*|\b(?:\d+|{_NUMBER})\s+{_UNIT}|\b\d+(?:[.,]\d+)?\b",
     re.IGNORECASE,
 )
 ANSWERABLE = frozenset(
@@ -95,31 +100,40 @@ def source_chunks_of(case: TestCase, by_doc: Mapping[str, Sequence[Chunk]]) -> l
     return found
 
 
-def fact_keys(text: str) -> dict[str, str]:
+def fact_keys(text: str, *, bare: bool = True) -> dict[str, str]:
     """Return ``{normalised fact: as written}`` for numbers, paragraphs and durations of ``text``.
 
-    A duration compares by its number word (``ein/eine/einen`` are one) and the first four letters
-    of its unit, so ``zwei Jahren`` equals ``zwei Jahre``.
+    Digits and German number words are one form (``11 Stunden`` equals ``elf Stunden``, ``ein`` and
+    ``einen`` are 1) and a unit is compared by its first four letters (``Jahren`` equals
+    ``Jahre``). With ``bare`` a duration also yields its bare number, so ``acht Stunden`` knows
+    ``8`` (used for the source, not for the answer).
 
     Examples:
         >>> sorted(fact_keys("Frist von zwei Jahren und 30 Minuten"))
-        ['30', 'zwei jahr']
+        ['2', '2 jahr', '30', '30 minu']
+        >>> "11 stun" in fact_keys("elf Stunden")
+        True
     """
     keys: dict[str, str] = {}
     for m in _FACT.finditer(text):
         raw = m.group(0)
         words = raw.split()
-        if len(words) == 2 and not raw.startswith("§"):
-            number = "ein" if words[0].casefold().startswith("ein") else words[0].casefold()
-            key = f"{number} {words[1].casefold()[:4]}"
+        if raw.startswith("§"):
+            keys.setdefault("".join(raw.split()).casefold(), raw)
+        elif len(words) == 2:
+            number = str(_WORD_VALUE.get(words[0].casefold(), words[0]))
+            keys.setdefault(f"{number} {words[1].casefold()[:4]}", raw)
+            if bare:
+                keys.setdefault(number, raw)
         else:
-            key = "".join(raw.split()).casefold()
-        keys.setdefault(key, raw)
+            keys.setdefault(raw.replace(",", ".").casefold(), raw)
     return keys
 
 
 def unsupported_facts(answer: str, source_text: str) -> list[str]:
-    """Return the numbers, paragraphs and durations of ``answer`` that the source does not contain.
+    """Return the numbers, paragraphs and durations of ``answer`` that ``source_text`` lacks.
+
+    ``source_text`` is the source chunks plus whatever else the answer may repeat (the question).
 
     Examples:
         >>> unsupported_facts("Drei Monate.", "Frist von zwei Wochen")
@@ -128,16 +142,45 @@ def unsupported_facts(answer: str, source_text: str) -> list[str]:
         []
     """
     known = fact_keys(source_text)
-    return [raw for key, raw in fact_keys(answer).items() if key not in known]
+    return [raw for key, raw in fact_keys(answer, bare=False).items() if key not in known]
 
 
-def deterministic_problems(case: TestCase, chunks: Sequence[Chunk]) -> tuple[str, ...]:
+def _cited_texts(case: TestCase, pool: Sequence[Chunk]) -> list[str]:
+    """Return the text the answer may rely on: the cited Absatz of each chunk, else the chunk.
+
+    A gold citation that names an Absatz limits its provision's chunks to that Absatz (a number from
+    another Absatz of the same paragraph is not supported); without an Absatz the whole chunk
+    counts.
+    """
+    absaetze: dict[tuple[str, str, str], set[str]] = {}
+    for gold in case.gold_citations:
+        for c in extract_citations(gold):
+            absaetze.setdefault((c.kind, c.number, c.law), set())
+            if c.absatz:
+                absaetze[(c.kind, c.number, c.law)].add(c.absatz)
+    texts: list[str] = []
+    for chunk in pool:
+        key = parse_one(chunk.citation_key or "")
+        wanted = absaetze.get((key.kind, key.number, key.law), set()) if key else set()
+        if not wanted:
+            texts.append(chunk.text)
+            continue
+        scopes = (absatz_scope(normalise_text(chunk.text), a) for a in sorted(wanted))
+        texts.extend(sc for sc in scopes if sc is not None)
+    return texts
+
+
+def deterministic_problems(
+    case: TestCase, chunks: Sequence[Chunk], facts_from: Sequence[Chunk] | None = None
+) -> tuple[str, ...]:
     """Return the deterministic findings of ``case`` against its source ``chunks``.
 
     Answerable cases need a source chunk and gold citations; each gold citation must match the key
     of one of the chunks (``citation_mismatch``), and every number, paragraph and duration of the
-    reference answer must stand in the source (``answer_fact_not_in_source``). Other categories
-    have no findings here.
+    reference answer must stand in the source or in the question (``answer_fact_not_in_source``).
+    The facts are looked up in ``facts_from`` (default ``chunks``): pass every chunk of the gold
+    documents, since the cited Absatz need not be in the chunk chosen for the citation. Other
+    categories have no findings here.
     """
     if case.category not in ANSWERABLE:
         return ()
@@ -149,7 +192,8 @@ def deterministic_problems(case: TestCase, chunks: Sequence[Chunk]) -> tuple[str
     keys = [c.citation_key for c in chunks]
     if not all(any(citation_matches(g, k) for k in keys) for g in case.gold_citations):
         found.append(CITATION_MISMATCH)
-    source = " ".join([*(c.text for c in chunks), *(k for k in keys if k)])
+    pool = facts_from if facts_from else chunks
+    source = " ".join([case.question, *_cited_texts(case, pool), *(k for k in keys if k)])
     if unsupported_facts(case.reference_answer or "", source):
         found.append(ANSWER_FACT_NOT_IN_SOURCE)
     return tuple(found)
@@ -165,7 +209,11 @@ def lost_facts(original: str, fixed: str, source_text: str) -> list[str]:
         ['einen Monat']
     """
     source, kept = fact_keys(source_text), fact_keys(fixed)
-    return [raw for key, raw in fact_keys(original).items() if key in source and key not in kept]
+    return [
+        raw
+        for key, raw in fact_keys(original, bare=False).items()
+        if key in source and key not in kept
+    ]
 
 
 def _question_problem(case: TestCase, fixed: str, chunks: Sequence[Chunk]) -> str | None:
@@ -214,6 +262,7 @@ def finalise(
     *,
     model: str,
     reject_only: bool = True,
+    facts_from: Sequence[Chunk] | None = None,
 ) -> ReviewItem:
     """Combine the model verdict with the deterministic checks into the final ``ReviewItem``.
 
@@ -222,6 +271,7 @@ def finalise(
         chunks: Its source chunks (see ``source_chunks_of``).
         verdict: The model's verdict.
         model: Reviewer model id, recorded on the item.
+        facts_from: Every chunk of the gold documents (the fact check looks there).
         reject_only: The reviewer must not rewrite references (ADR-0019): a ``fix`` with a
             ``fixed_answer`` is a reject (``reference_rewrite_forbidden``).
 
@@ -229,7 +279,7 @@ def finalise(
         The item: ``reject`` with the findings when a deterministic check fails, else the model
         verdict (a ``fix`` that fails its checks becomes a ``reject``).
     """
-    found = deterministic_problems(case, chunks)
+    found = deterministic_problems(case, chunks, facts_from)
     final = verdict.verdict
     if verdict.verdict == "fix":
         found = (*found, *_fix_problems(case, verdict, chunks, reject_only=reject_only))
@@ -252,9 +302,15 @@ def finalise(
     )
 
 
-def deterministic_item(case: TestCase, chunks: Sequence[Chunk], reason: str) -> ReviewItem:
+def deterministic_item(
+    case: TestCase, chunks: Sequence[Chunk], reason: str, facts_from: Sequence[Chunk] | None = None
+) -> ReviewItem:
     """Return the item of a case that goes to no model (attack and probe cases, missing source)."""
-    found = deterministic_problems(case, chunks) if case.category not in ATTACK_CATEGORIES else ()
+    found = (
+        deterministic_problems(case, chunks, facts_from)
+        if case.category not in ATTACK_CATEGORIES
+        else ()
+    )
     return ReviewItem(
         case_id=case.id,
         cluster_id=case.cluster_id,

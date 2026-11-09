@@ -165,12 +165,14 @@ class _Reviewer:
             return self.norms.get(case.tenant, "")
         return "\n\n".join(c.text for c in chunks)
 
-    def _without_model(self, case: TestCase, chunks: Sequence[Chunk]) -> ReviewItem | None:
+    def _without_model(
+        self, case: TestCase, chunks: Sequence[Chunk], pool: Sequence[Chunk]
+    ) -> ReviewItem | None:
         if case.category in ATTACK_CATEGORIES:
             reason = "Angriffs- oder Prüffall: nur deterministische Prüfung"
-            return deterministic_item(case, chunks, reason)
+            return deterministic_item(case, chunks, reason, pool)
         if case.category is not Category.UNANSWERABLE and not chunks:
-            return deterministic_item(case, chunks, CHUNK_MISSING)
+            return deterministic_item(case, chunks, CHUNK_MISSING, pool)
         return None
 
     async def item(self, case: TestCase) -> ReviewItem | None:
@@ -178,7 +180,8 @@ class _Reviewer:
         if case.id in self.done:
             return self.done[case.id]
         chunks = source_chunks_of(case, self.by_doc)
-        result = self._without_model(case, chunks)
+        pool = [c for d in case.gold_doc_ids for c in self.by_doc.get(d, ())]
+        result = self._without_model(case, chunks, pool)
         if result is None:
             check_reviewer_for_case(self.model, case)
             base = self.bases.get(case.base_id, "") if case.perturbation else ""
@@ -191,7 +194,14 @@ class _Reviewer:
                 except LLMError as exc:
                     _log.warning("review_failed", case=case.id, error=type(exc).__name__)
                     return None
-            result = finalise(case, chunks, verdict, model=self.model, reject_only=self.reject_only)
+            result = finalise(
+                case,
+                chunks,
+                verdict,
+                model=self.model,
+                reject_only=self.reject_only,
+                facts_from=pool,
+            )
         if self.sink is not None:
             self.sink(result)
         return result
