@@ -1,0 +1,185 @@
+{
+  "version": "v1",
+  "sets": {
+    "faithfulness_memerag": {
+      "metric": "faithfulness",
+      "license_config": "none (download_only, never published)",
+      "n_items": 391,
+      "labels": {
+        "0": 111,
+        "2": 280
+      },
+      "positive_share": 0.7161,
+      "trivial_share": 0.0,
+      "n_clusters": 263,
+      "calib_split": {
+        "dev": 117,
+        "test": 274
+      },
+      "hard_negatives": 111,
+      "hard_types": {
+        "memerag_not_supported": 111
+      },
+      "hard_types_test": {
+        "memerag_not_supported": 78
+      },
+      "constructions": {
+        "memerag": 241,
+        "memerag_ext_majority": 150
+      }
+    },
+    "faithfulness_constructed": {
+      "metric": "faithfulness",
+      "license_config": "germanrag_derived",
+      "n_items": 600,
+      "labels": {
+        "0": 240,
+        "1": 60,
+        "2": 300
+      },
+      "positive_share": 0.5,
+      "trivial_share": 0.0,
+      "n_clusters": 300,
+      "calib_split": {
+        "dev": 180,
+        "test": 420
+      },
+      "hard_negatives": 180,
+      "hard_types": {
+        "negation_flip": 60,
+        "number_date_swap": 60,
+        "partial_answer": 60
+      },
+      "hard_types_test": {
+        "negation_flip": 42,
+        "number_date_swap": 42,
+        "partial_answer": 42
+      },
+      "constructions": {
+        "gold_positive_context": 300,
+        "negation_flip": 60,
+        "number_date_swap": 60,
+        "partial_answer": 60,
+        "unsupported_context": 120
+      }
+    },
+    "correctness": {
+      "metric": "answer_correctness",
+      "license_config": "germanquad_derived",
+      "n_items": 564,
+      "labels": {
+        "0": 231,
+        "1": 51,
+        "2": 282
+      },
+      "positive_share": 0.5,
+      "trivial_share": 0.2358,
+      "n_clusters": 230,
+      "calib_split": {
+        "dev": 170,
+        "test": 394
+      },
+      "hard_negatives": 169,
+      "hard_types": {
+        "negation_flip": 15,
+        "number_date_swap": 52,
+        "partial_answer": 51,
+        "same_paragraph_span": 51
+      },
+      "hard_types_test": {
+        "negation_flip": 10,
+        "number_date_swap": 36,
+        "partial_answer": 36,
+        "same_paragraph_span": 36
+      },
+      "constructions": {
+        "annotator_answer_2": 282,
+        "negation_flip": 15,
+        "number_date_swap": 52,
+        "other_question": 113,
+        "partial_answer": 51,
+        "same_paragraph_span": 51
+      }
+    },
+    "refusal": {
+      "metric": "refusal_judged",
+      "license_config": "germanrag_derived",
+      "n_items": 600,
+      "labels": {
+        "0": 300,
+        "1": 300
+      },
+      "positive_share": 0.5,
+      "trivial_share": 0.0,
+      "n_clusters": 300,
+      "calib_split": {
+        "dev": 180,
+        "test": 420
+      },
+      "hard_negatives": 150,
+      "hard_types": {
+        "hedged_answer": 150
+      },
+      "hard_types_test": {
+        "hedged_answer": 105
+      },
+      "constructions": {
+        "gold_answer": 150,
+        "hedged_answer": 150,
+        "refusal_paraphrase_0": 56,
+        "refusal_paraphrase_1": 50,
+        "refusal_paraphrase_2": 48,
+        "refusal_paraphrase_3": 50,
+        "refusal_paraphrase_4": 39,
+        "refusal_paraphrase_5": 57
+      }
+    },
+    "consistency": {
+      "metric": "perturbation_consistency",
+      "license_config": "germanquad_derived",
+      "n_items": 818,
+      "labels": {
+        "0": 369,
+        "1": 449
+      },
+      "positive_share": 0.5489,
+      "trivial_share": 0.0,
+      "n_clusters": 233,
+      "calib_split": {
+        "dev": 245,
+        "test": 573
+      },
+      "hard_negatives": 83,
+      "hard_types": {
+        "number_date_swap": 83
+      },
+      "hard_types_test": {
+        "number_date_swap": 58
+      },
+      "constructions": {
+        "annotator_answer_2": 149,
+        "frame": 300,
+        "number_date_swap": 83,
+        "other_question": 286
+      }
+    }
+  },
+  "hard_negatives_per_metric": {
+    "faithfulness": {
+      "all": 291,
+      "test": 204
+    },
+    "answer_correctness": {
+      "all": 169,
+      "test": 118
+    },
+    "refusal_judged": {
+      "all": 150,
+      "test": 105
+    },
+    "perturbation_consistency": {
+      "all": 83,
+      "test": 58
+    }
+  }
+}
