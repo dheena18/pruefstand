@@ -4,8 +4,9 @@ Schema at commit ``aa274f6`` (``data/sources.yaml``): one row per (question, mod
 ``query_id``, ``query``, ``context`` (list of ``{"text"}``, the passages the annotators saw) and
 ``answer`` (list of sentences with ``factuality``). In ``memerag/de.jsonl`` ``factuality`` is one
 label per sentence; in ``memerag_ext/de.jsonl`` it is a list of five annotator labels, reduced here
-by majority vote (the same rule as the upstream ``memerag_ext_w_majority_voting`` folder, which the
-T2.1 pin does not fetch). Output only ever goes to the git-ignored ``data/derived/memerag_de/``.
+by strict majority vote. The upstream ``data/memerag_ext_w_majority_vote/de.jsonl`` (not in the
+T2.1 pin) gives the same labels: 0 sentence and 0 item differences over its 150 rows (D862).
+Output only ever goes to the git-ignored ``data/derived/memerag_de/``.
 """
 
 from collections import Counter

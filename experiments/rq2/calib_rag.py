@@ -16,11 +16,11 @@ from rq2.construct import (
     REFUSALS,
     hedge,
     negate,
-    norm,
     split_sentences,
     swap_first_number,
     tokens,
 )
+from rq2.construct_checks import may_support
 
 N_FAITH_ROWS = 300
 N_REFUSAL_ROWS = 150
@@ -95,13 +95,19 @@ def faith_hard(
     return out
 
 
+def distractor_ok(row: RagRow, passage: str) -> bool:
+    """True iff ``passage`` can serve as an unsupporting context for the row's answer.
+
+    Distractors from the positive passage's own article and passages that may support the
+    answer (``construct_checks.may_support``) are rejected (D864, review of #107).
+    """
+    same_article = article_of(passage) == article_of(row.positive_context)
+    return not same_article and not may_support(row.answer, passage)
+
+
 def _unsupported(row: RagRow, rng: np.random.Generator) -> CalibrationItem | None:
-    """The same answer on a GermanRAG distractor passage that does not contain it."""
-    negs = [
-        c
-        for i, c in enumerate(row.contexts)
-        if i != row.positive and norm(row.answer) not in norm(c)
-    ]
+    """The same answer on a GermanRAG distractor passage that cannot support it."""
+    negs = [c for i, c in enumerate(row.contexts) if i != row.positive and distractor_ok(row, c)]
     if not negs:
         return None
     ctx = negs[int(rng.integers(len(negs)))]

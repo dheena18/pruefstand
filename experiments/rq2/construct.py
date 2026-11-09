@@ -269,11 +269,20 @@ def _windows(sentence: str, n: int) -> list[str]:
     """Return the ``n``-word windows of ``sentence`` that start and end on a content word."""
     words = sentence.rstrip(".").split()
     if len(words) <= n:
-        return [" ".join(words)]
+        whole = " ".join(words)
+        return [whole] if clean_span(whole) else []
     out: list[str] = []
     for i in range(len(words) - n + 1):
         span = " ".join(words[i : i + n]).strip(" ,;:()")
         edge = tokens(span)
-        if edge and edge[0] not in STOPWORDS and edge[-1] not in STOPWORDS:
+        if edge and edge[0] not in STOPWORDS and edge[-1] not in STOPWORDS and clean_span(span):
             out.append(span)
     return out
+
+
+_MARKUP = ("|", "[", "]", "=", ".jpg")
+
+
+def clean_span(span: str) -> bool:
+    """False for wiki markup (``| [ ] = .jpg``) or unbalanced round brackets."""
+    return not any(m in span.lower() for m in _MARKUP) and span.count("(") == span.count(")")

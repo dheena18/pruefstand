@@ -16,6 +16,7 @@ from rq2.construct import (
     swap_first_number,
     token_jaccard,
 )
+from rq2.construct_checks import edit_in_first_clause, has_answer_content
 
 N_QUESTIONS = 300
 JACCARD_MAX = 0.3
@@ -75,6 +76,19 @@ def _item(
     )
 
 
+def _valid_edit(ref: str, cand: str, label: int, kind: str, texts: Sequence[str]) -> bool:
+    """Validity filters of a correctness hard negative (review of #107, D863)."""
+    if norm(cand) == norm(ref):
+        return False
+    if label == 0 and any(contains_either(cand, t) for t in texts):
+        return False
+    if kind == "negation_flip" and not edit_in_first_clause(ref, cand):
+        return False
+    if kind == "partial_answer":
+        return has_answer_content(cand) and all(norm(cand) != norm(t) for t in texts)
+    return True
+
+
 def correctness_hard(row: QuadRow, rng: np.random.Generator) -> list[CalibrationItem]:
     """The four constructed hard negatives of one question (each only when it exists)."""
     ref = row.answers[0][0]
@@ -87,9 +101,7 @@ def correctness_hard(row: QuadRow, rng: np.random.Generator) -> list[Calibration
     ]
     out: list[CalibrationItem] = []
     for cand, label, kind in edits:
-        if cand is None or norm(cand) == norm(ref):
-            continue
-        if label == 0 and any(contains_either(cand, t) for t in texts):
+        if cand is None or not _valid_edit(ref, cand, label, kind, texts):
             continue
         out.append(
             _item(

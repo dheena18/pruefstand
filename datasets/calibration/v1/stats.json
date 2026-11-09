@@ -68,8 +68,8 @@
       "license_config": "germanquad_derived",
       "n_items": 564,
       "labels": {
-        "0": 231,
-        "1": 51,
+        "0": 228,
+        "1": 54,
         "2": 282
       },
       "positive_share": 0.5,
@@ -81,24 +81,24 @@
       },
       "hard_negatives": 169,
       "hard_types": {
-        "negation_flip": 15,
-        "number_date_swap": 52,
-        "partial_answer": 51,
-        "same_paragraph_span": 51
+        "negation_flip": 6,
+        "number_date_swap": 55,
+        "partial_answer": 54,
+        "same_paragraph_span": 54
       },
       "hard_types_test": {
-        "negation_flip": 10,
-        "number_date_swap": 36,
-        "partial_answer": 36,
-        "same_paragraph_span": 36
+        "negation_flip": 4,
+        "number_date_swap": 38,
+        "partial_answer": 38,
+        "same_paragraph_span": 38
       },
       "constructions": {
         "annotator_answer_2": 282,
-        "negation_flip": 15,
-        "number_date_swap": 52,
+        "negation_flip": 6,
+        "number_date_swap": 55,
         "other_question": 113,
-        "partial_answer": 51,
-        "same_paragraph_span": 51
+        "partial_answer": 54,
+        "same_paragraph_span": 54
       }
     },
     "refusal": {
