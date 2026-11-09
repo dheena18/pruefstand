@@ -14,6 +14,7 @@ from pruefstand.core.errors import GateInputError
 from pruefstand.core.protocols import BaselineStore
 from pruefstand.gate.baseline_run import check_baseline_run
 from pruefstand.metrics.registry import MetricRegistry
+from pruefstand.pipeline.promotion import check_gate_for_promotion
 from pruefstand.store.artifacts import ArtifactStore
 from pruefstand.store.baseline_index import REFS
 from pruefstand.store.baselines_git import GitBranchBaselineStore
@@ -51,13 +52,28 @@ def promote_command(
     run: _Run,
     ref: Annotated[str, typer.Option("--ref", help=f"One of: {', '.join(REFS)}.")],
     config: _Config = Path("pruefstand.yaml"),
+    allow_failed_gate: Annotated[
+        bool,
+        typer.Option(
+            "--allow-failed-gate",
+            help="Promote although the gate FAILed or the run has hard fails (owner only).",
+        ),
+    ] = False,
 ) -> None:
-    """Promote a complete run to the baseline of its fingerprint and ref."""
+    """Promote a complete run to the baseline of its fingerprint and ref.
+
+    main and nightly runs need their gate.json (run `pruefstand gate` first); a run whose gate
+    FAILed or that has a hard-fail finding is refused (exit 1) unless --allow-failed-gate is
+    given; an invalid gate.json is exit 3 (D881).
+    """
     with guarded(ctx):
         artifacts = ArtifactStore(run.parent).read_run(run)
         cfg = load_config(config)
         try:
             prepared = prepare_promotion(artifacts, ref)
+            check_gate_for_promotion(
+                run, artifacts.results, cfg.gate, ref=ref, allow_failed_gate=allow_failed_gate
+            )
             check_baseline_run(
                 prepared.results,
                 cfg.gate,

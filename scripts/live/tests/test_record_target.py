@@ -39,6 +39,33 @@ def test_recording_a_replayed_target_reproduces_the_cassette(
     assert (out / "query.yaml").read_text(encoding="utf-8").startswith("# recorded ")
 
 
+def test_the_header_carries_the_git_sha_the_target_reports(
+    router: respx.MockRouter, tmp_path: Path
+) -> None:
+    cassette = TargetCassette("good")
+    cassette.install(router)
+    sha = cassette.info["git_sha"]
+    out = tmp_path / "good"
+    assert (
+        main(["--url", URL, "--cases", str(MINI_DATASET / "smoke.jsonl"), "--out", str(out)]) == 0
+    )
+    for name in ("info.yaml", "query.yaml"):
+        first = (out / name).read_text(encoding="utf-8").splitlines()[0]
+        assert first.endswith(f"(git {sha})")
+
+
+def test_an_unsafe_or_missing_git_sha_is_recorded_as_unknown(
+    router: respx.MockRouter, tmp_path: Path
+) -> None:
+    cassette = TargetCassette("good", info_overrides={"git_sha": "a b\nc"})
+    cassette.install(router)
+    out = tmp_path / "odd"
+    assert (
+        main(["--url", URL, "--cases", str(MINI_DATASET / "smoke.jsonl"), "--out", str(out)]) == 0
+    )
+    assert (out / "info.yaml").read_text(encoding="utf-8").splitlines()[0].endswith("(git unknown)")
+
+
 def test_a_failing_query_writes_nothing_and_exits_one(
     router: respx.MockRouter, tmp_path: Path
 ) -> None:
