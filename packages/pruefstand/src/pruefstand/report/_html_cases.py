@@ -8,7 +8,6 @@ chunk texts and the card says so.
 from collections.abc import Mapping
 from typing import Any
 
-from pruefstand.core.config.gate import JUDGED_METRICS
 from pruefstand.core.ids import CaseId
 from pruefstand.core.models.run import RunManifest, RunResults, ScoredCase
 from pruefstand.core.models.target import CaseRecord, RetrievedChunk
@@ -92,22 +91,6 @@ def cards(
         card(i, scored.get(i), records.get(i), base_records.get(i), has_base=base is not None)
         for i in ids[:MAX_CARDS]
     ]
-
-
-def truncated_cases(cand: RunResults) -> list[str]:
-    """Return the ids of the cases whose judge input was truncated (X3.9), sorted."""
-    return sorted(
-        {
-            clean(s.case.id, 80)
-            for s in cand.values
-            for v in s.values
-            if v.metric in JUDGED_METRICS
-            and (
-                v.details.get("truncated") is True
-                or v.details.get("reason") == "judge_input_too_long"
-            )
-        }
-    )
 
 
 def _kv(mapping: Mapping[str, str] | Mapping[str, int]) -> str:

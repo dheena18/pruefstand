@@ -1,0 +1,224 @@
+{
+  "_comment": "Shared expectations for assignTable / assignBlock, built from interfaces §9 and ui-spec §11.1 (same cases as T1.9 test_tables.py).",
+  "assign_table": [
+    {
+      "name": "gated, no reason",
+      "source": "decisions",
+      "gated": true,
+      "reason": null,
+      "table": "gated"
+    },
+    {
+      "name": "gated insufficient data stays gated",
+      "source": "decisions",
+      "gated": true,
+      "reason": null,
+      "status": "insufficient_data",
+      "table": "gated"
+    },
+    {
+      "name": "absolute check gated",
+      "source": "absolute_checks",
+      "gated": true,
+      "reason": null,
+      "table": "gated"
+    },
+    {
+      "name": "reason applicable_clusters<30",
+      "source": "decisions",
+      "gated": false,
+      "reason": "applicable_clusters<30",
+      "table": "informational"
+    },
+    {
+      "name": "reason refusal_outside_nightly_full",
+      "source": "decisions",
+      "gated": false,
+      "reason": "refusal_outside_nightly_full",
+      "table": "informational"
+    },
+    {
+      "name": "reason judge_uncalibrated",
+      "source": "decisions",
+      "gated": false,
+      "reason": "judge_uncalibrated",
+      "table": "informational"
+    },
+    {
+      "name": "reason judge_degraded",
+      "source": "decisions",
+      "gated": false,
+      "reason": "judge_degraded",
+      "table": "informational"
+    },
+    {
+      "name": "reason judge_drift",
+      "source": "decisions",
+      "gated": false,
+      "reason": "judge_drift",
+      "table": "informational"
+    },
+    {
+      "name": "reason tier1_judged",
+      "source": "decisions",
+      "gated": false,
+      "reason": "tier1_judged",
+      "table": "informational"
+    },
+    {
+      "name": "reason tier1_deterministic_only",
+      "source": "decisions",
+      "gated": false,
+      "reason": "tier1_deterministic_only",
+      "table": "informational"
+    },
+    {
+      "name": "reason tier1_injection_reported",
+      "source": "absolute_checks",
+      "gated": false,
+      "reason": "tier1_injection_reported",
+      "table": "informational"
+    },
+    {
+      "name": "reason judge_truncated",
+      "source": "decisions",
+      "gated": false,
+      "reason": "judge_truncated",
+      "table": "informational"
+    },
+    {
+      "name": "unknown reason code",
+      "source": "decisions",
+      "gated": false,
+      "reason": "something_new",
+      "table": "informational"
+    },
+    {
+      "name": "notable slice without reason",
+      "source": "notable_slices",
+      "gated": false,
+      "reason": null,
+      "table": "notable"
+    },
+    {
+      "name": "notable slice with reason is informational",
+      "source": "notable_slices",
+      "gated": false,
+      "reason": "tier1_deterministic_only",
+      "table": "informational"
+    },
+    {
+      "name": "no rule matches (gate bug) falls back to informational",
+      "source": "decisions",
+      "gated": false,
+      "reason": null,
+      "table": "informational"
+    }
+  ],
+  "assign_block": [
+    {
+      "name": "tier 2 overall decision",
+      "source": "decisions",
+      "stack": "a40",
+      "gated": true,
+      "reason": null,
+      "block": "G"
+    },
+    {
+      "name": "tier 2 absolute check",
+      "source": "absolute_checks",
+      "stack": "a40",
+      "gated": true,
+      "reason": null,
+      "block": "A"
+    },
+    {
+      "name": "tier 1 absolute check",
+      "source": "absolute_checks",
+      "stack": "live",
+      "gated": true,
+      "reason": null,
+      "block": "C"
+    },
+    {
+      "name": "tier 1 deterministic only",
+      "source": "decisions",
+      "stack": "live",
+      "gated": false,
+      "reason": "tier1_deterministic_only",
+      "block": "R"
+    },
+    {
+      "name": "tier 1 injection reported",
+      "source": "absolute_checks",
+      "stack": "live",
+      "gated": false,
+      "reason": "tier1_injection_reported",
+      "block": "R"
+    },
+    {
+      "name": "tier 1 fewer than 30 clusters",
+      "source": "decisions",
+      "stack": "live",
+      "gated": false,
+      "reason": "applicable_clusters<30",
+      "block": "R"
+    },
+    {
+      "name": "tier 1 judged",
+      "source": "decisions",
+      "stack": "live",
+      "gated": false,
+      "reason": "tier1_judged",
+      "block": "J"
+    },
+    {
+      "name": "tier 1 refusal outside nightly",
+      "source": "decisions",
+      "stack": "live",
+      "gated": false,
+      "reason": "refusal_outside_nightly_full",
+      "block": "I"
+    },
+    {
+      "name": "tier 1 judge truncated",
+      "source": "decisions",
+      "stack": "live",
+      "gated": false,
+      "reason": "judge_truncated",
+      "block": "I"
+    },
+    {
+      "name": "tier 2 reported reason is block I",
+      "source": "decisions",
+      "stack": "a40",
+      "gated": false,
+      "reason": "applicable_clusters<30",
+      "block": "I"
+    },
+    {
+      "name": "tier 2 judged reason is block I",
+      "source": "decisions",
+      "stack": "a40",
+      "gated": false,
+      "reason": "tier1_judged",
+      "block": "I"
+    },
+    {
+      "name": "notable slice",
+      "source": "notable_slices",
+      "stack": "a40",
+      "gated": false,
+      "reason": null,
+      "block": "N"
+    },
+    {
+      "name": "tier 1 notable slice",
+      "source": "notable_slices",
+      "stack": "live",
+      "gated": false,
+      "reason": null,
+      "block": "N"
+    }
+  ]
+}
