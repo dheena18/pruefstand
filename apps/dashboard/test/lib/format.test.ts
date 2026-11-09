@@ -1,6 +1,19 @@
 import { describe, expect, it } from "vitest";
 
-import { formatDate, refLabel } from "@/lib/format";
+import {
+  formatCost,
+  formatDate,
+  formatDelta,
+  formatDeltaCi,
+  formatDuration,
+  formatGpuSeconds,
+  formatPlain,
+  formatTokens,
+  formatValue,
+  refKey,
+  refLabel,
+  totalTokens,
+} from "@/lib/format";
 
 describe("formatDate (Europe/Berlin)", () => {
   it("formats a winter date", () => {
@@ -29,5 +42,68 @@ describe("refLabel (ui-spec §2.2)", () => {
   });
   it("is an en dash without data", () => {
     expect(refLabel({})).toBe("–");
+  });
+});
+
+describe("number formats (ui-spec §10.2)", () => {
+  it("metric value: 2 decimals, locale separator", () => {
+    expect(formatValue(0.857, "en")).toBe("0.86");
+    expect(formatValue(0.857, "de")).toBe("0,86");
+    expect(formatValue(null, "en")).toBe("–");
+  });
+  it("delta: sign always, Unicode minus", () => {
+    expect(formatDelta(-0.07, "en")).toBe("−0.07");
+    expect(formatDelta(0.014, "en")).toBe("+0.01");
+    expect(formatDelta(-0.004, "en")).toBe("+0.00");
+    expect(formatDelta(-0.07, "de")).toBe("−0,07");
+    expect(formatDelta(null, "de")).toBe("–");
+  });
+  it("delta with CI", () => {
+    expect(formatDeltaCi({ mean_diff: -0.07, ci_low: -0.1, ci_high: -0.04 }, "en")).toBe(
+      "−0.07 (−0.10, −0.04)",
+    );
+    expect(formatDeltaCi({ mean_diff: -0.07, ci_low: -0.1, ci_high: -0.04 }, "de")).toBe(
+      "−0,07 (−0,10, −0,04)",
+    );
+    expect(formatDeltaCi(null, "en")).toBe("–");
+  });
+  it("delta, max and MDE have no sign", () => {
+    expect(formatPlain(0.05, "en")).toBe("0.05");
+    expect(formatPlain(null, "en")).toBe("–");
+  });
+  it("duration Xm Ys", () => {
+    expect(formatDuration(732.4)).toBe("12m 12s");
+    expect(formatDuration(45)).toBe("0m 45s");
+    expect(formatDuration(8940)).toBe("149m 0s");
+  });
+  it("cost: zero is 0 USD", () => {
+    expect(formatCost(0, "en")).toBe("0 USD");
+    expect(formatCost(0.18, "en")).toBe("0.18 USD");
+    expect(formatCost(0.18, "de")).toBe("0,18 USD");
+  });
+  it("tokens: M, k, < 1 k", () => {
+    expect(formatTokens(4_100_000, "en")).toBe("4.1 M");
+    expect(formatTokens(4_100_000, "de")).toBe("4,1 M");
+    expect(formatTokens(812_000, "en")).toBe("812 k");
+    expect(formatTokens(300, "en")).toBe("< 1 k");
+    expect(formatTokens(0, "en")).toBe("< 1 k");
+  });
+  it("GPU seconds", () => {
+    expect(formatGpuSeconds(2100.4, "en")).toBe("~2,100 GPU-s");
+    expect(formatGpuSeconds(2100.4, "de")).toBe("~2.100 GPU-s");
+  });
+});
+
+describe("tokens = prompt + completion (one sum on every surface)", () => {
+  it("adds both", () => {
+    expect(totalTokens({ prompt_tokens: 3_000_000, completion_tokens: 1_100_000 })).toBe(4_100_000);
+  });
+});
+
+describe("refKey", () => {
+  it("is pr-N, else the short ref, else an en dash", () => {
+    expect(refKey({ pr_number: 4, git_ref: "refs/pull/4/merge" })).toBe("pr-4");
+    expect(refKey({ pr_number: null, git_ref: "refs/heads/main" })).toBe("main");
+    expect(refKey({ pr_number: null, git_ref: null })).toBe("–");
   });
 });
