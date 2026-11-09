@@ -151,11 +151,9 @@ def test_baseline_error_in_a_tiny_slice_does_not_raise() -> None:
 
 
 def test_baseline_errors_above_the_cap_on_a_testable_slice_raise() -> None:
-    en = range(60)
     with pytest.raises(GateInputError, match="baseline"):
         _custom(300, 1, {}, en_clusters=60, base_edit=dict.fromkeys(range(18), None))
     _custom(300, 1, {}, en_clusters=60, base_edit=dict.fromkeys(range(12), None))
-    assert len(en) == 60
 
 
 def test_quarter_of_the_cases_judge_errored_everywhere_fails_closed() -> None:
@@ -167,3 +165,33 @@ def test_overall_alone_gated_still_applies_the_cap() -> None:
     policy = POLICY.model_copy(update={"gated_slices": ("overall",)})
     errors = dict.fromkeys(range(0, 300, 4), None)
     assert _custom(300, 1, errors, en_clusters=60, policy=policy).status is FAIL
+
+
+def test_baseline_cap_boundary_is_13_of_60() -> None:
+    """12 of 60 is exactly 20 % and passes; 13 of 60 (21.7 %) raises."""
+    _custom(300, 1, {}, en_clusters=60, base_edit=dict.fromkeys(range(12), None))
+    with pytest.raises(GateInputError, match="baseline errors on 13 of 60"):
+        _custom(300, 1, {}, en_clusters=60, base_edit=dict.fromkeys(range(13), None))
+
+
+def test_baseline_cap_does_not_count_not_applicable_cases_in_the_denominator() -> None:
+    """60 en cases, 20 baseline not_applicable: 9 errors are 9 of 40 applicable (22.5 %)."""
+    na = dict.fromkeys(range(20), float("nan"))
+    with pytest.raises(GateInputError, match="baseline errors on 9 of 40"):
+        _custom(300, 1, {}, en_clusters=60, base_edit={**na, **dict.fromkeys(range(20, 29), None)})
+    # 8 of 40 is exactly 20 %
+    _custom(300, 1, {}, en_clusters=60, base_edit={**na, **dict.fromkeys(range(20, 28), None)})
+
+
+def test_baseline_errors_cannot_push_a_slice_below_min_clusters_unseen() -> None:
+    """33 en clusters, 6 baseline errors (18 %, within the cap) leave 27 < 30: a signal."""
+    with pytest.raises(GateInputError, match=r"baseline errors.*27 of 33 clusters"):
+        _custom(300, 1, {}, en_clusters=33, base_edit=dict.fromkeys(range(6), None))
+    _custom(300, 1, {}, en_clusters=33, base_edit=dict.fromkeys(range(3), None))
+
+
+def test_baseline_errors_cannot_push_overall_below_min_clusters_unseen() -> None:
+    """33 clusters in total, 6 baseline errors: `overall` would silently turn informational."""
+    with pytest.raises(GateInputError, match=r"27 of 33 clusters of overall"):
+        _custom(33, 1, {}, base_edit=dict.fromkeys(range(6), None))
+    _custom(33, 1, {}, base_edit=dict.fromkeys(range(3), None))

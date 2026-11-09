@@ -8,10 +8,12 @@ missing is still listed (and shows as ``INSUFFICIENT_DATA``) instead of vanishin
 import numpy as np
 from numpy.typing import NDArray
 
+from pruefstand.core.config import GatePolicy
 from pruefstand.gate._validate import fail
 from pruefstand.gate.tables import OVERALL, PERTURBED_ALL, TAG_SEP, PairedTable
 
 Attrs = dict[str, tuple[str, ...]]
+RETRIEVAL_METRICS = ("context_recall", "ndcg_at_k")  # the only metrics with a `perturbed_all` pair
 
 
 def _column(attrs: Attrs, dimension: str) -> NDArray[np.str_]:
@@ -86,3 +88,28 @@ def slice_values(table: PairedTable, dimension: str) -> tuple[str, ...]:
         tags = {t for cell in column[~perturbed] for t in str(cell).split(TAG_SEP) if t}
         return tuple(sorted(tags))
     return tuple(sorted({str(v) for v in column[~perturbed]}))
+
+
+def slice_specs(table: PairedTable, policy: GatePolicy) -> list[tuple[str, str]]:
+    """Return the (dimension, value) pairs of one metric in the contractual order (step 6).
+
+    ``overall``; ``perturbed_all`` only for ``RETRIEVAL_METRICS`` when the run has perturbed
+    members; then every value of each ``policy.slices`` dimension. The one definition used by the
+    pairing (``gate.pairs``) and by the promote-time baseline check (``gate.baseline_run``).
+
+    Args:
+        table: The paired table of the metric.
+        policy: Gate policy (``slices``).
+
+    Returns:
+        The pairs, in order.
+    """
+    specs: list[tuple[str, str]] = [(OVERALL, OVERALL)]
+    if (
+        table.metric in RETRIEVAL_METRICS
+        and slice_members(table, PERTURBED_ALL, PERTURBED_ALL).any()
+    ):
+        specs.append((PERTURBED_ALL, PERTURBED_ALL))
+    for dimension in policy.slices:
+        specs.extend((dimension, value) for value in slice_values(table, dimension))
+    return specs

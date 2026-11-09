@@ -220,7 +220,8 @@ def evaluate_gate(
             ``max_error_rate``, a policy metric without a direction, a non-binary value of an
             absolute-check or hard-fail metric, runs that hold different, duplicate or no cases,
             a gated metric without any usable baseline value, baseline ``error`` values above 20 %
-            of a testable gated slice, or a response-less record whose ``error_rate`` is 0.
+            of a testable gated slice or leaving it under ``min_clusters`` clusters, or a
+            response-less record whose ``error_rate`` is 0.
     """
     _validate(baseline, candidate, policy, directions)
     hard_fails = find_hard_fails(candidate, policy.hard_fail, baseline=baseline)
