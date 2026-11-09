@@ -2,6 +2,7 @@
 
 import json
 import time
+from collections.abc import Iterator
 
 import httpx
 import pytest
@@ -115,6 +116,33 @@ def test_oversized_body_is_413(client: TestClient) -> None:
         headers={"content-type": "application/json"},
     )
     assert resp.status_code == 413
+
+
+def _chunked(total: int, piece: int = 4096) -> Iterator[bytes]:
+    yield b"{"
+    for _ in range(total // piece):
+        yield b" " * piece
+    yield b"}"
+
+
+def test_chunked_oversized_body_without_content_length_is_413(client: TestClient) -> None:
+    request = client.build_request(
+        "POST",
+        "/v1/query",
+        content=_chunked(2 * 1024 * 1024),
+        headers={"content-type": "application/json"},
+    )
+    assert "content-length" not in request.headers  # transfer-encoding: chunked
+    resp = client.send(request)
+    assert resp.status_code == 413
+    assert resp.json() == {"detail": "request body too large"}
+
+
+def test_small_chunked_body_still_reaches_the_validators(client: TestClient) -> None:
+    resp = client.post(
+        "/v1/query", content=iter([b"{", b"}"]), headers={"content-type": "application/json"}
+    )
+    assert resp.status_code == 422
 
 
 @respx.mock
