@@ -5,7 +5,12 @@ bad row costs one ``bad_record``), JSON lines one capped line at a time. Every r
 examined is charged to a :class:`~pruefstand.ingest.records_model.RowBudget`.
 """
 
+import dataclasses
 import json
+import os
+import pickle
+import subprocess
+import sys
 from collections.abc import Iterator, Sequence
 from pathlib import Path
 from typing import IO
@@ -18,6 +23,16 @@ from pruefstand.ingest.records_model import OldpLimits, Problem, RowBudget
 _DRAIN_CHUNK = 64 * 1024
 _BATCH_ROWS = 64
 _BATCH_BYTES = 1024 * 1024
+_BOUNDED_ENCODINGS = frozenset(
+    {
+        "PLAIN",
+        "RLE",
+        "BIT_PACKED",
+        "DELTA_BINARY_PACKED",
+        "DELTA_LENGTH_BYTE_ARRAY",
+        "BYTE_STREAM_SPLIT",
+    }
+)
 _CONVERT_ERRORS = (ArithmeticError, ValueError, KeyError, pa.ArrowException)
 
 
@@ -30,11 +45,14 @@ def _parquet_groups(
 ) -> list[tuple[int, int, int]]:
     """``(row group, batch size, rows before the group)`` for groups below the uncompressed cap.
 
-    A row group with a dictionary page in a wanted column is read one row per batch: the footer
-    counts a dictionary value once, so it says nothing about the decoded size of many rows that
-    share it (a dictionary bomb). Other groups use up to ``_BATCH_ROWS`` rows whose footer size
-    stays below ``_BATCH_BYTES``. The third item keeps row numbers aligned with the file when a
-    group is dropped.
+    A row group is read one row per batch unless every wanted column (matched by its top-level
+    name, so nested columns count) has no dictionary page and uses only encodings whose footer
+    size bounds the decoded size (``_BOUNDED_ENCODINGS``): a dictionary value, or a
+    ``DELTA_BYTE_ARRAY`` prefix, is counted once in the footer but decoded once per row (a
+    bomb). Bounded groups use up to ``_BATCH_ROWS`` rows whose footer size stays below
+    ``_BATCH_BYTES``. The footer is written by whoever made the file and can lie: the per-batch
+    ``nbytes`` check and the memory limit of the reader process are the backstops. The third
+    item keeps row numbers aligned with the file when a group is dropped.
     """
     groups: list[tuple[int, int, int]] = []
     before = 0
@@ -46,13 +64,14 @@ def _parquet_groups(
             detail = f"{size} uncompressed bytes > {limits.max_group_bytes}"
             problems.append(Problem(f"{path.name}[{index}]", "row_group_too_large", detail))
             continue
-        dictionary = any(
-            group.column(c).has_dictionary_page
+        bounded = all(
+            not group.column(c).has_dictionary_page
+            and set(group.column(c).encodings) <= _BOUNDED_ENCODINGS
             for c in range(group.num_columns)
-            if group.column(c).path_in_schema in wanted
+            if group.column(c).path_in_schema.split(".")[0] in wanted
         )
         per_row = max(1, size // max(1, group.num_rows))
-        rows = 1 if dictionary else max(1, min(_BATCH_ROWS, _BATCH_BYTES // per_row))
+        rows = max(1, min(_BATCH_ROWS, _BATCH_BYTES // per_row)) if bounded else 1
         groups.append((index, rows, start))
     return groups
 
@@ -60,6 +79,8 @@ def _parquet_groups(
 def _convert(batch: pa.RecordBatch) -> list[dict[str, object]] | None:
     try:
         return list(batch.to_pylist())
+    except MemoryError:
+        raise  # an ArrowMemoryError is also an ArrowException: the memory backstop must see it
     except _CONVERT_ERRORS:
         return None
 
@@ -90,12 +111,14 @@ def _batch_rows(
             continue
         try:
             yield first + offset, part.to_pylist()[0]
+        except MemoryError:
+            raise
         except _CONVERT_ERRORS as error:
             detail = f"unconvertible row: {type(error).__name__}: {error}"
             problems.append(Problem(where, "bad_record", detail))
 
 
-def parquet_rows(
+def parquet_rows_local(
     path: Path,
     columns: Sequence[str],
     limits: OldpLimits,
@@ -117,8 +140,79 @@ def parquet_rows(
                 if budget.hit:
                     cap_reached(path.name, limits, problems)
                     return
+    except MemoryError:
+        raise
     except (pa.ArrowException, OSError, ValueError) as error:
         problems.append(Problem(path.name, "bad_file", f"unreadable parquet: {error}"[:200]))
+
+
+def parquet_rows(
+    path: Path,
+    columns: Sequence[str],
+    limits: OldpLimits,
+    problems: list[Problem],
+    budget: RowBudget,
+) -> Iterator[tuple[int, dict[str, object]]]:
+    """Read a parquet file in a child process with a hard memory limit (the backstop).
+
+    Same rows and problems as :func:`parquet_rows_local`. When the child runs out of memory (or
+    dies), the file ends with one counted ``memory_limit`` problem; the machine is not affected.
+    ``limits.max_parquet_memory_bytes == 0`` reads in this process.
+    """
+    if limits.max_parquet_memory_bytes <= 0:
+        yield from parquet_rows_local(path, columns, limits, problems, budget)
+        return
+    spec = {
+        "path": str(path),
+        "columns": list(columns),
+        "limits": dataclasses.asdict(limits),
+        "left": budget.left,
+    }
+    command = [sys.executable, "-m", "pruefstand.ingest.records_child", json.dumps(spec)]
+    # one malloc arena and the system allocator: per-thread arenas reserve address space that the
+    # address-space limit of the child would count
+    env = {**os.environ, "ARROW_DEFAULT_MEMORY_POOL": "system", "MALLOC_ARENA_MAX": "1"}
+    with subprocess.Popen(  # noqa: S603 (our own module, arguments are data)
+        command,
+        stdin=subprocess.DEVNULL,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.DEVNULL,
+        env=env,
+    ) as child:
+        try:
+            yield from _child_events(child, path, limits, problems, budget)
+        finally:
+            child.kill()
+
+
+def _child_events(
+    child: "subprocess.Popen[bytes]",
+    path: Path,
+    limits: OldpLimits,
+    problems: list[Problem],
+    budget: RowBudget,
+) -> Iterator[tuple[int, dict[str, object]]]:
+    assert child.stdout is not None  # noqa: S101 (PIPE was requested)
+    while True:
+        try:
+            event = pickle.load(child.stdout)  # noqa: S301 (written by records_child, our code)
+        except (EOFError, pickle.UnpicklingError):
+            code = child.wait()
+            detail = f"reader process ended with exit code {code} (memory limit or crash)"
+            problems.append(Problem(path.name, "memory_limit", detail))
+            return
+        if event[0] == "row":
+            yield event[1], event[2]
+        elif event[0] == "problem":
+            problems.append(event[1])
+        elif event[0] == "memory":
+            mib = limits.max_parquet_memory_bytes // (1024 * 1024)
+            detail = f"{event[1]}; the reader may use {mib} MiB more than it starts with"
+            problems.append(Problem(path.name, "memory_limit", detail))
+            return
+        else:
+            budget.left, budget.hit = event[1], event[2]
+            return
 
 
 def jsonl_rows(

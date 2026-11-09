@@ -153,6 +153,21 @@ def test_a_target_without_a_usable_identity_gets_no_cache_at_all(
     assert not shared_db(tmp_path).exists()  # neither read nor written
 
 
+def test_a_trusted_id_does_not_give_an_opaque_target_an_identity(
+    cli: CliRunner,
+    opaque: TargetCassette,
+    good_config: Path,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """T6.1a (5): the executor id vouches for a usable identity, never replaces a missing one."""
+    monkeypatch.setenv("PRUEFSTAND_TRUSTED_TARGET_ID", TRUSTED)
+    first = shared_run(cli, good_config, tmp_path, monkeypatch)
+    second = shared_run(cli, good_config, tmp_path, monkeypatch)
+    assert first["counts"].get("cached", 0) == second["counts"].get("cached", 0) == 0
+    assert not shared_db(tmp_path).exists()
+
+
 def test_an_invalid_trusted_id_is_a_usage_error(
     cli: CliRunner,
     good: TargetCassette,

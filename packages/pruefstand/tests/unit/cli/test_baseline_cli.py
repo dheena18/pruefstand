@@ -10,6 +10,7 @@ from testsupport.builders import make_case as make_gate_case
 from testsupport.builders import make_record
 from testsupport.builders import make_run as make_gate_run
 from testsupport.pipeline_support import config_file, mini_config
+from testsupport.report_builders import gate_report
 from testsupport.run_builders import make_case
 from testsupport.store_support import (
     FP,
@@ -25,7 +26,9 @@ from typer.testing import CliRunner, Result
 from pruefstand.cli import app
 from pruefstand.cli.baseline import _informational_metrics
 from pruefstand.core.config import BaselineStoreConfig
+from pruefstand.core.enums import GateStatus
 from pruefstand.core.models.run import RunArtifacts
+from pruefstand.report.json_report import write_gate_json
 from pruefstand.store.artifacts import ArtifactStore
 from pruefstand.store.baselines_local import LocalDirBaselineStore
 
@@ -41,7 +44,14 @@ def config(tmp_path: Path) -> Path:
 
 
 def promote(cli: CliRunner, tmp_path: Path, run_dir: Path, ref: str) -> Result:
-    args = ["baseline", "promote", "--run", str(run_dir), "--ref", ref]
+    # These tests are about the store, not the gate guard (test_promote_gate.py): give the run a
+    # passing gate.json and waive the unverifiable leak checks of the two-metric synthetic runs.
+    if not (run_dir / "gate.json").exists():
+        write_gate_json(
+            gate_report(status=GateStatus.PASS, hard_fails=(), candidate_run_id=run_dir.name),
+            run_dir / "gate.json",
+        )
+    args = ["baseline", "promote", "--run", str(run_dir), "--ref", ref, "--allow-failed-gate"]
     return cli.invoke(app, [*args, "--config", str(config(tmp_path))])
 
 

@@ -54,6 +54,41 @@ def _read_manifest(path: Path) -> tuple[RunManifest, str] | None:
         return None
 
 
+def baseline_dir(run: Path, report: GateReport) -> Path | None:
+    """Return the baseline run directory named by ``gate.json`` (a sibling of ``run``), or None.
+
+    ``baseline_run_id`` comes from a file inside the run directory, so it must be one plain
+    directory name: no separator, no ``.`` / ``..``, no NUL.
+
+    Raises:
+        ConfigError: The id is not a plain directory name.
+    """
+    name = report.baseline_run_id
+    if name is None:
+        return None
+    plain = bool(name) and name not in {".", ".."} and Path(name).name == name
+    if not plain or "\\" in name or "\0" in name:
+        msg = f"{run / 'gate.json'}: baseline_run_id {name[:60]!r} is not a plain run id"
+        raise ConfigError(msg)
+    return run.parent / name
+
+
+def check_gate_matches_run(run: Path, report: GateReport) -> None:
+    """Refuse a ``gate.json`` that was written for another run than the one next to it.
+
+    Raises:
+        ConfigError: ``candidate_run_id`` differs from the ``run_id`` in ``run.json`` (an
+            unreadable ``run.json`` is reported by the command that reads the run).
+    """
+    mine = _read_manifest(run / RUN_FILE)
+    if mine is not None and mine[0].run_id != report.candidate_run_id:
+        msg = (
+            f"{run / 'gate.json'} is the gate result of run {report.candidate_run_id[:60]}, "
+            f"not of {mine[0].run_id[:60]}"
+        )
+        raise ConfigError(msg)
+
+
 def mask_strings(value: object) -> object:
     """Return ``value`` (JSON data) with the detector's canary mask applied to every string."""
     if isinstance(value, str):
@@ -79,7 +114,8 @@ def evidence_json(run: Path, report: GateReport, gate_raw: bytes, config: Path) 
     cand, cand_hash = mine
     theirs = None
     if report.baseline_run_id is not None:
-        theirs = _read_manifest(run.parent / report.baseline_run_id / RUN_FILE)
+        directory = baseline_dir(run, report)
+        theirs = None if directory is None else _read_manifest(directory / RUN_FILE)
     base = None if theirs is None else theirs[0]
     cfg = load_config(config)
     if stable_hash(cfg) != cand.config_hash:

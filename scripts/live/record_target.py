@@ -9,6 +9,7 @@ the files. Nothing is edited by hand. Run through ``make cassettes-target``.
 
 import argparse
 import json
+import re
 import sys
 import uuid
 from collections.abc import Sequence
@@ -20,6 +21,7 @@ import httpx
 import yaml
 
 TIMEOUT_S = 180.0
+_SHA = re.compile(r"[0-9A-Za-z._-]{1,64}")
 
 
 def _cases(path: Path) -> list[dict[str, Any]]:
@@ -41,6 +43,13 @@ def _query(client: httpx.Client, base: str, row: dict[str, Any]) -> dict[str, An
     }
 
 
+def _git_sha(info: object) -> str:
+    """The git sha the target reports in ``/v1/info`` (only safe characters), or ``unknown``."""
+    sha = info.get("git_sha") if isinstance(info, dict) else None
+    text = sha if isinstance(sha, str) else ""
+    return text if _SHA.fullmatch(text) else "unknown"
+
+
 def _dump(path: Path, header: str, data: dict[str, Any]) -> None:
     text = yaml.safe_dump(data, allow_unicode=True, sort_keys=True, width=100)
     path.write_text(f"# {header}\n{text}", encoding="utf-8")
@@ -55,10 +64,13 @@ def main(argv: Sequence[str] | None = None) -> int:
     args = parser.parse_args(argv)
     base = args.url.rstrip("/")
     day = f"{datetime.now(UTC):%Y-%m-%d}"
-    header = f"recorded {day} by scripts/live/record_target.py from the real rag-demo"
     with httpx.Client(timeout=TIMEOUT_S) as client:
         info = client.get(f"{base}/v1/info")
         info.raise_for_status()
+        header = (
+            f"recorded {day} by scripts/live/record_target.py from the real rag-demo "
+            f"(git {_git_sha(info.json())})"
+        )
         exchanges = [_query(client, base, row) for row in _cases(args.cases)]
     failed = [e for e in exchanges if e["response"]["status"] != 200]
     if failed:

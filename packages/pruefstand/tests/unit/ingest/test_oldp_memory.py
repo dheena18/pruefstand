@@ -40,22 +40,83 @@ def spy_batches(monkeypatch: pytest.MonkeyPatch) -> list[tuple[int, int]]:
     return seen
 
 
+IN_PROCESS = OldpLimits(max_parquet_memory_bytes=0, max_record_bytes=1 * MIB)  # the spy sees it
+BIG = "a" * 2_000_000
+
+
+def write_bomb(path: Path, table: pa.Table, **options: Any) -> Path:
+    path.parent.mkdir(exist_ok=True)
+    pq.write_table(table, path, compression="zstd", **options)
+    assert path.stat().st_size < 1 * MIB
+    return path
+
+
+def read_bomb(path: Path, monkeypatch: pytest.MonkeyPatch, rows: int) -> list[tuple[int, int]]:
+    seen = spy_batches(monkeypatch)
+    loader = OldpLoader(IN_PROCESS)
+    assert list(loader.load(path.parent)) == []
+    assert loader.stats.problems.counts == {"record_too_large": rows}
+    return seen
+
+
 def test_dictionary_bomb_is_read_one_row_per_batch(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """Many rows share one big dictionary value: the footer counts it once, each row decodes it."""
+    table = pa.table({"id": list(range(1, 101)), "content": [BIG] * 100})
+    path = write_bomb(tmp_path / "d" / "x.parquet", table)
+    assert pq.ParquetFile(path).metadata.row_group(0).column(1).has_dictionary_page
+    seen = read_bomb(path, monkeypatch, 100)
+    assert {size for size, _ in seen} == {1}  # never 64 rows of 2 MB at once
+    assert max(nbytes for _, nbytes in seen) < 4 * MIB
+
+
+def test_nested_dictionary_column_is_read_one_row_per_batch(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """``content.list.element`` is a nested column: it is matched by its top-level name."""
+    content = pa.array([[BIG]] * 100, pa.list_(pa.string()))
+    table = pa.table({"id": list(range(1, 101)), "content": content})
+    path = write_bomb(tmp_path / "d" / "x.parquet", table)
+    column = pq.ParquetFile(path).metadata.row_group(0).column(1)
+    assert column.path_in_schema != "content"
+    assert column.has_dictionary_page
+    seen = spy_batches(monkeypatch)
+    list(OldpLoader(IN_PROCESS).load(path.parent))
+    assert {size for size, _ in seen} == {1}
+
+
+def test_delta_byte_array_bomb_is_read_one_row_per_batch(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """DELTA_BYTE_ARRAY stores a repeated value once as prefix; every row decodes in full."""
+    table = pa.table({"id": list(range(1, 101)), "content": [BIG] * 100})
+    path = write_bomb(
+        tmp_path / "d" / "x.parquet",
+        table,
+        use_dictionary=False,
+        column_encoding={"id": "PLAIN", "content": "DELTA_BYTE_ARRAY"},
+    )
+    column = pq.ParquetFile(path).metadata.row_group(0).column(1)
+    assert "DELTA_BYTE_ARRAY" in column.encodings
+    assert not column.has_dictionary_page
+    seen = read_bomb(path, monkeypatch, 100)
+    assert {size for size, _ in seen} == {1}
+
+
+def test_the_memory_backstop_ends_an_unknown_bomb_with_a_named_problem(tmp_path: Path) -> None:
+    """One row that decodes to 200 MB against a 128 MiB reader limit (footer cap raised)."""
     path = tmp_path / "d" / "x.parquet"
     path.parent.mkdir()
-    frame = pl.DataFrame({"id": list(range(1, 301)), "content": ["a" * 3_000_000] * 300})
-    frame.write_parquet(path, compression="zstd")
-    assert path.stat().st_size < 1 * MIB
-    assert pq.ParquetFile(path).metadata.row_group(0).column(1).has_dictionary_page
-    seen = spy_batches(monkeypatch)
-    loader = OldpLoader(OldpLimits(max_record_bytes=1 * MIB))
+    table = pa.table({"id": [1], "content": ["a" * 200_000_000]})
+    pq.write_table(table, path, compression="zstd", use_dictionary=False)
+    limits = OldpLimits(
+        max_parquet_memory_bytes=128 * MIB, max_group_bytes=4096 * MIB, max_record_bytes=4096 * MIB
+    )
+    loader = OldpLoader(limits)
     assert list(loader.load(path.parent)) == []
-    assert loader.stats.problems.counts == {"record_too_large": 300}
-    assert {size for size, _ in seen} == {1}  # never 64 rows of 3 MB at once
-    assert max(nbytes for _, nbytes in seen) < 4 * MIB
+    assert loader.stats.problems.counts == {"memory_limit": 1}
+    assert loader.stats.problems.total == 1  # a counted problem: the CLI exits 1
 
 
 def test_plain_row_groups_keep_the_larger_batches(
@@ -66,7 +127,7 @@ def test_plain_row_groups_keep_the_larger_batches(
     table = pa.table({"id": list(range(1, 501)), "content": [f"text {i}" for i in range(500)]})
     pq.write_table(table, path, use_dictionary=False)
     seen = spy_batches(monkeypatch)
-    assert len(list(OldpLoader().load(path.parent))) == 500
+    assert len(list(OldpLoader(OldpLimits(max_parquet_memory_bytes=0)).load(path.parent))) == 500
     assert {size for size, _ in seen} == {64}
 
 
@@ -97,12 +158,17 @@ def test_row_group_above_the_uncompressed_cap_is_skipped_unread(tmp_path: Path) 
 def test_normal_row_groups_are_streamed_in_batches(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    path = bomb(tmp_path / "d" / "x.parquet", rows=200, chars=100_000)  # 20 MB uncompressed
+    path = tmp_path / "d" / "x.parquet"
+    path.parent.mkdir()
+    table = pa.table({"id": list(range(1, 201)), "content": ["a" * 100_000] * 200})  # 20 MB
+    pq.write_table(table, path, use_dictionary=False)
     seen = spy_batches(monkeypatch)
     problems: list[Problem] = []
-    count = sum(1 for _ in iter_rows(path, ("id", "content"), OldpLimits(), problems))
+    limits = OldpLimits(max_parquet_memory_bytes=0)
+    count = sum(1 for _ in iter_rows(path, ("id", "content"), limits, problems))
     assert (count, problems) == (200, [])
-    assert max(nbytes for _, nbytes in seen) < 1 * MIB  # never the whole 20 MB row group
+    assert {size for size, _ in seen} == {10}  # about 1 MiB of footer size per batch
+    assert max(nbytes for _, nbytes in seen) < 2 * MIB  # never the whole 20 MB row group
 
 
 def test_graph_edges_are_bounded_too(tmp_path: Path) -> None:

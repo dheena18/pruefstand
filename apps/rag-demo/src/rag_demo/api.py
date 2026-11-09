@@ -2,14 +2,14 @@
 
 import asyncio
 import logging
-from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from typing import Any
 
-from fastapi import FastAPI, HTTPException, Request, Response
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 
+from rag_demo.body_limit import BodyLimitMiddleware
 from rag_demo.catalogue import CatalogueEntry
 from rag_demo.config import Settings, load_config
 from rag_demo.errors import (
@@ -218,14 +218,7 @@ MAX_BODY_BYTES = 16 * 1024
 
 def _add_guards(app: FastAPI) -> None:
     """Body size limit (413) and validation errors that never echo the input (422)."""
-
-    @app.middleware("http")
-    async def limit_body(
-        request: Request, call_next: Callable[[Request], Awaitable[Response]]
-    ) -> Response:
-        if int(request.headers.get("content-length") or 0) > MAX_BODY_BYTES:
-            return JSONResponse({"detail": "request body too large"}, status_code=413)
-        return await call_next(request)
+    app.add_middleware(BodyLimitMiddleware, max_bytes=MAX_BODY_BYTES)
 
     @app.exception_handler(RequestValidationError)
     async def invalid(_: Request, exc: RequestValidationError) -> JSONResponse:

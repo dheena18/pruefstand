@@ -89,6 +89,10 @@ class OldpLimits:
             sample has about 1 000).
         max_files: Most data files one directory pass opens (the sample has 1 to 3); the rest
             are ignored with one counted ``too_many_files``.
+        max_parquet_memory_bytes: Hard memory backstop of parquet reading: the file is read in a
+            child process whose address space may grow by this much beyond its start (0 reads in
+            the calling process, for tests). An unknown bomb type then ends as one counted
+            ``memory_limit`` problem for that file instead of exhausting the machine.
         max_group_bytes: Largest *uncompressed* parquet row group read (from the footer, before
             decoding). Row groups with a dictionary-encoded column are read one row per
             batch (a dictionary value is counted once in the footer but decodes once per row), the
@@ -102,6 +106,7 @@ class OldpLimits:
     max_rows: int = 100_000
     max_files: int = 1_000
     max_group_bytes: int = 128 * _MIB
+    max_parquet_memory_bytes: int = 512 * _MIB
 
 
 class RowBudget:

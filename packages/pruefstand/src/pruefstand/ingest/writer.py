@@ -196,7 +196,7 @@ def _publish(out_dir: Path, files: dict[str, bytes], manifest: CorpusManifest) -
         raise DatasetError(msg)
     parent.mkdir(parents=True, exist_ok=True)
     staging = Path(tempfile.mkdtemp(prefix=f".{out_dir.name}.", suffix=".partial", dir=parent))
-    staging.chmod(0o755)  # mkdtemp makes it 0700; the published directory must be readable
+    staging.chmod(0o777 & ~_umask())  # mkdtemp makes it 0700; publish it as the umask says
     try:
         for name, data in files.items():
             _write_new(staging / name, data)
@@ -221,6 +221,17 @@ def _move_into_place(staging: Path, out_dir: Path, files: dict[str, bytes]) -> N
         else:
             return
     _same_as_existing(out_dir, files)
+
+
+def _umask() -> int:
+    """The process umask without changing it (``os.umask`` is process-wide and not thread-safe)."""
+    try:
+        for line in Path("/proc/self/status").read_text(encoding="ascii").splitlines():
+            if line.startswith("Umask:"):
+                return int(line.split()[1], 8)
+    except (OSError, ValueError):
+        pass
+    return 0o022
 
 
 def _write_new(path: Path, data: bytes) -> None:

@@ -292,3 +292,14 @@ def test_published_directory_and_files_are_readable_by_others(
     out = tmp_path / manifest.corpus_version
     assert stat.S_IMODE(out.stat().st_mode) == 0o755
     assert {stat.S_IMODE(p.stat().st_mode) for p in out.iterdir()} == {0o644}
+
+
+def test_published_directory_follows_a_strict_umask(chunks: list[Chunk], tmp_path: Path) -> None:
+    old = os.umask(0o077)
+    try:
+        manifest = write(chunks, tmp_path)
+    finally:
+        os.umask(old)
+    out = tmp_path / manifest.corpus_version
+    assert stat.S_IMODE(out.stat().st_mode) == 0o700
+    assert {stat.S_IMODE(p.stat().st_mode) for p in out.iterdir()} == {0o600}
