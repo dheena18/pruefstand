@@ -18,8 +18,11 @@ from pruefstand.core.models.metric import MetricKind, MetricStatus, MetricValue
 from pruefstand.core.models.run import RunResults
 from pruefstand.core.models.target import TargetResponse, Usage
 from pruefstand.core.models.testcase import TestCase
+from pruefstand.judges.output import SPECS
+from pruefstand.judges.tokens import estimate_tokens
 from pruefstand.llm.budget import Budget
 from pruefstand.metrics.registry import MetricRegistry
+from pruefstand.runner.judging import JudgeScope
 from pruefstand.runner.runner import Runner
 
 BASE = "http://target.test"
@@ -44,27 +47,53 @@ def charge_one(budget: Budget, *, cost_usd: float = 0.0) -> None:
 
 
 class SpyJudge:
-    """A judge that records its calls; ``act`` may charge the budget or raise."""
+    """A judge that records its calls; ``act`` may charge the budget or raise.
+
+    It answers with the raw score its pool maps to the metric (default 2 = the maximum), so a
+    real judged metric and the real runner can be driven without a model.
+    """
 
     def __init__(self, pool: "SpyPool") -> None:
         self._pool = pool
 
+    @property
+    def input_cap(self) -> int:
+        return self._pool.cap
+
+    def prompt_tokens(self, task: JudgeTask) -> int:
+        return sum(estimate_tokens(text) for text in task.inputs.values())
+
     async def score(self, task: JudgeTask) -> JudgeVerdict:
         self._pool.score_calls.append(task.inputs.get("case_id", ""))
+        self._pool.tasks.append(task)
         if self._pool.act is not None:
             await self._pool.act(task)
+        top = SPECS[task.metric].max_raw if task.metric in SPECS else 2
+        raw = min(self._pool.raw.get(task.metric, top), top)
         return JudgeVerdict(
-            score=1.0, reason="ok", raw_score=2, judge_model="ollama/gemma3:12b", cached=False
+            score=raw / top,
+            reason="ok",
+            raw_score=raw,
+            judge_model="ollama/gemma3:12b",
+            cached=False,
         )
 
 
 class SpyPool:
     """A ``JudgePoolLike`` that records ``for_metric`` calls (test-only, not a model fake)."""
 
-    def __init__(self, act: Callable[[JudgeTask], Awaitable[None]] | None = None) -> None:
+    def __init__(
+        self,
+        act: Callable[[JudgeTask], Awaitable[None]] | None = None,
+        raw: dict[str, int] | None = None,
+        cap: int = 11_264,
+    ) -> None:
         self.act = act
+        self.cap = cap
+        self.raw = raw or {}
         self.for_metric_calls: list[str] = []
         self.score_calls: list[str] = []
+        self.tasks: list[JudgeTask] = []
 
     def for_metric(self, metric: str) -> SpyJudge:
         self.for_metric_calls.append(metric)
@@ -113,11 +142,13 @@ def make_runner(  # noqa: PLR0913
     max_retries: int = 3,
     backoff_s: float = 0.001,
     hard_fail: tuple[str, ...] | None = None,
+    judge_scope: JudgeScope | None = None,
 ) -> Runner:
     cfg = RunnerConfig(
         concurrency=concurrency, timeout_s=timeout_s, max_retries=max_retries, backoff_s=backoff_s
     )
-    extra = {} if hard_fail is None else {"hard_fail": hard_fail}
+    extra: dict[str, Any] = {} if hard_fail is None else {"hard_fail": hard_fail}
+    extra["judge_scope"] = judge_scope
     return Runner(
         adapter,
         metrics or MetricRegistry.default(),
