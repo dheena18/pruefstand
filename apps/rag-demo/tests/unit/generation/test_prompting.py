@@ -8,7 +8,7 @@ from rd_support import CONFIGS, REPO, hit
 
 from rag_demo.config import PACKAGE_DIR, config_hash, load_config
 from rag_demo.generation import build_prompt, load_prompt, prompt_hits
-from rag_demo.generation.prompting import uses_numbered_layout
+from rag_demo.generation.prompting import GUARD_NOTE, uses_numbered_layout
 from rag_demo.models import Hit, RagConfig
 
 CATALOGUE = REPO / "infra" / "gpu" / "models.yaml"
@@ -147,3 +147,12 @@ def test_prompt_hits_hold_the_guarded_text_with_the_guard_on_and_the_raw_text_of
     assert guarded.text in _user(GOOD, [planted])
     (raw,) = prompt_hits([planted], GUARD_OFF)
     assert INJECTION in raw.text
+
+
+def test_the_guard_note_and_the_english_switch_live_in_versioned_prompt_files() -> None:
+    notes = PROMPTS / "guard_note_v1.txt"
+    english = (PROMPTS / "answer_language_en_v1.txt").read_text(encoding="utf-8").strip()
+    assert notes.read_text(encoding="utf-8").strip() == GUARD_NOTE
+    assert english == "Answer in English, whatever the language of the question."
+    cfg = load_config(CONFIGS / "bugs" / "gpu" / "answer_language_en.yaml", CATALOGUE)
+    assert load_prompt(cfg).endswith("\n" + english)

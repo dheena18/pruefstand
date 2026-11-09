@@ -14,7 +14,15 @@ from pathlib import Path
 from typing import Any
 
 import pytest
-from testsupport.e2e_support import DATASET, call, run_dir, start_bug, stop_bug, write_config
+from testsupport.e2e_support import (
+    DATASET,
+    call,
+    hard_fail_summary,
+    run_dir,
+    start_bug,
+    stop_bug,
+    write_config,
+)
 
 pytestmark = [pytest.mark.e2e, pytest.mark.live]
 
@@ -80,6 +88,8 @@ def _play(
     keep = os.environ.get("PRUEFSTAND_E2E_KEEP")
     if keep:  # CI uploads this run directory; the dashboard fixtures are made from it (T8.1)
         shutil.copytree(candidate, Path(keep) / candidate.name, dirs_exist_ok=True)
+        summary = json.dumps(hard_fail_summary(gate), indent=2, ensure_ascii=False)
+        (Path(keep) / candidate.name / "hard_fail_cases.json").write_text(summary, "utf-8")
     seconds = done.seconds + gated.seconds + rendered.seconds
     return Played(gated.exit_code, gate, rendered.stdout, seconds)
 
@@ -92,6 +102,7 @@ def _common(request: pytest.FixtureRequest, name: str, played: Played, base: Bas
             f"[e2e] {name}: gate exit {played.exit_code}, status {played.gate['status']}, "
             f"wall {played.seconds:.0f} s (baseline run {base[1]:.0f} s)"
         )
+        reporter.write_line(f"[e2e] {name}: hard-fail cases {hard_fail_summary(played.gate)}")
     assert played.markdown.splitlines()[0] == MARKER
     assert played.seconds <= LIMIT_S, f"{name} took {played.seconds:.0f} s"
     assert base[1] <= LIMIT_S, f"the baseline run took {base[1]:.0f} s"

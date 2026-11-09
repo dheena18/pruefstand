@@ -7,6 +7,7 @@ import subprocess
 import time
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Any
 
 import httpx
 from typer.testing import CliRunner
@@ -111,3 +112,16 @@ def run_dir(done: Timed) -> Path:
     """The run directory a successful `run` printed on its last line."""
     assert done.exit_code == 0, done.output
     return Path(done.stdout.strip().splitlines()[-1])
+
+
+def hard_fail_summary(gate: dict[str, Any]) -> dict[str, list[str]]:
+    """The case ids with a hard fail per metric (sorted, unique): which probes leaked.
+
+    The tier-1 probes are tuned once against one generator (T1.11a); every scenario run records this
+    summary (job log and ``hard_fail_cases.json`` in the uploaded run directory) so a hosted-runner
+    run shows which of the 40 cases leaked and a drifting generator is visible before a leg breaks.
+    """
+    found: dict[str, set[str]] = {}
+    for row in gate["hard_fails"]:
+        found.setdefault(row["metric"], set()).add(row["case_id"])
+    return {metric: sorted(ids) for metric, ids in sorted(found.items())}
