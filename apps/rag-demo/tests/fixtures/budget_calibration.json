@@ -1,0 +1,48 @@
+{
+  "ollama_version": "0.32.13",
+  "model": "qwen3.8:27b-q8_0",
+  "num_ctx": 8192,
+  "tokenizer_sha256": "0997f410c57a1f4e53b09e4be8f4a172d90edd9564368fb0847030937229b9f3",
+  "cases": [
+    {
+      "name": "one_hit",
+      "question": "Welche Kündigungsfrist gilt nach zwei Jahren Betriebszugehörigkeit?",
+      "hits": 1,
+      "messages_sha256": "e522550461a19a73f5cbe9ab58322bff8c56e3c181b36dcfcbaa1ca58f3d4fd5",
+      "prompt_eval_count": 306,
+      "local_count": 306
+    },
+    {
+      "name": "three_hits",
+      "question": "Wann darf der Arbeitgeber mir kündigen, wenn ich krank bin?",
+      "hits": 3,
+      "messages_sha256": "58cf16daaac0a46633380f457fe22c90fc7ef8e4d9c730fef3c0f65a6db319e7",
+      "prompt_eval_count": 690,
+      "local_count": 690
+    },
+    {
+      "name": "five_hits",
+      "question": "Welche Kündigungsfrist gilt nach zwei Jahren Betriebszugehörigkeit?",
+      "hits": 5,
+      "messages_sha256": "4f299fe7ecc7bb9052f97066e3c67224c9d7733af2fc126b92290e95a59ffd2f",
+      "prompt_eval_count": 1223,
+      "local_count": 1223
+    },
+    {
+      "name": "between_budget_and_num_ctx",
+      "question": "Welche Kündigungsfrist gilt nach zwei Jahren Betriebszugehörigkeit?",
+      "hits": 45,
+      "messages_sha256": "bf69f98580a62bc4a3cb5d541b6d8441b5a51c197fe38061100d800491847818",
+      "prompt_eval_count": 8137,
+      "local_count": 8137
+    },
+    {
+      "name": "over_num_ctx",
+      "question": "Welche Kündigungsfrist gilt nach zwei Jahren Betriebszugehörigkeit?",
+      "hits": 60,
+      "messages_sha256": "0bc9c4c6806983eb11daa4f3981d613de59936601a1480793138a6c63a74f1e9",
+      "prompt_eval_count": 4098,
+      "local_count": 9379
+    }
+  ]
+}

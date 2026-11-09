@@ -12,6 +12,7 @@ from pruefstand.core.errors import ConfigError
 
 ROOT = Path(__file__).resolve().parents[5]
 MIN_CLUSTERS = 30
+QUEUE_WAIT_S = 300  # D624: rag-demo read timeout; the A40 generator serialises requests
 
 
 def committed_files(root: Path) -> list[Path]:
@@ -31,6 +32,16 @@ def is_gate_config(path: Path) -> bool:
     return isinstance(data, dict) and "version" in data and "target" in data
 
 
+def tier2_runner_ok(cfg: PruefstandConfig) -> bool:
+    """D624: the A40 generator serialises requests, so a request can queue for minutes.
+
+    The runner must outwait the read timeout of rag-demo (``timeout_s`` > 300) or send at most
+    four requests at once; otherwise the runner gives up first. rag-demo cancels the upstream call
+    when the runner disconnects (T3.6a); not retrying a read timeout is the runner's part (T6.2a).
+    """
+    return cfg.runner.timeout_s > QUEUE_WAIT_S or cfg.runner.concurrency <= 4
+
+
 def violations(root: Path) -> list[str]:
     """Rule violations of every committed gate config under ``root``."""
     problems: list[str] = []
@@ -47,6 +58,10 @@ def violations(root: Path) -> list[str]:
             problems.append(f"{rel}: gate.min_clusters {cfg.gate.min_clusters} < {MIN_CLUSTERS}")
         if cfg.splits == (Split.SMOKE_LIVE,) and cfg.llm.fallback_judge is not None:
             problems.append(f"{rel}: tier-1 config must not set llm.fallback_judge (D97)")
+        if Split.CORE in cfg.splits and not tier2_runner_ok(cfg):
+            problems.append(
+                f"{rel}: tier-2 runner needs timeout_s > {QUEUE_WAIT_S} or concurrency <= 4 (D624)"
+            )
     return problems
 
 
@@ -129,3 +144,30 @@ def test_broken_gate_config_is_reported_not_skipped(tmp_path: Path) -> None:
 def test_each_committed_gate_config_loads(path: Path) -> None:
     if is_gate_config(path):
         assert load_config(path).gate.min_clusters >= MIN_CLUSTERS
+
+
+def _tier2(tmp_path: Path, runner: str) -> Path:
+    text = (ROOT / "examples" / "live" / "pruefstand.yaml").read_text(encoding="utf-8")
+    text = text.replace("splits: [smoke_live]", "splits: [smoke, core]")
+    assert "splits: [smoke, core]" in text
+    start, end = text.index("\nrunner:"), text.index("\nbaseline_store:")
+    path = tmp_path / "examples" / "tier2.yaml"
+    path.parent.mkdir(parents=True)
+    path.write_text(text[:start] + "\nrunner: " + runner + text[end:], encoding="utf-8")
+    return path
+
+
+@pytest.mark.parametrize(
+    ("runner", "ok"),
+    [
+        ("{concurrency: 8, timeout_s: 60, max_retries: 3}", False),
+        ("{concurrency: 8, timeout_s: 300, max_retries: 3}", False),
+        ("{concurrency: 8, timeout_s: 330, max_retries: 0}", True),
+        ("{concurrency: 4, timeout_s: 60, max_retries: 0}", True),
+    ],
+)
+def test_tier2_runner_must_outwait_the_generator_queue(
+    tmp_path: Path, runner: str, *, ok: bool
+) -> None:
+    _tier2(tmp_path, runner)
+    assert (violations(tmp_path) == []) is ok
