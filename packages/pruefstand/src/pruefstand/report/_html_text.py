@@ -7,7 +7,7 @@ unbounded length. Linear in the input size.
 
 import re
 
-from pruefstand.report.format import CANARY_MASK, mask_canaries
+from pruefstand.core.canary import CANARY_MASK, mask_canaries
 
 MASKED = "‹masked›"  # noqa: RUF001  (the same mask as store.sanitise.REDACTED, kept free of "CANARY-")
 ELLIPSIS = "…"

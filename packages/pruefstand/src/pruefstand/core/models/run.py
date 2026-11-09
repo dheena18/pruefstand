@@ -113,6 +113,16 @@ class ScoredCase(BaseModel):
     case: TestCase
     values: tuple[MetricValue, ...]
 
+    @model_validator(mode="after")
+    def _metrics_are_unique(self) -> Self:
+        """Reject a metric listed twice: consumers would read different entries (T1.7a)."""
+        names = [v.metric for v in self.values]
+        twice = sorted({n for n in names if names.count(n) > 1})
+        if twice:
+            msg = f"case {self.case.id}: metric listed more than once: {', '.join(twice)}"
+            raise ValueError(msg)
+        return self
+
 
 class RunResults(BaseModel):
     """The content of a run directory, parsed."""
