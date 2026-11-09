@@ -48,58 +48,15 @@ FRAMES: tuple[str, ...] = (
     "Es handelt sich um {a}.",
 )
 #: Function words that never make a span on their own (``same_paragraph_span``).
-STOPWORDS = frozenset(
-    [
-        "der",
-        "die",
-        "das",
-        "den",
-        "dem",
-        "des",
-        "ein",
-        "eine",
-        "einen",
-        "einem",
-        "einer",
-        "und",
-        "oder",
-        "in",
-        "im",
-        "am",
-        "an",
-        "auf",
-        "aus",
-        "bei",
-        "mit",
-        "nach",
-        "von",
-        "vom",
-        "zu",
-        "zum",
-        "zur",
-        "für",
-        "über",
-        "unter",
-        "als",
-        "wie",
-        "es",
-        "er",
-        "sie",
-        "ist",
-        "sind",
-        "war",
-        "wurde",
-        "wird",
-        "hat",
-        "haben",
-        "nicht",
-        "auch",
-        "sich",
-        "so",
-        "da",
-        "dass",
-    ]
-)
+STOPWORDS = frozenset((
+    "der", "die", "das", "den", "dem", "des", "ein", "eine", "einen", "einem", "einer", "und",
+    "oder", "in", "im", "am", "an", "auf", "aus", "bei", "mit", "nach", "von", "vom", "zu", "zum",
+    "zur", "für", "über", "unter", "als", "wie", "es", "er", "sie", "ist", "sind", "war", "wurde",
+    "wird", "hat", "haben", "nicht", "auch", "sich", "so", "da", "dass", "dennoch", "jedoch",
+    "allerdings", "außerdem", "zudem", "daher", "deshalb", "somit", "also", "vielmehr", "jeweils",
+    "allesamt", "offen", "bereits", "sowie", "etwa", "rund", "sehr", "nur", "noch", "schon",
+    "immer", "oft",
+))  # fmt: skip
 _TOKEN = re.compile(r"\w+")
 _DIGITS = re.compile(r"\d+")
 _WORD_NUM = re.compile(r"\b(" + "|".join(NUMBER_WORDS[:-1]) + r")\b", re.IGNORECASE)
@@ -280,9 +237,21 @@ def _windows(sentence: str, n: int) -> list[str]:
     return out
 
 
-_MARKUP = ("|", "[", "]", "=", ".jpg")
+_MARKUP = ("|", "[", "]", "=", ".jpg", "''")
 
 
 def clean_span(span: str) -> bool:
-    """False for wiki markup (``| [ ] = .jpg``) or unbalanced round brackets."""
-    return not any(m in span.lower() for m in _MARKUP) and span.count("(") == span.count(")")
+    """False for wiki markup (``| [ ] = .jpg ''``), unbalanced brackets/quotes or no content.
+
+    A one-word span must be a number or a capitalised word (no "offen", "jeweils"); a longer
+    span needs at least one word that is not a stopword.
+    """
+    if any(m in span.lower() for m in _MARKUP) or span.count("(") != span.count(")"):
+        return False
+    if span.count('"') % 2 or span.count("„") != span.count("“"):
+        return False
+    toks = tokens(span)
+    if len(toks) == 1:
+        is_name = span[0].isupper() and toks[0] not in STOPWORDS
+        return len(span) >= 2 and (is_name or any(c.isdigit() for c in span))
+    return any(t not in STOPWORDS for t in toks)

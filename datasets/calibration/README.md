@@ -43,9 +43,11 @@ selection use `dev` only; the pass rule and the RQ2 tables use `test`, once per 
   finite verb, and the edit must start in the first clause. `number_date_swap` is the dominant edit in `consistency`.
 - Fixed frames (`"Es handelt sich um {a}."`) read awkwardly around full-sentence answers; the label
   (consistent) stays true.
-- `unsupported_context` negatives rely on GermanDPR's hard-negative passages not supporting the answer.
-  Passages from the same article, with the answer string, with ≥ 60 % of the answer's content words or
-  with all its numbers and names are rejected (D864); a passage that supports the answer in other
-  words can still slip through.
+- Off-topic negatives: 17 use a GermanDPR distractor (`unsupported_context`), 103 the passage of another
+  sampled question (`unrelated_context`), because a distractor is rejected when it comes from the same
+  article, shares a title word or any capitalised name with the answer, has a number within ± 10 % of
+  the answer's, contains the answer or covers ≥ 60 % of its content words (D864). Most off-topic
+  negatives are therefore easy; the hard-negative subset carries the difficulty. A passage that
+  supports the answer in entirely different words could still slip through.
 - MEMERAG items are the only real model errors; they are few (111 negatives) and stay local
   (CC BY-NC 4.0: no redistribution, no training, no external API).

@@ -20,7 +20,7 @@ from rq2.construct import (
     swap_first_number,
     tokens,
 )
-from rq2.construct_checks import may_support
+from rq2.construct_checks import content_tokens, may_support, negation_ok
 
 N_FAITH_ROWS = 300
 N_REFUSAL_ROWS = 150
@@ -74,7 +74,7 @@ def faith_hard(
             )
         )
     flipped = negate(ans)
-    if flipped is not None:
+    if flipped is not None and negation_ok(ans, flipped):
         out.append(
             _faith_item(
                 row, kontext=ctx, antwort=flipped, label=0, construction="negation_flip", hard=True
@@ -98,22 +98,41 @@ def faith_hard(
 def distractor_ok(row: RagRow, passage: str) -> bool:
     """True iff ``passage`` can serve as an unsupporting context for the row's answer.
 
-    Distractors from the positive passage's own article and passages that may support the
-    answer (``construct_checks.may_support``) are rejected (D864, review of #107).
+    Rejected (D864, reviews of #107): passages from the positive passage's article, passages
+    whose article title shares a word with the answer, and passages that may support the answer
+    (``construct_checks.may_support``).
     """
-    same_article = article_of(passage) == article_of(row.positive_context)
-    return not same_article and not may_support(row.answer, passage)
+    title = article_of(passage)
+    if title == article_of(row.positive_context):
+        return False
+    title_words = {t for t in tokens(title.replace("_", " ")) if len(t) >= 3}
+    if title_words & content_tokens(row.answer):
+        return False
+    return not may_support(row.answer, passage)
 
 
-def _unsupported(row: RagRow, rng: np.random.Generator) -> CalibrationItem | None:
-    """The same answer on a GermanRAG distractor passage that cannot support it."""
+UNRELATED_TRIES = 20
+
+
+def _unsupported(
+    row: RagRow, pool: Sequence[RagRow], rng: np.random.Generator
+) -> CalibrationItem | None:
+    """The same answer on a passage that cannot support it.
+
+    First a GermanRAG distractor of the row (``unsupported_context``); when every distractor is
+    rejected by :func:`distractor_ok`, the positive passage of another sampled row that passes it
+    (``unrelated_context``, at most :data:`UNRELATED_TRIES` seeded tries; D864).
+    """
     negs = [c for i, c in enumerate(row.contexts) if i != row.positive and distractor_ok(row, c)]
-    if not negs:
-        return None
-    ctx = negs[int(rng.integers(len(negs)))]
-    return _faith_item(
-        row, kontext=ctx, antwort=row.answer, label=0, construction="unsupported_context"
-    )
+    if negs:
+        ctx, kind = negs[int(rng.integers(len(negs)))], "unsupported_context"
+    else:
+        tries = seeded_order(pool, rng)[:UNRELATED_TRIES]
+        found = [o.positive_context for o in tries if distractor_ok(row, o.positive_context)]
+        if not found:
+            return None
+        ctx, kind = found[0], "unrelated_context"
+    return _faith_item(row, kontext=ctx, antwort=row.answer, label=0, construction=kind)
 
 
 def build_faithfulness_constructed(rows: Sequence[RagRow], seed: int) -> list[CalibrationItem]:
@@ -139,11 +158,11 @@ def build_faithfulness_constructed(rows: Sequence[RagRow], seed: int) -> list[Ca
                 kontext=row.positive_context,
                 antwort=row.answer,
                 label=2,
-                construction="gold_positive_context",
+                construction="gold_context",
             )
         )
         hard.extend(faith_hard(row, sample, rng))
-        off = _unsupported(row, rng)
+        off = _unsupported(row, sample, rng)
         if off is not None:
             other.append(off)
     return balance(pos, hard, other, rng)

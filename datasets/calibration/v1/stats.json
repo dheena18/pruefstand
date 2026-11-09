@@ -56,11 +56,12 @@
         "partial_answer": 42
       },
       "constructions": {
-        "gold_positive_context": 300,
+        "gold_context": 300,
         "negation_flip": 60,
         "number_date_swap": 60,
         "partial_answer": 60,
-        "unsupported_context": 120
+        "unrelated_context": 103,
+        "unsupported_context": 17
       }
     },
     "correctness": {
@@ -76,8 +77,8 @@
       "trivial_share": 0.2358,
       "n_clusters": 230,
       "calib_split": {
-        "dev": 170,
-        "test": 394
+        "dev": 169,
+        "test": 395
       },
       "hard_negatives": 169,
       "hard_types": {
@@ -88,7 +89,7 @@
       },
       "hard_types_test": {
         "negation_flip": 4,
-        "number_date_swap": 38,
+        "number_date_swap": 39,
         "partial_answer": 38,
         "same_paragraph_span": 38
       },
@@ -171,7 +172,7 @@
     },
     "answer_correctness": {
       "all": 169,
-      "test": 118
+      "test": 119
     },
     "refusal_judged": {
       "all": 150,

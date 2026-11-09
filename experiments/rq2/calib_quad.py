@@ -16,7 +16,7 @@ from rq2.construct import (
     swap_first_number,
     token_jaccard,
 )
-from rq2.construct_checks import edit_in_first_clause, has_answer_content
+from rq2.construct_checks import has_answer_content, negation_ok
 
 N_QUESTIONS = 300
 JACCARD_MAX = 0.3
@@ -82,7 +82,7 @@ def _valid_edit(ref: str, cand: str, label: int, kind: str, texts: Sequence[str]
         return False
     if label == 0 and any(contains_either(cand, t) for t in texts):
         return False
-    if kind == "negation_flip" and not edit_in_first_clause(ref, cand):
+    if kind == "negation_flip" and not negation_ok(ref, cand):
         return False
     if kind == "partial_answer":
         return has_answer_content(cand) and all(norm(cand) != norm(t) for t in texts)
