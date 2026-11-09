@@ -1,6 +1,6 @@
 import { useId } from "react";
 
-import { formatDelta, formatPlain, formatValue } from "@/lib/format";
+import { formatClusters, formatDelta, formatPlain, formatValue } from "@/lib/format";
 import { reasonLabel } from "@/lib/labels";
 import { t, type Locale } from "@/lib/i18n";
 import type { DashboardSliceRow, LabelsDocument } from "@/lib/types";
@@ -42,7 +42,7 @@ function RowText({
   return (
     <span className="sliceplot__text">
       {insufficient
-        ? t(locale, "slices.insufficient", { n: row.n_clusters ?? "–" })
+        ? t(locale, "slices.insufficient", { clusters: formatClusters(row.n_clusters, locale) })
         : `${formatValue(row.baseline_mean, locale)} → ${formatValue(row.candidate_mean, locale)}`}
       {row.mean_diff == null || insufficient ? null : (
         <span className="sliceplot__delta">{`Δ ${formatDelta(row.mean_diff, locale)}`}</span>
@@ -77,6 +77,10 @@ export default function SlicePlot({ locale, labels, rows, showStatus }: SlicePlo
           base: formatValue(row.baseline_mean, locale),
           cand: formatValue(row.candidate_mean, locale),
         });
+        const desc =
+          row.status === "insufficient_data"
+            ? t(locale, "slices.insufficient", { clusters: formatClusters(row.n_clusters, locale) })
+            : `${label}${row.mean_diff == null ? "" : `, Δ ${formatDelta(row.mean_diff, locale)}`}`;
         return (
           <li key={row.value} className="sliceplot__row" data-status={row.status}>
             <span className="sliceplot__value mono">{row.value}</span>
@@ -88,6 +92,8 @@ export default function SlicePlot({ locale, labels, rows, showStatus }: SlicePlo
               height={2 * BAR + 6}
               focusable="false"
             >
+              <title>{label}</title>
+              <desc>{desc}</desc>
               <defs>
                 <pattern
                   id={pattern}

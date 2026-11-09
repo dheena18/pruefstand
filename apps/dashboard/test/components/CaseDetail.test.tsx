@@ -144,4 +144,18 @@ describe("CaseDetail", () => {
     expect(container).toHaveTextContent("Fall law-0001");
     expect(container).toHaveTextContent("Abgerufene Abschnitte (nach Rang)");
   });
+  it("an unverifiable tenant_leak finding is not labelled as a leak", async () => {
+    const f = {
+      case_id: "law-0001",
+      rule: "hard_fail_unverifiable",
+      metric: "tenant_leak",
+      evidence: "?",
+    };
+    const { container } = await show({
+      value: makeCase({ retrieved_chunk_tenant_ids: [] }),
+      hardFails: [f],
+    });
+    expect(container).not.toHaveTextContent("LEAK in this case");
+    expect(container).toHaveTextContent("(unverifiable)");
+  });
 });

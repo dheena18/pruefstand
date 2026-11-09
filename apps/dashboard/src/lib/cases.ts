@@ -168,6 +168,14 @@ export class ShardStore {
       if (loaded.n_shards !== this.opts.nShards) {
         throw new ShardLoadError("invalid", shard, "n_shards differs from the build");
       }
+      const taken = new Set(
+        this.state.shards.flatMap((cases, i) =>
+          i === shard ? [] : (cases ?? []).map((c) => c.case_id),
+        ),
+      );
+      if (loaded.cases.some((c) => taken.has(c.case_id))) {
+        throw new ShardLoadError("invalid", shard, "case_id also in another shard");
+      }
       this.update(shard, loaded.cases);
     } catch {
       this.update(shard, null);

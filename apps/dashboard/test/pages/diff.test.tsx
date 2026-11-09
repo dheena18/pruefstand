@@ -87,7 +87,7 @@ describe("Diff page, tier 2 states (synthetic gate reports; real T8.3 fixtures b
     const first = within(screen.getByRole("table")).getAllByRole("row")[1] as HTMLElement;
     expect(first).toHaveTextContent("Context recall");
     expect(first).toHaveAttribute("data-status", "fail");
-    expect(container).toHaveTextContent("22 clusters < 30");
+    expect(container).toHaveTextContent("22 clusters");
   });
   it("sort and slice filter come from the query", async () => {
     const model = await tier2(rows)();
@@ -100,6 +100,14 @@ describe("Diff page, tier 2 states (synthetic gate reports; real T8.3 fixtures b
     a.unmount();
     await renderView(model, "slice=tenant");
     expect(within(screen.getByRole("table")).getAllByRole("row")).toHaveLength(3);
+  });
+  it("?slice=junk falls back to all rows", async () => {
+    await renderView(await tier2(rows)(), "slice=junk");
+    expect(within(screen.getByRole("table")).getAllByRole("row")).toHaveLength(1 + rows.length);
+  });
+  it("the chart caption names the confidence of the data", async () => {
+    const { container } = await renderView(await tier2(rows)());
+    expect(container.querySelector("figcaption")).toHaveTextContent("Δ with 95 % CI");
   });
   it("static render without a query is the default sort (UI11-09)", async () => {
     const model = await tier2(rows)();

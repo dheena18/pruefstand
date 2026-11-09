@@ -27,8 +27,9 @@ export interface CaseDetailProps {
   headingRef?: Ref<HTMLHeadingElement>;
 }
 
+/** A confirmed leak: `hard_fail` on `tenant_leak`; an `…_unverifiable` finding is not a confirmed leak. */
 const isTenantLeak = (f: HardFailFinding): boolean =>
-  f.metric === "tenant_leak" || f.rule === "tenant_leak";
+  f.metric === "tenant_leak" && (f.rule === "hard_fail" || f.rule === "tenant_leak");
 
 function Chunks({ locale, value }: { locale: Locale; value: DashboardCase }) {
   const tenants = value.retrieved_chunk_tenant_ids;

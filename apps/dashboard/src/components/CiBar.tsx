@@ -1,4 +1,4 @@
-import { formatDelta, formatDeltaCi, formatPlain } from "@/lib/format";
+import { formatClusters, formatDelta, formatDeltaCi, formatPlain } from "@/lib/format";
 import { t, type Locale } from "@/lib/i18n";
 import type { SliceDecision } from "@/lib/types";
 
@@ -18,7 +18,7 @@ const MID = HEIGHT / 2;
 function labelOf(locale: Locale, row: SliceDecision): string {
   const word = statusWord(row.status);
   if (row.status === "insufficient_data") {
-    return `${t(locale, "diff.insufficient", { n: row.n_clusters ?? "–" })}, ${word}`;
+    return `${t(locale, "diff.insufficient", { clusters: formatClusters(row.n_clusters, locale) })}, ${word}`;
   }
   const r = row.result;
   if (r === null) return `${t(locale, "diff.na")}, ${word}`;
@@ -35,7 +35,7 @@ function labelOf(locale: Locale, row: SliceDecision): string {
 
 function textOf(locale: Locale, row: SliceDecision): string {
   if (row.status === "insufficient_data") {
-    return t(locale, "diff.insufficient", { n: row.n_clusters ?? "–" });
+    return t(locale, "diff.insufficient", { clusters: formatClusters(row.n_clusters, locale) });
   }
   if (row.result === null) return t(locale, "diff.na");
   const threshold =
@@ -66,6 +66,8 @@ export function CiBar({ locale, row, domain }: CiBarProps) {
         height={HEIGHT}
         focusable="false"
       >
+        <title>{labelOf(locale, row)}</title>
+        <desc>{textOf(locale, row)}</desc>
         <line className="cibar__zero" x1={x(0)} x2={x(0)} y1={0} y2={HEIGHT} />
         {row.max_drop == null ? null : (
           <line

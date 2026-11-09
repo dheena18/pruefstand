@@ -84,7 +84,11 @@ function Controls({
 export function DiffView({ locale, labels, model, query }: DiffViewProps) {
   const router = useRouter();
   const pathname = usePathname();
-  const state = useMemo(() => parseDiffQuery(query), [query]);
+  const state = useMemo(() => {
+    const parsed = parseDiffQuery(query);
+    // `?slice=junk` (a dimension this run does not have) falls back to all rows.
+    return sliceOptions(model.rows).includes(parsed.slice) ? parsed : { ...parsed, slice: "" };
+  }, [query, model.rows]);
   const view = useMemo(() => applyDiff(model.rows, state), [model.rows, state]);
   const domain = useMemo(() => ciDomain(model.rows), [model.rows]);
   const hrefFor = (next: DiffState) => {

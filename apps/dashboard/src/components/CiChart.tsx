@@ -21,10 +21,12 @@ export interface CiChartProps {
  */
 export function CiChart({ locale, labels, rows, domain }: CiChartProps) {
   const shared = domain ?? ciDomain(rows);
+  const confidence = rows.find((d) => d.result !== null)?.result?.confidence ?? 0.95;
+  const conf = Math.round(confidence * 100);
   return (
     <ChartShell
       locale={locale}
-      caption={`${t(locale, "diff.caption")} (${t(locale, "diff.axis")})`}
+      caption={`${t(locale, "diff.caption", { conf })} (${t(locale, "diff.axis")})`}
       chart={<CiChartClient locale={locale} labels={labels} rows={rows} domain={shared} />}
       table={
         <MetricTable

@@ -100,3 +100,21 @@ describe("SliceChart", () => {
     expect(html).not.toContain('role="img"');
   });
 });
+
+describe("SliceChart accessibility", () => {
+  it("every bar pair has role=img, aria-label, <title> and <desc>; the table has the same base and candidate values", async () => {
+    const { container } = await show(twenty.slice(0, 4));
+    const imgs = await screen.findAllByRole("img");
+    const body = within(screen.getByRole("table")).getAllByRole("row").slice(1);
+    expect(imgs).toHaveLength(4);
+    imgs.forEach((svg, i) => {
+      const label = svg.getAttribute("aria-label") ?? "";
+      expect(label).toMatch(/baseline 0\.84, candidate 0\.79/);
+      expect(svg.querySelector("title")?.textContent).toBe(label);
+      expect(svg.querySelector("desc")?.textContent).toContain(label);
+      const cells = [...(body[i] as HTMLElement).querySelectorAll("td")].map((c) => c.textContent);
+      expect(cells.slice(0, 2)).toEqual(["0.84", "0.79"]);
+    });
+    expect(container.querySelector("figcaption")).not.toBeNull();
+  });
+});

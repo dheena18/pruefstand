@@ -52,7 +52,7 @@ describe("CiBar", () => {
     const row = decision({ status: "insufficient_data", n_clusters: 22 });
     const { container } = render(<CiBar locale="en" row={row} domain={[-1, 1]} />);
     expect(container.querySelector(".cibar")).toHaveAttribute("data-status", "insufficient_data");
-    expect(container).toHaveTextContent("22 clusters < 30");
+    expect(container).toHaveTextContent("22 clusters");
     expect(container).toHaveTextContent("no CI shown");
     expect(container.querySelector(".cibar__whisker")).toBeNull();
   });
@@ -60,5 +60,54 @@ describe("CiBar", () => {
     const { container } = render(<CiBar locale="en" row={fail} domain={[0, 0]} />);
     expect(container.querySelector("[style]")).toBeNull();
     expect(container.innerHTML).not.toContain("NaN");
+  });
+});
+
+describe("CiBar accessibility (owner condition for hand-written SVG)", () => {
+  it("role=img with aria-label, a <title> equal to it and a <desc> equal to the visible text", () => {
+    const { container } = render(<CiBar locale="en" row={fail} domain={[-0.22, 0.02]} />);
+    const svg = screen.getByRole("img");
+    const label = svg.getAttribute("aria-label") ?? "";
+    expect(label).not.toBe("");
+    expect(svg.querySelector("title")?.textContent).toBe(label);
+    expect(svg.querySelector("desc")?.textContent).toBe(
+      container.querySelector(".cibar__text")?.textContent,
+    );
+  });
+  it("n/a and insufficient rows have title and desc too", () => {
+    for (const row of [
+      decision({ status: "warn", result: null }),
+      decision({ status: "insufficient_data", n_clusters: 22 }),
+    ]) {
+      const { container, unmount } = render(<CiBar locale="de" row={row} domain={[-1, 1]} />);
+      expect(container.querySelector("svg title")?.textContent).toBe(
+        screen.getByRole("img").getAttribute("aria-label"),
+      );
+      expect(container.querySelector("svg desc")?.textContent).toBeTruthy();
+      unmount();
+    }
+  });
+});
+
+describe("CiBar insufficient text", () => {
+  it("pluralises the cluster count and does not hard-code a minimum", () => {
+    const one = render(
+      <CiBar
+        locale="en"
+        row={decision({ status: "insufficient_data", n_clusters: 1 })}
+        domain={[-1, 1]}
+      />,
+    );
+    expect(one.container).toHaveTextContent("insufficient data (1 cluster), no CI shown");
+    expect(one.container).not.toHaveTextContent("< 30");
+    one.unmount();
+    const de = render(
+      <CiBar
+        locale="de"
+        row={decision({ status: "insufficient_data", n_clusters: 1 })}
+        domain={[-1, 1]}
+      />,
+    );
+    expect(de.container).toHaveTextContent("zu wenige Daten (1 Cluster)");
   });
 });

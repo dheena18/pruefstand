@@ -46,3 +46,24 @@ describe("CiChart", () => {
     expect(html).not.toContain('role="img"');
   });
 });
+
+describe("CiChart accessibility", () => {
+  it("every plot row has role=img, aria-label and <title>, and its table row shows the same values", async () => {
+    const labels = await labelsOf();
+    const { container } = render(<CiChart locale="en" labels={labels} rows={rows} />);
+    const imgs = await screen.findAllByRole("img");
+    const tableRows = within(screen.getByRole("table")).getAllByRole("row").slice(1);
+    expect(imgs).toHaveLength(tableRows.length);
+    imgs.forEach((svg, i) => {
+      expect(svg.getAttribute("aria-label")).toBeTruthy();
+      expect(svg.querySelector("title")?.textContent).toBe(svg.getAttribute("aria-label"));
+      const text =
+        (svg.closest(".cibar")?.querySelector(".cibar__text")?.textContent ?? "").split(" · ")[0] ??
+        "";
+      const row = tableRows[i] as HTMLElement;
+      // Δ (CI) text of the plot is the Δ cell of the table; rows without a CI show n/a / insufficient text only.
+      if (/^[−+]/.test(text)) expect(row).toHaveTextContent(text);
+    });
+    expect(container.querySelector("figure figcaption")).not.toBeNull();
+  });
+});

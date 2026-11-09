@@ -134,3 +134,17 @@ describe("rounding follows the exact binary value, ties half-even, like Python's
     expect(formatDelta(-0.375, "de")).toBe("−0,38");
   });
 });
+
+describe("non-finite numbers and large values", () => {
+  it("NaN and ±Infinity render as an en dash, never as text", () => {
+    for (const v of [Number.NaN, Number.POSITIVE_INFINITY, Number.NEGATIVE_INFINITY]) {
+      expect(formatValue(v, "en")).toBe("–");
+      expect(formatPlain(v, "de")).toBe("–");
+      expect(formatDelta(v, "en")).toBe("–");
+    }
+  });
+  it("values from 1e13 up use plain toFixed and stay finite text", () => {
+    expect(formatValue(1e13, "en")).toBe("10,000,000,000,000.00");
+    expect(formatValue(1e21, "en")).not.toContain("e");
+  });
+});

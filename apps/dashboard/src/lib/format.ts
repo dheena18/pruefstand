@@ -1,4 +1,4 @@
-import type { Locale } from "./i18n";
+import { t, type Locale } from "./i18n";
 
 const ZONE = "Europe/Berlin";
 
@@ -70,6 +70,8 @@ const LOCALE_TAG = { de: "de-DE", en: "en-US" } as const;
  * `Intl.NumberFormat` rounds the shortest decimal text instead of the binary value (`2.675` → `2.68`, Python `2.67`).
  */
 function roundExact(abs: number, digits: number): number {
+  // From 1e13 on the spacing of doubles (≥ 2e-3) exceeds one 2-decimal step: no tie can exist, `toFixed` is exact.
+  if (abs >= 1e13) return Number(abs.toFixed(digits));
   const wide = abs.toFixed(digits + 20);
   const cut = wide.indexOf(".") + 1 + digits;
   const isTie = /^50{19}$/.test(wide.slice(cut));
@@ -78,27 +80,45 @@ function roundExact(abs: number, digits: number): number {
   return Number(isTie && lastDigit % 2 === 0 ? kept : abs.toFixed(digits));
 }
 
+const FORMATS = new Map<string, Intl.NumberFormat>();
+
+/** One `Intl.NumberFormat` per locale and digit count (constructing one per cell is slow on the 1,500-case pages). */
+function numberFormat(locale: Locale, digits: number): Intl.NumberFormat {
+  const key = `${locale}/${String(digits)}`;
+  let format = FORMATS.get(key);
+  if (format === undefined) {
+    format = new Intl.NumberFormat(LOCALE_TAG[locale], {
+      minimumFractionDigits: digits,
+      maximumFractionDigits: digits,
+    });
+    FORMATS.set(key, format);
+  }
+  return format;
+}
+
+/** A finite number; `null`, `undefined`, `NaN` and ±Infinity render as `–` (never as `NaN` text). */
+const isNum = (value: number | null | undefined): value is number =>
+  typeof value === "number" && Number.isFinite(value);
+
+/** `-0.004` reads `-0.00` like Python's `format()`; an exact `-0` has no sign here (Python: `-0.00`). */
 function fixed(value: number, locale: Locale, digits = 2): string {
   const rounded = roundExact(Math.abs(value), digits);
-  return new Intl.NumberFormat(LOCALE_TAG[locale], {
-    minimumFractionDigits: digits,
-    maximumFractionDigits: digits,
-  }).format(value < 0 ? -rounded : rounded);
+  return numberFormat(locale, digits).format(value < 0 ? -rounded : rounded);
 }
 
 /** A metric value: 2 decimals with the locale's separator (ui-spec §10.2); `null` → `–`. */
 export function formatValue(value: number | null | undefined, locale: Locale): string {
-  return value == null ? DASH : fixed(value, locale).replace("-", "−");
+  return isNum(value) ? fixed(value, locale).replace("-", "−") : DASH;
 }
 
 /** δ, max and MDE: 2 decimals, no sign; `null` → `–`. */
 export function formatPlain(value: number | null | undefined, locale: Locale): string {
-  return value == null ? DASH : fixed(Math.abs(value), locale);
+  return isNum(value) ? fixed(Math.abs(value), locale) : DASH;
 }
 
 /** Δ: sign always, Unicode minus, 2 decimals (`−0.07`, `+0.01`); a value that rounds to zero reads `+0.00`. */
 export function formatDelta(value: number | null | undefined, locale: Locale): string {
-  if (value == null) return DASH;
+  if (!isNum(value)) return DASH;
   const text = fixed(Math.abs(value), locale);
   const zero = /^0[.,]0+$/.test(text);
   return `${value < 0 && !zero ? "−" : "+"}${text}`;
@@ -141,4 +161,9 @@ export function formatTokens(tokens: number, locale: Locale): string {
 /** GPU seconds: `~2,100 GPU-s` (de `~2.100 GPU-s`). */
 export function formatGpuSeconds(seconds: number, locale: Locale): string {
   return `~${new Intl.NumberFormat(LOCALE_TAG[locale], { maximumFractionDigits: 0 }).format(seconds)} GPU-s`;
+}
+
+/** `22 clusters` / `1 cluster` (de `22 Cluster`); no count → `–`. */
+export function formatClusters(n: number | null | undefined, locale: Locale): string {
+  return n == null ? DASH : t(locale, "summary.clusters", { n });
 }
