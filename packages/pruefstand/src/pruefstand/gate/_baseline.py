@@ -43,12 +43,15 @@ def check_baseline_slice(
     if cap and bad > MAX_EXCLUDED_FRACTION * total + 1e-9:
         fail(
             f"{table.metric}: baseline errors on {bad} of {total} cases of "
-            f"{dimension}={value}; the baseline cannot judge this slice"
+            f"{dimension}={value}; the baseline cannot judge this slice; "
+            "re-run the baseline or promote a run with fewer judge errors"
         )
     kept = applicable & ~table.all_base_error
     after = int(np.unique(table.all_clusters[kept]).size)
     if after < min_clusters:
         fail(
             f"{table.metric}: baseline errors leave {after} of {before} clusters of "
-            f"{dimension}={value}, fewer than {min_clusters}; the baseline cannot judge this slice"
+            f"{dimension}={value}, fewer than {min_clusters}; "
+            "the baseline cannot judge this slice; "
+            "re-run the baseline or promote a run with fewer judge errors"
         )

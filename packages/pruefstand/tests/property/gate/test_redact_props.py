@@ -13,7 +13,7 @@ for _code, _latin in CONFUSABLES.items():
 
 _FILLERS = ["", "", "", "\u200b", "­", "⁠", "ㅤ", "ᅟ", "﻿", "͏"]
 _GROUP_SEPARATORS = ["", "-", "_", ".", " ", "–", "—", "\u200b-", "ㅤ", "--", " . "]
-_HEX_SEPARATORS = ["", "", "", "-", ".", "–", "_"]
+_HEX_SEPARATORS = ["", "", "", "-", ".", "–", "_", " "]
 _MARKS = ["", "", "", "́", "̈"]
 CLEAN = "Antwort: {} Ende"
 
@@ -77,6 +77,7 @@ def test_two_adjacent_tokens_are_both_masked(first: str, second: str, glue: str)
         "CÁNARY-VN-7f3a9c",
         "CANARYㅤ-VN-7f3a9c",
         "CANARY-VN-7F3A9C",
+        "CANARY VN 7f 3a 9c",
     ],
 )
 def test_named_spellings(spelling: str) -> None:

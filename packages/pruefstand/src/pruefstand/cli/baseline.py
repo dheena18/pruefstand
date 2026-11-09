@@ -9,7 +9,10 @@ import typer
 
 from pruefstand.cli._common import EXIT_FAIL, EXIT_USAGE, fail, guarded
 from pruefstand.core.config_loader import load_config
+from pruefstand.core.errors import GateInputError
 from pruefstand.core.protocols import BaselineStore
+from pruefstand.gate.baseline_run import check_baseline_run
+from pruefstand.metrics.registry import MetricRegistry
 from pruefstand.store.artifacts import ArtifactStore
 from pruefstand.store.baseline_index import REFS
 from pruefstand.store.baselines_git import GitBranchBaselineStore
@@ -43,9 +46,15 @@ def promote_command(
         cfg = load_config(config)
         try:
             prepared = prepare_promotion(artifacts, ref)
+            check_baseline_run(prepared.results, cfg.gate, MetricRegistry.full().directions())
             build_baseline_store(cfg.baseline_store).put(prepared, ref)
         except BaselineRefused as exc:
             fail(f"error: {exc}", EXIT_FAIL)
+        except GateInputError as exc:
+            fail(
+                f"error: not promoted, the gate could not judge this run as a baseline: {exc}",
+                EXIT_FAIL,
+            )
         manifest = prepared.results.manifest
         typer.echo(f"promoted {manifest.run_id} to {manifest.eval_fingerprint}/{ref}")
 

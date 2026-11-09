@@ -30,6 +30,7 @@ uses it. Modules only implement behaviour. Concretely, these live in `core`:
 | `core.models.target` | `TargetRequest`, `RetrievedChunk`, `Usage`, `TargetResponse`, `RetrieveResponse` (R11 D218), `TargetInfo`, `CaseRecord` |
 | `core.models.metric` | `MetricValue`, `MetricStatus`, `MetricKind` |
 | `core.models.run` | `CostSummary`, `RunManifest`, `ScoredCase`, `RunResults`, `RunArtifacts` |
+| `core.canary` | `mask_canaries`, `CANARY_MASK`, `IGNORABLE`, `CONFUSABLES` (T1.7b, D871; shared by gate and report) |
 | `core.models.evidence` | `EvidenceRecord` (defined in T6.4) |
 | `core.config.run` (models) | `ModelRef` |
 | `core.models.gate` | `ScoreTable`, `BootstrapResult`, `HardFailFinding`, `SliceDecision`, `GateReport`, `CauseCode` |
@@ -1038,7 +1039,7 @@ class RunIndex:                # DuckDB over runs/*/run.json + results.parquet (
 ```python
 class RunnerConfig(BaseModel): concurrency: int = 8; timeout_s: float = 60; max_retries: int = 3; backoff_s: float = 1.0
 class RunResults(BaseModel):   manifest: RunManifest; records: tuple[CaseRecord, ...]; values: tuple[ScoredCase, ...]
-class ScoredCase(BaseModel):   case: TestCase; values: tuple[MetricValue, ...]
+class ScoredCase(BaseModel):   case: TestCase; values: tuple[MetricValue, ...]   # each metric at most once (ValidationError, T1.7a)
 class RunArtifacts(BaseModel): results: RunResults; root: Path   # a run as stored on disk (runs/<run_id>/)
 
 class Runner:
@@ -1208,7 +1209,10 @@ def evaluate_gate(baseline: RunResults, candidate: RunResults, policy: GatePolic
     #   (gate never imports metrics); T1.10's pipeline passes MetricRegistry.directions() unchanged and tests the equality.
     #   A judge-error pair is excluded only if every gated slice holding it (testable or not) stays within 20 %; otherwise it is
     #   filled with the worst value everywhere, `overall` included (D360h). Further GateInputError cases: baseline `error` above
-    #   20 % of a testable gated slice, a response-less record whose error_rate is 0, a gated metric with no usable baseline value.
+    #   20 % of a testable gated slice, a response-less record whose error_rate is 0, a gated metric with no usable baseline value, and (D870) baseline
+    #   `error` values that leave a gated slice or `overall` fewer than `min_clusters` clusters (the 20 % cap counts only the
+    #   baseline cases that are ok or error, never not_applicable). `pruefstand baseline promote` runs the same check
+    #   (gate.baseline_run.check_baseline_run) and refuses such a run; operator action: re-run the baseline.
 CauseCode = Literal["retrieval", "generation", "citation_format", "language", "refusal_policy", "errors", "mixed"]
 def likely_cause(decisions: Sequence[SliceDecision]) -> CauseCode | None   # gate/cause.py (T1.7); rule table: SPEC §7.4
     # tests assert these string codes, never rule numbers
