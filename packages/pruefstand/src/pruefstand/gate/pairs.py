@@ -25,14 +25,13 @@ from pruefstand.core.models.gate import BootstrapResult, SliceDecision
 from pruefstand.gate._baseline import MAX_EXCLUDED_FRACTION, check_baseline_slice
 from pruefstand.gate.correction import bh_adjust, holm_adjust
 from pruefstand.gate.decision import decide
-from pruefstand.gate.slices import slice_members, slice_values
+from pruefstand.gate.slices import slice_members, slice_specs
 from pruefstand.gate.stats import minimum_detectable_effect, paired_cluster_bootstrap
-from pruefstand.gate.tables import OVERALL, PERTURBED_ALL, PairedTable
+from pruefstand.gate.tables import OVERALL, PairedTable
 
 RERUN_RESAMPLES = 200_000
 MC_SIGMAS = 3.0
 MIN_APPLICABLE_CLUSTERS = 30  # D117: fewer applicable clusters on `overall` -> informational
-RETRIEVAL_METRICS = ("context_recall", "ndcg_at_k")
 BH_NOTABLE_Q = 0.10
 POWER = 0.8
 APPLICABLE_REASON = "applicable_clusters<30"
@@ -112,11 +111,7 @@ def metric_pairs(
     """Return the pairs of one metric in the contractual order (step 6)."""
     metric = table.metric
     gated_metric = reason is None
-    specs: list[tuple[str, str]] = [(OVERALL, OVERALL)]
-    if metric in RETRIEVAL_METRICS and slice_members(table, PERTURBED_ALL, PERTURBED_ALL).any():
-        specs.append((PERTURBED_ALL, PERTURBED_ALL))
-    for dimension in policy.slices:
-        specs.extend((dimension, value) for value in slice_values(table, dimension))
+    specs = slice_specs(table, policy)
     if gated_metric:
         _check_baseline(table, specs, policy)
     dropped = table.judge_error & ~_forced_fill(table, specs, policy)
