@@ -6,8 +6,10 @@ name: cassettes-models
 # Manual dispatch only; the owner decides about the daily schedule below. Nothing is committed from this
 # workflow: the result is an artefact; the owner or lead downloads it and opens the PR
 # (docs/ops/cassettes-actions.md). Public data only: the corpora are the pinned GII law texts and the
-# committed slice corpus; private docs, canaries and held-out data never enter this job and LLMPolicy
-# (datagen_policy) still refuses them. The weekly llama.cpp re-recording stays in cassettes.yml.
+# committed slice corpus. Private docs, canaries and held-out data are not inputs of any step here (public
+# by construction): indomain_cli calls httpx directly without LLMPolicy, t42 runs under datagen_policy(None),
+# t45 under the default policy with an empty canary registry. The weekly llama.cpp re-recording stays in
+# cassettes.yml. The job runs on `main` only (branch caches and ledgers are separate and would bypass the cap).
 on:
   workflow_dispatch:
     inputs:
@@ -17,7 +19,7 @@ on:
         options: [indomain_dev, t42_dataset, t45_perturb, all]
         default: indomain_dev
       budget_calls:
-        description: "Max GitHub Models calls for this run (also capped by the daily budget below)"
+        description: "Max GitHub Models calls for this run over all stages, 1 or more (also capped by the daily budget)"
         type: number
         default: 100
       rewrite_model:
@@ -40,21 +42,27 @@ concurrency:
   cancel-in-progress: false
 
 env:
-  DAILY_CAP: "120"  # calls per UTC day over all runs; the free tier allows 150 (low) / 50 (high) requests
-  PAUSE_S: "4.5"    # 13 requests per minute < the 15 rpm limit
+  # SOFT counter: a lost or evicted cache entry resets it. Free-tier limits are ASSUMED from GitHub's docs and
+  # unverified: low tier 15/min and 150/day, high tier (Llama-3.3-70B) about 10/min and 50/day.
+  DAILY_CAP: "120"  # calls per UTC day over all runs
+  PAUSE_LOW_S: "4.5"   # 13 requests per minute for low-tier models (gpt-4.1-mini)
+  PAUSE_HIGH_S: "6.5"  # 9 requests per minute for high-tier models (Llama-3.3-70B)
   LEDGER: .gh-models-state/ledger.json
 
 jobs:
   record:
     name: record
+    # A dispatch from another branch must not run with `models: read` (its caches and ledger are separate,
+    # which would bypass DAILY_CAP).
+    if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-24.04
     timeout-minutes: 90
     permissions:
       contents: read
-      models: read
+      models: read  # the only way to call models.github.ai with the job token; nothing else is granted
     env:
       TARGET: ${{ inputs.target || 'indomain_dev' }}
-      REQUESTED: ${{ inputs.budget_calls || 100 }}
+      REQUESTED_INPUT: ${{ format('{0}', inputs.budget_calls) }}  # '' on a schedule; 0 stays '0' and is refused
       REWRITE_MODEL: ${{ inputs.rewrite_model || 'github/openai/gpt-4.1-mini' }}
       JUDGE_MODEL: ${{ inputs.perturb_judge_model || 'github/meta/Llama-3.3-70B-Instruct' }}
     steps:
@@ -68,21 +76,47 @@ jobs:
         run: uv sync --all-packages --all-extras
       - name: Quota day
         id: day
-        run: echo "day=$(date -u +%F)" >> "$GITHUB_OUTPUT"
+        run: |
+          # the quota day is the START date of the run, also if the run crosses UTC midnight
+          day="$(date -u +%F)"
+          echo "day=$day" >> "$GITHUB_OUTPUT"
+          echo "DAY=$day" >> "$GITHUB_ENV"
       # The ledger of the day: a new key per run, restored by prefix, so same-day runs add up and a new
       # UTC day starts at zero. Caches are evicted after 7 days without access (10 GB cap per repository,
       # oldest first); every run that restores an entry renews it.
       - name: Restore the daily ledger
+        id: ledger
         uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: .gh-models-state
           key: gh-models-ledger-${{ steps.day.outputs.day }}-${{ github.run_id }}-${{ github.run_attempt }}
           restore-keys: gh-models-ledger-${{ steps.day.outputs.day }}-
       - name: Header of the job summary
+        id: header
+        env:
+          MATCHED: ${{ steps.ledger.outputs.cache-matched-key }}
         run: |
-          case "$REQUESTED" in '' | *[!0-9]*) echo "::error::budget_calls must be a whole number"; exit 1 ;; esac
+          REQUESTED="${REQUESTED_INPUT:-100}"
+          case "$REQUESTED" in '' | 0 | *[!0-9]*) echo "::error::budget_calls must be a whole number of at least 1"; exit 1 ;; esac
+          echo "REQUESTED=$REQUESTED" >> "$GITHUB_ENV"
+          start="$(uv run python scripts/models/gh_models_budget.py used --ledger "$LEDGER" --day "$DAY")" \
+            || { echo "::error::the daily ledger is unreadable: refusing to call models today"; exit 1; }
+          echo "START_USED=$start" >> "$GITHUB_ENV"
           {
-            echo "## cassettes-models: target \`$TARGET\`"
+            echo "## cassettes-models: target \`$TARGET\`, budget $REQUESTED calls"
+            echo
+            if [ -z "$MATCHED" ]; then
+              echo "> Ledger: none restored. Assuming the first run of UTC day $DAY (if an earlier run of this day exists, the cache"
+              echo "> entry was evicted or the restore failed and the day total below is too low)."
+            else
+              echo "> Ledger restored from \`$MATCHED\`: $start calls already counted for $DAY."
+            fi
+            echo "> The day total is a SOFT counter (a lost cache entry resets it), not a hard quota limit. Free-tier"
+            echo "> limits (150/day low tier, 50/day high tier, 15 and about 10 per minute) are assumptions, not verified."
+            if [ "$TARGET" = all ]; then
+              echo "> \`all\` can need about 62 high-tier calls (30 checks + up to 32 T4.5 judge calls) against an assumed 50 per day:"
+              echo "> if a stage stops on HTTP 429, dispatch the remaining target on the next UTC day."
+            fi
             echo
             echo "| step | new calls | cache hits | hit ratio | day total / cap |"
             echo "| --- | --- | --- | --- | --- |"
@@ -99,6 +133,15 @@ jobs:
           path: data/raw/indomain_dev_cache
           key: gh-models-indomain-${{ hashFiles('experiments/model_selection/prompts/indomain_gen_v1.txt', 'experiments/model_selection/prompts/indomain_check_v1.txt') }}-${{ github.run_id }}-${{ github.run_attempt }}
           restore-keys: gh-models-indomain-${{ hashFiles('experiments/model_selection/prompts/indomain_gen_v1.txt', 'experiments/model_selection/prompts/indomain_check_v1.txt') }}-
+      - name: Download the public law texts (no token)
+        if: env.TARGET == 'indomain_dev' || env.TARGET == 'all'
+        env:
+          PYTHONPATH: experiments
+        run: |
+          # GII archives at their pinned versions (data/sources.yaml, SHA-256 checked)
+          ids="$(uv run python -c "from model_selection import indomain_cli as c; print(' '.join('--only ' + i for i in c.source_ids()))")"
+          # shellcheck disable=SC2086
+          uv run python data/download.py $ids
       - name: indomain_dev (generate, spot-check, assemble)
         id: indomain
         if: env.TARGET == 'indomain_dev' || env.TARGET == 'all'
@@ -110,24 +153,22 @@ jobs:
           budget=scripts/models/gh_models_budget.py
           cache=data/raw/indomain_dev_cache
           hits="$(uv run python $budget count --dir $cache)"
-          left="$(uv run python $budget remaining --ledger "$LEDGER" --daily-cap "$DAILY_CAP" --requested "$REQUESTED")"
+          left="$(uv run python $budget remaining --ledger "$LEDGER" --daily-cap "$DAILY_CAP" --requested "$REQUESTED" --start-used "$START_USED" --day "$DAY")"
           echo "indomain_dev: $hits answers cached, $left calls allowed"
-          # public GII law texts at their pinned versions (data/sources.yaml, SHA-256 checked)
-          uv run python data/download.py $(uv run python -c "import sys; sys.path.insert(0, 'experiments'); from model_selection import indomain_cli as c; print(' '.join('--only ' + i for i in c.source_ids()))")
           rc=0
           if [ "$left" -gt 0 ]; then
-            uv run python -m model_selection.indomain_cli generate --max-calls "$left" --pause-s "$PAUSE_S" || rc=$?
+            uv run python -m model_selection.indomain_cli generate --max-calls "$left" --pause-s "$PAUSE_LOW_S" || rc=$?
           fi
           after_gen="$(uv run python $budget count --dir $cache)"
           made=$(( after_gen - hits ))
           check_left=$(( left - made ))
           if [ "$rc" -eq 0 ] && [ "$check_left" -gt 0 ]; then
-            uv run python -m model_selection.indomain_cli check --max-calls "$check_left" --pause-s "$PAUSE_S" || rc=$?
+            uv run python -m model_selection.indomain_cli check --max-calls "$check_left" --pause-s "$PAUSE_HIGH_S" || rc=$?
           fi
           after="$(uv run python $budget count --dir $cache)"
           new=$(( after - hits ))
-          uv run python $budget add --ledger "$LEDGER" --calls "$new" > /dev/null
-          total="$(uv run python $budget used --ledger "$LEDGER")"
+          uv run python $budget add --ledger "$LEDGER" --calls "$new" --day "$DAY" > /dev/null
+          total="$(uv run python $budget used --ledger "$LEDGER" --day "$DAY")"
           uv run python $budget summary --target indomain_dev --calls "$new" --hits "$hits" --used "$total" --cap "$DAILY_CAP" >> "$GITHUB_STEP_SUMMARY"
           # assemble only succeeds once all 200 items exist (exit 1 otherwise: not an error of this run)
           if uv run python -m model_selection.indomain_cli assemble; then
@@ -164,7 +205,7 @@ jobs:
           set -uo pipefail
           budget=scripts/models/gh_models_budget.py
           need=18  # test_generate_live Budget(max_requests=12) + test_filters_live Budget(max_requests=6)
-          left="$(uv run python $budget remaining --ledger "$LEDGER" --daily-cap "$DAILY_CAP" --requested "$REQUESTED")"
+          left="$(uv run python $budget remaining --ledger "$LEDGER" --daily-cap "$DAILY_CAP" --requested "$REQUESTED" --start-used "$START_USED" --day "$DAY")"
           if [ "$left" -lt "$need" ]; then
             echo "::warning::t42_dataset needs up to $need calls, only $left are left today: skipped"
             echo "recorded=false" >> "$GITHUB_OUTPUT"
@@ -173,7 +214,7 @@ jobs:
           rc=0
           bash scripts/models/record_cassettes.sh --dataset || rc=$?
           new="$(uv run python $budget count --dir packages/pruefstand/tests/cassettes/dataset)"
-          total="$(uv run python $budget add --ledger "$LEDGER" --calls "$new")"
+          total="$(uv run python $budget add --ledger "$LEDGER" --calls "$new" --day "$DAY")"
           uv run python $budget summary --target t42_dataset --calls "$new" --hits 0 --used "$total" --cap "$DAILY_CAP" >> "$GITHUB_STEP_SUMMARY"
           if [ "$rc" -ne 0 ]; then exit "$rc"; fi
           echo "recorded=true" >> "$GITHUB_OUTPUT"
@@ -203,7 +244,7 @@ jobs:
           set -uo pipefail
           budget=scripts/models/gh_models_budget.py
           need=70  # 8 pilot questions x 4 perturbations x (rewrite + equivalence check), rule-only drafts need none
-          left="$(uv run python $budget remaining --ledger "$LEDGER" --daily-cap "$DAILY_CAP" --requested "$REQUESTED")"
+          left="$(uv run python $budget remaining --ledger "$LEDGER" --daily-cap "$DAILY_CAP" --requested "$REQUESTED" --start-used "$START_USED" --day "$DAY")"
           if [ "$left" -lt "$need" ]; then
             echo "::warning::t45_perturb needs up to $need calls, only $left are left today: skipped"
             echo "recorded=false" >> "$GITHUB_OUTPUT"
@@ -212,7 +253,7 @@ jobs:
           rc=0
           bash scripts/models/record_cassettes.sh --perturb || rc=$?
           new="$(uv run python $budget count --dir packages/pruefstand/tests/cassettes/perturb)"
-          total="$(uv run python $budget add --ledger "$LEDGER" --calls "$new")"
+          total="$(uv run python $budget add --ledger "$LEDGER" --calls "$new" --day "$DAY")"
           uv run python $budget summary --target t45_perturb --calls "$new" --hits 0 --used "$total" --cap "$DAILY_CAP" >> "$GITHUB_STEP_SUMMARY"
           if [ "$rc" -ne 0 ]; then exit "$rc"; fi
           echo "recorded=true" >> "$GITHUB_OUTPUT"
@@ -251,9 +292,11 @@ jobs:
           for p in $paths; do
             if [ -e "$p" ]; then cp -r --parents "$p" out/; fi
           done
-          (cd out && find . -type f ! -name SHA256SUMS.txt | sort | xargs -r sha256sum > SHA256SUMS.txt)
+          (cd out && find . -type f -print0 | sort -z | xargs -0 -r sha256sum) > sums.tmp
+          mv sums.tmp out/SHA256SUMS.txt
           echo "Artefact files: $(wc -l < out/SHA256SUMS.txt)" >> "$GITHUB_STEP_SUMMARY"
       - name: Upload the results
+        if: always()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: cassettes-models-${{ github.run_id }}

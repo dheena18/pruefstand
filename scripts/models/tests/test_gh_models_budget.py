@@ -7,6 +7,7 @@ from pathlib import Path
 
 import pytest
 from models.gh_models_budget import (
+    LedgerError,
     add_calls,
     count_files,
     hit_ratio,
@@ -34,12 +35,41 @@ def test_calls_add_up_within_a_day_and_reset_on_the_next(tmp_path: Path) -> None
     assert json.loads(ledger.read_text(encoding="utf-8")) == {"date": "2026-11-10", "calls": 5}
 
 
-def test_a_corrupt_ledger_counts_as_empty(tmp_path: Path) -> None:
+def test_a_corrupt_ledger_is_an_error_not_an_empty_day(tmp_path: Path) -> None:
     ledger = tmp_path / "ledger.json"
     ledger.write_text("{not json", encoding="utf-8")
-    assert used_today(ledger, DAY) == 0
+    with pytest.raises(LedgerError):
+        used_today(ledger, DAY)
     ledger.write_text('{"date": "2026-11-09", "calls": "many"}', encoding="utf-8")
-    assert used_today(ledger, DAY) == 0
+    with pytest.raises(LedgerError):
+        used_today(ledger, DAY)
+
+
+def test_the_cli_fails_closed_on_a_corrupt_ledger(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    ledger = tmp_path / "ledger.json"
+    ledger.write_text("{not json", encoding="utf-8")
+    args = ["remaining", "--ledger", str(ledger), "--daily-cap", "120", "--requested", "100"]
+    assert main(args) == 0
+    out = capsys.readouterr()
+    assert out.out.strip() == "0"
+    assert "failing closed" in out.err
+    assert main(["add", "--ledger", str(ledger), "--calls", "1"]) == 1
+
+
+def test_the_quota_day_is_the_one_given_not_the_clock(tmp_path: Path) -> None:
+    ledger = tmp_path / "ledger.json"
+    add_calls(ledger, "2026-11-08", 90)
+    args = ["remaining", "--ledger", str(ledger), "--daily-cap", "120", "--requested", "100"]
+    assert main([*args, "--day", "2026-11-08"]) == 0
+    assert main([*args, "--day", "2026-11-09"]) == 0
+
+
+def test_calls_of_earlier_stages_of_the_run_are_deducted() -> None:
+    assert remaining(used=60, daily_cap=120, requested=100, start_used=10) == 50
+    assert remaining(used=110, daily_cap=120, requested=100, start_used=10) == 0
+    assert remaining(used=10, daily_cap=120, requested=100, start_used=10) == 100
 
 
 @pytest.mark.parametrize(
@@ -50,6 +80,16 @@ def test_remaining_is_capped_by_the_day_and_by_the_request(
     used: int, cap: int, asked: int, expected: int
 ) -> None:
     assert remaining(used, cap, asked) == expected
+
+
+def test_remaining_via_cli_honours_the_day_and_start(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    ledger = tmp_path / "ledger.json"
+    add_calls(ledger, DAY, 60)
+    args = ["remaining", "--ledger", str(ledger), "--daily-cap", "120", "--requested", "100"]
+    assert main([*args, "--day", DAY, "--start-used", "10"]) == 0
+    assert capsys.readouterr().out.strip() == "50"
 
 
 def test_negative_calls_are_ignored(tmp_path: Path) -> None:

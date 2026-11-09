@@ -12,8 +12,10 @@ artefact, and you or the lead turn it into a PR (D900).
 | `t45_perturb` | T4.5 rewrite and equivalence-check cassettes (`record_cassettes.sh --perturb`, the 8 shared_public pilot questions) | at most 70 |
 | `all` | the three in this order, sharing the day's budget | |
 
-Public data only: the GII law texts (pinned, SHA-256 checked) and the committed slice corpus and pilot questions.
-Private docs, canaries and held-out data never enter the job; `LLMPolicy` (`datagen_policy`) still refuses them.
+Public data only, by construction: the GII law texts (pinned, SHA-256 checked), the committed slice corpus and the
+pilot questions are the only inputs. Private docs, canaries and held-out data are not inputs of any step. Do not read
+this as "LLMPolicy guards the job": `indomain_cli` calls httpx directly without `LLMPolicy`; the T4.2 stage runs
+under `datagen_policy(None)` and the T4.5 stage under the default policy with an empty canary registry.
 
 ## What you do, once and per run
 
@@ -21,10 +23,11 @@ Private docs, canaries and held-out data never enter the job; `LLMPolicy` (`data
    public workflow (guard allowlist `MODELS_READ_FILES`). The Run button only lists workflows that exist on `main`.
 2. **Once, check the repository settings.** Settings → Actions → General: Actions must be allowed (they are, other
    workflows run). The workflow sets its own `permissions:`, so the default-token setting does not matter and no
-   secret is added. GitHub Models needs no switch for a personal repository; if the first run answers HTTP 403 on
+   secret is added. ASSUMPTION, not verified: GitHub Models needs no switch for a personal repository; if the first run answers HTTP 403 on
    `models.github.ai`, check [Models access for the repository](https://docs.github.com/en/github-models) (an
    organisation would enable Models under Settings → Models).
-3. **Dispatch it** (browser: repository → Actions → `cassettes-models` → Run workflow, branch `main`; GitHub
+3. **Dispatch it on `main`** (the job has `if: github.ref == 'refs/heads/main'`: a dispatch from another branch
+   does nothing, because branch caches and ledgers are separate and would bypass the daily cap; browser: repository → Actions → `cassettes-models` → Run workflow, branch `main`; GitHub
    mobile app: repository → Actions → the workflow → Run workflow). Choose `target` and `budget_calls` (default 100).
    Start with `indomain_dev`; run it once per day until the summary says `assembled=true` (about three runs).
 4. **Read the job summary** of the run: new calls, cache hits, hit ratio, calls of the day against the cap. A
@@ -46,12 +49,21 @@ Private docs, canaries and held-out data never enter the job; `LLMPolicy` (`data
 
 ## Budget, rate limits and the cache
 
-- **Budget.** `DAILY_CAP` (120 calls per UTC day over all runs, free tier: 150 low-tier and 50 high-tier requests
-  per day) and `budget_calls` (per run) both apply; a stage that does not fit the rest of the day is skipped with a
-  warning, never started. The `Llama-3.3-70B` calls are high-tier: keep a `check` or `t45_perturb` day apart from
-  a long `generate` day if the 50 per day are reached.
-- **Pace.** `PAUSE_S=4.5` s between two `indomain_dev` calls (13 per minute, limit 15). The two pytest stages do
-  not pace themselves; a 429 fails the stage, rerun after a minute.
+- **The free-tier numbers are assumptions, not verified**: low-tier models (`gpt-4.1-mini`) 15 requests per minute
+  and 150 per day, high-tier models (`Llama-3.3-70B`) about 10 per minute and 50 per day. Measure them with the
+  T0.6 quota probe before relying on them.
+- **Budget.** `budget_calls` (1 or more; 0 is refused) is the budget of the whole run over all stages: each stage
+  deducts what the earlier stages of the run used. `DAILY_CAP` (120 per UTC day over all runs) applies on top.
+  A stage that does not fit the rest is skipped with a warning, never started. The quota day is the date the
+  run started, also if it crosses UTC midnight.
+- **The ledger is a soft counter, not a hard limit.** It lives in `actions/cache`; an evicted entry or a failed
+  restore resets the day to zero (the job summary says "Ledger: none restored" in that case and a first run of the day
+  looks the same). A ledger file that exists but is corrupt fails closed: the run stops before any call.
+  GitHub's own 429 is the real limit.
+- **Pace.** `PAUSE_LOW_S=4.5` s between `indomain_dev` generation calls (13 per minute); `PAUSE_HIGH_S=6.5` s for the
+  `check` step (`Llama-3.3-70B`, 9 per minute). The two pytest stages do not pace themselves; a 429 fails the stage,
+  rerun after a minute. `all` can need about 62 high-tier calls (30 checks + up to 32 T4.5 judge calls) against an
+  assumed 50 per day: the summary warns; if a stage stops on 429, dispatch the remaining target the next UTC day.
 - **Cache.** `actions/cache` keeps (a) the daily ledger, key `gh-models-ledger-<UTC day>-<run>`, restored by day
   prefix so a new day starts at zero; (b) the in-domain answers, key `gh-models-indomain-<hash of the two prompts>-<run>`,
   restored by prefix, so each run extends the previous one and a changed prompt starts a new cache; (c) the T4.2
@@ -59,8 +71,14 @@ Private docs, canaries and held-out data never enter the job; `LLMPolicy` (`data
   the same inputs hit the cache and make **no** call. Entries are evicted after **7 days without access**, and
   the repository cap is **10 GB** (oldest first); every restore renews an entry, so a daily or weekly run keeps it
   alive. After a longer pause the cache is empty and the answers are generated again (the artefact of an earlier
-  run seeds it locally through `data/raw/indomain_dev_cache`, not in Actions). A cache entry made on a branch
-  other than `main` is not visible to `main`: always dispatch on `main`.
+  run seeds it locally through `data/raw/indomain_dev_cache`, not in Actions).
+
+## The artefact is untrusted input
+
+`apply_models_artifact.sh` refuses any symlink or other non-regular file, any file missing from or not listed in
+`SHA256SUMS.txt`, any checksum mismatch, any path outside the result locations (or with `..`), files over 8 MiB and
+a total over 64 MiB. Only then it installs the listed files one by one with mode 0644 (no tar, no exec bits). Look at
+`git status` before you commit anyway.
 
 ## Deviation to know (T4.5)
 
