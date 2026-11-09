@@ -603,7 +603,7 @@ below are exact.
 | uv | 0.13.6 | T0.1 | 2026-10-31 |
 | Node / pnpm | 22.x LTS / `<version>` | T8.1 | |
 | Qdrant image | `qdrant/qdrant:v1.20.0@sha256:9bfc89f9914fc14876a88c05270685921a55b8877b254a98bcc1cc2f0a424cd2` | T0.3 | 2026-10-31 |
-| Python base image | `python:3.12-slim-bookworm@sha256:e697c81897302a4c4333bade000d98038fbb21eb064f8ee1fd42d02ebcd9d337` | T0.3 | 2026-10-31 |
+| Python base image | `python:3.12-slim-bookworm@sha256:935c3c5b12357a7e10caa9c1e6ca5692344d97cf229832ef584be2cec9fc03df` | T0.3 | 2026-10-31 |
 | uv image (Docker template) | `ghcr.io/astral-sh/uv:0.13.6@sha256:af22a52f5eafef3d78e551599d405c02df61919d18028f0cea8eda93bc9986d0` | T0.3 | 2026-10-31 |
 | llama.cpp server image (build b12019, `version: 0.8.0-dev (build 12019, commit 1052f7e1d)`, T1.13) | `ghcr.io/ggml-org/llama.cpp:server@sha256:d9e9e74ba3f7ef119b1939162b1631f99b75ec703c310d140cfa2fdac8907389` | T0.3, T1.13 | 2026-11-01 |
 | hadolint image (CI) | `hadolint/hadolint:v2.12.0-alpine@sha256:3c206a451cec6d486367e758645269fd7d696c5ccb6ff59d8b03b0e45268a199` | T0.3 | 2026-10-31 |
