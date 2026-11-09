@@ -4,6 +4,8 @@ The model reads the case and gives a verdict; these rules run on top and win:
 
 * **citation exact**: every gold citation names the provision of a source chunk
   (``citation_mismatch`` otherwise, always a reject, whatever the model said);
+* **the reference answer stays inside the source**: a number, paragraph or duration that the source
+  does not state is a reject (`answer_fact_not_in_source`);
 * **an unanswerable case is never fixed** (a new question could make it answerable);
 * **a fix only touches the question**: the fixed question must pass the T4.3 copy rules
   (``fix_copies_source``), and a rewritten answer is allowed only for a reviewer that may rewrite
@@ -29,6 +31,12 @@ FIX_COPIES_SOURCE = "fix_copies_source"
 FIX_LOST_FACT = "fix_lost_fact"
 FIX_UNCHANGED = "fix_unchanged"
 FIX_UNANSWERABLE = "fix_unanswerable"
+FIX_ADDS_QUESTION = "fix_adds_question"
+ANSWER_FACT_NOT_IN_SOURCE = "answer_fact_not_in_source"
+_INTERROGATIVE = re.compile(
+    r"\b(?:wie|was|wann|wer|wen|wem|wo|woher|wohin|warum|wieso|weshalb|welche[rsmn]?|wodurch|womit)\b",
+    re.IGNORECASE,
+)
 _NUMBER_WORDS = (
     "ein|eine|einen|einem|einer|zwei|drei|vier|fünf|sechs|sieben|acht|neun|zehn|elf|zwölf"
 )
@@ -87,11 +95,49 @@ def source_chunks_of(case: TestCase, by_doc: Mapping[str, Sequence[Chunk]]) -> l
     return found
 
 
+def fact_keys(text: str) -> dict[str, str]:
+    """Return ``{normalised fact: as written}`` for numbers, paragraphs and durations of ``text``.
+
+    A duration compares by its number word (``ein/eine/einen`` are one) and the first four letters
+    of its unit, so ``zwei Jahren`` equals ``zwei Jahre``.
+
+    Examples:
+        >>> sorted(fact_keys("Frist von zwei Jahren und 30 Minuten"))
+        ['30', 'zwei jahr']
+    """
+    keys: dict[str, str] = {}
+    for m in _FACT.finditer(text):
+        raw = m.group(0)
+        words = raw.split()
+        if len(words) == 2 and not raw.startswith("§"):
+            number = "ein" if words[0].casefold().startswith("ein") else words[0].casefold()
+            key = f"{number} {words[1].casefold()[:4]}"
+        else:
+            key = "".join(raw.split()).casefold()
+        keys.setdefault(key, raw)
+    return keys
+
+
+def unsupported_facts(answer: str, source_text: str) -> list[str]:
+    """Return the numbers, paragraphs and durations of ``answer`` that the source does not contain.
+
+    Examples:
+        >>> unsupported_facts("Drei Monate.", "Frist von zwei Wochen")
+        ['Drei Monate']
+        >>> unsupported_facts("Zwei Wochen.", "Frist von zwei Wochen")
+        []
+    """
+    known = fact_keys(source_text)
+    return [raw for key, raw in fact_keys(answer).items() if key not in known]
+
+
 def deterministic_problems(case: TestCase, chunks: Sequence[Chunk]) -> tuple[str, ...]:
     """Return the deterministic findings of ``case`` against its source ``chunks``.
 
     Answerable cases need a source chunk and gold citations; each gold citation must match the key
-    of one of the chunks (``citation_mismatch``). Other categories have no findings here.
+    of one of the chunks (``citation_mismatch``), and every number, paragraph and duration of the
+    reference answer must stand in the source (``answer_fact_not_in_source``). Other categories
+    have no findings here.
     """
     if case.category not in ANSWERABLE:
         return ()
@@ -99,10 +145,14 @@ def deterministic_problems(case: TestCase, chunks: Sequence[Chunk]) -> tuple[str
         return (CHUNK_MISSING,)
     if not case.gold_citations:
         return (CITATION_MISSING,)
+    found: list[str] = []
     keys = [c.citation_key for c in chunks]
-    if all(any(citation_matches(g, k) for k in keys) for g in case.gold_citations):
-        return ()
-    return (CITATION_MISMATCH,)
+    if not all(any(citation_matches(g, k) for k in keys) for g in case.gold_citations):
+        found.append(CITATION_MISMATCH)
+    source = " ".join([*(c.text for c in chunks), *(k for k in keys if k)])
+    if unsupported_facts(case.reference_answer or "", source):
+        found.append(ANSWER_FACT_NOT_IN_SOURCE)
+    return tuple(found)
 
 
 def lost_facts(original: str, fixed: str, source_text: str) -> list[str]:
@@ -114,14 +164,15 @@ def lost_facts(original: str, fixed: str, source_text: str) -> list[str]:
         >>> lost_facts("Er beträgt einen Monat.", "Er beträgt vier Wochen.", "Frist: einen Monat")
         ['einen Monat']
     """
-    source, kept = source_text.casefold(), fixed.casefold()
-    facts = [m.group(0) for m in _FACT.finditer(original)]
-    return [f for f in dict.fromkeys(facts) if f.casefold() in source and f.casefold() not in kept]
+    source, kept = fact_keys(source_text), fact_keys(fixed)
+    return [raw for key, raw in fact_keys(original).items() if key in source and key not in kept]
 
 
 def _question_problem(case: TestCase, fixed: str, chunks: Sequence[Chunk]) -> str | None:
     if fixed.strip() == case.question.strip():
         return FIX_UNCHANGED
+    if len(_INTERROGATIVE.findall(fixed)) > len(_INTERROGATIVE.findall(case.question)):
+        return FIX_ADDS_QUESTION  # a fix asks the same thing, not one more
     for chunk in chunks:
         probe = QACandidate(
             question=fixed,

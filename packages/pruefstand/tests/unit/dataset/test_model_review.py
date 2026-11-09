@@ -11,6 +11,8 @@ from pruefstand.core.errors import ConfigError
 from pruefstand.core.models.dataset import ModelVerdict, ReviewChecks
 from pruefstand.core.models.testcase import TestCase
 from pruefstand.dataset.model_review import (
+    _request,
+    _tenant_norms,
     check_reviewer,
     check_reviewer_for_case,
     citation_matches,
@@ -18,6 +20,7 @@ from pruefstand.dataset.model_review import (
     lost_facts,
     source_chunks_of,
 )
+from pruefstand.perturb.rewriter import private_text
 
 GEMMA = ModelRef(id=REVIEWER, family="gemma")
 QWEN = ModelRef(id="ollama/qwen3.8:27b-q8_0", family="qwen")
@@ -54,7 +57,7 @@ def _verdict(kind: str, **fields: str | None) -> ModelVerdict:
 def test_ok_with_a_citation_that_names_another_paragraph_is_rejected() -> None:
     item = finalise(_case(), [chunk("gii-bgb-623#0")], _verdict("ok"), model=REVIEWER)
     assert item.verdict == "reject"
-    assert item.reasons == ("citation_mismatch",)
+    assert "citation_mismatch" in item.reasons
     assert item.model_verdict == "ok"
 
 
@@ -91,7 +94,7 @@ def test_a_fix_that_drops_a_duration_of_the_source_is_rejected() -> None:
 
 
 def test_a_fix_that_keeps_every_fact_may_rewrite_when_allowed() -> None:
-    kept = "Die Kündigungsfrist beträgt dann einen Monat zum Ende eines Kalendermonats."
+    kept = "Nach zwei Jahren beträgt sie dann einen Monat zum Ende eines Kalendermonats."
     verdict = _verdict(
         "fix", fixed_question="Wie lange ist die Frist nach zwei Jahren?", fixed_answer=kept
     )
@@ -138,7 +141,7 @@ def test_citation_matching(gold: str, key: str | None, *, expected: bool) -> Non
 
 def test_lost_facts_names_the_missing_duration() -> None:
     text = chunk("gii-bgb-622#1").text
-    assert lost_facts(ANSWER, "Es sind vier Wochen.", text) == ["einen Monat"]
+    assert lost_facts(ANSWER, "Es sind vier Wochen.", text) == ["zwei Jahren", "einen Monat"]
     assert lost_facts(ANSWER, ANSWER, text) == []
     assert (
         lost_facts("Sie beträgt 99 Jahre.", "Sie ist lang.", text) == []
@@ -201,3 +204,50 @@ def test_an_unanswerable_case_is_not_fixed() -> None:
     verdict = _verdict("fix", fixed_question="Kann man ein Testament anfechten?")
     item = finalise(case, [], verdict, model=REVIEWER)
     assert (item.verdict, item.reasons) == ("reject", ("fix_unanswerable",))
+
+
+def test_a_private_tenant_request_carries_the_private_prompt_id() -> None:
+    case = _case(tenant="kanzlei_mueller")
+    with private_text(private=True):
+        private = _request(case, "Text", "", REVIEWER)
+    public = _request(_case(), "Text", "", REVIEWER)
+    assert private.prompt_id.startswith("datagen.private_docs.")
+    assert public.prompt_id == "review_item_de"
+
+
+def test_the_prompt_of_an_unanswerable_case_does_not_grow_with_the_corpus() -> None:
+    base = chunk("gii-bgb-622#1")
+    laws = ["BGB", "KSchG", "ArbZG", "DSGVO", "BDSG", "HGB", "ZPO", "AGG", "BetrVG", "TzBfG"]
+    big = [
+        base.model_copy(update={"chunk_id": f"x-{n}#0", "citation_key": f"§ {n} {laws[n % 10]}"})
+        for n in range(1, 4001)
+    ]
+    norms = _tenant_norms(big)
+    assert len(norms[base.tenant]) < 200
+    case = _case().model_copy(
+        update={"category": Category.UNANSWERABLE, "expect_refusal": True, "reference_answer": None}
+    )
+    request = _request(case, norms[base.tenant], "", REVIEWER)
+    assert sum(len(m.content) for m in request.messages) < 3000
+
+
+def test_an_answer_with_a_duration_the_source_lacks_is_rejected() -> None:
+    wrong = _case().model_copy(update={"reference_answer": "Elf Monate zum Quartalsende."})
+    item = finalise(wrong, [chunk("gii-bgb-622#1")], _verdict("ok"), model=REVIEWER)
+    assert (item.verdict, item.reasons) == ("reject", ("answer_fact_not_in_source",))
+    fine = finalise(_case(), [chunk("gii-bgb-622#1")], _verdict("ok"), model=REVIEWER)
+    assert fine.verdict == "ok"
+
+
+def test_a_fix_may_not_ask_more_than_the_original() -> None:
+    two = "Wie lange ist die Frist und welche Form braucht die Kündigung?"
+    item = finalise(
+        _case(), [chunk("gii-bgb-622#1")], _verdict("fix", fixed_question=two), model=REVIEWER
+    )
+    assert (item.verdict, item.reasons) == ("reject", ("fix_adds_question",))
+
+
+def test_the_config_refuses_an_external_reviewer() -> None:
+    external = ModelRef(id="github/meta/Llama-3.3-70B-Instruct", family="llama")
+    with pytest.raises(ValidationError, match="local model"):
+        DatasetBuildConfig.model_validate(_config(external))

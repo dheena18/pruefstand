@@ -2,17 +2,15 @@
 
 The questions and answers below are written by hand for real chunks of ``corpus/slice_v1``; the
 citation and the verbatim evidence span are taken from the chunk text. They stand in for the output
-of the datagen model ONLY in the offline orchestration test (no model is involved there); the live
-test (``tests/e2e/test_build_dataset_live.py``) generates its candidates with real models.
+of the datagen model ONLY in the offline orchestration test (no generation model is involved);
+the live test (``tests/e2e/test_build_dataset_live.py``) generates its candidates with real models.
 """
 
-import hashlib
 import re
 from collections.abc import Sequence
 from pathlib import Path
 
-import numpy as np
-from numpy.typing import NDArray
+from testsupport.embed_cassette import recorded_embedder
 from testsupport.qa_support import SLICE, slice_chunks
 
 from pruefstand.core.config import SplitPlan
@@ -82,29 +80,14 @@ def write_candidates(path: Path, cands: Sequence[QACandidate] | None = None) -> 
     return path
 
 
-def trigram_embedder(texts: Sequence[str]) -> NDArray[np.float32]:
-    """A deterministic character-trigram embedding (offline tests only; not a model).
-
-    Texts that share many trigrams get a high cosine, which is all the near-duplicate filter needs.
-    """
-    out = np.zeros((len(texts), 256), dtype=np.float32)
-    for row, text in enumerate(texts):
-        low = text.lower()
-        for i in range(len(low) - 2):
-            digest = hashlib.sha256(low[i : i + 3].encode()).digest()
-            out[row, digest[0]] += 1.0
-    norm = np.linalg.norm(out, axis=1, keepdims=True)
-    return (out / np.where(norm == 0, 1, norm)).astype(np.float32)
-
-
 def offline_clients() -> BuildClients:
-    """Clients that refuse every model call; the embedding is the trigram function."""
+    """Clients that refuse every model call; embeddings replay recorded bge-m3 answers."""
 
     def refuse(*_args: object) -> object:
         msg = "the offline build test makes no model call"
         raise AssertionError(msg)
 
-    return BuildClients(datagen=refuse, local=refuse, embed=lambda _cfg: trigram_embedder)  # type: ignore[arg-type]
+    return BuildClients(datagen=refuse, local=refuse, embed=lambda _cfg: recorded_embedder())  # type: ignore[arg-type]
 
 
 def small_plan() -> SplitPlan:

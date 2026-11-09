@@ -1,5 +1,7 @@
 """Paths and readers shared by the review steps (T4.7a)."""
 
+import shutil
+from collections.abc import Sequence
 from pathlib import Path
 
 from pydantic import BaseModel, ValidationError
@@ -8,7 +10,8 @@ from pruefstand.core.config import DatasetBuildConfig, ReviewConfig
 from pruefstand.core.errors import ConfigError, DatasetError
 from pruefstand.core.models.dataset import DatasetManifest, ReviewItem, SpotDecision
 from pruefstand.core.models.testcase import TestCase
-from pruefstand.dataset.io import read_dataset
+from pruefstand.dataset.io import read_dataset, write_dataset
+from pruefstand.dataset.validate import validate_dataset
 
 SAMPLE = "sample.jsonl"
 ITEMS = "items.jsonl"
@@ -41,14 +44,19 @@ def require_review(cfg: DatasetBuildConfig) -> ReviewConfig:
 
 
 def _read_lines[M: BaseModel](path: Path, model: type[M]) -> list[M]:
+    """Read a JSON-lines file; only a truncated last line (an interrupted write) is skipped."""
     if not path.is_file():
         return []
+    lines = path.read_text("utf-8").splitlines()
     rows: list[M] = []
-    for line in path.read_text("utf-8").splitlines():
+    for number, line in enumerate(lines, start=1):
         try:
             rows.append(model.model_validate_json(line))
-        except ValidationError:
-            continue  # a truncated last line of an interrupted run
+        except ValidationError as exc:
+            if number == len(lines):
+                continue
+            msg = f"{path.name}:{number}: not a valid {model.__name__}"
+            raise DatasetError(msg) from exc
     return rows
 
 
@@ -75,3 +83,23 @@ def read_cases(cfg: DatasetBuildConfig) -> tuple[list[TestCase], DatasetManifest
         msg = f"{dataset_dir(cfg)}: cannot read the dataset ({'; '.join(loaded.problems[:2])})"
         raise DatasetError(msg)
     return [c for cases in loaded.cases.values() for c in cases], loaded.manifest
+
+
+def replace_dataset(directory: Path, cases: Sequence[TestCase], manifest: DatasetManifest) -> None:
+    """Write the dataset beside ``directory``, validate it, then swap (a failure keeps the old).
+
+    Raises:
+        DatasetError: The new dataset does not validate (the old one stays).
+    """
+    staging = directory.with_name(directory.name + ".new")
+    shutil.rmtree(staging, ignore_errors=True)
+    write_dataset(staging, cases, manifest)
+    problems = validate_dataset(staging)
+    if problems:
+        shutil.rmtree(staging, ignore_errors=True)
+        msg = (
+            f"{directory}: {len(problems)} problems, first: {problems[0]}; the old dataset is kept"
+        )
+        raise DatasetError(msg)
+    shutil.rmtree(directory, ignore_errors=True)
+    staging.rename(directory)

@@ -20,9 +20,8 @@ from pruefstand.core.logging import get_logger
 from pruefstand.core.models.corpus import CorpusManifest
 from pruefstand.core.models.dataset import DatasetManifest
 from pruefstand.core.models.testcase import TestCase
-from pruefstand.dataset.io import build_manifest, write_dataset
+from pruefstand.dataset.io import build_manifest
 from pruefstand.dataset.splits import assign_splits_report
-from pruefstand.dataset.validate import validate_dataset
 from pruefstand.pipeline.build_attacks import attacks_stage
 from pruefstand.pipeline.build_clients import BuildClients, default_clients
 from pruefstand.pipeline.build_context import BuildContext, StageResult
@@ -30,6 +29,7 @@ from pruefstand.pipeline.build_filter import filter_stage
 from pruefstand.pipeline.build_generate import generate_stage, specs_of
 from pruefstand.pipeline.build_perturb import perturb_stage
 from pruefstand.pipeline.build_state import STAGES, Workdir, file_digest, input_hash
+from pruefstand.pipeline.review_files import replace_dataset
 
 _log = get_logger(__name__)
 REPORT = "build_report.json"
@@ -71,11 +71,7 @@ async def _validate_stage(ctx: BuildContext) -> StageResult:
         seed=ctx.cfg.seed, prompt_versions=versions,
     )  # fmt: skip
     directory = ctx.cfg.out_dir / ctx.cfg.name / ctx.cfg.dataset_version
-    write_dataset(directory, cases, manifest)
-    problems = validate_dataset(directory)
-    if problems:
-        msg = f"{directory}: {len(problems)} problems, first: {problems[0]}"
-        raise DatasetError(msg)
+    replace_dataset(directory, cases, manifest)
     return [], {"cases": len(cases), **{f"split_{k.value}": v for k, v in manifest.splits.items()}}
 
 

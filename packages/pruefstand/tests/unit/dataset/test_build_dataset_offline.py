@@ -1,9 +1,10 @@
-"""``build_dataset`` stage by stage on the real slice corpus, without a model (T4.7a).
+"""``build_dataset`` stage by stage on the real slice corpus (T4.7a).
 
-The candidates are hand-written for real chunks (``testsupport.build_support``) and the embedding is
-a trigram function: this test covers the orchestration (stage files, resume, ranking, licence drops,
-splits, validation). The generation, support, rewrite and review models run in the live test
-(``tests/e2e/test_build_dataset_live.py``); that is why the row in the test matrix stays ``weak``.
+The candidates are hand-written for real chunks (``testsupport.build_support``) and the embeddings
+are REAL bge-m3 vectors recorded through Ollama (``tests/cassettes/dataset_embed``, ADR-0008). This
+test covers the orchestration (stage files, resume, ranking, licence drops, splits, validation).
+The generation, support and rewrite models run in the live test
+(``tests/e2e/test_build_dataset_live.py``); that is why that row of the test matrix stays ``weak``.
 """
 
 import asyncio

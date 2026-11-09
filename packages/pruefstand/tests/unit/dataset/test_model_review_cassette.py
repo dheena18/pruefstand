@@ -5,10 +5,18 @@ plumbing (prompt, JSON parsing, resume, privacy marking) and the deterministic o
 REAL verdict, not what the model decides: a re-recording may change a verdict, never these rules.
 """
 
+import json
 from datetime import date
 
 import pytest
-from testsupport.review_cassettes import cases, client_with, recorded, reviewer_id, sources
+from testsupport.review_cassettes import (
+    cases,
+    cassette_dir,
+    client_with,
+    recorded,
+    reviewer_id,
+    sources,
+)
 
 from pruefstand.core.errors import ConfigError
 from pruefstand.core.models.dataset import ReviewItem
@@ -93,3 +101,25 @@ async def test_an_unanswerable_case_is_never_fixed() -> None:
     assert item.verdict != "fix"
     if item.model_verdict == "fix":
         assert item.reasons == ("fix_unanswerable",)
+
+
+async def test_the_recorded_wrong_answer_is_rejected_by_the_source_check() -> None:
+    """The real judge said ``ok`` (2026-11-09) to "Drei Monate" where the source says two weeks."""
+    item = (await _review())["rv-wrong"]
+    assert (item.verdict, item.reasons) == ("reject", ("answer_fact_not_in_source",))
+
+
+async def test_the_recorded_two_part_fix_is_rejected() -> None:
+    item = (await _review())["rv-meta"]
+    if item.model_verdict == "fix":
+        assert item.verdict == "reject"
+        assert item.reasons == ("fix_adds_question",)
+
+
+def test_private_requests_are_recorded_with_the_private_prompt_id() -> None:
+    ids = [
+        json.loads(p.read_text("utf-8"))["request"]["prompt_id"]
+        for p in cassette_dir().glob("*.json")
+    ]
+    assert sum(i.startswith("datagen.private_docs.") for i in ids) == 1  # rv-una, kanzlei_mueller
+    assert len(ids) == len(cases())

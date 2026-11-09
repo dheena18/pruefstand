@@ -65,14 +65,19 @@ def _plan(
 
 
 def _read_ledger(path: Path) -> dict[str, LedgerEntry]:
+    """Read the ledger; only a truncated last line (an interrupted write) is skipped."""
     if not path.is_file():
         return {}
+    lines = path.read_text("utf-8").splitlines()
     entries: dict[str, LedgerEntry] = {}
-    for line in path.read_text("utf-8").splitlines():
+    for number, line in enumerate(lines, start=1):
         try:
             entry = LedgerEntry.model_validate_json(line)
-        except ValidationError:
-            continue  # a truncated last line of an interrupted run
+        except ValidationError as exc:
+            if number == len(lines):
+                continue
+            msg = f"{path.name}:{number}: not a valid ledger entry"
+            raise DatasetError(msg) from exc
         entries[entry.key] = entry
     return entries
 

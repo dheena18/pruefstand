@@ -5,7 +5,8 @@
 #                                    `pruefstand-lock make review-model BUILD=...`); prints reviewed=<n> and the error
 #                                    rate per stratum
 #   make review-spotcheck BUILD=...  draws the owner sample (all smoke items + a stratified draw)
-#   make review-app BUILD=...        Streamlit spot-check on http://localhost:8501 (REVIEW_APP_PORT)
+#   make review-app BUILD=...        Streamlit spot-check on http://localhost:8501 (REVIEW_APP_PORT), bound to 127.0.0.1:
+#                                    on the VM forward it: ssh -L 8501:127.0.0.1:8501 <vm>
 #   make review-summary BUILD=...    model error rates, the owner's flag rates and the trust verdict
 #   make review-apply BUILD=...      writes the decisions into the dataset directory (the only step that does)
 BUILD ?= dataset.yaml
@@ -24,7 +25,7 @@ review-spotcheck:
 
 review-app:
 	REVIEW_APP_CONFIG=$(BUILD) PYTHONPATH=tools uv run streamlit run tools/review_app/app.py \
-	    --server.port $(REVIEW_APP_PORT) --server.headless true --browser.gatherUsageStats false
+	    --server.address 127.0.0.1 --server.port $(REVIEW_APP_PORT) --server.headless true --browser.gatherUsageStats false
 
 review-summary:
 	$(REVIEW_PY) summary --config $(BUILD)

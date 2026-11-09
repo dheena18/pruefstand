@@ -95,12 +95,19 @@ class ReviewOutcome:
     failed: list[str] = field(default_factory=list)
 
 
+MAX_LAWS = 80  # the prompt must stay far below the judge's context (Ollama cuts the front)
+
+
 def _tenant_norms(chunks: Sequence[Chunk]) -> dict[str, str]:
-    keys: dict[str, set[str]] = defaultdict(set)
+    """Per tenant the laws (abbreviations such as ``BGB``) it can retrieve, not every section.
+
+    The text of an unanswerable case grows with the number of laws only, never with the corpus.
+    """
+    laws: dict[str, set[str]] = defaultdict(set)
     for c in chunks:
         if c.citation_key:
-            keys[c.tenant].add(c.citation_key)
-    return {t: ", ".join(sorted(v)) for t, v in keys.items()}
+            laws[c.tenant].add(c.citation_key.rsplit(" ", 1)[-1])
+    return {t: ", ".join(sorted(v)[:MAX_LAWS]) for t, v in laws.items()}
 
 
 def _request(case: TestCase, text: str, base: str, model: str) -> LLMRequest:
@@ -175,10 +182,11 @@ class _Reviewer:
         if result is None:
             check_reviewer_for_case(self.model, case)
             base = self.bases.get(case.base_id, "") if case.perturbation else ""
-            request = _request(case, self._text(case, chunks), base, self.model)
             async with self.gate:
                 try:
                     with private_text(private=case.tenant != PUBLIC_TENANT):
+                        # inside the context: the prompt id of private text gets its prefix
+                        request = _request(case, self._text(case, chunks), base, self.model)
                         verdict = await self.llm.complete_json(request, ModelVerdict)
                 except LLMError as exc:
                     _log.warning("review_failed", case=case.id, error=type(exc).__name__)

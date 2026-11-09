@@ -10,7 +10,7 @@ Absatz highlighted and asks two yes/no questions.
 ```text
 make dataset      BUILD=dataset.yaml   # pruefstand build-dataset (resumable stages)
 make review-model BUILD=dataset.yaml   # model review (local reviewer; on the VM: pruefstand-lock make review-model ...)
-make review-app   BUILD=dataset.yaml   # spot-check on http://localhost:8501
+make review-app   BUILD=dataset.yaml   # spot-check on http://localhost:8501 (bound to 127.0.0.1; on the VM: ssh -L 8501:127.0.0.1:8501 <vm>)
 make review-summary BUILD=dataset.yaml # error rate per stratum, owner flag rates, trust verdict
 make review-apply BUILD=dataset.yaml   # decisions into the dataset directory + ReviewRound entries
 ```

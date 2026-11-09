@@ -1,6 +1,7 @@
 """Spot-check sample, summary and ``apply`` on a built slice dataset (T4.7a)."""
 
 import asyncio
+import shutil
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -195,3 +196,23 @@ def test_a_second_apply_of_the_same_review_is_refused(built: DatasetBuildConfig)
     again = read_dataset(dataset_dir(built)).manifest
     assert again is not None
     assert len(again.review) == len(manifest.review)  # no round was appended twice
+
+
+def test_apply_on_a_real_directory_keeps_the_dataset_when_a_quota_breaks(
+    built: DatasetBuildConfig, tmp_path: Path
+) -> None:
+    """Below ``datasets/fixtures`` quota findings are warnings; on a real build they are problems.
+
+    A reject lowers the counts under the SPEC quotas, so ``apply`` fails and keeps the dataset. The
+    intended flow on a real build is reject, regenerate (``--only``), rebuild, review again, apply
+    (D753).
+    """
+    real_out = tmp_path / "release"
+    shutil.copytree(built.out_dir / built.name, real_out / built.name)
+    real = built.model_copy(update={"out_dir": real_out})
+    before = {p.name: p.read_bytes() for p in dataset_dir(real).iterdir()}
+    _write_items(real, rejects=1, fixes=0)
+    with pytest.raises(DatasetError, match="old dataset is kept"):
+        apply_review(real, today=TODAY)
+    assert {p.name: p.read_bytes() for p in dataset_dir(real).iterdir()} == before
+    assert not dataset_dir(real).with_name("v1.new").exists()

@@ -1,18 +1,14 @@
 """``apply``: write the model review and the owner spot-check into the dataset (T4.7a)."""
 
-import shutil
 from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime
-from pathlib import Path
 
 from pruefstand.core.config import DatasetBuildConfig
 from pruefstand.core.errors import DatasetError
-from pruefstand.core.models.dataset import DatasetManifest, ReviewRound, SpotDecision
-from pruefstand.core.models.testcase import TestCase
-from pruefstand.dataset.io import build_manifest, write_dataset
+from pruefstand.core.models.dataset import ReviewRound, SpotDecision
+from pruefstand.dataset.io import build_manifest
 from pruefstand.dataset.review import apply_decisions
-from pruefstand.dataset.validate import validate_dataset
 from pruefstand.pipeline.build_state import file_digest, input_hash
 from pruefstand.pipeline.review_files import (
     APPLIED,
@@ -23,6 +19,7 @@ from pruefstand.pipeline.review_files import (
     read_cases,
     read_decisions,
     read_items,
+    replace_dataset,
     require_review,
     review_dir,
 )
@@ -71,20 +68,6 @@ def _mark_applied(cfg: DatasetBuildConfig) -> None:
     (review_dir(cfg) / APPLIED).write_text(_state(cfg) + "\n", encoding="utf-8")
 
 
-def _replace_dataset(directory: Path, cases: Sequence[TestCase], manifest: DatasetManifest) -> None:
-    """Write the dataset next to ``directory``, validate it, then swap (a failure keeps the old)."""
-    staging = directory.with_name(directory.name + ".new")
-    shutil.rmtree(staging, ignore_errors=True)
-    write_dataset(staging, cases, manifest)
-    problems = validate_dataset(staging)
-    if problems:
-        shutil.rmtree(staging, ignore_errors=True)
-        msg = f"{directory}: {len(problems)} problems after apply, first: {problems[0]}"
-        raise DatasetError(msg)
-    shutil.rmtree(directory)
-    staging.rename(directory)
-
-
 @dataclass(frozen=True)
 class ApplyReport:
     """What ``apply_review`` changed."""
@@ -130,7 +113,7 @@ def apply_review(cfg: DatasetBuildConfig, *, today: datetime | None = None) -> A
         review=tuple(rounds), created_at=manifest.created_at,
     )  # fmt: skip
     directory = dataset_dir(cfg)
-    _replace_dataset(directory, result.cases, updated)
+    replace_dataset(directory, result.cases, updated)
     _mark_applied(cfg)
     return ApplyReport(
         len(result.rejected), len(result.fixed), len(result.variants_dropped), len(rounds),

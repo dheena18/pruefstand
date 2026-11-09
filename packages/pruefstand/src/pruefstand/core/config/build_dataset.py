@@ -21,6 +21,8 @@ from pruefstand.core.config.build_models import (
 )
 from pruefstand.core.models.dataset import FilterConfig
 
+_LOCAL_PROVIDERS = frozenset({"ollama", "openai_compatible_local"})
+
 
 class DatasetBuildConfig(BaseModel):
     """Inputs of ``build_dataset`` (interfaces §15): which corpus, which plan, which seed.
@@ -77,7 +79,11 @@ class DatasetBuildConfig(BaseModel):
             raise ValueError(msg)
         taken = {"datagen": self.models.datagen.family, "generator": self.models.generator.family}
         for slot in ("core_smoke", "full"):
-            family = getattr(self.review.reviewers, slot).family
+            ref = getattr(self.review.reviewers, slot)
+            if ref.id.split("/", 1)[0] not in _LOCAL_PROVIDERS:
+                msg = f"review.reviewers.{slot} must be a local model"
+                raise ValueError(msg)
+            family = ref.family
             for role, other in taken.items():
                 if family == other:
                     msg = f"review.reviewers.{slot} family '{family}' equals the {role} family"
