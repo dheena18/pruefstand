@@ -39,6 +39,7 @@ REASON_LABELS: dict[str, str] = {
     "judge_uncalibrated": "judge not calibrated",
     "judge_degraded": "judge errors above 5 %",
     "judge_drift": "judge drift",
+    "judge_skipped": "judge did not run",
     "tier1_judged": "tier-1 judge (informational)",
     "tier1_deterministic_only": "reported in tier 1",
     "tier1_injection_reported": "injection reported in tier 1",

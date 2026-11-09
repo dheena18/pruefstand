@@ -54,3 +54,6 @@ datasets/private_docs/_drafts/
 
 # T4.2: QA generation work dirs (candidates, ledger, cross-check; regenerated)
 datasets/_work/
+
+# T5.3: MEMERAG-derived calibration items (CC BY-NC 4.0, download-only, never committed)
+data/derived/

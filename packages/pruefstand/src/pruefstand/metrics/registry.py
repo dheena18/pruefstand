@@ -25,12 +25,16 @@ from pruefstand.metrics.deterministic.security import (
     SystemPromptSimilarity,
     TenantLeak,
 )
+from pruefstand.metrics.judged.consistency import PerturbationConsistency
+from pruefstand.metrics.judged.correctness import AnswerCorrectness
+from pruefstand.metrics.judged.faithfulness import Faithfulness
+from pruefstand.metrics.judged.refusal import RefusalJudged
 
 _RECORD_METRICS = frozenset({"latency_ms", "error_rate"})  # computed from the CaseRecord
 
 
 class MetricRegistry:
-    """Metrics by stable name. Judged metrics register in T5.2b.
+    """Metrics by stable name; ``default()`` the deterministic ones, ``full()`` all 20 (T5.2b).
 
     Raises:
         ConfigError: (constructor) a name is not in ``KNOWN_METRICS`` or is registered twice.
@@ -75,6 +79,31 @@ class MetricRegistry:
         if set(registry._metrics) != expected:
             diff = sorted(set(registry._metrics) ^ expected)
             msg = f"metric registry and KNOWN_METRICS drifted apart: {diff}"
+            raise ConfigError(msg)
+        return registry
+
+    @classmethod
+    def full(
+        cls, *, top_k: int | None = None, refusal_judge: bool | None = None
+    ) -> "MetricRegistry":
+        """The deterministic metrics plus the four judged ones (``higher_is_better=True``).
+
+        Args:
+            top_k: The target's ``top_k`` for the faithfulness context when it reports no
+                ``used_in_prompt``; None takes every returned chunk.
+            refusal_judge: Whether the refusal judge may decide ambiguous answers; None reads
+                ``judges/data/calibration_status.yaml`` (off without the file).
+
+        Raises:
+            ConfigError: The judged names differ from ``JUDGED_METRICS``.
+        """
+        judged: list[Metric] = [
+            Faithfulness(top_k), AnswerCorrectness(), PerturbationConsistency(),
+            RefusalJudged(judge_enabled=refusal_judge),
+        ]  # fmt: skip
+        registry = cls([*cls.default().all(), *judged])
+        if {m.name for m in judged} != JUDGED_METRICS:
+            msg = "the judged metrics and JUDGED_METRICS drifted apart"
             raise ConfigError(msg)
         return registry
 

@@ -126,3 +126,8 @@ def test_shipped_policy_gates_ndcg_next_to_context_recall() -> None:
         }
     )
     assert gate.metrics["ndcg_at_k"].max_drop == 0.05
+
+
+def test_refusal_judged_is_report_only_and_cannot_be_gated() -> None:
+    with pytest.raises(ConfigError, match=r"gate\.metrics\.refusal_judged: report-only"):
+        GatePolicy.model_validate({"metrics": {"refusal_judged": {"max_drop": 0.05}}})

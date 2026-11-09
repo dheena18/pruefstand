@@ -253,3 +253,19 @@ shown source changes, then run `pnpm -C apps/dashboard gen:licences`.
   ]
 }
 ```
+
+## 11. Calibration sets `datasets/calibration/v1` (T5.3, built 2026-11-09 from the 2026-10-31 pins)
+
+Labels come from construction or from the upstream human annotations; no LLM is used (D860-D868).
+Data card: `datasets/calibration/README.md`.
+
+| File | Source | Licence | HF config | Attribution |
+| --- | --- | --- | --- | --- |
+| `correctness.jsonl`, `consistency.jsonl` | GermanQuAD test split (questions, annotator answers, paragraphs) | CC BY 4.0 | `germanquad_derived` | GermanQuAD by deepset (Möller, Risch, Pietsch, 2021), CC BY 4.0. Modified (answers paired, edited, framed). |
+| `faithfulness_constructed.jsonl`, `refusal.jsonl` | GermanRAG (questions, answers, passages incl. the GermanDPR hard negatives it ships) | CC BY-SA 4.0 (§7 override) | `germanrag_derived`, never mixed with another config | GermanRAG by DiscoResearch, based on GermanDPR, CC BY-SA 4.0. Modified (answers edited, hedged, paired with other passages; fixed refusal sentences added). |
+| `stats.json` | counts only, incl. the counts of the MEMERAG set | CC BY 4.0 | – | – |
+| `data/derived/memerag_de/faithfulness_memerag.jsonl` (git-ignored) | MEMERAG German, both files | CC BY-NC 4.0 | **none** | Local only; aggregate agreement numbers are published with the §1 attribution. |
+
+The test fixtures `experiments/rq2/tests/fixtures/germanquad_test_6.jsonl` (6 GermanQuAD test rows,
+CC BY 4.0) and `germanrag_4.jsonl` (4 GermanRAG rows, CC BY-SA 4.0) are unchanged upstream rows with
+the attribution in their header lines.

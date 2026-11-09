@@ -19,10 +19,10 @@ flowchart TB
     pre -->|"yes"| fam{{"judge family != reported generator family?"}}
     fam ==>|"no"| ce["ConfigError: run aborted<br/>stop_reason=aborted, exit 2"]
     fam -->|"yes"| tfp["core.fingerprint.target_fingerprint(info, url=..., run_id=...)<br/>includes image digest/git SHA, config_hash, corpus_version, models, serving"]
-    re --> mk["LLMClient(LiteLLMBackend, llm KVCache, Budget, CallRecorder)<br/>allowed_providers + external data guard<br/>tier 1: GitHub Models, at most 10 judged cases, informational<br/>429 or fork: judge_mode=skipped (no fallback judge)"]
+    re --> mk["LLMClient(LiteLLMBackend, llm KVCache, Budget, CallRecorder)<br/>allowed_providers + external data guard<br/>tier 1: GitHub Models, cases chosen by dataset version to fit 10 judge calls, informational<br/>429 or fork: judge_mode=skipped (no fallback judge)"]
     mk --> jp["JudgePool(Judge per cfg.judge.pr or nightly)"]
     re --> reg["MetricRegistry"]
-    re --> rn["Runner(adapter, metrics, judges, target cache, budget, cfg.runner)"]
+    re --> rn["Runner(adapter, metrics, judges, target cache, the same budget, cfg.runner, judge_scope)"]
     tfp --> run["Runner.run(cases, target_fingerprint, seed, judged_subset)"]
     rn --> run
 
