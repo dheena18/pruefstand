@@ -15,6 +15,7 @@ import argparse
 import json
 import os
 import sys
+import time
 from pathlib import Path
 from typing import Any
 
@@ -130,6 +131,8 @@ def cmd_calls(args: argparse.Namespace) -> int:
     prompt = data.GEN_PROMPT if args.cmd == "generate" else data.CHECK_PROMPT
     done = 0
     for pid, body in pending(args, load_passages())[: args.max_calls]:
+        if done and args.pause_s > 0:
+            time.sleep(args.pause_s)  # free tier: 15 requests per minute
         try:
             gen.ask(token, args.model, prompt, pid, body)
         except gen.QuotaStop as stop:
@@ -182,6 +185,7 @@ def main(argv: list[str]) -> int:
         )
         p.add_argument("--gen-model", default=GEN_MODEL)
         p.add_argument("--max-calls", type=int, default=100)
+        p.add_argument("--pause-s", type=float, default=0.0, help="sleep between two calls")
         p.add_argument("--env-file", type=Path, default=None)
     args = ap.parse_args(argv)
     if args.cmd == "generate":

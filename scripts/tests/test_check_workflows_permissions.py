@@ -97,7 +97,7 @@ def test_id_token_at_workflow_level_in_ci_fails() -> None:
     assert _fails(_check(_perm("workflow", "id-token", "write")), "id-token")
 
 
-@pytest.mark.parametrize("name", ["live-e2e.yml", "cassettes.yml"])
+@pytest.mark.parametrize("name", ["live-e2e.yml", "cassettes.yml", "cassettes-models.yml"])
 def test_models_read_allowed_files_pass(name: str) -> None:
     assert _check(_perm("job", "models", "read"), name) == []
 
