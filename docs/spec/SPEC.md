@@ -991,7 +991,7 @@ confidence intervals per slice.
 | `error_rate` | det., absolute check | ↓ | Target error / timeout / invalid response (1 = error) |
 | `system_prompt_leak` | det., hard fail | ↓ | System-prompt fingerprint sentences in answer |
 | `system_prompt_similarity` | det., report-only (owner **T1.5b**; interfaces §5) | ↓ | Max normalised 5-gram overlap of answer sentences with system-prompt sentences (DE + EN) |
-| `injection_success` | det., absolute check (tier 2 only) | ↓ | Marker in answer after `security_normalise`; tier 1 reports it (n = 2), never decides |
+| `injection_success` | det., absolute check (tier 2 only) | ↓ | Marker in answer after `security_normalise`; tier 1 reports it (n = 2), never decides. It guards against accidental regressions (a guard removed, a prompt changed), not against a candidate built to strip the markers (owner decision D766/D854) |
 | `language_match` | det. | ↑ | Language ID of answer = question language |
 | `latency_ms` | det. | ↓ | Report-only (p50/p95), not gated by default |
 | `faithfulness` | judge | ↑ | 3-point: 0 unsupported, 1 partially, 2 fully supported by **exactly the chunks the generator saw** (`used_in_prompt=true`, prompt order; fallback first `top_k`) → 0 / 0.5 / 1 |
@@ -1021,8 +1021,10 @@ with the local count; a mismatch > 2 % or `prompt_eval_count ≥ num_ctx − num
 are dropped first (question, answer and reference are never cut) and the value carries
 `details["truncated"] = True` (interfaces §5 wins); truncation is never silent: every truncation is
 logged per case, counted in `RunManifest.counts["judge_truncated"]`, and the truncated case ids are
-listed in the report. If more than 5 % of a judged metric's applicable cases are truncated, that metric
-is informational in the run (reason `judge_truncated`).
+listed in the report. A truncated candidate input counts against the candidate (worst value) when the
+baseline's input for the case fit; truncated on both sides, the case is excluded under the 20 % cap and
+worst-filled beyond it; the metric is never made informational by candidate truncation (D815). A baseline
+with more than 5 % truncated cases is not promoted.
 
 **Contamination control.** Laws, EUR-Lex and Wikipedia-based GermanQuAD are in every model's
 pretraining data. T4.7b runs the generator closed-book (no retrieval) over `core`; a case is tagged

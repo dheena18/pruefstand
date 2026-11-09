@@ -38,7 +38,7 @@ from pruefstand.core.config import GatePolicy
 from pruefstand.core.enums import GateStatus
 from pruefstand.core.ids import CaseId
 from pruefstand.core.models.gate import GateReport, SliceDecision
-from pruefstand.core.models.metric import MetricStatus
+from pruefstand.core.models.metric import JUDGE_SIDE_REASONS, MetricStatus
 from pruefstand.core.models.run import RunResults
 from pruefstand.gate._validate import fail
 from pruefstand.gate.absolute import absolute_checks
@@ -130,6 +130,10 @@ def _not_applicable_counts(candidate: RunResults) -> dict[str, int]:
         for value in scored.values:
             if value.status is MetricStatus.NOT_APPLICABLE:
                 counts[value.metric] = counts.get(value.metric, 0) + 1
+                reason = value.details.get("reason")
+                if reason in JUDGE_SIDE_REASONS or reason == "judge_input_too_long":
+                    key = f"{value.metric}: {reason}"  # per-reason breakdown (B1')
+                    counts[key] = counts.get(key, 0) + 1
     return dict(sorted(counts.items()))
 
 

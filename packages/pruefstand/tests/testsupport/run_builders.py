@@ -77,6 +77,8 @@ def make_manifest(**changes: Any) -> RunManifest:
         "workload": "pr",
         "judge_mode": "skipped",
     }
+    if changes.get("stack") == "a40":
+        data["judge_mode"] = "local"  # a tier-2 run with judges (skipped is not promotable)
     return RunManifest.model_validate({**data, **changes})
 
 

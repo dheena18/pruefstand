@@ -31,6 +31,7 @@ class CatalogueEntry:
     server: str
     digest: str | None
     options: Mapping[str, float]
+    quantization: str | None = None
 
 
 def _load_yaml(path: Path, what: str) -> dict[str, object]:
@@ -122,6 +123,7 @@ def _entries(path: str, mtime_ns: int) -> dict[str, CatalogueEntry]:
             str(raw.get("server", "gpu0")),
             str(digest) if digest else None,
             {k: opts[k] for k in OPTION_KEYS},
+            str(raw["quantization"]) if raw.get("quantization") else None,
         )
     return out
 
