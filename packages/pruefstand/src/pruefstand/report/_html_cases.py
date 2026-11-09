@@ -101,7 +101,11 @@ def truncated_cases(cand: RunResults) -> list[str]:
             clean(s.case.id, 80)
             for s in cand.values
             for v in s.values
-            if v.metric in JUDGED_METRICS and v.details.get("truncated") is True
+            if v.metric in JUDGED_METRICS
+            and (
+                v.details.get("truncated") is True
+                or v.details.get("reason") == "judge_input_too_long"
+            )
         }
     )
 

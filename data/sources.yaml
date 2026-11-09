@@ -462,6 +462,7 @@ sources:
   license: cc-by-nc-4.0
   license_config: download_only
   redistribute: false
+  train: false
   attribution: Faithfulness labels from MEMERAG (Cruz Blandón et al., ACL 2025), CC BY-NC 4.0, https://github.com/amazon-science/MEMERAG.
     Used for evaluation only; never redistributed, never used for training.
   files:

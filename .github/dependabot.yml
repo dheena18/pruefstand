@@ -1,94 +1,75 @@
-# Weekly, minor and patch updates grouped (R9-28). PR titles stay Conventional Commits (`chore(deps): ...`) so the `commitlint` job passes. Entries for directories that do not exist yet
-# are harmless. Docker Compose support: Dependabot ecosystem `docker-compose` (verified 2026-10-31).
+# Weekly, ONE group per ecosystem (uv, npm, github-actions, docker; D856) so each ecosystem produces at most one PR. PR titles stay Conventional Commits
+# (`chore(deps): ...`) so the `commitlint` job passes. Entries for directories that do not exist yet are harmless.
+# Docker Compose support: Dependabot ecosystem `docker-compose` (verified 2026-10-31); it joins the group name `docker`.
 version: 2
 updates:
   - package-ecosystem: uv
     directory: /
     schedule:
       interval: weekly
+    open-pull-requests-limit: 2
     commit-message:
       prefix: chore
       include: scope
     groups:
-      minor-and-patch:
-        update-types: [minor, patch]
-  - package-ecosystem: github-actions
-    directory: /
-    schedule:
-      interval: weekly
-    commit-message:
-      prefix: chore
-      include: scope
-    groups:
-      minor-and-patch:
-        update-types: [minor, patch]
-  - package-ecosystem: docker
-    directory: /infra/docker
-    schedule:
-      interval: weekly
-    commit-message:
-      prefix: chore
-      include: scope
-    groups:
-      minor-and-patch:
-        update-types: [minor, patch]
-  - package-ecosystem: docker
-    directory: /apps/rag-demo
-    schedule:
-      interval: weekly
-    commit-message:
-      prefix: chore
-      include: scope
-    groups:
-      minor-and-patch:
-        update-types: [minor, patch]
-  - package-ecosystem: docker
-    directory: /action
-    schedule:
-      interval: weekly
-    commit-message:
-      prefix: chore
-      include: scope
-    groups:
-      minor-and-patch:
-        update-types: [minor, patch]
-  - package-ecosystem: docker
-    directory: /infra/gpu/rerank
-    schedule:
-      interval: weekly
-    commit-message:
-      prefix: chore
-      include: scope
-    groups:
-      minor-and-patch:
-        update-types: [minor, patch]
-  - package-ecosystem: docker-compose
-    directory: /
-    schedule:
-      interval: weekly
-    commit-message:
-      prefix: chore
-      include: scope
-    groups:
-      minor-and-patch:
-        update-types: [minor, patch]
-  - package-ecosystem: docker-compose
-    directory: /infra/gpu
-    schedule:
-      interval: weekly
-    commit-message:
-      prefix: chore
-      include: scope
-    groups:
-      minor-and-patch:
-        update-types: [minor, patch]
+      uv:
+        patterns: ["*"]
   - package-ecosystem: npm
     directory: /apps/dashboard
     schedule:
       interval: weekly
+    open-pull-requests-limit: 2
+    commit-message:
+      prefix: chore
+      include: scope
+    ignore:
+      # Node 22 LTS: stay on @types/node 22 (owner decision 2026-11-09, D856).
+      - dependency-name: "@types/node"
+        update-types: ["version-update:semver-major"]
+      # Next 16 migration not planned yet: keep next and eslint-config-next on major 15.
+      - dependency-name: "next"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "eslint-config-next"
+        update-types: ["version-update:semver-major"]
+    groups:
+      npm:
+        patterns: ["*"]
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 2
     commit-message:
       prefix: chore
       include: scope
     groups:
-      minor-and-patch:
-        update-types: [minor, patch]
+      github-actions:
+        patterns: ["*"]
+  - package-ecosystem: docker
+    directories:
+      - /infra/docker
+      - /apps/rag-demo
+      - /action
+      - /infra/gpu/rerank
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 2
+    commit-message:
+      prefix: chore
+      include: scope
+    groups:
+      docker:
+        patterns: ["*"]
+  - package-ecosystem: docker-compose
+    directories:
+      - /
+      - /infra/gpu
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 2
+    commit-message:
+      prefix: chore
+      include: scope
+    groups:
+      docker:
+        patterns: ["*"]

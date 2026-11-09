@@ -13,6 +13,7 @@ import tempfile
 from collections.abc import Iterator, Mapping
 from contextlib import contextmanager
 from pathlib import Path
+from typing import Literal
 
 from pruefstand.core.errors import ConfigError, StoreError
 from pruefstand.core.logging import get_logger
@@ -102,15 +103,23 @@ def shared_cache_dir(env: Mapping[str, str]) -> Path:
 
 @contextmanager
 def target_cache(
-    env: Mapping[str, str] | None = None, *, enabled: bool = True, use_base: bool = True
+    env: Mapping[str, str] | None = None,
+    *,
+    enabled: bool = True,
+    use_base: bool = True,
+    namespace: Literal["target", "llm"] = "target",
 ) -> Iterator[KVCache | None]:
-    """Open the target cache of this job and close it (and delete the overlay) afterwards.
+    """Open the cache of this job and close it (and delete the overlay) afterwards.
+
+    The ``target`` namespace holds target responses (the runner), ``llm`` the judge answers
+    (``LLMClient``); both follow the same trust rules (ADR-0006).
 
     Args:
         env: Environment; default ``os.environ``.
         enabled: False yields None (opaque target identity: no cache at all).
         use_base: In ``overlay`` mode False keeps main's shared cache out entirely (no trusted
             target id: the candidate's own claims must never select main's answers).
+        namespace: ``target`` or ``llm``.
 
     Yields:
         The cache, or None when it cannot be opened (the run then continues without one).
@@ -127,7 +136,9 @@ def target_cache(
     overlay = tempfile.mkdtemp(prefix="pruefstand-overlay-") if mode == "overlay" else None
     cache: KVCache | None = None
     try:
-        cache = _open(mode, shared, Path(overlay) if overlay else None, use_base=use_base)
+        cache = _open(
+            mode, shared, Path(overlay) if overlay else None, use_base=use_base, namespace=namespace
+        )
         yield cache
     finally:
         closer = getattr(cache, "close", None)
@@ -137,19 +148,26 @@ def target_cache(
             shutil.rmtree(overlay, ignore_errors=True)
 
 
-def _open(mode: CacheMode, shared: Path, overlay: Path | None, *, use_base: bool) -> KVCache | None:
+def _open(
+    mode: CacheMode,
+    shared: Path,
+    overlay: Path | None,
+    *,
+    use_base: bool,
+    namespace: Literal["target", "llm"],
+) -> KVCache | None:
     if overlay is not None and not use_base:
-        return _own_overlay(overlay)
+        return _own_overlay(overlay, namespace)
     try:
-        return build_cache(mode, shared, overlay or shared)
+        return build_cache(mode, shared, overlay or shared, namespace)
     except StoreError as exc:
         _log.warning("target_cache_unavailable", mode=mode, error=str(exc))
-    return None if overlay is None else _own_overlay(overlay)
+    return None if overlay is None else _own_overlay(overlay, namespace)
 
 
-def _own_overlay(overlay: Path) -> KVCache | None:
+def _own_overlay(overlay: Path, namespace: Literal["target", "llm"]) -> KVCache | None:
     try:  # the PR's per-job cache only; main's cache is not (or cannot be) read
-        return DiskKVCache(overlay, "target")
+        return DiskKVCache(overlay, namespace)
     except StoreError as exc:
         _log.warning("target_cache_overlay_unavailable", error=str(exc))
         return None

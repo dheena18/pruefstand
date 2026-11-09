@@ -39,6 +39,10 @@ class LLMError(PruefstandError):
         self.status = status
 
 
+class JudgeInputTruncated(LLMError):  # noqa: N818  (a judge-side fact, not an "Error" of the caller)
+    """The provider reported more prompt tokens than the window leaves: it cut the input (X3.9)."""
+
+
 class PolicyViolation(LLMError):  # noqa: N818  (name fixed by interfaces §2)
     """An LLM call was refused by ``LLMPolicy`` (provider or data not allowed)."""
 
