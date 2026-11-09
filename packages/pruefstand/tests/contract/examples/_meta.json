@@ -1,21 +1,23 @@
 {
   "query_ok.json": {
     "source": "recorded",
-    "git_sha": "49e599734553dc0bc3b07a345542bf84d3b83722",
+    "git_sha": "be7d03834cab1a7d4d622c72dc20f77a93d2768f",
     "models": {
       "generator": "qwen2.5-0.5b-instruct-q4_k_m",
       "generator_family": "qwen",
-      "embedding": "intfloat/multilingual-e5-small"
+      "embed": "intfloat/multilingual-e5-small",
+      "rerank": "none"
     },
     "model_sha256": "74a4da8c9fdbcd15bd1f6d01d621410d31c6fc00986f5eb687824e7b93d7a9db"
   },
   "query_refused.json": {
     "source": "recorded",
-    "git_sha": "49e599734553dc0bc3b07a345542bf84d3b83722",
+    "git_sha": "be7d03834cab1a7d4d622c72dc20f77a93d2768f",
     "models": {
       "generator": "qwen2.5-0.5b-instruct-q4_k_m",
       "generator_family": "qwen",
-      "embedding": "intfloat/multilingual-e5-small"
+      "embed": "intfloat/multilingual-e5-small",
+      "rerank": "none"
     },
     "model_sha256": "74a4da8c9fdbcd15bd1f6d01d621410d31c6fc00986f5eb687824e7b93d7a9db"
   },
@@ -26,35 +28,46 @@
     "source": "openapi-example"
   },
   "retrieve_ok.json": {
-    "source": "openapi-example"
-  },
-  "info.json": {
     "source": "recorded",
-    "git_sha": "49e599734553dc0bc3b07a345542bf84d3b83722",
+    "git_sha": "be7d03834cab1a7d4d622c72dc20f77a93d2768f",
     "models": {
       "generator": "qwen2.5-0.5b-instruct-q4_k_m",
       "generator_family": "qwen",
-      "embedding": "intfloat/multilingual-e5-small"
+      "embed": "intfloat/multilingual-e5-small",
+      "rerank": "none"
+    },
+    "model_sha256": "74a4da8c9fdbcd15bd1f6d01d621410d31c6fc00986f5eb687824e7b93d7a9db"
+  },
+  "info.json": {
+    "source": "recorded",
+    "git_sha": "be7d03834cab1a7d4d622c72dc20f77a93d2768f",
+    "models": {
+      "generator": "qwen2.5-0.5b-instruct-q4_k_m",
+      "generator_family": "qwen",
+      "embed": "intfloat/multilingual-e5-small",
+      "rerank": "none"
     },
     "model_sha256": "74a4da8c9fdbcd15bd1f6d01d621410d31c6fc00986f5eb687824e7b93d7a9db"
   },
   "health.json": {
     "source": "recorded",
-    "git_sha": "49e599734553dc0bc3b07a345542bf84d3b83722",
+    "git_sha": "be7d03834cab1a7d4d622c72dc20f77a93d2768f",
     "models": {
       "generator": "qwen2.5-0.5b-instruct-q4_k_m",
       "generator_family": "qwen",
-      "embedding": "intfloat/multilingual-e5-small"
+      "embed": "intfloat/multilingual-e5-small",
+      "rerank": "none"
     },
     "model_sha256": "74a4da8c9fdbcd15bd1f6d01d621410d31c6fc00986f5eb687824e7b93d7a9db"
   },
   "query_other_tenant.json": {
     "source": "recorded",
-    "git_sha": "49e599734553dc0bc3b07a345542bf84d3b83722",
+    "git_sha": "be7d03834cab1a7d4d622c72dc20f77a93d2768f",
     "models": {
       "generator": "qwen2.5-0.5b-instruct-q4_k_m",
       "generator_family": "qwen",
-      "embedding": "intfloat/multilingual-e5-small"
+      "embed": "intfloat/multilingual-e5-small",
+      "rerank": "none"
     },
     "model_sha256": "74a4da8c9fdbcd15bd1f6d01d621410d31c6fc00986f5eb687824e7b93d7a9db"
   }

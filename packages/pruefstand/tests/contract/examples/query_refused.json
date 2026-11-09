@@ -3,21 +3,30 @@
   "citations": [],
   "chunks": [
     {
-      "chunk_id": "syn-km-kanzleihandbuch#0",
-      "doc_id": "syn-km-kanzleihandbuch",
-      "tenant_id": "kanzlei_mueller",
-      "text": "Kanzleihandbuch der Kanzlei Müller, Abschnitt Fristenkontrolle. Jede Frist wird im Fristenkalender mit einer Vorfrist von einer Woche erfasst. Die Fristenkontrolle wird täglich von der Büroleitung abgezeichnet. Fristen, die auf einen Samstag, Sonntag oder Feiertag fallen, werden auf den davor liegenden Werktag vorgezogen.",
-      "score": 0.75,
-      "rank": 1,
-      "used_in_prompt": true
-    },
-    {
       "chunk_id": "syn-km-vergleich-hartmann#0",
       "doc_id": "syn-km-vergleich-hartmann",
       "tenant_id": "kanzlei_mueller",
       "text": "Aktenvermerk der Kanzlei Müller zum Kündigungsschutzverfahren Hartmann (vertraulich). Im Vergleich mit Herrn Hartmann wurde eine Abfindung von 18.500 Euro vereinbart. Das Arbeitsverhältnis endet zum 31. März. Der Vergleich ist widerrufbar bis zum Ablauf der zweiten Woche nach Abschluss.",
-      "score": 0.5,
+      "score": 0.016666668,
+      "rank": 1,
+      "used_in_prompt": true
+    },
+    {
+      "chunk_id": "gii-bgb-622#3",
+      "doc_id": "gii-bgb-622",
+      "tenant_id": "shared_public",
+      "text": "(4) Von den Absätzen 1 bis 3 abweichende Regelungen können durch Tarifvertrag vereinbart werden. Im Geltungsbereich eines solchen Tarifvertrags gelten die abweichenden tarifvertraglichen Bestimmungen zwischen nicht tarifgebundenen Arbeitgebern und Arbeitnehmern, wenn ihre Anwendung zwischen ihnen vereinbart ist.",
+      "score": 0.016393442,
       "rank": 2,
+      "used_in_prompt": true
+    },
+    {
+      "chunk_id": "syn-km-kanzleihandbuch#0",
+      "doc_id": "syn-km-kanzleihandbuch",
+      "tenant_id": "kanzlei_mueller",
+      "text": "Kanzleihandbuch der Kanzlei Müller, Abschnitt Fristenkontrolle. Jede Frist wird im Fristenkalender mit einer Vorfrist von einer Woche erfasst. Die Fristenkontrolle wird täglich von der Büroleitung abgezeichnet. Fristen, die auf einen Samstag, Sonntag oder Feiertag fallen, werden auf den davor liegenden Werktag vorgezogen.",
+      "score": 0.016129032,
+      "rank": 3,
       "used_in_prompt": true
     },
     {
@@ -25,16 +34,7 @@
       "doc_id": "gii-kschg-1",
       "tenant_id": "kanzlei_mueller",
       "text": "(4) Ist in einem Tarifvertrag, in einer Betriebsvereinbarung nach § 95 des Betriebsverfassungsgesetzes oder in einer entsprechenden Richtlinie nach den Personalvertretungsgesetzen festgelegt, wie die sozialen Gesichtspunkte nach Absatz 3 Satz 1 im Verhältnis zueinander zu bewerten sind, so kann die Bewertung nur auf grobe Fehlerhaftigkeit überprüft werden.",
-      "score": 0.45,
-      "rank": 3,
-      "used_in_prompt": true
-    },
-    {
-      "chunk_id": "gii-arbzg-5#0",
-      "doc_id": "gii-arbzg-5",
-      "tenant_id": "kanzlei_mueller",
-      "text": "(1) Die Arbeitnehmer müssen nach Beendigung der täglichen Arbeitszeit eine ununterbrochene Ruhezeit von mindestens elf Stunden haben.\n(2) Die Dauer der Ruhezeit des Absatzes 1 kann in Krankenhäusern und anderen Einrichtungen zur Behandlung, Pflege und Betreuung von Personen, in Gaststätten und anderen Einrichtungen zur Bewirtung und Beherbergung, in Verkehrsbetrieben, beim Rundfunk sowie in der Landwirtschaft und in der Tierhaltung um bis zu eine Stunde verkürzt werden, wenn jede Verkürzung der Ruhezeit innerhalb eines Kalendermonats oder innerhalb von vier Wochen durch Verlängerung einer anderen Ruhezeit auf mindestens zwölf Stunden ausgeglichen wird.\n(3) Abweichend von Absatz 1 können in Krankenhäusern und anderen Einrichtungen zur Behandlung, Pflege und Betreuung von Personen Kürzungen der Ruhezeit durch Inanspruchnahmen während der Rufbereitschaft, die nicht mehr als die Hälfte der Ruhezeit betragen, zu anderen Zeiten ausgeglichen werden.\n(4) (weggefallen)",
-      "score": 0.34285715,
+      "score": 0.015873017,
       "rank": 4,
       "used_in_prompt": true
     }
@@ -42,7 +42,7 @@
   "refused": true,
   "model": "/models/qwen2.5-0.5b-instruct-q4_k_m.gguf",
   "usage": {
-    "prompt_tokens": 891,
+    "prompt_tokens": 712,
     "completion_tokens": 11
   }
 }
