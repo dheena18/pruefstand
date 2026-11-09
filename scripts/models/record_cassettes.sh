@@ -63,6 +63,38 @@ inner() {
   uv run pytest packages/pruefstand/tests/unit/llm -q -p no:cacheprovider
 }
 
+EMBED_ID=intfloat/multilingual-e5-small@614241f622f53c4eeff9890bdc4f31cfecc418b3
+EMBED_SHA=ca456c06b3a9505ddfd9131408916dd79290368331e7d76bb621f1cba6bc8665
+
+rag_model_header() {
+  # D353 (T1.13a): the model id and the weights SHA-256 of the cassette's service, from infra/models/live-models.yaml.
+  case "$(basename "$1")" in
+    generate_smoke_*) echo "model: $MODEL_ID, sha256: $MODEL_SHA" ;;
+    tei_*) echo "model: $EMBED_ID, weights sha256: $EMBED_SHA" ;;
+    *) echo "model: n/a (recorded by its own stage)" ;;
+  esac
+}
+
+rag_add_header() {
+  # Prepends `# recorded: <day>, git: <sha>, <model header>, by ...` (any old header line is replaced).
+  local f="$1" day="$2" rev="$3"
+  grep -v '^# recorded:' "$f" > "$f.tmp"
+  { echo "# recorded: $day, git: $rev, $(rag_model_header "$f"), by scripts/models/record_cassettes.sh"; cat "$f.tmp"; } > "$f"
+  rm -f "$f.tmp"
+}
+
+rag_demo_headers() {
+  # Rewrites the headers of the committed rag-demo cassettes in place, keeping each one's recorded date and git sha
+  # (no re-recording; the model pins are unchanged since D353). `make cassettes` does the same after a recording.
+  local f day rev
+  for f in apps/rag-demo/tests/cassettes/*.yaml; do
+    day="$(sed -n 's/^# recorded: \([0-9-]*\), git: \([0-9a-f]*\).*/\1/p' "$f" | head -n 1)"
+    rev="$(sed -n 's/^# recorded: \([0-9-]*\), git: \([0-9a-f]*\).*/\2/p' "$f" | head -n 1)"
+    [ -n "$day" ] || continue  # no header: recorded by another stage, left alone
+    rag_add_header "$f" "$day" "$rev"
+  done
+}
+
 rag_demo_inner() {
   # T1.13 S8: runs inside `make stack-run PROFILES="core live dev"` (all ports are exported by mk/docker.mk).
   local rag_cassettes=apps/rag-demo/tests/cassettes
@@ -74,8 +106,7 @@ rag_demo_inner() {
   local day
   day="$(date +%F)"
   for f in "$rag_cassettes"/*.yaml; do
-    { echo "# recorded: $day, git: $(git rev-parse --short HEAD), by scripts/models/record_cassettes.sh"; cat "$f"; } > "$f.tmp"
-    mv "$f.tmp" "$f"
+    rag_add_header "$f" "$day" "$(git rev-parse --short HEAD)"
   done
   make --no-print-directory rag-demo-bug BUG=tenant_filter_post_topk
   # the bug instance needs a moment to become healthy
@@ -145,6 +176,10 @@ if [ "${1:-}" = "--review" ]; then
 fi
 if [ "${1:-}" = "--inner" ]; then
   inner
+  exit $?
+fi
+if [ "${1:-}" = "--rag-demo-headers" ]; then
+  rag_demo_headers
   exit $?
 fi
 if [ "${1:-}" = "--rag-demo-inner" ]; then

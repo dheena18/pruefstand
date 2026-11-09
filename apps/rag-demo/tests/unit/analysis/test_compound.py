@@ -2,6 +2,7 @@
 
 import json
 import re
+from pathlib import Path
 
 import pytest
 from hypothesis import given
@@ -137,3 +138,94 @@ def test_real_fixture_text_split_rate_and_no_false_splits() -> None:
     assert not wrong
     for simple in GOLD_SIMPLE:
         assert compound.split(simple) == [simple]
+
+
+# T3.3a: the RQ1 compound axis. The reviewed file locks every split of the committed corpus and
+# fixture text (hand-reviewed); the simple list holds corpus words that must stay whole.
+GOLD_FILE = Path(__file__).with_name("compound_gold_de.txt")
+CORPUS_FILES = [
+    *sorted((REPO / "corpus" / "slice_v1").glob("*.jsonl")),
+    *sorted(FIXTURES.glob("*.jsonl")),
+]
+GOLD_SIMPLE_CORPUS = [
+    "verantwortlichen",
+    "voraussetzungen",
+    "unverhältnismäßig",
+    "grundsätzlich",
+    "ausdrücklich",
+    "vereinbarung",
+    "verpflichtung",
+    "unterbrechung",
+    "einwilligung",
+    "entscheidung",
+    "beschäftigten",
+    "berücksichtigung",
+    "gewährleistung",
+    "hinsichtlich",
+    "insbesondere",
+    "regelmäßigen",
+    "elektronische",
+    "schriftlichen",
+    "wesentlich",
+    "unverzüglich",
+    "zustimmung",
+    "verlängerung",
+    "rechtmäßigkeit",
+    "vertraulichkeit",
+]
+
+
+def _gold() -> dict[str, list[str]]:
+    rows = [ln.split() for ln in GOLD_FILE.read_text(encoding="utf-8").splitlines()]
+    return {r[0]: r[1].split("+") for r in rows if r and not r[0].startswith("#")}
+
+
+def _corpus_words() -> set[str]:
+    words: set[str] = set()
+    for path in CORPUS_FILES:
+        words |= set(re.findall(r"[^\W\d_]{10,}", path.read_text(encoding="utf-8").lower()))
+    return words
+
+
+def test_reviewed_split_set_is_unchanged_regression_lock() -> None:
+    gold = _gold()
+    assert len(gold) >= 100
+    missed = {w: compound.split(w) for w, parts in gold.items() if compound.split(w) != parts}
+    assert not missed
+    in_text = _corpus_words() & set(gold)
+    assert len(in_text) / len(gold) >= 0.95  # the gold file is tied to the committed text
+
+
+def test_every_split_of_the_corpus_is_a_reviewed_gold_split() -> None:
+    gold = _gold()
+    unreviewed = {
+        w: compound.split(w)
+        for w in _corpus_words()
+        if len(compound.split(w)) > 1 and w not in gold
+    }
+    assert not unreviewed, "a new split in the corpus text: review it, then add it to the gold file"
+
+
+def test_precision_simple_corpus_words_stay_whole() -> None:
+    assert len(GOLD_SIMPLE_CORPUS) >= 20
+    split = {w: compound.split(w) for w in GOLD_SIMPLE_CORPUS if compound.split(w) != [w]}
+    assert split == {}
+
+
+def test_lexicon_stays_small_and_unique() -> None:
+    lines = (
+        (REPO / "apps/rag-demo/src/rag_demo/analysis/lexicon_de.txt")
+        .read_text(encoding="utf-8")
+        .splitlines()
+    )
+    assert len(lines) == len(set(lines))
+    assert lines == sorted(lines)
+    assert sum(len(ln.encode("utf-8")) + 1 for ln in lines) < 5 * 1024  # D460
+
+
+def test_known_misses_file_is_sorted_unique_and_not_in_the_reviewed_set() -> None:
+    path = GOLD_FILE.with_name("compound_known_misses_de.txt")
+    words = [ln for ln in path.read_text(encoding="utf-8").splitlines() if not ln.startswith("#")]
+    assert len(words) >= 15
+    assert words == sorted(set(words))
+    assert not set(words) & set(_gold())

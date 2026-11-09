@@ -57,6 +57,15 @@ so the repo never shrinks (R9-11).
   Runs flagged `judge_fallback`, `judge_drift`, `judge_degraded`, with a judged metric informational for
   `judge_truncated`, or with `infra_error` are never promoted (AI13-08, D321).
 - Incomplete runs (`complete = false`) are never promoted.
+- **A run whose gate FAILed, or that has a hard-fail finding, is not promoted either** (T6.1a, D881). The guarantee sits
+  in `pruefstand baseline promote` itself, not in the workflow. The workflow's step order is therefore **gate, then
+  promote**: `main` and `nightly-b<k>` runs need their `gate.json` (absent: exit 1). The command refuses (exit 1) a
+  `gate.json` with status `FAIL` and any hard-fail finding (`hard_fail` or `hard_fail_unverifiable`) recomputed from
+  the verified run with the config's policy; a `gate.json` that is unreadable, invalid or of another run is exit 3. The
+  release anchors `release-b<k>` are never gated, so they may lack a `gate.json`; they are checked for hard-fail
+  findings only. Only the owner's `--allow-failed-gate`, run by hand (`runbook.md` section 3a), waives a FAIL or a
+  hard-fail finding; `baseline-promote.yml` never passes it and treats exit 1 as "not promoted, reported" (not retried
+  on every poll).
 - A sanitised copy (run.json, gate.json, results without text, `runs/index.json`) is pushed to the
   separate public repo `dheena18/pruefstand-dashboard-data` with a sha256 manifest (D108).
 - **Retention (D110, X2.7):** the monthly `baseline-prune` step (run by `baseline-promote.yml` on its

@@ -542,8 +542,7 @@ Context recall · tenant=st…   ◌ INSUFFICIENT DATA (22 clusters < 30) — no
 ```
 
 - One row per block-G decision (Gated table, §11.1), INSUFFICIENT_DATA rows included (greyed,
-  `n_clusters`). Informational and Notable rows are not on this page. Shared x scale; domain = min/max of `ci_low`, `ci_high`
-  and `−max_drop`, padded 10 %. Dashed line at `−max_drop` **per row** (`max_drop` null → no line, row
+  `n_clusters`). Informational and Notable rows are not on this page. Shared x scale; domain = min/max of `ci_low`, `ci_high`, `−max_drop` and 0 (so the zero line is always drawn), padded 10 %. Dashed line at `−max_drop` **per row** (`max_drop` null → no line, row
   text "no threshold"). Solid line at 0.
 - `result == null` → "n/a", no bar.
 - Sort default: status (FAIL first), then Δ ascending, then metric, then slice; sort and slice filter
@@ -993,7 +992,7 @@ Mechanics (created by T8.1, so the local Playwright server and GitHub Pages serv
 
 ---
 
-## 8. Charts (Recharts)
+## 8. Charts (hand-written SVG)
 
 | View | Chart | Why | Not |
 | --- | --- | --- | --- |
@@ -1008,6 +1007,20 @@ JS (WCAG 1.1.1). Charts load client-only (JS < 250 kB per page; §7.4). Next 15 
 `next/dynamic(…, {ssr: false})` inside Server Components (UI11-22), so each chart has a `'use client'`
 wrapper file `src/components/charts/<Name>.client.tsx` that calls `next/dynamic` with `ssr: false`.
 Pages and server components import only the wrapper.
+
+**No chart library (T8.2b, D664, owner-accepted).** Charts are hand-written SVG; Recharts is not a dependency. Bars,
+whiskers and lines are SVG attributes (percent of the shared domain), colours and hatching come from CSS classes on the
+§7.1 tokens, never a `style` attribute (§7.4). Because nothing gives a hand-written SVG accessibility for free, every
+chart must meet all of these (tested in `CiBar`, `CiChart` and `SliceChart` tests):
+- every plotted row is an `<svg role="img">` with an `aria-label` naming the values (Δ, CI, threshold, status; or
+  baseline, candidate) and a child `<title>` equal to that label and a `<desc>` with the visible numbers; decorative
+  parts (axis) are `aria-hidden`;
+- the chart is a `<figure>` with a `<figcaption>`;
+- a data table with **the same values** is always in the DOM (server-rendered; visible without JS, visually hidden
+  while the chart shows, toggle "Show as table" / "Show all n in table"); the numbers in the label and the table
+  come from the same exported fields;
+- meaning is never colour alone: status words and the notable / insufficient text are visible, the baseline is
+  hatched and the candidate solid, insufficient rows are dotted.
 
 ---
 

@@ -13,6 +13,7 @@ check's business.
 import re
 from collections.abc import Sequence
 
+from pruefstand.core.canary import CANARY_MASK, mask_canaries
 from pruefstand.core.ids import CaseId
 from pruefstand.core.models.gate import HardFailFinding
 from pruefstand.core.models.metric import MetricStatus, MetricValue
@@ -21,13 +22,17 @@ from pruefstand.core.models.target import CaseRecord
 from pruefstand.gate._validate import fail
 
 MAX_EVIDENCE = 200
-CANARY_MASK = "CANARY-**-******"
 EXEMPT_NA_REASONS = frozenset({"category", "no_forbidden_strings"})
-_CANARY = re.compile(r"CANARY[-_ ][A-Za-z0-9]+[-_ ][A-Za-z0-9]+", re.IGNORECASE)
+_LEGACY_CANARY = re.compile(r"CANARY[-_ ][A-Za-z0-9]+[-_ ][A-Za-z0-9]+", re.IGNORECASE)
 
 
 def redact_evidence(text: str) -> str:
     """Mask canary tokens (``CANARY-VN-7f3a9c`` -> ``CANARY-**-******``) and cut to 200 characters.
+
+    The text is folded the way the leak detector folds it (``core.canary.mask_canaries``: NFKD,
+    ignorable and combining characters dropped, case folded, look-alikes mapped), so zero-width
+    splits, missing or odd separators, full-width letters and look-alike letters are masked too.
+    A second pass masks the plain ``CANARY-xx-yyyy`` form with any alphanumerics (defence in depth).
 
     Args:
         text: Raw evidence.
@@ -38,10 +43,12 @@ def redact_evidence(text: str) -> str:
     Examples:
         >>> redact_evidence("Antwort enthält CANARY-VN-7f3a9c aus dem Dokument")
         'Antwort enthält CANARY-**-****** aus dem Dokument'
+        >>> redact_evidence("CAN\u200bARY\u2013VN7f3a9c")
+        'CANARY-**-******'
         >>> len(redact_evidence("x" * 500))
         200
     """
-    return _CANARY.sub(CANARY_MASK, text)[:MAX_EVIDENCE]
+    return _LEGACY_CANARY.sub(CANARY_MASK, mask_canaries(text))[:MAX_EVIDENCE]
 
 
 def declares_chunk_support(*runs: RunResults) -> bool:

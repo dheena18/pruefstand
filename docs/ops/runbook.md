@@ -288,6 +288,16 @@ The PR's eval fingerprint has no `main` baseline yet (dataset release, judge or 
 new Ollama model digest, D103). In the browser (or the GitHub mobile app) run `baseline-promote.yml` in
 `dheena18/pruefstand-gate`, wait for it to finish, then dispatch `gate-executor.yml` with `pr = N` again.
 
+## 3a. Main FAILs against the previous main after an accepted metric drop (owner only)
+
+`baseline promote` refuses a run whose `gate.json` is FAIL or that has a hard-fail finding (D881), so after a merged,
+knowingly accepted drop the new `main` run never becomes the baseline and every later PR gates against the old one.
+Decide first that the drop is accepted (and that it is no leak: hard fails are never an accepted drop). Then, on the VM
+as the owner and **by hand, never from a workflow**: `pruefstand baseline promote --run <run dir of main's run> --ref main
+--allow-failed-gate --config <pruefstand.yaml>` (under `pruefstand-lock` if it touches the data root while a job runs).
+Note the run id and the reason in `docs/ops/bypass-log.md`. A missing or invalid `gate.json` (exit 1 / 3) is not waived:
+run `pruefstand gate` for the run first.
+
 ## 4. Fork PR
 
 1. Review the diff on the fork PR.

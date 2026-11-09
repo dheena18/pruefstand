@@ -1,4 +1,8 @@
-"""``dates``: ``03.10.2026`` to ``3. Oktober 2026``; invalid calendar dates stay unchanged."""
+"""``dates``: ``03.10.2026`` to ``3. Oktober 2026``; invalid calendar dates stay unchanged.
+
+A date after a reference word (``§``, ``Az.``, ``Aktenzeichen:``, ``Nr.``, ``Version``, ``Release``)
+is a file number or a version and stays (T4.4a, D891).
+"""
 
 import re
 from datetime import date
@@ -13,7 +17,7 @@ _MONTHS = (
     "Juli", "August", "September", "Oktober", "November", "Dezember",
 )  # fmt: skip
 _DATE = re.compile(r"(?<![\w.,/-])(\d{1,2})\.(\d{1,2})\.(\d{4})(?!\w|\.\d|-\d)")
-_REFERENCE_BEFORE = re.compile(r"(?:§|Az\.|Aktenzeichen|Nr\.)\s*$")
+_REFERENCE_BEFORE = re.compile(r"(?:§|Az\.?|Aktenzeichen|Nr\.|Version|Vers\.|Release)\s*:?\s*$")
 _MIN_YEAR, _MAX_YEAR = 1900, 2100
 
 
@@ -21,7 +25,7 @@ def _spell(m: re.Match[str]) -> str:
     day, month, year = (int(g) for g in m.groups())
     if not _MIN_YEAR <= year <= _MAX_YEAR:
         return m.group(0)
-    if _REFERENCE_BEFORE.search(m.string, max(0, m.start() - 14), m.start()):
+    if _REFERENCE_BEFORE.search(m.string, max(0, m.start() - 20), m.start()):
         return m.group(0)
     try:
         date(year, month, day)
@@ -34,7 +38,7 @@ class Dates:
     """Spell numeric German dates with the month name."""
 
     name = "dates"
-    version = "1"
+    version = "2"
     uses_llm = False
 
     def apply(self, text: str, rng: np.random.Generator) -> PerturbResult:

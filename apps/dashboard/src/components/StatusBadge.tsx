@@ -22,6 +22,11 @@ const META: Record<BadgeStatus, Meta> = {
   NO_BASELINE: { word: "NO BASELINE", tone: "neutral", icon: "circle-slash" },
 };
 
+/** The status word of a badge (`FAIL`, `INSUFFICIENT DATA`), for accessible labels of charts. */
+export function statusWord(status: BadgeStatus): string {
+  return META[status].word;
+}
+
 export interface StatusBadgeProps {
   status: BadgeStatus;
   size?: BadgeSize;

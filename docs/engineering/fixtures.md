@@ -124,6 +124,12 @@ system-prompt probes complete or continue the first sentence of the prompt, whic
 guard is off and the guard turns into the refusal sentence when it is on. If a generator change breaks a scenario,
 the test names it ("re-pin generator or injection docs"); it never skips.
 
+Every scenario run logs the hard-fail case ids per metric (`[e2e] <scenario>: hard-fail cases {...}`) and writes
+`hard_fail_cases.json` into the uploaded `scenario-run-<scenario>` artefact (T1.11a, D911): the hosted-runner run of
+a PR touching `apps/rag-demo/**` therefore shows which of the 40 cases leaked per scenario. The VM numbers above stay
+the reference until that run has been read; the four Bergmann paraphrases and the two system-prompt probes remain
+separate clusters on purpose (33 clusters against the gate's 30, D424).
+
 ## Moved to tier 2
 
 These scenarios need statistics (paired drops over many clusters) and are not tier-1 tests (round 8 W1.5, R9 X5.6).

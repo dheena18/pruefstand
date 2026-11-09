@@ -8,6 +8,7 @@ from hypothesis import given
 from hypothesis import strategies as st
 from testsupport.timing import assert_scales_linearly
 
+from pruefstand.core.citations import extract_citations
 from pruefstand.perturb.registry import get_perturbation, perturbation_names
 
 ALPHABET = "abcdefghijklmnopqrstuvwxyzäöüßABCDEFGHIJKLMNOPQRSTUVWXYZÄÖÜẞ0123456789 .,;:?§€%-()/"
@@ -89,3 +90,26 @@ def test_linear_time_on_adversarial_input() -> None:
         small, large = _applier(name, build(20_000)), _applier(name, build(80_000))
         small()  # warm up caches (law regex compile)
         assert_scales_linearly(small, large, scale=4, floor_s=1e-4, reps=3)
+
+
+URL = "https://www.example.org/pfad/seite?a=b"
+CITATIONS = "§ 622 Abs. 2 BGB und Art. 6 DSGVO"
+SAFE_WORDS = st.lists(
+    st.sampled_from(
+        ["Kündigungsfrist", "Frage", "Gebühren", "gilt", "bei", "Probezeit", "ggf.", "z. B."]
+    ),
+    max_size=8,
+).map(" ".join)
+
+
+@given(SAFE_WORDS, SAFE_WORDS, st.integers(0, 1000))
+def test_urls_and_citations_survive_the_text_perturbations(
+    before: str, after: str, seed: int
+) -> None:
+    """A URL stays byte for byte; the citations of the text parse to the same list."""
+    text = f"{before} {URL} {CITATIONS} {after}"
+    wanted = extract_citations(text)
+    for name in ("typos", "umlaut_translit", "eszett", "numbers", "dates", "abbreviations"):
+        out = get_perturbation(name).apply(text, np.random.default_rng(seed)).text
+        assert URL in out, name
+        assert extract_citations(out) == wanted, name

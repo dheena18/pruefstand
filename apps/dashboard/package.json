@@ -20,14 +20,14 @@
     "test:coverage": "vitest run --coverage"
   },
   "dependencies": {
-    "next": "15.5.28",
+    "next": "15.5.29",
     "react": "19.3.1",
     "react-dom": "19.3.1"
   },
   "devDependencies": {
     "@eslint/eslintrc": "3.3.7",
     "@tailwindcss/postcss": "4.3.4",
-    "@testing-library/jest-dom": "6.10.0",
+    "@testing-library/jest-dom": "7.0.1",
     "@testing-library/react": "16.3.3",
     "@types/node": "22.20.5",
     "@types/react": "19.3.0",
@@ -37,7 +37,7 @@
     "ajv": "8.20.0",
     "ajv-formats": "3.0.1",
     "eslint": "9.39.5",
-    "eslint-config-next": "15.5.28",
+    "eslint-config-next": "15.5.29",
     "jsdom": "26.1.0",
     "json-schema-to-typescript": "16.0.0",
     "postcss": "8.5.32",

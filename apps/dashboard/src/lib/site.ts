@@ -2,8 +2,7 @@ import licences from "@/content/licences.json";
 
 import { defaultDataDir, loadRun, loadRunIndex } from "./data";
 
-/** `basePath` of this build (`/pruefstand` on GitHub Pages, empty locally); inlined at build time. */
-export const BASE_PATH: string = process.env["NEXT_PUBLIC_BASE_PATH"] ?? "";
+export { BASE_PATH } from "./data-url";
 
 /** Origin of the Try-it demo API; the "Try it" link exists only when it is set at build (UI-25). */
 export const DEMO_API_URL: string = process.env["NEXT_PUBLIC_DEMO_API_URL"] ?? "";

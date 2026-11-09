@@ -1,13 +1,14 @@
 {
   "app_version": "0.1.0",
-  "git_sha": "49e599734553dc0bc3b07a345542bf84d3b83722",
+  "git_sha": "be7d03834cab1a7d4d622c72dc20f77a93d2768f",
   "image_digest": null,
-  "config_hash": "0a50544d5591edd6",
+  "config_hash": "a2e444c070e3b8f9",
   "corpus_version": "slice-2026-10-31.51fd4b94",
   "models": {
     "generator": "qwen2.5-0.5b-instruct-q4_k_m",
     "generator_family": "qwen",
-    "embedding": "intfloat/multilingual-e5-small"
+    "embed": "intfloat/multilingual-e5-small",
+    "rerank": "none"
   },
   "serving": {
     "engine": "llama.cpp",

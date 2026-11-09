@@ -3,6 +3,7 @@
   "stats": {
     "think_stripped": 0,
     "truncated_chunks": 1,
-    "requests": 4
+    "requests": 5,
+    "prompt_overflow": 0
   }
 }
