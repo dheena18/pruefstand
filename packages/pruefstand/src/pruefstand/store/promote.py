@@ -46,6 +46,10 @@ def flagged_reason(manifest: RunManifest) -> str | None:
             f"judge fallback run ({judges}): not promoted; "
             "judged metrics are never compared across judges"
         )
+    if manifest.stack != "live" and manifest.judge_mode == "skipped":
+        return (
+            f"run {manifest.run_id} ran without judges (judge_mode=skipped) in tier 2: not promoted"
+        )
     for flag in ("judge_drift", "judge_degraded"):
         if getattr(manifest, flag):
             return f"run {manifest.run_id} has {flag}=true: flagged runs are never promoted"
@@ -206,7 +210,11 @@ def _recount(
         for value in scored.values:
             counts["not_applicable"] += value.status is MetricStatus.NOT_APPLICABLE
             is_judged = value.metric in JUDGED_METRICS
-            attempted = attempted or (is_judged and value.status is not MetricStatus.NOT_APPLICABLE)
+            too_long = value.details.get("reason") == "judge_input_too_long"
+            decided = value.status is not MetricStatus.NOT_APPLICABLE or too_long
+            attempted = attempted or (is_judged and decided)
+            if is_judged and too_long:
+                counts["judge_truncated"] += 1  # D814/D815: a too-long input counts as judged
             if value.details.get("truncated") is True:
                 counts["judge_truncated" if is_judged else "metric_truncated"] += 1
             mismatch = value.details.get("refusal_flag_mismatch")

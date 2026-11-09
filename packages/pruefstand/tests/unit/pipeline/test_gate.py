@@ -79,7 +79,7 @@ def test_a_judge_fallback_on_either_run_makes_every_judged_metric_informational(
     assert informational_mapping(base, both, POLICY)["faithfulness"] == "judge_fallback"
 
 
-def test_degraded_wins_over_drift_and_drift_over_truncation() -> None:
+def test_degraded_wins_over_drift() -> None:
     base, cand = manifests(stack="a40")
     drift = cand.model_copy(update={"judge_drift": True, "counts": {"judge_truncated": 9}})
     assert informational_mapping(base, drift, POLICY)["faithfulness"] == "judge_drift"
@@ -87,12 +87,10 @@ def test_degraded_wins_over_drift_and_drift_over_truncation() -> None:
     assert informational_mapping(base, both, POLICY)["faithfulness"] == "judge_degraded"
 
 
-def test_heavy_truncation_of_judged_metrics_is_informational() -> None:
+def test_candidate_truncation_never_makes_a_judged_metric_informational() -> None:
     base, cand = manifests(stack="a40")
-    cand = cand.model_copy(update={"judged_cases": 100, "counts": {"judge_truncated": 6}})
-    assert informational_mapping(base, cand, POLICY)["faithfulness"] == "judge_truncated"
-    cand = cand.model_copy(update={"counts": {"judge_truncated": 5}})  # exactly 5 %: not more
-    assert "faithfulness" not in informational_mapping(base, cand, POLICY)
+    cand = cand.model_copy(update={"judged_cases": 100, "counts": {"judge_truncated": 60}})
+    assert "faithfulness" not in informational_mapping(base, cand, POLICY)  # D815
 
 
 def test_refusal_correct_is_gated_only_in_the_nightly_full_run() -> None:

@@ -59,7 +59,9 @@ def test_live_example_loads() -> None:
     assert cfg.runner.concurrency == 2
     assert "error_rate" in cfg.gate.metrics
     assert "ndcg_at_k" in cfg.gate.metrics
-    assert not {"faithfulness", "answer_correctness"} & set(cfg.gate.metrics)
+    judged = {"faithfulness", "answer_correctness", "perturbation_consistency"}
+    assert judged <= set(cfg.gate.metrics)  # informational in tier 1 (T5.2b)
+    assert "refusal_judged" not in cfg.gate.metrics  # reported only, never gated (SPEC 7.1)
     assert cfg.gate.metrics["injection_success"].max_value == 0.02
     assert cfg.gate.metrics["refusal_correct"].max_drop == 0.10
 

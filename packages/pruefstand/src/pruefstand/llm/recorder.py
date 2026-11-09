@@ -64,6 +64,12 @@ class CallRecorder:
             }
         )
 
+    def to_frame(self) -> pl.DataFrame:
+        """Return the rows as a frame with the explicit schema (zero rows keep their dtypes)."""
+        return pl.DataFrame(
+            {name: [row[name] for row in self._rows] for name in COLUMNS}, schema=SCHEMA
+        )
+
     def to_parquet(self, path: Path) -> None:
         """Write the rows with the explicit schema (a zero-row file keeps its dtypes).
 
@@ -71,7 +77,4 @@ class CallRecorder:
             path: Target file; parent directories are created.
         """
         path.parent.mkdir(parents=True, exist_ok=True)
-        frame = pl.DataFrame(
-            {name: [row[name] for row in self._rows] for name in COLUMNS}, schema=SCHEMA
-        )
-        frame.write_parquet(path)
+        self.to_frame().write_parquet(path)
