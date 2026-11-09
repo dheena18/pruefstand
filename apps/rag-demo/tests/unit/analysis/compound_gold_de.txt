@@ -1,4 +1,4 @@
-# word parts (hand-reviewed 2026-11-09, T3.3a): every split of the committed corpus and fixture text
+# word parts (reviewed 2026-11-09, T3.3a): regression lock = every split of the committed corpus and fixture text
 aktenfreigabe akte+freigabe
 aktenvermerk akte+vermerk
 arbeitnehmer arbeit+nehmer

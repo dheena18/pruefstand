@@ -140,7 +140,7 @@ def test_real_fixture_text_split_rate_and_no_false_splits() -> None:
         assert compound.split(simple) == [simple]
 
 
-# T3.3a: the RQ1 compound axis. The gold file holds every split of the committed corpus and
+# T3.3a: the RQ1 compound axis. The reviewed file locks every split of the committed corpus and
 # fixture text (hand-reviewed); the simple list holds corpus words that must stay whole.
 GOLD_FILE = Path(__file__).with_name("compound_gold_de.txt")
 CORPUS_FILES = [
@@ -187,7 +187,7 @@ def _corpus_words() -> set[str]:
     return words
 
 
-def test_recall_on_gold_compounds_of_the_corpus() -> None:
+def test_reviewed_split_set_is_unchanged_regression_lock() -> None:
     gold = _gold()
     assert len(gold) >= 100
     missed = {w: compound.split(w) for w, parts in gold.items() if compound.split(w) != parts}
@@ -221,3 +221,11 @@ def test_lexicon_stays_small_and_unique() -> None:
     assert len(lines) == len(set(lines))
     assert lines == sorted(lines)
     assert sum(len(ln.encode("utf-8")) + 1 for ln in lines) < 5 * 1024  # D460
+
+
+def test_known_misses_file_is_sorted_unique_and_not_in_the_reviewed_set() -> None:
+    path = GOLD_FILE.with_name("compound_known_misses_de.txt")
+    words = [ln for ln in path.read_text(encoding="utf-8").splitlines() if not ln.startswith("#")]
+    assert len(words) >= 15
+    assert words == sorted(set(words))
+    assert not set(words) & set(_gold())
