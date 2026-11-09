@@ -233,9 +233,7 @@ def test_no_staging_directory_is_left_behind_after_a_failure(
     assert list(tmp_path.iterdir()) == []
 
 
-def test_a_leftover_staging_directory_does_not_block_or_get_touched(
-    chunks: list[Chunk], tmp_path: Path
-) -> None:
+def test_a_leftover_staging_directory_is_left_alone(chunks: list[Chunk], tmp_path: Path) -> None:
     stale = tmp_path / f".{version_of(chunks)}.partial"
     stale.mkdir()
     write(chunks, tmp_path)
