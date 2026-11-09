@@ -67,7 +67,12 @@ jobs:
         env:
           BASE_SHA: ${{ github.event.pull_request.base.sha }}
           HEAD_SHA: ${{ github.event.pull_request.head.sha }}
-        run: ./gitleaks git --verbose --redact --no-banner --exit-code 1 --log-opts="${BASE_SHA}..${HEAD_SHA}" .
+        run: |
+          # An unreachable range would scan 0 commits and pass silently: fail instead.
+          git rev-parse --verify --quiet "${BASE_SHA}^{commit}" > /dev/null
+          git rev-parse --verify --quiet "${HEAD_SHA}^{commit}" > /dev/null
+          [ "$(git rev-list --count "${BASE_SHA}..${HEAD_SHA}")" -gt 0 ]
+          ./gitleaks git --verbose --redact --no-banner --exit-code 1 --log-opts="${BASE_SHA}..${HEAD_SHA}" .
       - name: Scan the full history
         if: github.event_name != 'pull_request'
         run: ./gitleaks git --verbose --redact --no-banner --exit-code 1 .
