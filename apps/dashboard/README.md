@@ -61,6 +61,30 @@ Local dev: `DASHBOARD_DATA_DIR=fixtures/populated node ../../scripts/dashboard/b
   per ui-spec §10.1–§10.2 (`src/lib/format.ts`). `infra_error` is never rendered; only whether it is set is read.
 - **Types** come only from `src/types/generated/`; `src/lib/types.ts` re-exports the ones the pages use.
 
+## Diff, Slices, Cases (T8.2b)
+
+| Route                                 | Source                                               | What                                                                                |
+| ------------------------------------- | ---------------------------------------------------- | ----------------------------------------------------------------------------------- |
+| `/<locale>/runs/<id>/diff/`           | `src/app/[locale]/runs/[id]/diff/page.tsx`           | gated pairs (block G) as dot-and-whisker rows; tier 1: notice and block R, no chart |
+| `/<locale>/runs/<id>/slices/`         | `src/app/[locale]/runs/[id]/slices/page.tsx`         | slice bars: Gated / Informational (tier 1: Checks / Reported / Informational)       |
+| `/<locale>/runs/<id>/cases/`          | `src/app/[locale]/runs/[id]/cases/page.tsx`          | cases list over the sharded case files, filter / search / paging in the URL, detail |
+| `/<locale>/runs/<id>/cases/<caseId>/` | `src/app/[locale]/runs/[id]/cases/[caseId]/page.tsx` | static page of a failing case (same `CaseDetail` as the panel)                      |
+
+- **Static params** (UI12-08): diff and slices exist for runs with `gate.json` and `no_baseline == false`; the cases list for
+  runs with `cases/<id>/0.json` (the newest 20); case pages for the failing cases of shard 0. An empty set gives the
+  `_empty` placeholder (`empty.runs` / `empty.cases`, `noindex`); `dynamicParams = false`. `src/lib/run-pages.ts`.
+- **Charts** (D664): `CiChart` / `SliceChart` = `ChartShell` (figure, caption, always-present table, toggle) around a
+  `charts/*.client.tsx` wrapper that lazy-loads `CiPlot` / `SlicePlot` with `ssr: false`. SVG attributes only, no `style`.
+- **Query-driven pages**: the static HTML is the default view (`<Suspense>` fallback); `DiffQuery`, `SlicesQuery`,
+  `CasesList` apply `?sort&slice&page`, `?d_<section>&m_<section>`, `?failing&tenant&category&lang&perturbation&q&page&case`
+  after hydration (`src/lib/{diff,slices,cases-state}.ts`, `use-query.ts`).
+- **Case sharding** (`src/lib/cases.ts`, D665, D668): shard 0 holds every failing case (R4). The browser loads shard 0, then
+  shards 1+ in parallel (`ShardStore`), each with `SHARD_TIMEOUT_MS = 15000`, a hand-written validation and a Retry
+  (`C-LOADING`, `C-SHARD-ERROR`). Totals are the sum of the loaded shard lengths, never `n_cases`. All runtime URLs come
+  from `dataUrl()` (`src/lib/data-url.ts`) and therefore sit below `basePath`.
+- **Case detail** (`CaseDetail`, `AnswerPair`, `CitationList`, `ChunkCard`, `TenantBadge`): text only (`lang={case.lang}`,
+  `pre-wrap`), a foreign-tenant chunk reads "⚠ LEAK", the chunk text is never published.
+
 ## Manual accessibility check (M6, M7)
 
 NVDA + Firefox and VoiceOver + Safari through navigation and Try it in both locales; record the result here.

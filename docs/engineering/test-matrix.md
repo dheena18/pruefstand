@@ -530,6 +530,20 @@ owning module's unit test dir (`pt/unit/<module>/`, `rd/unit/…`).
 | Demo-mode error body (`{code, message, retry_after_s}`) | `rag_demo.api` (demo mode) | T8.4 | `test_limits.py`, `test_budget.py`, `test_killswitch.py`, `test_errors.py`, `test_validation.py` | `rate_limited` + `retry_after_s`; `busy`; `budget_exhausted`; `demo_disabled`; `body_too_large`; `invalid_request` | covered |
 | Tenant isolation (M2 proof) | `rag_demo` (HTTP + Qdrant) | T3.7 | `test_isolation_http.py`, `test_isolation_qdrant.py`, `test_quality_and_isolation.py` | 50+ leak probes; filter bypass; Testcontainers | covered |
 
+## Dashboard (TypeScript, T8.2b)
+
+TypeScript symbols of `apps/dashboard` (Vitest). T8.1 and T8.2a added no rows here (D133); T8.2b adds its own.
+
+| Symbol | Module | Task | Test file | Test cases (short) | Status |
+| --- | --- | --- | --- | --- | --- |
+| `validateShard`, `MAX_SHARD_CASES`, `ShardLoadError` | `apps/dashboard/src/lib/cases-validate.ts` | T8.2b | `test/lib/cases-validate.test.ts`, `cases.test.ts` | valid shard; unknown key (top, case); missing key; 501 cases; bad `category`; bad `metric_status`; non-parallel chunk lists; duplicate id; wrong run / shard / schema_version | covered |
+| `ShardStore`, `loadShard`, `findBaselineCase`, `SHARD_TIMEOUT_MS` | `apps/dashboard/src/lib/cases.ts` | T8.2b | `test/lib/cases.test.ts` | shard 0 first, merge in order; `C-LOADING` partial totals; rejected, invalid and timed-out (fake timers) shard + retry; cache only on success; duplicate id across shards; basePath URL | covered |
+| `parseCasesQuery`, `toCasesQuery`, `applyCases`, `filterCases`, `facetValues` | `apps/dashboard/src/lib/cases-state.ts` | T8.2b | `test/lib/cases.test.ts` | default failing-only iff a failing case exists; query round-trip; junk ignored; filters, search, R4 sort, page clamp | covered |
+| `applyDiff`, `buildDiffModel`, `ciDomain`, `countRows`, `parseDiffQuery` | `apps/dashboard/src/lib/diff.ts` | T8.2b | `test/lib/slices-diff.test.ts`, `test/pages/diff.test.tsx` | block-G rows only; sort status / Δ / metric with null results last; slice filter incl. junk; 50-row pages; domain includes 0; tier-1 model | covered |
+| `sectionsFor`, `groupOf`, `chartRows`, `parseSlicesQuery` | `apps/dashboard/src/lib/slices.ts` | T8.2b | `test/lib/slices-diff.test.ts`, `test/pages/slices.test.tsx` | §11.1 grouping, every row once; tier 1 three sections (F-T1); worst-first bars; per-section query round-trip | covered |
+| `CiBar`, `CiChart`, `SliceChart` (a11y) | `apps/dashboard/src/components/` | T8.2b | `test/components/{CiBar,CiChart,SliceChart}.test.tsx` | role=img + aria-label + `<title>` + `<desc>`; figure + figcaption; table with the same values always in the DOM; no `style` attribute | covered |
+| `formatValue`, `formatPlain`, `formatDelta` (exact rounding, D666) | `apps/dashboard/src/lib/format.ts` | T8.2b | `test/lib/format.test.ts` | ties half-even (0.125, 0.375), near-ties (0.005, 2.675, 1.005), de comma, NaN / ±Infinity → `–`, ≥ 1e13 | covered |
+
 ## Out-of-package symbols (scripts, infra, experiments, workflows)
 
 Every symbol a "Done when" line names outside `packages/` and `apps/rag-demo/`. `pg/` = private repo
@@ -634,10 +648,10 @@ UI tests (pages × states × theme × locale × viewport) are specified in `docs
 
 | Status | Rows |
 | --- | --- |
-| covered | 406 |
+| covered | 413 |
 | planned | 21 (R13 rows and rows whose case round 13 changed; owners T3.1a, T3.6, T4.1, T5.1, T5.4, T6.2a, T6.2b, T7.1b, T7.2, T7.3, T8.1, T8.5) |
 | weak | 1 (backup bundle: drill only, acceptable for an ops script) |
-| **total** | **428** |
+| **total** | **435** |
 
 Round-13 changes (D296): the round-12 table (241 covered / 29 open / 1 weak = 271 rows) was re-derived: 40 multi-owner
 rows split into 90 single-owner rows (+50); 29 open rows flipped (`covered` unless round 13 changed the case); 21 new

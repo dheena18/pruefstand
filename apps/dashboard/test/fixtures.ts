@@ -1,8 +1,14 @@
 import path from "node:path";
 
-import { loadLabels, loadRunIndex } from "@/lib/data";
+import { loadLabels, loadRunIndex, loadSlices } from "@/lib/data";
 import { loadRunContext, type RunContext } from "@/lib/run-context";
-import type { GateReport, LabelsDocument, RunIndexEntry, SliceDecision } from "@/lib/types";
+import type {
+  DashboardSliceRow,
+  GateReport,
+  LabelsDocument,
+  RunIndexEntry,
+  SliceDecision,
+} from "@/lib/types";
 
 export const POPULATED = path.join(__dirname, "../fixtures/populated");
 export const EMPTY = path.join(__dirname, "../fixtures/empty");
@@ -68,3 +74,33 @@ export function gateWith(over: Partial<GateReport>): GateReport {
     ...over,
   };
 }
+
+export const loadSlicesOf = (id: string) => loadSlices(id, POPULATED);
+
+export function sliceRow(over: Partial<DashboardSliceRow> = {}): DashboardSliceRow {
+  return {
+    metric: "context_recall",
+    dimension: "tenant",
+    value: "kanzlei_mueller",
+    status: "pass",
+    gated: true,
+    notable: false,
+    kind: "decision",
+    baseline_mean: 0.84,
+    candidate_mean: 0.79,
+    mean_diff: -0.05,
+    ci_low: -0.09,
+    ci_high: -0.01,
+    mde: 0.07,
+    max_drop: 0.05,
+    max_value: null,
+    n_clusters: 40,
+    informational_reason: null,
+    ...over,
+  };
+}
+
+/** The `BootstrapResult` of the default `decision()`, for tests that tweak single fields. */
+export const RESULT: NonNullable<SliceDecision["result"]> = decision().result as NonNullable<
+  SliceDecision["result"]
+>;
