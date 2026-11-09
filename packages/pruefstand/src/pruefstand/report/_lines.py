@@ -39,13 +39,13 @@ def informational_lines(b: Builder) -> list[str]:
     line = b.joined("Informational (does not block):", items, SEP)
     if line:
         out.append(line)
-    cut = b.cand.counts.get("judge_truncated", 0)
+    cut = len(b.truncated_ids) or b.cand.counts.get("judge_truncated", 0)  # ids agree with text
     if cut > 0:
         noun = "case" if cut == 1 else "cases"
         out.append(f"Judge input truncated on {cut} {noun}; those judgments may be incomplete.")
-        ids = b.cap([md_escape(i, limit=80) for i in b.truncated_ids], b.lim.ids)
-        if ids:
-            out.append(f"Truncated cases: {', '.join(ids)}")
+        shown = b.cap(b.truncated_ids, b.lim.ids)  # cap first, then escape
+        if shown:
+            out.append(f"Truncated cases: {', '.join(md_escape(i, limit=80) for i in shown)}")
     return out
 
 

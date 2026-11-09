@@ -9,6 +9,7 @@ def judge_truncated_case_ids(results: RunResults) -> list[str]:
 
     A case counts when a judged metric value carries ``details["truncated"] is True`` or the
     reason ``judge_input_too_long`` (the estimate path and the provider-reported cut alike).
+    Only judged metrics (``JUDGED_METRICS``) count; the runner counts per registry kind.
     The ids are raw (target-independent test-case ids); callers escape them for their medium.
 
     Args:

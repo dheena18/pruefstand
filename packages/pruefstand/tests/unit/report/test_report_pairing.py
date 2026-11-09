@@ -32,7 +32,7 @@ def test_truncated_case_ids_are_listed_escaped_and_capped() -> None:
     out = render_pr_comment(
         gate_report(), base_manifest(), CUT, report_url=None, truncated_cases=ids
     )
-    assert "Judge input truncated on 2 cases" in out
+    assert "Judge input truncated on 3 cases" in out
     assert line_with(out, "Truncated cases:") == r"Truncated cases: law-0042, law-0107, a\|b"
     many = [f"law-{i:04d}" for i in range(80)]
     capped = render_pr_comment(
