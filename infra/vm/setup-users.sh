@@ -138,6 +138,7 @@ ensure_lock() {
 
 ensure_wrapper() {
   local target="$BIN_DIR/pruefstand-lock"
+  command -v python3 >/dev/null || die "python3 is required by pruefstand-lock (it takes the lock in-process, T3.1d)"
   if ! cmp -s "$HERE/pruefstand-lock" "$target" 2>/dev/null; then
     run install -m 0755 -o root -g root "$HERE/pruefstand-lock" "$target"
   fi

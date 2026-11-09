@@ -1,19 +1,25 @@
 #!/usr/bin/env bash
-# pruefstand-lock <cmd> [args...]: run <cmd> while holding the host GPU lock (Y1, D211/D212).
+# pruefstand-lock <cmd> [args...]: run <cmd> while holding the host GPU lock (Y1, D211/D212; T3.1d, D952).
 #
 # Installed to /usr/local/bin/pruefstand-lock by setup-users.sh. The owner, coding agents and the
 # executor's orchestrator all use the same file, so dev GPU work and gate jobs exclude each other.
-# The lock is held until <cmd> (and anything inheriting the lock's file description) exits. With PRUEFSTAND_LOCK_HELD=1 already set the
-# command runs at once (nested call). GPU_LOCK_TIMEOUT_S must be numeric (exit 64 otherwise).
-#   exit 75 "gpu.lock busy"   no lock within ${GPU_LOCK_TIMEOUT_S:-7200} seconds
+# The lock is taken IN-PROCESS (python3: flock(2) on the lock file, then exec of <cmd>): there is no helper process
+# between the caller and <cmd>, so <cmd> IS the process that holds the lock. Consequences: a signal sent to the pid
+# of pruefstand-lock reaches <cmd> itself (nothing is orphaned while it keeps the lock), the exit code is the
+# one of <cmd> with no remapping, and the pruefstand-cluster wrapper finds the holder among its ancestors. The lock is
+# held until <cmd> and every process that inherited the lock's file descriptor have exited. With PRUEFSTAND_LOCK_HELD=1
+# already set the command runs at once (nested call). GPU_LOCK_TIMEOUT_S must be numeric (exit 64 otherwise); 0 means
+# do not wait.
+#   exit 75 "gpu.lock busy"   no lock within ${GPU_LOCK_TIMEOUT_S:-7200} seconds (printed only by this wrapper)
 #   exit 64                   no command given
-#   exit 2                    gpu.lock missing (run infra/vm/setup-users.sh)
+#   exit 2                    gpu.lock missing or not openable (run infra/vm/setup-users.sh)
+#   exit 127 / 126            <cmd> not found / not executable (checked before waiting for the lock)
 #   otherwise                 the exit code of <cmd>
 # PRUEFSTAND_LOCK_DIR exists only so tests can point at a temp dir; production never sets it.
 # Limits (advisory lock, not a security boundary): PRUEFSTAND_LOCK_HELD and PRUEFSTAND_LOCK_DIR are unauthenticated
-# environment variables, so any process of the owner can skip or redirect the lock; fd 9 is inherited by daemons
-# started under the lock, which then keep it held after <cmd> returns; the exit codes 64, 75 and 2 can also be
-# returned by the wrapped command itself.
+# environment variables, so any process of the owner can skip or redirect the lock; the lock's file descriptor is
+# inherited by daemons started under the lock, which then keep it held after <cmd> returns; the exit codes 64, 75
+# and 2 can also be returned by the wrapped command itself (then this wrapper prints nothing).
 set -euo pipefail
 
 lock="${PRUEFSTAND_LOCK_DIR:-/var/lib/pruefstand}/gpu.lock"
@@ -33,6 +39,11 @@ esac
 if [ "${PRUEFSTAND_LOCK_HELD:-}" = 1 ]; then
   exec -- "$@"
 fi
+# A missing command is reported at once (127, like the shell) instead of after waiting for the lock.
+if ! type -P -- "$1" >/dev/null && [ ! -x "$1" ]; then
+  echo "pruefstand-lock: $1: command not found" >&2
+  exit 127
+fi
 if [ ! -e "$lock" ]; then
   echo "pruefstand-lock: $lock does not exist; run infra/vm/setup-users.sh first" >&2
   exit 2
@@ -44,12 +55,46 @@ if ! exec 9<"$lock"; then
   exit 2
 fi
 exec 9<&-
-# flock(1) takes the lock and runs <cmd> as itself or as its child, so the process that holds the lock stays an
-# ANCESTOR of <cmd> until it exits (the pruefstand-cluster wrapper relies on that to tell our lock from someone else's).
 export PRUEFSTAND_LOCK_HELD=1
-rc=0
-flock -w "$timeout_s" -E 75 "$lock" "$@" || rc=$?
-if [ "$rc" -eq 75 ]; then
-  echo "pruefstand-lock: gpu.lock busy (waited ${timeout_s}s)" >&2
-fi
-exit "$rc"
+# The python code is a fixed string; lock, timeout and command are arguments, never interpolated.
+# -I: no user site or environment influence. SIGPIPE/SIGXFSZ are reset because python ignores them and an ignored
+# signal would survive the exec.
+# shellcheck disable=SC2016  # the program text is meant literally
+exec python3 -I -c '
+import fcntl, os, signal, sys
+lock, timeout, *cmd = sys.argv[1:]
+secs = int(timeout)
+fd = os.open(lock, os.O_RDONLY)
+
+
+class Busy(Exception):
+    pass
+
+
+def on_alarm(signum, frame):
+    raise Busy
+
+
+try:
+    if secs == 0:
+        fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+    else:
+        signal.signal(signal.SIGALRM, on_alarm)
+        signal.alarm(secs)
+        fcntl.flock(fd, fcntl.LOCK_EX)
+        signal.alarm(0)
+except (Busy, BlockingIOError):
+    sys.stderr.write("pruefstand-lock: gpu.lock busy (waited %ss)\n" % timeout)
+    sys.exit(75)
+os.set_inheritable(fd, True)
+for name in ("SIGALRM", "SIGPIPE", "SIGXFSZ"):
+    signal.signal(getattr(signal, name), signal.SIG_DFL)
+try:
+    os.execvp(cmd[0], cmd)
+except FileNotFoundError:
+    sys.stderr.write("pruefstand-lock: %s: command not found\n" % cmd[0])
+    sys.exit(127)
+except PermissionError:
+    sys.stderr.write("pruefstand-lock: %s: permission denied\n" % cmd[0])
+    sys.exit(126)
+' "$lock" "$timeout_s" "$@"

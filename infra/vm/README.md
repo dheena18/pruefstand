@@ -35,7 +35,7 @@ The owner never holds a copy of the cluster key. A third member of group `docker
 | File | Runs as | Purpose |
 | --- | --- | --- |
 | `setup-users.sh` | root (`sudo`) | user/group, owner membership, group `docker`, `/var/lib/pruefstand` (2770), `gpu.lock` (0660), **`chmod 0700 /home/pruefstand`** (security.md C18; the setup-log `adduser` left it open), installs `pruefstand-lock` |
-| `pruefstand-lock` | owner / any | `flock -w ${GPU_LOCK_TIMEOUT_S:-7200} /var/lib/pruefstand/gpu.lock env PRUEFSTAND_LOCK_HELD=1 "$@"`; exit 75 `gpu.lock busy` |
+| `pruefstand-lock` | owner / any | takes `flock(2)` on `/var/lib/pruefstand/gpu.lock` in-process (python3, waits `${GPU_LOCK_TIMEOUT_S:-7200}` s), sets `PRUEFSTAND_LOCK_HELD=1` and `exec`s the command, so the command is the lock holder and signals sent to `pruefstand-lock` reach it (T3.1d); exit 75 `gpu.lock busy`, 127 command not found |
 | `setup-data-root.sh` | root | `/mnt/pruefstand` + `data corpus datasets baselines backups cache logs` (2775, `pruefstand:pruefstand`) + sentinel `.pruefstand-data-root` |
 | `setup-ssh-key.sh` | `pruefstand` | verifies/creates the key and the `Host cairo-s101lp` block; BatchMode test |
 | `pruefstand-tunnel.service`, `install-tunnel.sh` | root | the system unit (forwards on `127.0.0.1` and `172.17.0.1`; starts after the firewall unit) and its installer, which refuses unless `pruefstand-firewall` is active, keeps `<unit>.bak` and rolls back if the new tunnel does not show both listeners within 20 s |
@@ -50,8 +50,8 @@ secret and no `systemctl --user`. `vm-check-<date>.out` is real output saved aft
 
 Limits of `pruefstand-lock`: it is an advisory lock between cooperating processes of the same machine, not a security
 boundary. `PRUEFSTAND_LOCK_HELD` and `PRUEFSTAND_LOCK_DIR` are unauthenticated environment variables (any process of the
-owner can skip or redirect the lock), fd 9 is inherited by daemons started under the lock (they keep it held), and the
-exit codes 64, 75 and 2 can collide with those of the wrapped command.
+owner can skip or redirect the lock), the lock's file descriptor is inherited by daemons started under the lock (they keep it held), and the
+exit codes 64, 75 and 2 can collide with those of the wrapped command (the wrapper then prints nothing).
 
 
 `/var/lib/pruefstand/gpu.lock` is the **one** GPU lock of the host. The orchestrator takes it once per job; the owner

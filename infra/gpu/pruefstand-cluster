@@ -71,16 +71,23 @@ if [ "$op" = pull ] || [ "$op" = rm ] || [ "$op" = show ]; then
   if [ -z "$bytes" ]; then fail "$tag is not in the installed allow-list" 64; fi
 fi
 
+# The key /proc/locks prints for a file, "MAJOR:MINOR:INODE" (hex major and minor, decimal inode), from `stat -c %D`
+# (the device number in hex, Linux dev_t encoding: a minor above 255 spreads over bits 0-7 and 20-31, e.g. hex
+# 10002c is major 0, minor 300 -> "00:12c:<inode>"; unit-tested in infra/gpu/tests/test_gpu_lock_key.py).
+lock_key() { # hex-dev inode
+  local dev=$((16#$1)) major minor
+  major=$(((dev >> 8 & 0xfff) | (dev >> 32 & 0xfffff000)))
+  minor=$(((dev & 0xff) | (dev >> 12 & 0xffffff00)))
+  printf '%02x:%02x:%s' "$major" "$minor" "$2"
+}
+
 # Is the GPU lock held by one of our ancestors? (pids of flock holders on the lock file's inode, then the PPid chain.)
 lock_held_by_ancestor() {
-  local lock="$lock_dir/gpu.lock" inode dev major minor key p line rest h
+  local lock="$lock_dir/gpu.lock" inode key p line rest h
   local -a holders=()
   if ! [ -r "$lock" ]; then return 1; fi
   inode="$(stat -c %i "$lock")" || return 1
-  dev=$((16#$(stat -c %D "$lock")))
-  major=$(((dev >> 8 & 0xfff) | (dev >> 32 & ~0xfff)))
-  minor=$(((dev & 0xff) | (dev >> 12 & ~0xff)))
-  key="$(printf '%02x:%02x:%s' "$major" "$minor" "$inode")"
+  key="$(lock_key "$(stat -c %D "$lock")" "$inode")" || return 1
   mapfile -t holders < <(awk -v k="$key" '$2 == "FLOCK" && $6 == k { print $5 }' /proc/locks)
   p=$$
   while [ "$p" -gt 1 ]; do
