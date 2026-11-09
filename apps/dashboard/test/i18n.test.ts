@@ -90,3 +90,33 @@ describe("format / t", () => {
     expect(otherLocale("de")).toBe("en");
   });
 });
+
+describe("keys the T8.2a pages use (ui-spec §10.4)", () => {
+  const KEYS = [
+    "stop_reason.aborted_infra",
+    "subnav.cases_not_published",
+    "summary.cases_not_published",
+    "notfound.docs",
+    "runs.col.workload",
+    "runs.block_short",
+    "runs.judged_subset_short",
+    "summary.block",
+    "summary.judged_subset",
+    "banner.more",
+    "tier1.notice",
+    "tier1.reported",
+    "empty.filtered",
+    "filter.clear",
+    "pagination.label",
+    "licences.title",
+  ];
+  it.each(KEYS)("%s exists in both files", (key) => {
+    expect(hasKey("de", key), `de ${key}`).toBe(true);
+    expect(hasKey("en", key), `en ${key}`).toBe(true);
+  });
+  it("the drift banner has the D253 count text and no 0.85 wording", () => {
+    expect(t("en", "banner.judge_drift")).toContain("5 or more of 50 anchor verdicts changed");
+    expect(t("de", "banner.judge_drift")).toContain("5 oder mehr von 50 Ankerurteilen geändert");
+    expect(JSON.stringify(en) + JSON.stringify(de)).not.toMatch(/0\.85|0,85|run-gate/);
+  });
+});

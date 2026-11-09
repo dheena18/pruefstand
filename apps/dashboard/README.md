@@ -39,6 +39,28 @@ directories they come from. Refresh with `scripts/dashboard/refresh_snapshot.sh 
 Local dev: `DASHBOARD_DATA_DIR=fixtures/populated node ../../scripts/dashboard/build.mjs`, or copy a tree to
 `public/data/` and run `pnpm dev`.
 
+## Pages, components, i18n (T8.2a)
+
+| Route                  | Source                                | What                                                                             |
+| ---------------------- | ------------------------------------- | -------------------------------------------------------------------------------- |
+| `/<locale>/`           | `src/app/[locale]/page.tsx`           | runs list; empty export → `L-EMPTY`                                              |
+| `/<locale>/runs/<id>/` | `src/app/[locale]/runs/[id]/page.tsx` | run summary (tier-2 and tier-1 bodies); `_empty` placeholder for an empty export |
+| `/<locale>/licences/`  | `src/app/[locale]/licences/page.tsx`  | sources, licences, ODbL offer (`src/content/licences.json`)                      |
+
+- **Data** is read at build time through `src/lib/data.ts` (validated); `src/lib/run-context.ts` bundles a run, its gate,
+  labels, baseline entry, `casesPublished` (`cases/<id>/0.json` exists) and the shard-0 failing count.
+- **Table rule** (`src/lib/tables.ts`, mirrors `report/tables.py`): `assignTable` / `assignBlock`; `src/lib/summary.ts` lays
+  a `GateReport` out in blocks G, A, C, R, J, I, N. No metric is computed; counting and filtering list items only.
+- **URL state** (`src/lib/url-state.ts`): `?status&ref&tier&workload&sort&dir&page`. The static HTML is the default view
+  (page 1, created desc) rendered as the `<Suspense>` fallback around `RunsList` (the `useSearchParams` reader); after
+  hydration `<main data-hydrated="true">` is set. Pagination uses links, so pages work before hydration.
+- **Table rule for narrow screens**: `DataTable` renders a table in a focusable, labelled scroll region from 640 px and a
+  card list below (CSS switches them; no inline styles).
+- **i18n**: `src/i18n/{de,en}.json` (flat keys, ICU `{n}` / plural), `src/lib/i18n.ts`. Data labels: en from
+  `labels.json`, de from `metric.` / `cause.` / `rule.` / `info_reason.` keys (`src/lib/labels.ts`). Dates and numbers
+  per ui-spec §10.1–§10.2 (`src/lib/format.ts`). `infra_error` is never rendered; only whether it is set is read.
+- **Types** come only from `src/types/generated/`; `src/lib/types.ts` re-exports the ones the pages use.
+
 ## Manual accessibility check (M6, M7)
 
 NVDA + Firefox and VoiceOver + Safari through navigation and Try it in both locales; record the result here.

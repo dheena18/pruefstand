@@ -167,3 +167,15 @@ the "Try it" page to the demo API. Routes carry a locale prefix (`LOCALE` = `de`
 D137) and every page has the licence attribution footer. Routes and component names follow
 `docs/design/ui-spec.md` §2.1 and §5, which win on any difference. It renders
 numbers exactly as stored in `gate.json`/`run.json` and performs no metric computation.
+
+Pages and components of T8.2a (runs list, run summary, licences; names as in `docs/design/ui-spec.md` §2.1 and §5):
+
+- `app/[locale]/page.tsx` → `RunsList` (client, `useSearchParams`) inside `<Suspense fallback={<RunsListView query="">}>`;
+  `RunsListView` → `FilterBar`, `DataTable`, `Pagination`, `StatusBadge`.
+- `app/[locale]/runs/[id]/page.tsx` → `lib/run-context.ts` → `RunSummaryView` → `SummaryHeader` (`StatusBadge`,
+  `TierBadge`), `RunMetaBlock`, `Banner`, `RunSubNav`, then `Tier2Body` or `Tier1Body` (`HardFailList`, `MetricTable`,
+  `AbsoluteCheckTable`, `InformationalTable`, `JudgedInfoTable`, `Tier1Notice`, `SummaryLists`), `ReportLink`.
+- `app/[locale]/licences/page.tsx` → `LicenceNotice` (`DataTable`).
+- Table membership: `lib/tables.ts` (`assignTable`, `assignBlock`, mirror of `report/tables.py`, ui-spec §11.1) and
+  `lib/summary.ts` (blocks, blocking count).
+
