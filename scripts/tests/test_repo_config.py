@@ -93,3 +93,16 @@ def _scan_exit_code(needs: dict[str, str]) -> int:
 def test_scan_aggregator_filter(codeql: str, other: str, expected: int) -> None:
     needs = {"codeql": codeql, "gitleaks": other, "pip-audit": "success", "zizmor": "success"}
     assert _scan_exit_code(needs) == expected
+
+
+def test_dependabot_has_one_group_per_ecosystem_and_node_ignores() -> None:
+    doc = yaml.safe_load((REPO / ".github" / "dependabot.yml").read_text(encoding="utf-8"))
+    ecosystems = [block["package-ecosystem"] for block in doc["updates"]]
+    assert len(ecosystems) == len(set(ecosystems))  # one block, hence one group, per ecosystem
+    for block in doc["updates"]:
+        assert block["schedule"]["interval"] == "weekly"
+        assert len(block["groups"]) == 1
+        assert block["open-pull-requests-limit"] <= 3
+    npm = next(b for b in doc["updates"] if b["package-ecosystem"] == "npm")
+    ignored = {i["dependency-name"] for i in npm["ignore"]}
+    assert {"@types/node", "next", "eslint-config-next"} <= ignored
