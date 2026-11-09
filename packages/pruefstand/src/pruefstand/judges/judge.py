@@ -1,13 +1,16 @@
 """``Judge`` and ``JudgePool``: one versioned German prompt in, one validated verdict out."""
 
+import os
+import re
 from collections.abc import Mapping
 
-from pruefstand.core.errors import ConfigError
+from pruefstand.core.errors import ConfigError, JudgeInputTruncated
 from pruefstand.core.models.judge import JudgeTask, JudgeVerdict
-from pruefstand.core.models.llm import LLMRequest, LLMRole
+from pruefstand.core.models.llm import LLMRequest, LLMRole, Message
 from pruefstand.core.settings import PruefstandSettings
 from pruefstand.judges.escaping import make_nonce, wrap
 from pruefstand.judges.output import normalise, output_model, output_schema, spec_of
+from pruefstand.judges.tokens import estimate_tokens, input_cap, judge_window
 from pruefstand.llm.client import LLMClient
 from pruefstand.llm.prompts import PromptRegistry
 
@@ -23,10 +26,26 @@ def _nonce_key(given: bytes | None) -> bytes:
         if not given:
             msg = "PRUEFSTAND_NONCE_KEY is not set (HMAC key of the judge-prompt nonces)"
             raise ConfigError(msg)
+        _require_strong(given)
     if not given:
         msg = "the judge nonce key is empty"
         raise ConfigError(msg)
     return given
+
+
+CI_NONCE_KEY = "tier1-hosted-ci-nonce"
+"""The fixed, public key of the hosted tier-1 job (informational judge); never valid in tier 2."""
+_STRONG = re.compile(r"[0-9a-fA-F]{32,}")
+
+
+def _require_strong(key: bytes) -> None:
+    """In tier 2 (``PRUEFSTAND_STACK=a40``) the key must be 32+ hex chars and not the CI value."""
+    if os.environ.get("PRUEFSTAND_STACK") != "a40":
+        return
+    text = key.decode("utf-8", errors="replace")
+    if text == CI_NONCE_KEY or _STRONG.fullmatch(text) is None:
+        msg = "PRUEFSTAND_NONCE_KEY is weak or public: tier 2 needs 32+ hex chars (rand -hex 32)"
+        raise ConfigError(msg)
 
 
 class Judge:
@@ -57,11 +76,52 @@ class Judge:
         self._model = model
         self._registry = registry
         self._key = _nonce_key(nonce_key)
+        self._cap: int | None = None  # read from the catalogue when first needed (D520)
 
     @property
     def model(self) -> str:
         """The judge's model id."""
         return self._model
+
+    @property
+    def input_cap(self) -> int:
+        """Largest rendered prompt in (estimated) tokens: context window minus 1 024 (X3.9)."""
+        if self._cap is None:
+            self._cap = input_cap(self._model)
+        return self._cap
+
+    def _check_not_cut(self, reported: int) -> None:
+        """Raise ``JudgeInputTruncated`` when the provider saw more tokens than the window leaves.
+
+        Ollama cuts a prompt that does not fit ``num_ctx - num_predict`` without a word; the
+        reported ``prompt_eval_count`` is the only trace, so the estimate is checked against it.
+        """
+        window = judge_window(self._model)
+        if window is not None and reported >= window:
+            msg = f"the provider reported {reported} prompt tokens, the window leaves {window}"
+            raise JudgeInputTruncated(msg, transient=False)
+
+    def prompt_tokens(self, task: JudgeTask) -> int:
+        """Estimate the tokens of the prompt ``score`` would send for ``task``.
+
+        Raises:
+            ConfigError: Unknown metric or inputs that do not fit the prompt.
+            PromptError: The prompt file is missing or malformed.
+        """
+        return sum(estimate_tokens(m.content) for m in self._render(task))
+
+    def _render(self, task: JudgeTask) -> tuple[Message, ...]:
+        spec = spec_of(task.metric)
+        if set(task.inputs) != set(spec.variables):
+            msg = f"{task.metric}: inputs {sorted(task.inputs)} must be {sorted(spec.variables)}"
+            raise ConfigError(msg)
+        if task.prompt_id != spec.prompt_id:
+            msg = f"{task.metric}: prompt_id '{task.prompt_id}' must be '{spec.prompt_id}'"
+            raise ConfigError(msg)
+        template = self._registry.get(task.prompt_id, task.prompt_version)
+        nonce = make_nonce(self._key, task.prompt_id, task.inputs)
+        blocks = {name: wrap(name, text, nonce) for name, text in task.inputs.items()}
+        return tuple(template.render(**blocks))
 
     async def score(self, task: JudgeTask) -> JudgeVerdict:
         """Render the prompt with nonce-wrapped inputs, ask the model and normalise the score.
@@ -77,25 +137,21 @@ class Judge:
             ConfigError: Unknown metric, a prompt id that is not the metric's, or inputs that do not
                 fit the prompt (no call is made).
             PromptError: The prompt file is missing or malformed.
+            JudgeInputTruncated: The rendered prompt is over the input cap (no call is made; the
+                metrics truncate before they ask), or the provider reported a cut prompt.
             LLMError: The answer is invalid or out of range after one repair.
             PolicyViolation: The provider policy refuses the call.
             QuotaExhausted: The free quota is used up and there is no fallback.
             BudgetExceeded: The call pushed the budget over a limit.
         """
-        spec = spec_of(task.metric)
-        if set(task.inputs) != set(spec.variables):
-            msg = f"{task.metric}: inputs {sorted(task.inputs)} must be {sorted(spec.variables)}"
-            raise ConfigError(msg)
-        if task.prompt_id != spec.prompt_id:
-            msg = f"{task.metric}: prompt_id '{task.prompt_id}' must be '{spec.prompt_id}'"
-            raise ConfigError(msg)
-        template = self._registry.get(task.prompt_id, task.prompt_version)
-        nonce = make_nonce(self._key, task.prompt_id, task.inputs)
-        blocks = {name: wrap(name, text, nonce) for name, text in task.inputs.items()}
+        messages = self._render(task)
+        if sum(estimate_tokens(m.content) for m in messages) > self.input_cap:
+            msg = f"{task.metric}: the prompt is over the input cap of {self.input_cap} tokens"
+            raise JudgeInputTruncated(msg, transient=False)  # candidate-side, like a cut input
         request = LLMRequest(
             role=LLMRole.JUDGE,
             model=self._model,
-            messages=template.render(**blocks),
+            messages=messages,
             temperature=0.0,
             max_tokens=JUDGE_MAX_TOKENS,
             prompt_id=task.prompt_id,
@@ -104,6 +160,7 @@ class Judge:
             json_schema=output_schema(task.metric),
         )
         out, resp = await self._llm.complete_json_meta(request, output_model(task.metric))
+        self._check_not_cut(resp.usage.prompt_tokens)
         return JudgeVerdict(
             score=normalise(task.metric, out.score),
             reason=out.reason,

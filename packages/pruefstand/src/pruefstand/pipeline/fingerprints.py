@@ -15,9 +15,13 @@ from pruefstand.core.config.gate import JUDGED_METRICS
 from pruefstand.core.enums import Split
 from pruefstand.core.errors import ConfigError
 from pruefstand.core.fingerprint import eval_fingerprint
+from pruefstand.core.logging import get_logger
+from pruefstand.judges.output import SPECS
+from pruefstand.llm.providers import catalogue_entry
 from pruefstand.pipeline.judge_mode import Stack
 from pruefstand.pipeline.select import Stratum, Tier
 
+_log = get_logger(__name__)
 _CALIBRATION = "calibration_status.yaml"
 _MAX_CALIBRATION_BYTES = 100_000
 
@@ -28,7 +32,7 @@ class JudgeFacts:
 
     Attributes:
         models: Gated judged metric to judge model id.
-        prompt_versions: Gated judged metric to judge prompt version (filled by T5.2b).
+        prompt_versions: Gated judged metric to its judge prompt (``faithfulness_de_v2``).
         serving: Gated judged metric to ``"<engine> <version> <quantization> <digest[:12]>"``.
         epoch: Calibration epoch (0 while ``judges/data/calibration_status.yaml`` is missing).
     """
@@ -63,6 +67,28 @@ def calibration_epoch() -> int:
     return epoch
 
 
+def judge_serving(model_id: str) -> str | None:
+    """Describe how a judge is served: ``"<engine> <tag> <quantization> <digest[:12]>"``.
+
+    An Ollama judge reads its catalogue entry (the digest pins the exact weights; the Ollama
+    server version is not known offline). Any other judge, or one the catalogue does not list,
+    gets None.
+
+    Examples:
+        >>> judge_serving("github/openai/gpt-4.1-mini") is None
+        True
+    """
+    if not model_id.startswith("ollama/"):
+        return None
+    try:
+        entry = catalogue_entry(model_id)
+    except ConfigError:
+        _log.warning("judge_serving_unknown", model=model_id)
+        return None
+    digest = (entry.digest or "unpinned")[:12]
+    return f"ollama {entry.tag} {entry.quantization or 'unknown'} {digest}"
+
+
 def judge_facts(
     cfg: PruefstandConfig,
     *,
@@ -80,7 +106,7 @@ def judge_facts(
         cfg: The run configuration.
         stack: ``live`` or ``a40``.
         tier: ``pr``, ``nightly`` or ``bench``; the nightly judge is used for ``nightly``.
-        serving: Serving info of the judges by metric (from the judge backends, T5.1).
+        serving: Serving info of the judges by metric; default ``judge_serving`` of the catalogue.
         epoch: Calibration epoch; default is read from the calibration file.
 
     Returns:
@@ -92,8 +118,12 @@ def judge_facts(
     default = cfg.judge.nightly if tier == "nightly" else cfg.judge.pr
     gated = sorted(set(cfg.gate.metrics) & JUDGED_METRICS)
     models = {m: cfg.judge.per_metric.get(m, default).id for m in gated}
-    known = serving or {}
-    return JudgeFacts(models, {}, {m: known[m] for m in gated if m in known}, value)
+    known = dict(serving) if serving is not None else {}
+    if serving is None:
+        found = {m: judge_serving(models[m]) for m in gated}
+        known = {m: text for m, text in found.items() if text is not None}
+    versions = {m: f"{SPECS[m].prompt_id}_{SPECS[m].version}" for m in gated}
+    return JudgeFacts(models, versions, {m: known[m] for m in gated if m in known}, value)
 
 
 def build_eval_fingerprint(  # noqa: PLR0913  (a thin wrapper over the fixed core signature)

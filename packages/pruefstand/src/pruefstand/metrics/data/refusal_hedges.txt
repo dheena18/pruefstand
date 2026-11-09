@@ -1,0 +1,28 @@
+# Hedge lexicon v1 (T5.2b, round 9 AI9-19): wording of an answer that may refuse without using a
+# refusal phrase. One lower-case phrase per line, DE and EN; '#' starts a comment. An answer with
+# no refusal phrase and one of these hedges is "ambiguous" and goes to the refusal judge. A change
+# is a new version of this file (hedges v2) and a new metric version.
+keine angaben
+keine aussage
+keine verbindliche
+nicht eindeutig
+nicht abschließend
+nicht angegeben
+nicht beantworten
+nicht ermitteln
+nicht entnehmen
+nicht ersichtlich
+nicht festgelegt
+nicht geregelt
+nicht klar
+lässt sich nicht
+lässt sich daraus nicht
+geht nicht hervor
+nicht explizit
+unklar
+not specified
+not clear
+cannot be determined
+does not specify
+no information
+unable to determine

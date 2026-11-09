@@ -160,6 +160,7 @@ def test_the_citation_bug_is_informational_with_twelve_clusters(  # noqa: PLR091
 ) -> None:
     TargetCassette("bug_citations").install(router, BUG_URL)
     monkeypatch.setenv("PRUEFSTAND_STACK", "a40")
+    monkeypatch.setenv("PRUEFSTAND_JUDGE_MODE", "skipped")  # the gate is under test, not a judge
     one = run_dir(do_run(cli, good_config, tmp_path / "runs"))
     two = run_dir(do_run(cli, bug_config(tmp_path, "bug"), tmp_path / "runs"))
     result = gate(cli, good_config, two, one)
