@@ -10,6 +10,7 @@ import typer
 from pruefstand.cli._common import EXIT_FAIL, EXIT_USAGE, fail, guarded
 from pruefstand.core.config_loader import load_config
 from pruefstand.core.protocols import BaselineStore
+from pruefstand.pipeline.promotion import check_gate_for_promotion
 from pruefstand.store.artifacts import ArtifactStore
 from pruefstand.store.baseline_index import REFS
 from pruefstand.store.baselines_git import GitBranchBaselineStore
@@ -36,13 +37,27 @@ def promote_command(
     run: _Run,
     ref: Annotated[str, typer.Option("--ref", help=f"One of: {', '.join(REFS)}.")],
     config: _Config = Path("pruefstand.yaml"),
+    allow_failed_gate: Annotated[
+        bool,
+        typer.Option(
+            "--allow-failed-gate",
+            help="Promote although the gate FAILed or the run has hard fails (owner only).",
+        ),
+    ] = False,
 ) -> None:
-    """Promote a complete run to the baseline of its fingerprint and ref."""
+    """Promote a complete run to the baseline of its fingerprint and ref.
+
+    A run whose gate.json says FAIL, or that has a hard fail, is refused (exit 1) unless
+    --allow-failed-gate is given (D881).
+    """
     with guarded(ctx):
         artifacts = ArtifactStore(run.parent).read_run(run)
         cfg = load_config(config)
         try:
             prepared = prepare_promotion(artifacts, ref)
+            check_gate_for_promotion(
+                run, artifacts.results, cfg.gate, allow_failed_gate=allow_failed_gate
+            )
             build_baseline_store(cfg.baseline_store).put(prepared, ref)
         except BaselineRefused as exc:
             fail(f"error: {exc}", EXIT_FAIL)

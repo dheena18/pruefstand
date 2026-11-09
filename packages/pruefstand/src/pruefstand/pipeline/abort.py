@@ -14,6 +14,13 @@ from pruefstand.runner.manifest import RunEnd, RunFacts, build_manifest
 from pruefstand.store.artifacts import new_run_id
 
 _log = get_logger(__name__)
+_MAX_SHOWN = 80
+
+
+def _shown(text: str) -> str:
+    """The target-supplied ``text`` for a message: one line, at most ``_MAX_SHOWN`` characters."""
+    line = " ".join(text.split())
+    return line if len(line) <= _MAX_SHOWN else line[:_MAX_SHOWN] + "…"
 
 
 def write_aborted_run(plan: Plan, info: TargetInfo | None, out: Path, reason: str) -> Path:
@@ -48,7 +55,7 @@ def abort_on_corpus_mismatch(plan: Plan, info: TargetInfo | None, out: Path) -> 
         return
     directory = write_aborted_run(plan, info, out, "corpus_mismatch")
     msg = (
-        f"target serves corpus {info.corpus_version!r}, dataset {plan.data.name} "
+        f"target serves corpus {_shown(info.corpus_version)!r}, dataset {plan.data.name} "
         f"{plan.data.version} was built for {plan.data.corpus_version!r}; aborted run {directory}"
     )
     raise CorpusMismatch(msg)
