@@ -1,5 +1,6 @@
 """``pruefstand build-dataset`` (T4.7a): usage errors, the printed counts and the stage option."""
 
+import re
 from pathlib import Path
 
 import pytest
@@ -37,11 +38,12 @@ def _offline(monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 def test_the_command_is_registered_and_not_a_stub() -> None:
-    result = CliRunner().invoke(app, ["build-dataset", "--help"])
+    env = {"NO_COLOR": "1", "COLUMNS": "200", "TERM": "dumb", "FORCE_COLOR": None}
+    result = CliRunner().invoke(app, ["build-dataset", "--help"], env=env)  # type: ignore[arg-type]
     assert result.exit_code == 0
-    assert "--stage" in result.output
-    assert "--resume" in result.output
-    assert "--only" in result.output
+    text = re.sub(r"\x1b\[[0-9;]*m", "", result.output)
+    for option in ("--stage", "--resume", "--only", "--config"):
+        assert option in text
 
 
 def test_a_missing_config_is_a_usage_error(tmp_path: Path) -> None:
