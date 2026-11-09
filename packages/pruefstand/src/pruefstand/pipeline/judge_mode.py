@@ -9,11 +9,18 @@ from collections.abc import Iterable, Mapping
 from pathlib import Path
 from typing import Literal
 
-from pruefstand.core.config import PruefstandConfig
+from pruefstand.core.config import ModelRef, PruefstandConfig
 from pruefstand.core.errors import ConfigError
+from pruefstand.core.models.attacks import CanaryRegistry
 from pruefstand.core.models.run import ScoredCase
-from pruefstand.core.protocols import JudgePoolLike
+from pruefstand.core.protocols import JudgePoolLike, KVCache
+from pruefstand.judges.factory import build_pool
+from pruefstand.llm.budget import Budget
 from pruefstand.llm.cache_epochs import read_drift
+from pruefstand.llm.client import LLMClient
+from pruefstand.llm.factory import build_client
+from pruefstand.llm.recorder import CallRecorder
+from pruefstand.pipeline.select import Tier
 
 Stack = Literal["live", "a40"]
 JudgeMode = Literal["github", "local", "skipped"]
@@ -151,17 +158,37 @@ def judge_drift_flag(cache_dir: Path, models: Iterable[str]) -> bool:
     return flag is not None and flag.model in set(models)
 
 
-def build_judge_pool(cfg: PruefstandConfig, mode: JudgeMode) -> JudgePoolLike | None:  # noqa: ARG001
-    """Return the judge pool for ``mode``, or None while no judge exists.
-
-    Judges (``pruefstand.judges``) arrive with T5.2a / T5.2b; until then judged metrics are not
-    registered either, so ``None`` is correct and the run records ``judge_mode="skipped"``.
+def build_judge_pool(
+    cfg: PruefstandConfig,
+    mode: JudgeMode,
+    *,
+    tier: Tier,
+    budget: Budget,
+    recorder: CallRecorder,
+    canaries: CanaryRegistry,
+    cache: KVCache | None,
+) -> JudgePoolLike | None:
+    """Build the judge pool of a run: every judge client shares the run's budget and call log.
 
     Args:
-        cfg: The run configuration.
-        mode: The requested mode.
+        cfg: The run configuration (``judge``, ``llm`` policy and fallback judge).
+        mode: The requested mode; ``skipped`` builds nothing.
+        tier: ``pr``, ``nightly`` or ``bench`` (``nightly`` uses ``judge.nightly``).
+        budget: The run budget, the same object the runner reserves from.
+        recorder: Receives one row per judge call (``fallback_used`` reads it).
+        canaries: Registry for the external-provider data guard (fail closed).
+        cache: The ``llm`` namespace cache, or None.
 
     Returns:
-        None for now.
+        The pool, or None for ``skipped``.
+
+    Raises:
+        ConfigError: No ``PRUEFSTAND_NONCE_KEY``, or a judge backend cannot be built.
     """
-    return None
+    if mode == "skipped":
+        return None
+
+    def make_client(ref: ModelRef) -> LLMClient:
+        return build_client(cfg, cache, budget, recorder, model=ref, canaries=canaries)
+
+    return build_pool(cfg, tier=tier, make_client=make_client)

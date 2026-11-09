@@ -51,7 +51,7 @@ uses it. Modules only implement behaviour. Concretely, these live in `core`:
 | `core.config.build` | `TenantPlan`, `CorpusBuildConfig` (T2.5), `SplitPlan` (T4.1) |
 | `core.config.build_dataset`, `core.config.build_models` | `DatasetBuildConfig` (T4.1; moved and extended by T4.7a, D754), `BuildModels`, `GenerationConfig`, `PerturbConfig`, `EmbedConfig`, `ReviewConfig`, `ReviewersConfig` (T4.7a); all re-exported by `core.config` |
 | `core.citations` | `Citation`, `extract_citations`, `normalise`, `citations_match`, `citation_credit` (R9), `parse_one` (pure parser; used by `ingest` to set `Chunk.citation_key` and by `metrics`) |
-| `core.protocols` (structural helpers) | `JudgeLike`, `JudgePoolLike`, `LLMClientLike` — minimal Protocols so `JudgedMetric` / `LLMPerturbation` can be typed in core without importing judges/llm |
+| `core.protocols` (structural helpers) | `JudgeLike` (`score`, **T5.2b:** `input_cap`, `prompt_tokens`), `JudgePoolLike`, `LLMClientLike` — minimal Protocols so `JudgedMetric` / `LLMPerturbation` can be typed in core without importing judges/llm |
 | `core.protocols` | `KVCache`, `TargetAdapter`, `LLMBackend`, `BaselineStore`, `Metric`, `DeterministicMetric`, `JudgedMetric`, `Perturbation`, `LLMPerturbation`, `Loader`, `Chunker` |
 
 **R13 (DEV13-13, D313): `core.config` is a package**, created by T1.2: `core/config/__init__.py` (re-exports every
@@ -806,8 +806,9 @@ faithfulness, answer_correctness, perturbation_consistency, refusal_judged
 # R9 X3.9 judge input cap = the judge's context window - 1 024 tokens, counted with the judge's tokenizer;
 #   truncation is logged per case (details["truncated"]=True), counted in RunManifest.counts["judge_truncated"],
 #   and the truncated case ids are listed in the report; the value is still computed on the truncated input (never
-#   not_applicable). If > 5 % of a judged metric's applicable cases are truncated, the pipeline makes that metric
-#   informational with reason "judge_truncated" (§9).
+#   not_applicable). D815 (owner decision, supersedes the earlier informational rule): candidate truncation never
+#   makes a metric informational; the pairing worst-fills a candidate value computed on a truncated input when the
+#   baseline's input fit, and caps a case truncated on both sides like a judge error (20 % of a slice, then filled).
 # judge failure on a case (LLMError after retries, timeout, PolicyViolation) -> MetricValue(status=ERROR,
 #   value=None, details={"error": <type>}), counted in RunManifest.counts["judge_error"]; that case is left out
 #   of the metric's pairing (never worst-filled). > 5 % judge errors -> RunManifest.judge_degraded (D120).
@@ -834,6 +835,11 @@ class Citation(BaseModel): kind: Literal["para", "art"]; number: str; absatz: st
 class MetricRegistry: def __init__(self, metrics: Iterable[Metric])   # ConfigError: name not in KNOWN_METRICS, or duplicate
                       @classmethod def default(cls) -> MetricRegistry  # T1.5b: the 16 deterministic metrics; ConfigError if
                                                                        # their names != KNOWN_METRICS - judged (no drift)
+                      @classmethod def full(cls, *, top_k: int | None = None, refusal_judge: bool | None = None)
+                                   -> MetricRegistry                  # T5.2b (D800): default() + the 4 judged metrics;
+                                                                       # the pipeline's registry. top_k: faithfulness context
+                                                                       # when no used_in_prompt; refusal_judge None = read
+                                                                       # judges/data/calibration_status.yaml (off without it)
                       def get(self, name: str) -> Metric             # ConfigError if unknown
                       def all(self) -> Sequence[Metric]
                       def directions(self) -> dict[str, bool]        # name -> higher_is_better (pipeline passes it to the gate)
@@ -861,12 +867,18 @@ class Judge:                   def __init__(self, llm: LLMClient, model: str, re
                                async def score(self, task: JudgeTask) -> JudgeVerdict     # parses JSON {reason, score}
 class JudgePool:               def __init__(self, judges: Mapping[str, Judge], default: str) -> None   # satisfies core.protocols.JudgePoolLike
                                def for_metric(self, metric: str) -> Judge
+# T5.2b additions (D801, D805): Judge.input_cap (window - 1 024 tokens, read from the catalogue / quotas.yaml on first use) and
+#   Judge.prompt_tokens(task) (conservative estimate, no call); Judge.score raises LLMError for a prompt over the cap, before any
+#   call; judges/tokens.py: estimate_tokens, input_cap; judges/calibration.py: read_status, refusal_judge_passed, judges_uncalibrated
+#   (T5.4 later adds its pure statistics to the same module); pipeline.judge_mode.build_judge_pool(cfg, mode, *, tier, budget,
+#   recorder, canaries, cache) -> JudgePoolLike | None (shared budget and call log, replaces the None stub of D706).
 # T5.2a additions (D701-D706): Judge.__init__ gains the keyword-only nonce_key (default PRUEFSTAND_NONCE_KEY, fails closed);
 #   judges/output.py: JudgeOutput, SPECS (metric -> max_raw, prompt_id, variables), make_task(metric, **inputs), output_schema(metric);
 #   judges/escaping.py: make_nonce, wrap, escape, format_chunks; judges/robustness.py: load_items, task_inputs, summarize;
 #   judges/factory.py: build_pool(cfg, *, tier, make_client, registry=None, nonce_key=None) -> JudgePool
 # judges/family_guard.py (T5.2a)
-def check_judge_families(judges: JudgeConfig, infos: Sequence[TargetInfo]) -> None   # raises ConfigError
+def check_judge_families(judges: JudgeConfig, infos: Sequence[TargetInfo],
+                         fallback: ModelRef | None = None) -> None   # raises ConfigError; T5.2b: fallback = cfg.llm.fallback_judge
 # judges/calibration.py (pure, numpy/scipy, polars)
 def cohens_kappa(a: Sequence[int], b: Sequence[int], weights: Literal[None, "linear", "quadratic"] = None) -> float
     # quadratic for 3-point scales, None for binary; 95 % CIs by bootstrap over items
@@ -1032,7 +1044,8 @@ class RunArtifacts(BaseModel): results: RunResults; root: Path   # a run as stor
 class Runner:
     def __init__(self, adapter: TargetAdapter, metrics: MetricRegistry, judges: JudgePoolLike | None,  # noqa: PLR0917
                  cache: KVCache | None, budget: Budget, cfg: RunnerConfig,
-                 *, hard_fail: tuple[str, ...] = ("canary_leak", "tenant_leak", "system_prompt_leak")) -> None
+                 *, hard_fail: tuple[str, ...] = ("canary_leak", "tenant_leak", "system_prompt_leak"),
+                 judge_scope: JudgeScope | None = None) -> None   # T5.2b (D804): JudgeScope(case_ids, canaries)
     async def run(self, cases: Sequence[TestCase], *, target_fingerprint: str, seed: int,
                   judged_subset: bool = False) -> RunResults
     # R12 N1.2 (D249, T1.8): judged_subset=True -> judged metrics only on cases with TestCase.judged_subset; other
@@ -1157,11 +1170,11 @@ class SliceDecision(BaseModel):   metric: str; dimension: str; value: str; statu
                                   n_clusters: int | None = None   # applicable clusters in this slice
                                   informational_reason: str | None = None   # why a normally gated pair is informational:
                                   # "applicable_clusters<30" | "refusal_outside_nightly_full" (refusal_correct only, R9
-                                  # X3.7) | "judge_uncalibrated" | "judge_degraded" | "judge_drift" | "tier1_judged" |
+                                  # X3.7) | "judge_uncalibrated" | "judge_skipped" (tier 2, judge_mode=skipped on either run) | "judge_degraded" | "judge_drift" | "tier1_judged" |
                                   # "tier1_deterministic_only" (R9 X5.6: every paired metric in a stack=live run) |
                                   # "tier1_injection_reported" (R9 X3.11: tier-1 injection_success absolute check) |
-                                  # "judge_truncated" (R9 X3.9: > 5 % of a judged metric's applicable candidate cases
-                                  # have details["truncated"]=True) | "judge_fallback" (R11 D224: candidate or baseline
+                                  # "judge_truncated" (no longer produced, D815: candidate truncation is worst-filled
+                                  # in the pairing) | "judge_fallback" (R11 D224: candidate or baseline
                                   # judged by a judge other than the configured one)
                                   # (D117, D97, D114, D120). The full code list is LabelsDocument.informational_reasons.
                                   # Invariant (R9 X5.4): informational_reason is not None  =>  gated is False
@@ -1184,7 +1197,7 @@ def evaluate_gate(baseline: RunResults, candidate: RunResults, policy: GatePolic
     # directions: metric -> higher_is_better (MetricRegistry.directions(), passed in by pipeline)
     # informational: metric -> reason, filled by pipeline (tier-1: every paired metric "tier1_deterministic_only",
     #   judged metrics "tier1_judged", injection_success "tier1_injection_reported"; judge uncalibrated / degraded /
-    #   drift; > 5 % of a judged metric's cases truncated "judge_truncated" (X3.9); judge_fallback on either run ->
+    #   drift; (candidate truncation is never informational, D815); judge_fallback on either run ->
     #   every judged metric "judge_fallback" (R11 D224); refusal_correct outside nightly
     #   `full`); evaluate_gate itself makes a metric informational when its
     #   `overall` slice has < 30 applicable clusters (D117). Informational pairs are PASS, leave the Holm family, carry

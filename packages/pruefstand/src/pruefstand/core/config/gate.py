@@ -53,7 +53,7 @@ def redact_key(name: str) -> str:
 
 
 # Report-only metrics never get a MetricPolicy (R9 X3.2).
-REPORT_ONLY_METRICS: frozenset[str] = frozenset({"system_prompt_similarity"})
+REPORT_ONLY_METRICS: frozenset[str] = frozenset({"system_prompt_similarity", "refusal_judged"})
 
 _ALWAYS_GATED_SLICES = ("overall", "perturbed_all")
 

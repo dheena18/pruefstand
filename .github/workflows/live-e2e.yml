@@ -204,6 +204,7 @@ jobs:
           BASELINE_DIR: ${{ steps.baseline_pr.outputs.dir || steps.baseline_nightly.outputs.dir }}
           BASELINE_NOTE: ${{ steps.baseline_pr.outputs.note || steps.baseline_nightly.outputs.note }}
           PRUEFSTAND_GH_MODELS_TOKEN: ${{ github.token }}  # only this step judges (D333)
+          PRUEFSTAND_NONCE_KEY: tier1-hosted-ci-nonce  # fixed, not a secret: informational tier-1 judge (D703)
         run: |
           mkdir -p runs
           run_one() {
@@ -232,7 +233,7 @@ jobs:
           if [ "$mode" != "skipped" ]; then judge="ok"
           elif [ "$IS_FORK" = "true" ]; then judge="skipped (fork PR)"
           elif [ "$skipped" != "0" ]; then judge="skipped (quota)"
-          else judge="skipped (no judged metrics yet, T5.2b)"; fi
+          else judge="skipped (no judged case)"; fi
           {
             head -n 1 comment.md
             if [ "$self" = "true" ]; then
@@ -481,7 +482,7 @@ jobs:
           fi
       - name: Post or update the comment
         if: steps.download.outcome == 'success'
-        uses: actions/github-script@ed597411d8f924073f98dfc5c65a23a2325f34cd # v8.0.0
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
         with:
           script: |
             const fs = require('fs');

@@ -38,6 +38,7 @@ EN_REASONS = {
     "applicable_clusters<30": "fewer than 30 clusters",
     "refusal_outside_nightly_full": "refusal gated only in nightly full",
     "judge_uncalibrated": "judge not calibrated",
+    "judge_skipped": "judge did not run",
     "judge_degraded": "judge errors above 5 %",
     "judge_drift": "judge drift",
     "tier1_judged": "tier-1 judge (informational)",
