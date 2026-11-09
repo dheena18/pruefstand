@@ -95,7 +95,7 @@ def test_the_live_job_budget(live: tuple[Doc, str]) -> None:
 
 
 def test_models_read_only_in_the_allowed_files() -> None:
-    allowed = {"live-e2e.yml", "cassettes.yml"}
+    allowed = {"live-e2e.yml", "cassettes.yml", "cassettes-models.yml"}
     for path in sorted(WORKFLOWS.glob("*.yml")):
         if path.name not in allowed:
             assert "models:" not in path.read_text(encoding="utf-8"), path.name
