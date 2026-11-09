@@ -16,8 +16,9 @@ from numpy.typing import NDArray
 from pydantic import ValidationError
 
 from pruefstand.core.models.gate import ScoreTable
-from pruefstand.core.models.metric import JUDGE_SIDE_REASONS, MetricStatus, MetricValue
+from pruefstand.core.models.metric import MetricStatus
 from pruefstand.core.models.run import RunResults, ScoredCase
+from pruefstand.gate._cases import cut_ids, fillable, judge_side, lookup, request_failed
 from pruefstand.gate._validate import fail
 
 OVERALL = "overall"
@@ -61,48 +62,6 @@ class PairedTable:
     all_clusters: NDArray[np.str_]
 
 
-def _lookup(scored: ScoredCase, metric: str) -> MetricValue | None:
-    for value in scored.values:
-        if value.metric == metric:
-            return value
-    return None
-
-
-def _request_failed(scored: ScoredCase) -> bool:
-    value = _lookup(scored, "error_rate")
-    return value is not None and value.value is not None and value.value >= 1.0
-
-
-def _fillable(scored: ScoredCase, value: MetricValue | None, *, fill_errors: bool) -> bool:
-    """Whether a candidate value without a number is worst-filled.
-
-    A candidate ``not_applicable`` is filled (a judge-side one too: ``_judge_side`` flags it so the
-    gate caps its exclusion exactly like a judge error).
-    """
-    if value is None or value.status is MetricStatus.NOT_APPLICABLE:
-        return True
-    return value.status is MetricStatus.ERROR and (fill_errors or _request_failed(scored))
-
-
-def _judge_side(value: MetricValue | None) -> bool:
-    """A judge error or a judge-side ``not_applicable``: excluded unless over the 20 % cap."""
-    if value is None:
-        return False
-    if value.status is MetricStatus.NOT_APPLICABLE:
-        return value.details.get("reason") in JUDGE_SIDE_REASONS
-    return value.status is MetricStatus.ERROR
-
-
-def _cut_ids(run: RunResults, metric: str) -> frozenset[str]:
-    """Cases whose ``ok`` value of ``metric`` was computed on a truncated judge input (X3.9)."""
-    found: set[str] = set()
-    for scored in run.values:
-        value = _lookup(scored, metric)
-        if value is not None and value.status is MetricStatus.OK and value.details.get("truncated"):
-            found.add(str(scored.case.id))
-    return frozenset(found)
-
-
 def _columns(scored: Iterable[ScoredCase]) -> dict[str, tuple[str, ...]]:
     cases = [s.case for s in scored]
     return {
@@ -130,15 +89,15 @@ def _build(
     filled: set[str] = set()
     errors: set[str] = set()
     for scored in run.values:
-        value = _lookup(scored, metric)
+        value = lookup(scored, metric)
         case_id = str(scored.case.id)
         ok = value is not None and value.status is MetricStatus.OK and value.value is not None
         if ok and value is not None and value.value is not None and case_id not in cut:
             values.append(value.value)
-        elif fill_worst and (case_id in cut or _fillable(scored, value, fill_errors=fill_errors)):
+        elif fill_worst and (case_id in cut or fillable(scored, value, fill_errors=fill_errors)):
             values.append(worst)
             filled.add(case_id)
-            if case_id in flagged or (_judge_side(value) and not _request_failed(scored)):
+            if case_id in flagged or (judge_side(value) and not request_failed(scored)):
                 errors.add(case_id)
         else:
             continue
@@ -245,6 +204,21 @@ def pair_tables(
     )
 
 
+def _universe(base: RunResults, cand: RunResults, metric: str, shared: list[str]) -> Universe:
+    """Slice columns of the shared cases and which of them have a baseline ``error``."""
+    by_id = {str(sc.case.id): sc for sc in cand.values}
+    base_bad = {
+        str(sc.case.id)
+        for sc in base.values
+        if (v := lookup(sc, metric)) is not None and v.status is MetricStatus.ERROR
+    }
+    return Universe(
+        attrs=_columns(by_id[i] for i in shared),
+        base_error=np.array([i in base_bad for i in shared], dtype=np.bool_),
+        clusters=np.asarray([by_id[i].case.cluster_id for i in shared], dtype=np.str_),
+    )
+
+
 def pair_runs(
     base: RunResults, cand: RunResults, metric: str, *, higher_is_better: bool
 ) -> PairedTable:
@@ -277,7 +251,7 @@ def pair_runs(
     base_ids = {str(s.case.id) for s in base.values}
     cand_ids = {str(s.case.id) for s in cand.values}
     base_table = score_table(base, metric, higher_is_better=higher_is_better)
-    base_cut, cand_cut = _cut_ids(base, metric), _cut_ids(cand, metric)
+    base_cut, cand_cut = cut_ids(base, metric), cut_ids(cand, metric)
     cand_table, filled, errors = _build(
         cand,
         metric,
@@ -287,18 +261,7 @@ def pair_runs(
         cut=cand_cut,  # truncated on the candidate side: worst-filled when the baseline fit,
         flagged=cand_cut & base_cut,  # and capped like a judge error when both were truncated
     )
-    shared = sorted(base_ids & cand_ids)
-    by_id = {str(sc.case.id): sc for sc in cand.values}
-    base_bad = {
-        str(sc.case.id)
-        for sc in base.values
-        if (v := _lookup(sc, metric)) is not None and v.status is MetricStatus.ERROR
-    }
-    universe = Universe(
-        attrs=_columns(by_id[i] for i in shared),
-        base_error=np.array([i in base_bad for i in shared], dtype=np.bool_),
-        clusters=np.asarray([by_id[i].case.cluster_id for i in shared], dtype=np.str_),
-    )
+    universe = _universe(base, cand, metric, sorted(base_ids & cand_ids))
     return pair_tables(
         base_table,
         cand_table,
