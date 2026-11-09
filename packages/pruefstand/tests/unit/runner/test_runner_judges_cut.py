@@ -67,6 +67,7 @@ async def test_all_cases_too_long_by_the_estimate_still_count_as_judged(
     results = await run_cases(runner, numbered(20))
     assert values_of(results, 0)["faithfulness"].details["reason"] == "judge_input_too_long"
     assert results.manifest.judged_cases == 20
+    assert results.manifest.counts["judge_truncated"] >= 20  # reported like a cut input
     assert final_judge_mode("local", judged_cases=results.manifest.judged_cases) == "local"
 
 

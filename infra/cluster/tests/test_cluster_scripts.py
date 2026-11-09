@@ -35,7 +35,7 @@ def test_start_reuses_a_running_server_and_starts_nothing(world: ClusterWorld) -
 
 
 def _wait_calls(world: ClusterWorld, name: str) -> list[str]:
-    for _ in range(40):
+    for _ in range(400):  # up to 20 s; returns as soon as the call shows up
         calls = world.stubs.calls(name)
         if calls:
             return calls

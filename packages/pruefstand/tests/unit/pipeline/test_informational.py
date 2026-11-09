@@ -3,13 +3,12 @@
 from pathlib import Path
 
 import pytest
-from testsupport.run_builders import make_case, make_manifest
+from testsupport.run_builders import make_manifest
 
 from pruefstand.core.config import GatePolicy, MetricPolicy
 from pruefstand.core.enums import Split
 from pruefstand.core.errors import ConfigError
-from pruefstand.core.models.metric import MetricStatus, MetricValue
-from pruefstand.core.models.run import RunManifest, ScoredCase
+from pruefstand.core.models.run import RunManifest
 from pruefstand.judges.calibration import judges_uncalibrated, read_status, refusal_judge_passed
 from pruefstand.pipeline.gate import informational_mapping
 
@@ -34,21 +33,9 @@ def pair(**changes: object) -> tuple[RunManifest, RunManifest]:
     )
 
 
-def scored(truncated: int, total: int) -> list[ScoredCase]:
-    rows = []
-    for i in range(total):
-        details: dict[str, str | float | int | bool] = {"truncated": True} if i < truncated else {}
-        value = MetricValue(
-            metric="faithfulness", metric_version="1", value=1.0, status=MetricStatus.OK,
-            details=details,
-        )  # fmt: skip
-        rows.append(ScoredCase(case=make_case(i), values=(value,)))
-    return rows
-
-
 def test_a_clean_tier_two_run_has_an_empty_mapping() -> None:
     base, cand = pair()
-    assert informational_mapping(base, cand, POLICY, values=scored(0, 40)) == {}
+    assert informational_mapping(base, cand, POLICY) == {}
 
 
 def test_tier_one_maps_every_judged_metric_to_tier1_judged() -> None:
@@ -72,19 +59,15 @@ def test_no_passing_judge_in_the_calibration_file_is_judge_uncalibrated() -> Non
     assert "context_recall" not in mapping
 
 
-def test_three_truncated_of_forty_is_judge_truncated_two_of_forty_is_not() -> None:
+def test_truncation_of_the_candidate_is_never_a_reason_to_stop_gating() -> None:
     base, cand = pair()
-    seven_and_a_half = informational_mapping(base, cand, POLICY, values=scored(3, 40))
-    five = informational_mapping(base, cand, POLICY, values=scored(2, 40))
-    assert seven_and_a_half == {"faithfulness": "judge_truncated"}
-    assert five == {}
+    cand = cand.model_copy(update={"judged_cases": 40, "counts": {"judge_truncated": 40}})
+    assert informational_mapping(base, cand, POLICY) == {}  # D815: it counts against the candidate
 
 
 def test_a_fallback_judge_on_either_run_marks_every_judged_metric_and_no_other() -> None:
     base, cand = pair()
-    mapping = informational_mapping(
-        base, cand.model_copy(update={"judge_fallback": True}), POLICY, values=scored(0, 40)
-    )
+    mapping = informational_mapping(base, cand.model_copy(update={"judge_fallback": True}), POLICY)
     assert mapping == dict.fromkeys(JUDGED, "judge_fallback")
 
 

@@ -220,7 +220,7 @@ async def test_a_truncated_judge_input_is_counted_and_listed(
     assert value is not None
     assert results is not None
     assert value.details.get("truncated") is True
-    assert results.manifest.counts["judge_truncated"] == 1
+    assert results.manifest.counts["judge_truncated"] >= 1  # + too-long metrics at this cap
 
 
 async def test_a_provider_that_cut_the_input_is_a_counted_truncation_and_a_judge_error(

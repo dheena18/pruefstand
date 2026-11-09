@@ -805,8 +805,9 @@ faithfulness, answer_correctness, perturbation_consistency, refusal_judged
 # R9 X3.9 judge input cap = the judge's context window - 1 024 tokens, counted with the judge's tokenizer;
 #   truncation is logged per case (details["truncated"]=True), counted in RunManifest.counts["judge_truncated"],
 #   and the truncated case ids are listed in the report; the value is still computed on the truncated input (never
-#   not_applicable). If > 5 % of a judged metric's applicable cases are truncated, the pipeline makes that metric
-#   informational with reason "judge_truncated" (§9).
+#   not_applicable). D815 (owner decision, supersedes the earlier informational rule): candidate truncation never
+#   makes a metric informational; the pairing worst-fills a candidate value computed on a truncated input when the
+#   baseline's input fit, and caps a case truncated on both sides like a judge error (20 % of a slice, then filled).
 # judge failure on a case (LLMError after retries, timeout, PolicyViolation) -> MetricValue(status=ERROR,
 #   value=None, details={"error": <type>}), counted in RunManifest.counts["judge_error"]; that case is left out
 #   of the metric's pairing (never worst-filled). > 5 % judge errors -> RunManifest.judge_degraded (D120).
@@ -1171,8 +1172,8 @@ class SliceDecision(BaseModel):   metric: str; dimension: str; value: str; statu
                                   # X3.7) | "judge_uncalibrated" | "judge_skipped" (tier 2, judge_mode=skipped on either run) | "judge_degraded" | "judge_drift" | "tier1_judged" |
                                   # "tier1_deterministic_only" (R9 X5.6: every paired metric in a stack=live run) |
                                   # "tier1_injection_reported" (R9 X3.11: tier-1 injection_success absolute check) |
-                                  # "judge_truncated" (R9 X3.9: > 5 % of a judged metric's applicable candidate cases
-                                  # have details["truncated"]=True) | "judge_fallback" (R11 D224: candidate or baseline
+                                  # "judge_truncated" (no longer produced, D815: candidate truncation is worst-filled
+                                  # in the pairing) | "judge_fallback" (R11 D224: candidate or baseline
                                   # judged by a judge other than the configured one)
                                   # (D117, D97, D114, D120). The full code list is LabelsDocument.informational_reasons.
                                   # Invariant (R9 X5.4): informational_reason is not None  =>  gated is False
@@ -1195,7 +1196,7 @@ def evaluate_gate(baseline: RunResults, candidate: RunResults, policy: GatePolic
     # directions: metric -> higher_is_better (MetricRegistry.directions(), passed in by pipeline)
     # informational: metric -> reason, filled by pipeline (tier-1: every paired metric "tier1_deterministic_only",
     #   judged metrics "tier1_judged", injection_success "tier1_injection_reported"; judge uncalibrated / degraded /
-    #   drift; > 5 % of a judged metric's cases truncated "judge_truncated" (X3.9); judge_fallback on either run ->
+    #   drift; (candidate truncation is never informational, D815); judge_fallback on either run ->
     #   every judged metric "judge_fallback" (R11 D224); refusal_correct outside nightly
     #   `full`); evaluate_gate itself makes a metric informational when its
     #   `overall` slice has < 30 applicable clusters (D117). Informational pairs are PASS, leave the Holm family, carry

@@ -1,7 +1,6 @@
 """FixedTokenChunker (T2.3): token windows with overlap, word-safe, stable ids, linear time."""
 
 import math
-import time
 import unicodedata
 from datetime import date
 from itertools import pairwise
@@ -9,6 +8,7 @@ from itertools import pairwise
 import pytest
 from hypothesis import given, settings
 from hypothesis import strategies as st
+from testsupport.timing import assert_scales_linearly, cpu_budget
 
 from pruefstand.core.enums import Lang
 from pruefstand.core.ids import DocId, TenantId
@@ -136,24 +136,14 @@ def test_windows_cover_every_token_with_exact_overlap(
     assert all(count_tokens(w) <= max_tokens for w in windows)
 
 
-def best_of(runs: int, text: str, chunker: FixedTokenChunker) -> float:
-    best = float("inf")
-    for _ in range(runs):
-        start = time.perf_counter()
-        chunker.chunk(make_doc(text))
-        best = min(best, time.perf_counter() - start)
-    return best
-
-
 def test_time_grows_linearly_with_the_text() -> None:
     chunker = FixedTokenChunker()
-    small = best_of(3, words(20_000), chunker)
-    large = best_of(3, words(160_000), chunker)  # 8x the text
-    assert large / small < 20  # linear = 8, quadratic = 64
+    small, large = make_doc(words(20_000)), make_doc(words(160_000))  # 8x the text
+    # linear = 8, quadratic = 64
+    assert_scales_linearly(lambda: chunker.chunk(small), lambda: chunker.chunk(large), scale=8)
 
 
 def test_one_huge_word_is_one_token_and_fast() -> None:
-    start = time.perf_counter()
-    chunks = FixedTokenChunker().chunk(make_doc("a" * 2_000_000))
+    with cpu_budget(5):
+        chunks = FixedTokenChunker().chunk(make_doc("a" * 2_000_000))
     assert len(chunks) == 1
-    assert time.perf_counter() - start < 5

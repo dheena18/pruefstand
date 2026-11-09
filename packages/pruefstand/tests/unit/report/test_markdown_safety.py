@@ -1,6 +1,6 @@
 """Hardening of the PR comment: injection, mentions, links, size cap and linear time."""
 
-import time
+from collections.abc import Callable
 
 import pytest
 from testsupport.report_builders import (
@@ -15,6 +15,7 @@ from testsupport.report_builders import (
     tier1_manifest,
     tier1_report,
 )
+from testsupport.timing import assert_scales_linearly
 
 from pruefstand.core.ids import CaseId
 from pruefstand.core.models.gate import GateReport
@@ -129,20 +130,14 @@ def test_many_hard_fails_are_capped_but_counted() -> None:
     assert len(out) <= MAX_CHARS
 
 
-def _timed(n: int) -> float:
+def _renderer(n: int) -> Callable[[], object]:
     report = _many(n)
-    best = float("inf")
-    for _ in range(3):
-        t0 = time.perf_counter()
-        render(report)
-        best = min(best, time.perf_counter() - t0)
-    return best
+    return lambda: render(report)
 
 
 @pytest.mark.slow
 def test_render_time_is_linear_in_input_size() -> None:
-    small, large = _timed(250), _timed(1_000)
-    assert large <= 8 * max(small, 0.005)
+    assert_scales_linearly(_renderer(250), _renderer(1_000), scale=4, floor_s=5e-3)
 
 
 def test_hard_cut_when_even_the_minimal_step_is_too_long() -> None:

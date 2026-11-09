@@ -1,9 +1,9 @@
 """One- and two-letter section suffixes (`§ 53ca KWG`) and their guards (T1.5a follow-up)."""
 
-import time
 from collections.abc import Iterator
 
 import pytest
+from testsupport.timing import assert_scales_linearly
 
 from pruefstand.core.citations import (
     Citation,
@@ -97,17 +97,10 @@ def test_prose_never_becomes_a_suffix(text: str, expected: list[str]) -> None:
     ("unit", "count"), [("§ 1ab ", 20000), ("§ 5a", 20000), ("§ 53ca KWG ", 5000)]
 )
 def test_suffix_scan_is_linear(unit: str, count: int) -> None:
-    def best(text: str) -> float:
-        times = []
-        for _ in range(3):
-            start = time.perf_counter()
-            extract_citations(text)
-            times.append(time.perf_counter() - start)
-        return min(times)
-
-    small, big = best(unit * (count // 4)), best(unit * count)
-    assert big < 120.0
-    assert big <= 8.0 * max(small, 1e-3), f"4x input took {big / small:.1f}x"
+    small, big = unit * (count // 4), unit * count
+    assert_scales_linearly(
+        lambda: extract_citations(small), lambda: extract_citations(big), scale=4
+    )
 
 
 @pytest.mark.parametrize(

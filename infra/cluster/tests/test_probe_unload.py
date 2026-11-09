@@ -10,7 +10,6 @@ import shutil
 import stat
 import subprocess
 import threading
-import time
 from collections.abc import Iterator
 from pathlib import Path
 from typing import ClassVar
@@ -19,6 +18,7 @@ import pytest
 
 SCRIPT = Path(__file__).resolve().parents[1] / "feasibility" / "probe.sh"
 GEN = "qwen3.8:27b-q8_0"
+_RELEASE = threading.Event()  # set when a test ends: frees handlers that wait for it
 
 
 class _S(http.server.BaseHTTPRequestHandler):
@@ -53,7 +53,7 @@ class _S(http.server.BaseHTTPRequestHandler):
                 cls.loaded = False
             self._reply(b"{}", cls.unload_status)
             return
-        time.sleep(cls.gen_delay)
+        _RELEASE.wait(cls.gen_delay)  # blocks until the fixture ends: no race with the timeout
         cls.loaded = cls.gen_status < 300 and b"error" not in cls.gen_body
         self._reply(cls.gen_body, cls.gen_status)
 
@@ -63,12 +63,14 @@ class _S(http.server.BaseHTTPRequestHandler):
 
 @pytest.fixture
 def srv() -> Iterator[tuple[str, type[_S]]]:
+    _RELEASE.clear()
     _S.seen = []
     _S.gen_status, _S.gen_body, _S.gen_delay = 200, b"{}", 0.0
     _S.unload_status, _S.ps_status_when_loaded, _S.loaded = 200, 200, False
     httpd = http.server.ThreadingHTTPServer(("127.0.0.1", 0), _S)
     threading.Thread(target=httpd.serve_forever, daemon=True).start()
     yield f"http://127.0.0.1:{httpd.server_port}", _S
+    _RELEASE.set()
     httpd.shutdown()
 
 
@@ -94,7 +96,7 @@ def _probe(url: str, tmp: Path, **extra: str) -> str:
 
 def test_timeout_still_sends_the_unload(srv: tuple[str, type[_S]], tmp_path: Path) -> None:
     url, h = srv
-    h.gen_delay = 3.0
+    h.gen_delay = 60.0  # the server never answers within the 1 s curl timeout (load-proof)
     out = _probe(url, tmp_path, LOAD_TIMEOUT_S="1")
     assert out.startswith("CHECK model-load FAIL")
     assert "POST keep_alive=0" in h.seen

@@ -1,10 +1,13 @@
 """Judge-side ``not_applicable`` values: excluded but capped like judge errors (B1, B1')."""
 
+import numpy as np
 import pytest
-from testsupport.builders import NA, make_case, make_run
-from testsupport.gate_helpers import FAIL, PASS, gate
+from testsupport.builders import NA, fixture_f0, make_case, make_run
+from testsupport.gate_helpers import DIRECTIONS, FAIL, PASS, POLICY, gate
 
+from pruefstand.core.models.gate import GateReport
 from pruefstand.core.models.metric import JUDGE_SIDE_REASONS
+from pruefstand.gate.policy import evaluate_gate
 from pruefstand.gate.tables import PairedTable, pair_runs
 
 M = "faithfulness"
@@ -82,3 +85,48 @@ def test_probe_b_with_half_excluded_still_fails() -> None:
 def test_a_real_not_applicable_keeps_its_meaning_in_the_gate() -> None:
     edits = {M: dict.fromkeys(range(25), NA)}
     assert gate(edits, details=reasons(range(25), "missing_chunks")).status is FAIL
+
+
+# --- truncated judge inputs (X3.9, D815): counted against the candidate, never informational ---
+
+
+def _run_gate(
+    cand_values: dict[int, float], cand_cut: range, base_cut: range = range(0)
+) -> GateReport:
+    cases, base_values = fixture_f0()
+    cut = {"truncated": True}
+    base = make_run(
+        "base",
+        cases,
+        base_values,
+        details={M: dict.fromkeys(base_cut, cut)},
+    )
+    cand_cols = {k: list(v) for k, v in base_values.items()}
+    for index, value in cand_values.items():
+        cand_cols[M][index] = value
+    cand = make_run("cand", cases, cand_cols, details={M: dict.fromkeys(cand_cut, cut)})
+    return evaluate_gate(base, cand, POLICY, np.random.default_rng(1), directions=DIRECTIONS)
+
+
+@pytest.mark.parametrize("padded", [7, 30])
+def test_probe_regressing_candidate_with_truncated_cases_cannot_turn_informational(
+    padded: int,
+) -> None:
+    # reviewer's probe: faithfulness 0.0 everywhere, a huge used chunk on `padded` of 120 cases
+    report = _run_gate(dict.fromkeys(range(120), 0.0), range(padded))
+    assert report.status is FAIL
+    assert all(d.informational_reason is None for d in report.decisions if d.metric == M)
+
+
+def test_a_good_candidate_truncated_on_30_cases_is_worst_filled_and_fails() -> None:
+    assert _run_gate({}, range(30)).status is FAIL  # the baseline fit, the candidate did not
+
+
+def test_truncation_on_both_sides_is_excluded_under_the_cap() -> None:
+    report = _run_gate({}, range(0, 120, 12), range(0, 120, 12))  # 10 of 120, spread: left out
+    assert report.status is PASS
+    assert report.n_excluded[M] == 10
+
+
+def test_truncation_on_both_sides_over_the_cap_fails() -> None:
+    assert _run_gate({}, range(0, 120, 4), range(0, 120, 4)).status is FAIL  # 25 % > 20 %

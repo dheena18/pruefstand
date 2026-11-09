@@ -1,12 +1,12 @@
 """Shared text helpers (T2.2): token counting, NFC, whitespace, hyphenation, linear time."""
 
-import time
 import unicodedata
 from collections.abc import Callable
 
 import pytest
 from hypothesis import HealthCheck, given, settings
 from hypothesis import strategies as st
+from testsupport.timing import assert_scales_linearly
 
 from pruefstand.ingest.text import (
     count_tokens,
@@ -66,22 +66,13 @@ def test_count_tokens_is_additive_over_blank_separated_parts(text: str) -> None:
     assert count_tokens(text + "\n\n" + text) == 2 * count_tokens(text)
 
 
-def _seconds(func: Callable[[str], object], text: str) -> float:
-    start = time.perf_counter()
-    func(text)
-    return time.perf_counter() - start
-
-
 @pytest.mark.parametrize(
     "unit", ["a ", "\n", "(((", "  \t", "-\n", "̈", "x" * 40 + " ", "§ 1 ", "ä-\nb "]
 )
 @pytest.mark.parametrize("func", [count_tokens, normalise_text, join_hyphenation])
 def test_helpers_run_in_linear_time(func: Callable[[str], object], unit: str) -> None:
     small, large = unit * 20_000, unit * 160_000
-    t_small = min(_seconds(func, small) for _ in range(3))
-    t_large = min(_seconds(func, large) for _ in range(3))
-    assert t_large < 2.0
-    assert t_large < 8 * 6 * max(t_small, 0.002)  # 8x the input: allow 6x the linear ratio
+    assert_scales_linearly(lambda: func(small), lambda: func(large), scale=8, floor_s=2e-3)
 
 
 @settings(deadline=2000, max_examples=25, suppress_health_check=[HealthCheck.too_slow])

@@ -14,7 +14,6 @@ from testsupport.store_support import FP, release_run, run_id, run_of
 
 from pruefstand.core.errors import StoreError
 from pruefstand.core.models.run import RunArtifacts
-from pruefstand.pipeline.gate import _TRUNCATED_SHARE
 from pruefstand.store.baselines_local import LocalDirBaselineStore
 from pruefstand.store.promote import JUDGE_TRUNCATED_SHARE
 
@@ -254,4 +253,4 @@ def test_a_few_truncations_do_not_block_a_promotion(tmp_path: Path) -> None:
 
 
 def test_the_truncation_share_is_the_one_of_the_gate() -> None:
-    assert JUDGE_TRUNCATED_SHARE == _TRUNCATED_SHARE
+    assert JUDGE_TRUNCATED_SHARE == 0.05

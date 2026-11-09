@@ -295,6 +295,18 @@ Never logged: API keys, auth headers, full prompts or answers above DEBUG, anoth
 - `tests/unit/<module>/…` — <what they cover>
 ```
 
+### 1.9 Time in tests (D840)
+
+Unit tests never assert on wall-clock time; it varies by an order of magnitude with load on the
+shared VM and on CI runners. Use `testsupport.timing` (`packages/pruefstand/tests/testsupport/timing.py`):
+
+- scaling ("4x the input costs about 4x, not 16x"): `assert_scales_linearly(small, big, scale=...)`,
+  CPU time, min of 5, small and big alternately, limit `1.25 * scale ** 1.5`; check a new test against a
+  deliberately quadratic stand-in (it must fail) and against the real code (ratio near `scale`);
+- "survives hostile input": `with cpu_budget(N):` with N at least 10x the CPU time measured on the VM;
+- time-dependent production code (timeouts, deadlines): inject a fake clock, or block a test server on
+  an event instead of sleeping past the timeout; where only real time works, keep a margin of 10x or more.
+
 ## 2. TypeScript (dashboard)
 
 | Area | Rule |

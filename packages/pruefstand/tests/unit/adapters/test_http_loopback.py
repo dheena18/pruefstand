@@ -74,7 +74,9 @@ async def test_slow_drip_over_a_real_socket_hits_the_total_deadline(
         await adapter.query(REQ)
     await adapter.aclose()
     assert excinfo.value.transient is True
-    assert time.monotonic() - started < 2.0
+    # The deadline is 0.6 s; the drip would last 10 s. Wall time is the point here, so the bound
+    # is generous (13x the deadline) and still far below the drip.
+    assert time.monotonic() - started < 8.0
 
 
 async def test_endless_chunked_body_without_content_length_is_capped(

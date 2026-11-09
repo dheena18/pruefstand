@@ -1,12 +1,12 @@
 """``index.json``: the only file the git branch holds (T6.1 S4, X2.7)."""
 
 import json
-import time
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
 import pytest
+from testsupport.timing import assert_scales_linearly
 
 from pruefstand.core.errors import StoreError
 from pruefstand.store.baseline_index import (
@@ -120,15 +120,10 @@ def test_parsing_is_linear_in_the_number_of_entries() -> None:
         return render_index(index)
 
     small, big = build(100), build(1000)
-    best_small = best_big = float("inf")
-    for _ in range(3):
-        t0 = time.perf_counter()
-        parse_index(small)
-        best_small = min(best_small, time.perf_counter() - t0)
-        t0 = time.perf_counter()
-        parse_index(big)
-        best_big = min(best_big, time.perf_counter() - t0)
-    assert best_big / best_small < 10 * 4  # 10x the entries; a quadratic parser would be ~100x
+    # 10x the entries: linear ~10x, a quadratic parser would be ~100x
+    assert_scales_linearly(
+        lambda: parse_index(small), lambda: parse_index(big), scale=10, floor_s=1e-4
+    )
 
 
 def test_reconcile_drops_what_the_disk_no_longer_has(tmp_path: Path) -> None:

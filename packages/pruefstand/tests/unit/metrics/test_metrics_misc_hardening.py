@@ -1,10 +1,10 @@
 """Citation cost cap, wider language set, refusal phrases, registry guard, nDCG gaps."""
 
 import math
-import time
 
 import pytest
 from testsupport.metric_types import CaseFactory, ChunkFactory, RespFactory
+from testsupport.timing import cpu_budget
 
 from pruefstand.core.citations import Citation, extract_citations
 from pruefstand.core.config.gate import KNOWN_METRICS
@@ -33,9 +33,8 @@ def test_huge_answer_is_capped_and_fast(
     )  # ~400k chars
     chunks = [make_chunk("bgb-622", text=filler, rank=i + 1) for i in range(5)]
     resp = make_resp(filler, chunks=chunks)
-    start = time.perf_counter()
-    values = [m.compute(make_case(), resp) for m in CITATION_METRICS]
-    assert time.perf_counter() - start < 10.0
+    with cpu_budget(10.0):
+        values = [m.compute(make_case(), resp) for m in CITATION_METRICS]
     assert all(v.status is MetricStatus.OK for v in values)
     assert all(v.details["truncated"] is True for v in values)
 

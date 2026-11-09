@@ -212,7 +212,6 @@ class JudgeStage:
             except JudgeInputTruncated:
                 # the candidate's text overran the window (the estimate missed it): candidate-side
                 # like judge_input_too_long, never a judge error (cannot set judge_degraded)
-                outcome.counts["judge_truncated"] += 1
                 outcome.attempted = True  # a cut case is a judged case: it keeps the denominator
                 return not_applicable(m, "judge_input_too_long")
             except LLMError as exc:  # incl. PolicyViolation; BudgetExceeded is not an LLMError

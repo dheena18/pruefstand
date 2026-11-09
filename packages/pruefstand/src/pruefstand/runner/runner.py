@@ -190,6 +190,9 @@ def _case_counts(
     judged_names = {m.name for m in registry.all() if m.kind is MetricKind.JUDGED}
     for value in values:
         counts["not_applicable"] += value.status is MetricStatus.NOT_APPLICABLE
+        too_long = value.details.get("reason") == "judge_input_too_long"
+        if too_long and value.metric in judged_names:
+            counts["judge_truncated"] += 1  # estimate path and provider-reported cut alike
         if value.details.get("truncated") is True:
             key = "judge_truncated" if value.metric in judged_names else "metric_truncated"
             counts[key] += 1

@@ -1,10 +1,10 @@
 """Classification of GII norms and builddate parsing (T2.2), driven by real `<norm>` metadata."""
 
-import time
 from datetime import date
 
 import pytest
 from lxml import etree
+from testsupport.timing import cpu_budget
 
 from pruefstand.ingest.gii.norms import (
     NormMeta,
@@ -101,9 +101,8 @@ def test_read_stand_takes_the_stand_remark_only() -> None:
 
 def test_pathological_labels_are_cut_and_fast() -> None:
     evil = "Art§§" * 200_000
-    start = time.perf_counter()
-    meta = meta_of(evil, evil)
-    verdict = classify(meta)
-    assert time.perf_counter() - start < 1.0
+    with cpu_budget(1.0):
+        meta = meta_of(evil, evil)
+        verdict = classify(meta)
     assert len(meta.enbez) == len(meta.gliederung_bez) == 200
     assert isinstance(verdict, Reject | Skip)

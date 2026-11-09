@@ -11,6 +11,7 @@ from typing import Any
 import pytest
 import respx
 from contract.adapter_contract import load_example
+from testsupport.timing import cpu_budget
 
 from pruefstand.adapters.http import HttpTargetAdapter
 from pruefstand.core.config import HttpTargetConfig
@@ -47,10 +48,8 @@ async def test_citations_bomb_is_rejected_fast_and_permanently(
     router: respx.MockRouter, adapter: HttpTargetAdapter
 ) -> None:
     router.post("/v1/query").respond(200, content=bomb())
-    started = time.monotonic()
-    with pytest.raises(TargetError) as excinfo:
+    with cpu_budget(10.0), pytest.raises(TargetError) as excinfo:
         await adapter.query(REQ)
-    assert time.monotonic() - started < 2.0
     assert excinfo.value.transient is False
 
 

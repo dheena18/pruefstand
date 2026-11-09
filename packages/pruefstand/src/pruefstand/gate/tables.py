@@ -93,6 +93,16 @@ def _judge_side(value: MetricValue | None) -> bool:
     return value.status is MetricStatus.ERROR
 
 
+def _cut_ids(run: RunResults, metric: str) -> frozenset[str]:
+    """Cases whose ``ok`` value of ``metric`` was computed on a truncated judge input (X3.9)."""
+    found: set[str] = set()
+    for scored in run.values:
+        value = _lookup(scored, metric)
+        if value is not None and value.status is MetricStatus.OK and value.details.get("truncated"):
+            found.add(str(scored.case.id))
+    return frozenset(found)
+
+
 def _columns(scored: Iterable[ScoredCase]) -> dict[str, tuple[str, ...]]:
     cases = [s.case for s in scored]
     return {
@@ -111,6 +121,8 @@ def _build(
     higher_is_better: bool,
     fill_worst: bool,
     fill_errors: bool = False,
+    cut: frozenset[str] = frozenset(),
+    flagged: frozenset[str] = frozenset(),
 ) -> tuple[ScoreTable, frozenset[str], frozenset[str]]:
     worst = 0.0 if higher_is_better else 1.0
     kept: list[ScoredCase] = []
@@ -119,13 +131,15 @@ def _build(
     errors: set[str] = set()
     for scored in run.values:
         value = _lookup(scored, metric)
-        if value is not None and value.status is MetricStatus.OK and value.value is not None:
+        case_id = str(scored.case.id)
+        ok = value is not None and value.status is MetricStatus.OK and value.value is not None
+        if ok and value is not None and value.value is not None and case_id not in cut:
             values.append(value.value)
-        elif fill_worst and _fillable(scored, value, fill_errors=fill_errors):
+        elif fill_worst and (case_id in cut or _fillable(scored, value, fill_errors=fill_errors)):
             values.append(worst)
-            filled.add(str(scored.case.id))
-            if _judge_side(value) and not _request_failed(scored):
-                errors.add(str(scored.case.id))
+            filled.add(case_id)
+            if case_id in flagged or (_judge_side(value) and not _request_failed(scored)):
+                errors.add(case_id)
         else:
             continue
         kept.append(scored)
@@ -243,6 +257,11 @@ def pair_runs(
     ``judge_error``: ``gate.pairs`` excludes the flagged rows of a slice unless they are more
     than 20 % of it (W3.9), so a slice cannot vanish through judge errors.
 
+    A candidate value computed on a truncated judge input (``details["truncated"]``) counts
+    against the candidate when the baseline's input fit (worst value, never informational); when
+    the baseline was truncated on that case too it is flagged like a judge error (excluded under
+    the 20 % cap, worst-filled beyond it).
+
     Args:
         base: Baseline run.
         cand: Candidate run.
@@ -258,8 +277,15 @@ def pair_runs(
     base_ids = {str(s.case.id) for s in base.values}
     cand_ids = {str(s.case.id) for s in cand.values}
     base_table = score_table(base, metric, higher_is_better=higher_is_better)
+    base_cut, cand_cut = _cut_ids(base, metric), _cut_ids(cand, metric)
     cand_table, filled, errors = _build(
-        cand, metric, higher_is_better=higher_is_better, fill_worst=True, fill_errors=True
+        cand,
+        metric,
+        higher_is_better=higher_is_better,
+        fill_worst=True,
+        fill_errors=True,
+        cut=cand_cut,  # truncated on the candidate side: worst-filled when the baseline fit,
+        flagged=cand_cut & base_cut,  # and capped like a judge error when both were truncated
     )
     shared = sorted(base_ids & cand_ids)
     by_id = {str(sc.case.id): sc for sc in cand.values}

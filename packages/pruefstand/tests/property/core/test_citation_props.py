@@ -1,9 +1,8 @@
 """Property tests for the citation parser (T1.5a, S6)."""
 
-import time
-
 from hypothesis import given
 from hypothesis import strategies as st
+from testsupport.timing import cpu_budget
 
 from pruefstand.core.citations import Citation, extract_citations, normalise, parse_one
 
@@ -65,6 +64,5 @@ _FRAGMENTS = [
 @given(st.lists(st.sampled_from(_FRAGMENTS), min_size=1, max_size=12))
 def test_repeated_fragments_stay_fast(fragments: list[str]) -> None:
     text = "".join(fragments) * 1500
-    start = time.perf_counter()
-    extract_citations(text)
-    assert time.perf_counter() - start < 5.0
+    with cpu_budget(5.0):
+        extract_citations(text)
