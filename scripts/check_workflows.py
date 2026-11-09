@@ -12,6 +12,7 @@ from collections.abc import Iterator, Sequence
 from pathlib import Path
 
 import yaml
+from workflow_curl import curl_retries
 from workflow_model import Doc, all_uses, environment, jobs, steps, strings, triggers
 from workflow_no_repo_code import no_repo_code
 from workflow_policy import (
@@ -247,6 +248,7 @@ def check_text(name: str, text: str) -> list[str]:
         _build_images(name, doc),
         _gate_router(name, doc),
         no_repo_code(name, doc),
+        curl_retries(doc),
     ]
     return [f"{name}: {message}" for found in rules for message in found]
 
