@@ -6,12 +6,13 @@ import pytest
 from testsupport.review_support import REVIEWER
 
 from pruefstand.core.errors import DatasetError
+from pruefstand.core.ids import ChunkId
 from pruefstand.core.models.dataset import QACandidate, ReviewItem
 from pruefstand.pipeline.build_generate import LedgerEntry, _read_ledger
 from pruefstand.pipeline.review_files import _read_lines
 
 CAND = QACandidate(
-    question="Wie lange?", answer="Zwei Wochen.", citation=None, chunk_id="a#0",
+    question="Wie lange?", answer="Zwei Wochen.", citation=None, chunk_id=ChunkId("a#0"),
     prompt_version="qa_factual_de_v1",
 )  # fmt: skip
 ITEM = ReviewItem(
