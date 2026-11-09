@@ -1246,7 +1246,9 @@ Human-readable messages for `CauseCode` live in `core/models/gate.py` as `CAUSE_
 ## 10. report
 
 ```python
-def render_pr_comment(report: GateReport, base: RunManifest | None, cand: RunManifest, *, report_url: str | None) -> str
+def render_pr_comment(report: GateReport, base: RunManifest | None, cand: RunManifest, *, report_url: str | None, truncated_cases: Sequence[str] = ()) -> str
+    # D880 (T1.9a): truncated_cases = ids from report.truncation.judge_truncated_case_ids(RunResults) (the manifest only
+    # counts them); listed as "Truncated cases: ..." under the truncation line, escaped, capped at Limits.ids
     # Markdown; first line contains hidden marker "<!-- pruefstand:pr-comment -->"; ≤ 60 000 chars
     # R11 D238: base is None when report.no_baseline (or the baseline is not available locally) -> ⚪ NO BASELINE
     # state; the baseline ref label then reads "–"
