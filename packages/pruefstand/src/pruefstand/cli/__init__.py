@@ -11,6 +11,7 @@ import typer
 from pydantic import ValidationError
 
 from pruefstand.cli import baseline as _baseline
+from pruefstand.cli import build_dataset as _build_dataset
 from pruefstand.cli import export_dashboard as _export_dashboard
 from pruefstand.cli import gate as _gate
 from pruefstand.cli import ingest as _ingest
@@ -18,7 +19,6 @@ from pruefstand.cli import power as _power
 from pruefstand.cli import report as _report
 from pruefstand.cli import run as _run
 from pruefstand.cli import schema as _schema
-from pruefstand.cli import stubs as _stubs
 from pruefstand.cli import validate as _validate
 from pruefstand.cli._common import EXIT_USAGE, fail
 from pruefstand.core.logging import configure_logging
@@ -64,6 +64,6 @@ for _module in (
     _ingest,
     _baseline,
     _export_dashboard,
-    _stubs,
+    _build_dataset,
 ):
     _module.register(app)

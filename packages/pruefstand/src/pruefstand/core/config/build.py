@@ -261,29 +261,3 @@ class SplitPlan(BaseModel):
             msg = "full_refusal must lie within full_refusal_min..full_refusal_max"
             raise ValueError(msg)
         return self
-
-
-class DatasetBuildConfig(BaseModel):
-    """Inputs of ``build_dataset`` (interfaces §15): which corpus, which plan, which seed.
-
-    Attributes:
-        version: Schema version of this file.
-        name: Dataset name (``datasets/<name>/<dataset_version>/``).
-        dataset_version: Dataset version, e.g. ``"v1"``.
-        corpus_dir: The corpus the questions are generated from (T2.5 output).
-        out_dir: Root under which the dataset directory is written.
-        split_plan: Sizes and quotas.
-        seed: Seed of ``assign_splits`` (recorded as ``assignment_seed``).
-        prompt_versions: Versioned prompt files used per step (recorded in the manifest).
-    """
-
-    model_config = ConfigDict(frozen=True, extra="forbid")
-
-    version: Literal[1] = 1
-    name: Short
-    dataset_version: Short
-    corpus_dir: Path
-    out_dir: Path = Path("datasets")
-    split_plan: SplitPlan = Field(default_factory=SplitPlan)
-    seed: int = Field(default=0, ge=0)
-    prompt_versions: dict[Short, Short] = Field(default_factory=dict, max_length=64)
