@@ -319,25 +319,28 @@ schedule, not here.
 sequenceDiagram
     autonumber
     actor O as Owner (50-item spot-check)
-    participant CLI as pruefstand build-dataset
-    participant Gen as Datagen LLM (public text: GitHub Models free tier, family not qwen or gemma, private docs: local judge model, ADR-0019)
+    participant CLI as pruefstand build-dataset (six resumable stages)
+    participant Gen as Datagen LLM (public text: GitHub Models free tier, family not qwen or gemma, ADR-0019)
+    participant Sup as Support check (local judge, support_check_de_v1)
     participant RM as Review model (local judge gemma3:12b, batch job, reject-only)
-    participant Sup as Support check (LLMClient + support_check_de_v1)
     participant Rev as Review tool (tools/review_app)
     participant HF as Hugging Face
 
-    CLI->>Gen: generate_qa(chunks, prompt_version)
-    Gen-->>CLI: QACandidates
-    CLI->>Sup: check_support(candidate, chunk, llm, model)
-    CLI->>CLI: check_overlap, dedupe, perturb_case(_async), attack cases (same AttackSet as in the corpus, versions compared by check_attack_versions), refusal cases
-    CLI->>CLI: assign_splits (cluster_id-aware, incl. SMOKE_LIVE and ROBUST_PR), validate_dataset
-    CLI->>RM: review 100 % of smoke and core, seeded 20 % sample of full
-    RM-->>CLI: ok / bad per item (deterministic checks override, the judge never writes or rewrites references)
-    CLI->>Rev: 50-item spot-check with side-by-side source §
+    CLI->>Gen: stage generate: generate_qa(chunks, prompt_version), ledger per unit (resume)
+    Gen-->>CLI: QACandidates (stage_1_generate.jsonl)
+    CLI->>Sup: stage filter: check_support, check_overlap, dedupe
+    CLI->>CLI: stage perturb: to_test_case (mixed licences dropped, counted), rank bases by applicability, deterministic + LLM variants
+    CLI->>CLI: stage attacks: injection (check_attack_versions), probes, refusal cases
+    CLI->>CLI: stage splits: assign_splits (whole clusters), then stage validate: write datasets/NAME/VERSION, validate_dataset
+    Note over CLI: --resume skips a stage whose output exists for the current input hash
+    CLI->>RM: make review-model: 100 % of smoke and core and every attack case, seeded 20 % of the rest
+    RM-->>CLI: ok / fix / reject per item (deterministic checks override: citation, copy rules, no reference rewrite)
+    CLI->>Rev: make review-app: 50-item spot-check with the source section, the cited Absatz highlighted
     O->>Rev: citation correct? answer plausible?
-    Rev-->>CLI: ReviewRound (sampled, bad, error_rate = model review)
-    alt error rate > 10 %
-        CLI->>CLI: new prompt version, regenerate
+    Rev-->>CLI: spotcheck_decisions.jsonl
+    CLI->>CLI: make review-apply: rejects remove the cluster, fixes replace the question, ReviewRound entries, trust rule (> 10 % of model-ok flagged)
+    alt a stratum above 10 % or the model review not trusted
+        CLI->>CLI: new prompt version, regenerate (--only)
     else
         CLI->>CLI: closed-book run, tag closed_book_answerable
         CLI->>HF: dataset-release.yml: export_hf per licence config (dir/hf_export/, public canaries rotated)
@@ -347,7 +350,7 @@ sequenceDiagram
 Every generated row carries `generation_prompt_version`, so a rejected batch can be traced to one
 prompt file. The gating split `core` gets a full model review (D124). Publishing is a separate step
 after review, with one config per licence (ODbL never mixed with another share-alike licence; MEMERAG
-never exported), and held-out canaries are never exported.
+never exported), and held-out canaries are never exported. Decisions: D747-D756.
 
 ## 6. Judge calibration (RQ2)
 

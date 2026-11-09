@@ -11,10 +11,18 @@ from pruefstand.core.config.build import (
     NUM_BLOCKS,
     PERTURBATION_TYPES,
     CorpusBuildConfig,
-    DatasetBuildConfig,
     SplitPlan,
     TenantPlan,
     TenantRule,
+)
+from pruefstand.core.config.build_dataset import DatasetBuildConfig
+from pruefstand.core.config.build_models import (
+    BuildModels,
+    EmbedConfig,
+    GenerationConfig,
+    PerturbConfig,
+    ReviewConfig,
+    ReviewersConfig,
 )
 from pruefstand.core.config.gate import KNOWN_METRICS, REPORT_ONLY_METRICS, GatePolicy, MetricPolicy
 from pruefstand.core.config.private_docs import PrivateDocsConfig
@@ -37,16 +45,22 @@ __all__ = [
     "AttacksConfig",
     "BaselineStoreConfig",
     "BudgetConfig",
+    "BuildModels",
     "CorpusBuildConfig",
     "DatasetBuildConfig",
+    "EmbedConfig",
     "GatePolicy",
+    "GenerationConfig",
     "HttpTargetConfig",
     "JudgeConfig",
     "LLMPolicyConfig",
     "MetricPolicy",
     "ModelRef",
+    "PerturbConfig",
     "PrivateDocsConfig",
     "PruefstandConfig",
+    "ReviewConfig",
+    "ReviewersConfig",
     "RunnerConfig",
     "SplitPlan",
     "TargetConfig",

@@ -1,0 +1,47 @@
+# Build settings of the Prüfstand test set (T4.7a; the numbers of the real build are tuned in T4.7b).
+#   uv run pruefstand build-dataset --config dataset.yaml [--stage S] [--only qa_factual_de] [--resume]
+# Relative paths are relative to the working directory (the repository root).
+# Models (ADR-0019, D330): the datagen model is a GitHub Models free-tier model of a family that is
+# neither the generator's (qwen) nor the judge's (gemma); public text only. The one A40 judge
+# (gemma3:12b) supports, validates and reviews; it never writes or rewrites a reference answer.
+version: 1
+name: pruefstand-de
+dataset_version: v1
+corpus_dir: corpus/slice_v1        # T4.7b: the full corpus version
+corpus_config: corpus.yaml         # its `attacks` block makes the injection cases
+out_dir: datasets
+work_dir: datasets/_work           # stage_<n>_<name>.jsonl, git-ignored
+seed: 7
+
+models:
+  datagen: {id: github/openai/gpt-4.1-mini, family: gpt}
+  generator: {id: "ollama/qwen3.8:27b-q8_0", family: qwen}
+  support: {id: "ollama/gemma3:12b", family: gemma}
+  rewriter: {id: github/openai/gpt-4.1-mini, family: gpt}
+  perturb_validator: {id: "ollama/gemma3:12b", family: gemma}
+
+generation:                        # units (a chunk or a pair) per tenant and category
+  units: {factual: 250, comparison: 60, multi_hop: 60, cross_lingual: 40}
+  exclude_file: experiments/model_selection/indomain_dev_sources.json
+  concurrency: 4
+
+embed: {url: "http://127.0.0.1:8090", api: tei, model: bge-m3}
+
+perturb:
+  deterministic: [umlaut_translit, eszett, numbers, dates, citation_style]
+  llm: [compound_split, register, gender, colloquial]
+  llm_bases: 40                    # top-ranked public-tenant bases get the LLM-assisted variants
+  seed: 7
+
+review:
+  reviewers:
+    core_smoke: {id: "ollama/gemma3:12b", family: gemma}
+    full: {id: "ollama/gemma3:12b", family: gemma}
+  prompt_version: review_item_de_v1
+  full_fraction: 0.2
+  min_per_category: 30
+  error_threshold: 0.10
+  spotcheck_size: 50
+  spotcheck_max_flag_rate: 0.10
+
+split_plan: {}                     # the SPEC §3.4 defaults (core_models.SplitPlan)
