@@ -12,7 +12,7 @@ import httpx
 import pytest
 import respx
 import yaml
-from data_sources import ChecksumError, LicenseMismatch, SourcesError, load_sources
+from data_sources import ChecksumError, FetchError, LicenseMismatch, SourcesError, load_sources
 from download import main
 from huggingface_hub.errors import HfHubHTTPError
 
@@ -756,3 +756,39 @@ def test_unexpected_exception_in_one_source_is_wrapped(
         assert main(_args(tmp_path, src)) == 1
     assert "ValueError" in capsys.readouterr().err
     assert (tmp_path / "raw/gii/kschg/xml.zip").exists()
+
+
+MIRROR = "https://github.com/example/repo/releases/download/data-pins-test"
+
+
+def test_gii_mirror_serves_the_same_pinned_bytes(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """With $PRUEFSTAND_GII_MIRROR the archive comes from the mirror, SHA-256 still checked."""
+    monkeypatch.setenv("PRUEFSTAND_GII_MIRROR", MIRROR + "/")
+    src = _write_sources(tmp_path, [_gii()])
+    with respx.mock:
+        official = respx.get(GII_URL).respond(status_code=403)
+        mirror = respx.get(f"{MIRROR}/kschg.xml.zip").respond(content=ABC)
+        assert main(_args(tmp_path, src)) == 0
+    assert mirror.call_count == 1
+    assert official.call_count == 0
+    assert (tmp_path / "raw/gii/kschg/xml.zip").read_bytes() == ABC
+
+
+def test_gii_mirror_with_wrong_bytes_fails_the_checksum(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    monkeypatch.setenv("PRUEFSTAND_GII_MIRROR", MIRROR)
+    src = _write_sources(tmp_path, [_gii()])
+    with respx.mock:
+        respx.get(f"{MIRROR}/kschg.xml.zip").respond(content=b"tampered")
+        assert main(_args(tmp_path, src)) == 1
+    assert "gii:kschg" in capsys.readouterr().err
+    assert not (tmp_path / "raw/gii/kschg/xml.zip").exists()
+
+
+def test_gii_mirror_must_be_https(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("PRUEFSTAND_GII_MIRROR", "http://example.com/x")
+    with pytest.raises(FetchError, match="https://"):
+        data_fetch.http_urls(load_sources(_write_sources(tmp_path, [_gii()]))[0])
