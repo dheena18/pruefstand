@@ -27,7 +27,8 @@ pytestmark = [
 def test_the_real_judge_model_writes_six_accepted_drafts(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    monkeypatch.setenv("PRUEFSTAND_LOCK_HELD", "1")  # set by pruefstand-lock; the script re-checks
+    if os.environ.get("PRUEFSTAND_LOCK_HELD") != "1":  # set only by pruefstand-lock (D212)
+        pytest.fail("run this recorder under 'pruefstand-lock' (the GPU lock, D212)")
     route_backend(monkeypatch, "record", build_backend)
     assert main([*ARGS, "--drafts", str(draft_dir(tmp_path))]) == 0
     drafts = sorted(draft_dir(tmp_path).rglob("*.md"))
