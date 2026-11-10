@@ -1638,7 +1638,8 @@ def validate_dataset(dir: Path) -> list[str]                        # noqa: A002
     # perturbed variants whose base_id is a case of the same block; violations -> problem "full quota: <detail>". R13 P3.2: `rq1` cases share no cluster_id with core/robust_pr/full -> else problem.
     # R13 P3.4: a judged subset without injection cases -> problem (it is stratified by category incl. injection)
 def export_hf(dir: Path, repo_id: str, private: bool, *, dry_run: bool = False) -> None   # noqa: A002, FBT001; D132
-    # T4.1 (D484): layout <license_config>/<split>.jsonl + README.md (YAML `configs:` + `config_licenses:`); refuses
+    # T4.1 (D484): layout <license_config>/<split>.jsonl + README.md (YAML `configs:` + `config_licenses:`) + a copy of
+    # `dataset_manifest.json` at the root (T4.7b, D1040: `hf://` loading rebuilds the directory from it); refuses
     # datasets/private/**; CLI `python -m pruefstand.dataset.export_hf <dir> --repo U/N [--dry-run --out DIR] [--public]`
     # dry_run=True: builds the HF layout (one config per license_config) under `dir / "hf_export"`, checks that it
     # loads with `datasets.load_dataset`, and makes no network call; the CLI's `--dry-run --out` copies that dir
