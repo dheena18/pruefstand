@@ -83,8 +83,8 @@ def test_the_language_is_never_assumed() -> None:
     assert not grade(ROW, "§ 1 KSchG", ["§ 1 KSchG"])["language"]
 
 
-def _row(qid: str) -> dict[str, object]:
-    return {"id": qid, "tenant": "t", "question": "Frage | mit Pipe?", "answer": "A\nB",
+def _row(qid: str, answer: str = "A\nB") -> dict[str, object]:
+    return {"id": qid, "tenant": "t", "question": "Frage | mit Pipe?", "answer": answer,
             "citations": ["§ 1 KSchG"], "expected": ["§ 1 KSchG"], "citation": True,
             "key_fact": True, "language": True, "passed": True}  # fmt: skip
 
@@ -98,6 +98,24 @@ def test_a_rerun_keeps_the_human_verdicts() -> None:
     assert [r[VERDICT] for r in rows] == ["correct: nennt § 622", PENDING]
     assert rows[0]["Question"] == "Frage \\| mit Pipe?"
     assert rows[0]["Answer"] == "A<br>B"
+
+
+def test_a_verdict_never_moves_silently_to_a_changed_answer() -> None:
+    first = render({}, [_row("q01", "Ein Monat."), _row("q02", "Acht Stunden.")], {})
+    marked = first.replace(f"| {PENDING} |", "| correct: nennt § 622 |", 1)
+    marked = marked.replace(f"| {PENDING} |", "| incorrect: falsche Norm |", 1)
+    rows = [_row("q01", "Sechs Monate."), _row("q02", "Acht Stunden.")]
+    again = render({}, rows, read_verdicts(marked))
+    assert [r[VERDICT] for r in table_rows(again)] == [
+        "stale: answer changed (was: correct: nennt § 622)",
+        "incorrect: falsche Norm",
+    ]
+    rows = [_row("q01", "Ein Monat."), _row("q02", "Zehn Stunden.")]
+    third = render({}, rows, read_verdicts(again))
+    assert [r[VERDICT] for r in table_rows(third)] == [
+        "stale: answer changed (was: correct: nennt § 622)",
+        "stale: answer changed (was: incorrect: falsche Norm)",
+    ]
 
 
 def test_the_committed_report_has_the_ten_questions_and_no_automatic_verdict() -> None:
