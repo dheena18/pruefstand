@@ -11,6 +11,7 @@ from pathlib import Path
 from pruefstand.core.config.build import validate_tenant_id
 from pruefstand.core.errors import DatasetError
 from pruefstand.core.ids import TenantId
+from pruefstand.core.models.corpus import Chunk
 
 MANIFEST_NAME = "manifest.json"
 FILE_SUFFIX = ".chunks.jsonl"
@@ -40,6 +41,25 @@ def checked_tenant(tenant: str, where: str) -> TenantId:
     except ValueError as exc:
         msg = f"{where}: {exc}"
         raise DatasetError(msg) from exc
+
+
+def check_chunk_rules(chunk: Chunk) -> None:
+    """Refuse a chunk the writer must not publish: unsafe tenant, empty licence, banned source.
+
+    The writer and ``verify_corpus`` apply the same rules (T2.5a).
+
+    Raises:
+        DatasetError: The tenant id is not a safe file name, the licence is empty, or the source
+            is empty or banned (``memerag`` is download-only).
+    """
+    where = f"chunk {chunk.chunk_id}"
+    checked_tenant(chunk.tenant, f"{where}: tenant")
+    if not chunk.license.strip():
+        msg = f"{where}: license is empty (every chunk carries its source licence)"
+        raise DatasetError(msg)
+    if not chunk.source.strip() or any(b in chunk.source.casefold() for b in BANNED_SOURCES):
+        msg = f"{where}: source {chunk.source[:40]!r} is empty or banned (memerag is download-only)"
+        raise DatasetError(msg)
 
 
 def checked_version(version: str) -> date:

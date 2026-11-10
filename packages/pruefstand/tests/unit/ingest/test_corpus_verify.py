@@ -14,6 +14,7 @@ from pruefstand.core.errors import DatasetError
 from pruefstand.core.fingerprint import corpus_version
 from pruefstand.core.ids import TenantId
 from pruefstand.core.models.corpus import Chunk, CorpusManifest
+from pruefstand.ingest import corpus_files
 from pruefstand.ingest.chunkers.paragraph import ParagraphChunker
 from pruefstand.ingest.corpus_verify import verify_corpus
 from pruefstand.ingest.gii_xml import GiiXmlLoader
@@ -202,3 +203,88 @@ def test_verify_refuses_an_oversized_manifest(written: Path) -> None:
     (written / "manifest.json").write_bytes(b" " * (2 * 1024 * 1024))
     with pytest.raises(DatasetError, match="manifest"):
         verify_corpus(written)
+
+
+# --- T2.5a: the writer's own rules, sorted order, one pass, the tenant plan ---------------------
+def edited_line(lines: dict[str, list[str]], tenant: str, **changes: object) -> None:
+    lines[tenant][0] = json.dumps({**json.loads(lines[tenant][0]), **changes}, sort_keys=True)
+
+
+def test_verify_applies_the_writers_licence_rule(written: Path, tmp_path: Path) -> None:
+    directory = forge(
+        written, tmp_path / "f", lambda ls: edited_line(ls, "kanzlei_mueller", license=" ")
+    )
+    message = check(directory)
+    assert message.startswith("kanzlei_mueller.chunks.jsonl:1: chunk ")
+    assert "license is empty" in message
+
+
+def test_verify_applies_the_writers_banned_source_rule(written: Path, tmp_path: Path) -> None:
+    directory = forge(
+        written, tmp_path / "f", lambda ls: edited_line(ls, "kanzlei_mueller", source="memerag:x")
+    )
+    assert "banned" in check(directory)
+
+
+def test_verify_detects_chunks_out_of_order(written: Path, tmp_path: Path) -> None:
+    def edit(lines: dict[str, list[str]]) -> None:
+        lines["shared_public"][0], lines["shared_public"][1] = (
+            lines["shared_public"][1],
+            lines["shared_public"][0],
+        )
+
+    message = check(forge(written, tmp_path / "f", edit))
+    assert message == "shared_public.chunks.jsonl:2: chunks are not sorted by (doc_id, chunk_id)"
+
+
+def test_a_changed_byte_is_a_hash_error_even_when_the_line_no_longer_parses(
+    written: Path,
+) -> None:
+    path = written / "shared_public.chunks.jsonl"
+    data = path.read_bytes()
+    path.write_bytes(b"{broken" + data[7:])  # first line is no chunk any more, hash differs
+    with pytest.raises(DatasetError, match="sha256 does not match"):
+        verify_corpus(written)
+
+
+def test_verify_reads_each_tenant_file_once(written: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    opened: list[str] = []
+    real = corpus_files.open_regular
+
+    def counting(path: Path) -> int:
+        opened.append(path.name)
+        return real(path)
+
+    monkeypatch.setattr(corpus_files, "open_regular", counting)
+    verify_corpus(written)
+    tenant_reads = [n for n in opened if n.endswith(".chunks.jsonl")]
+    assert sorted(tenant_reads) == sorted(set(tenant_reads))
+
+
+def test_verify_accepts_the_plan_the_corpus_was_built_with(written: Path) -> None:
+    assert verify_corpus(written, PLAN).tenants
+
+
+def test_verify_detects_a_chunk_in_a_tenant_the_plan_does_not_give_its_source(
+    written: Path, tmp_path: Path
+) -> None:
+    def edit(lines: dict[str, list[str]]) -> None:
+        line = lines["kanzlei_mueller"].pop(0)
+        lines["versicherung_nord"].insert(
+            0, json.dumps({**json.loads(line), "tenant": "versicherung_nord"}, sort_keys=True)
+        )
+
+    directory = forge(written, tmp_path / "f", edit)
+    with pytest.raises(DatasetError, match=r"belongs to \['kanzlei_mueller'\]"):
+        verify_corpus(directory, PLAN)
+
+
+def test_verify_detects_a_tenant_the_plan_does_not_declare(written: Path) -> None:
+    smaller = PLAN.model_copy(
+        update={
+            "tenants": tuple(t for t in PLAN.tenants if t != "shared_public"),
+            "rules": tuple(r for r in PLAN.rules if r.tenant != "shared_public"),
+        }
+    )
+    with pytest.raises(DatasetError, match="not declared by the plan"):
+        verify_corpus(written, smaller)

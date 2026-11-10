@@ -5,7 +5,10 @@ an Ollama judge, the documented input limit of ``llm/quotas.yaml`` for a GitHub 
 No tokenizer file is available offline, so the count is a conservative estimate (letters 0.4,
 digits, punctuation and non-ASCII one, long unbroken runs one per character): it over-counts
 German prose and truncates earlier than a real tokenizer would, never later. After each call the
-judge also compares the provider's reported prompt tokens with the window (``judge_window``). The
+judge also compares the provider's reported prompt tokens with the window (``judge_window``)
+and with
+the band Ollama reports for a silently cut prompt (``cut_signature``, D962; a count that LiteLLM
+estimated because Ollama left the field out is not Ollama's and means nothing for the band). The
 catalogue tokenizer (``tokenizer.source``) is a follow-up: it needs a new dependency.
 """
 
@@ -94,3 +97,23 @@ def judge_window(model_id: str) -> int | None:
         return None
     options = catalogue_options(model_id)
     return int(options["num_ctx"]) - int(options["num_predict"])
+
+
+CUT_BAND = 16  # tokens above num_ctx / 2 in which Ollama reports a cut prompt (measured: +2 and +3)
+
+
+def cut_signature(model_id: str) -> tuple[int, int] | None:
+    """Return the ``prompt_eval_count`` band Ollama reports for a silently cut prompt, else None.
+
+    Measured on Ollama 0.32.13 (2026-11-09): a prompt over the window is cut and the server reports
+    about ``num_ctx / 2`` (gemma3:12b, num_ctx 12288: 6147 for every cut size from 14 000 to 60 000
+    tokens; the generator, num_ctx 8192: 4098). The count then is *below* the window, so
+    ``reported >= window`` alone never sees a cut.
+
+    >>> cut_signature("ollama/gemma3:12b")
+    (6144, 6160)
+    """
+    if provider_of(model_id) != "ollama":
+        return None
+    half = int(catalogue_options(model_id)["num_ctx"]) // 2
+    return half, half + CUT_BAND

@@ -6,6 +6,7 @@ commit into ``data/raw/hf/<id>/``; the licence is read from the dataset card and
 ``sources.yaml`` before anything is downloaded.
 """
 
+import os
 import time
 from collections.abc import Callable
 from pathlib import Path
@@ -26,6 +27,8 @@ VERSION = "0.1"
 REPO_URL = "https://github.com/dheena18/pruefstand"
 USER_AGENT = f"pruefstand-data/{VERSION} (+{REPO_URL})"
 GII_URL = "https://www.gesetze-im-internet.de/{slug}/xml.zip"
+GII_MIRROR_ENV = "PRUEFSTAND_GII_MIRROR"
+GII_MIRROR_FILE = "{slug}.xml.zip"
 # EUR-Lex itself sits behind a bot challenge; the Publications Office CELLAR serves the same act
 # (official XHTML rendition) by CELEX with content negotiation (owner decision, T2.1).
 CELLAR_URL = "https://publications.europa.eu/resource/celex/{celex}"
@@ -129,10 +132,29 @@ def request_headers(src: Source, name: str) -> dict[str, str]:
     return {"Accept": "text/html, application/xhtml+xml", "Accept-Language": lang}
 
 
+def _gii_url(slug: str | None) -> str:
+    """URL of a GII archive: the official site, or ``$PRUEFSTAND_GII_MIRROR/<slug>.xml.zip``.
+
+    The mirror (a release of the public repo holding the same bytes) exists because the official
+    site refuses GitHub-hosted runners. The pinned SHA-256 is checked either way, so a mirror
+    cannot change content.
+
+    >>> _gii_url("kschg")
+    'https://www.gesetze-im-internet.de/kschg/xml.zip'
+    """
+    mirror = os.environ.get(GII_MIRROR_ENV, "").strip()
+    if not mirror:
+        return GII_URL.format(slug=slug)
+    if not mirror.startswith("https://"):
+        msg = f"{GII_MIRROR_ENV} must be an https:// URL, got {mirror[:60]!r}"
+        raise FetchError(msg)
+    return f"{mirror.rstrip('/')}/{GII_MIRROR_FILE.format(slug=slug)}"
+
+
 def http_urls(src: Source) -> dict[str, str]:
     """Return ``{file name: URL}`` for the HTTP-served kinds (gii, eurlex, github)."""
     if src.kind == "gii":
-        return {name: GII_URL.format(slug=src.slug) for name in src.files}
+        return {name: _gii_url(src.slug) for name in src.files}
     if src.kind == "eurlex":
         return {name: CELLAR_URL.format(celex=src.celex) for name in src.files}
     return {
