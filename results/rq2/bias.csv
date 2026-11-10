@@ -1,0 +1,3 @@
+judge,axis,n_items,n_changed,delta,ci_low,ci_high,flag
+ollama/gemma3:12b,gender,50,0,,,,
+ollama/gemma3:12b,register,50,0,,,,

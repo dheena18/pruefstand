@@ -20,6 +20,7 @@ from pruefstand.core.models.metric import MetricStatus
 from pruefstand.core.models.run import RunResults
 from pruefstand.metrics.registry import MetricRegistry
 from pruefstand.pipeline import run as run_module
+from pruefstand.pipeline.fingerprints import calibration_epoch
 from pruefstand.pipeline.run import run_eval
 from pruefstand.runner.runner import Runner
 
@@ -166,7 +167,7 @@ async def test_default_stratum_keeps_the_fingerprint_of_runs_before_it_existed(
         judge_models={},
         judge_prompt_versions={},
         judge_serving={},
-        judge_epoch=0,
+        judge_epoch=calibration_epoch(),  # T5.4 ships calibration_status.yaml (epoch 1)
         metric_versions={k: v for k, v in m.metric_versions.items() if k not in JUDGED_METRICS},
         corpus_version=CORPUS_VERSION,
         block=None,

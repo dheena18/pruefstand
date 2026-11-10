@@ -1,0 +1,5 @@
+judge,label_set,metric,edit,n,discrimination,base_top_share
+ollama/gemma3:12b,correctness,answer_correctness,negate,21,0.6190476190476191,0.7142857142857143
+ollama/gemma3:12b,correctness,answer_correctness,swap_first_number,50,0.82,0.84
+ollama/gemma3:12b,faithfulness_constructed,faithfulness,negate,50,0.5,1.0
+ollama/gemma3:12b,faithfulness_constructed,faithfulness,swap_first_number,50,0.62,1.0

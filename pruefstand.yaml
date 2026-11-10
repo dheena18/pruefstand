@@ -12,6 +12,7 @@ dataset: hf://<HF_USER>/pruefstand-de@v1
 splits: [smoke, core, robust_pr]
 generator_family: qwen            # the judge family must differ from it (ADR-0009)
 judge:
+  # T5.4 (D938): pinned as the best-kappa local judge; its pass/fail is judges/data/calibration_status.yaml
   pr:      {id: ollama/gemma3:12b, family: gemma}   # the one judge for PR and nightly (ADR-0019)
   nightly: {id: ollama/gemma3:12b, family: gemma}
   per_metric: {}

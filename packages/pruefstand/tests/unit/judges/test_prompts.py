@@ -96,7 +96,7 @@ def test_the_rendered_user_message_holds_the_blocks_in_a_fixed_order() -> None:
 
 def test_the_injected_few_shot_example_and_the_reminder_are_in_the_v2_prompts() -> None:
     for metric in ("faithfulness", "answer_correctness"):
-        assert SPECS[metric].version in {"v2", "v3"}
+        assert SPECS[metric].version in {"v2", "v3", "v4"}
         text = _text(metric)
         assert "Erinnerung:" in REGISTRY.get(SPECS[metric].prompt_id, SPECS[metric].version).user
         assert "Rangfolge:" in text
@@ -105,12 +105,13 @@ def test_the_injected_few_shot_example_and_the_reminder_are_in_the_v2_prompts() 
         assert REGISTRY.get(SPECS[metric].prompt_id, "v1").user  # v1 stays loadable
 
 
-def test_prompt_v3_of_answer_correctness_has_the_hard_zero_rule() -> None:
-    assert SPECS["answer_correctness"].version == "v3"
+def test_prompt_v3_and_later_of_answer_correctness_have_the_hard_zero_rule() -> None:
+    assert SPECS["answer_correctness"].version in {"v3", "v4"}  # T5.4 (D937): v4
     text = _text("answer_correctness")
     assert "Harte Regel:" in text
     assert "ist die Punktzahl 0" in text
     assert REGISTRY.get("answer_correctness_de", "v2").user  # v2 stays loadable
+    assert "Harte Regel:" in REGISTRY.get("answer_correctness_de", "v3").system
 
 
 def test_no_german_prompt_text_in_python_sources() -> None:

@@ -920,6 +920,20 @@ def is_drift(agreement: float, n: int, *, a0: float | None = None, threshold: in
     # is_drift(0.90, 20) -> False (2 < 3). Drift invalidates the judge cache (T5.1 invalidate_judge) and makes that
     # judge's metrics informational (`judge_drift`) until re-calibration bumps judge_epoch; it never changes
     # eval_fingerprint
+# T5.4 additions (D930-D936; additive, no signature above changes):
+#   judges/calibration.py also: wilson_interval(successes, n, z=1.96) -> (low, high); calibration_table delegates to
+#     judges/calibration_table.py build_table (same contract). The T5.2b status readers moved to judges/status.py
+#     (read_status, refusal_judge_passed, judges_uncalibrated, CalibrationStatus with drift_thresholds / self_agreement,
+#     drift_threshold_of(model)) and are re-exported from judges/calibration.py, so the old import path keeps working.
+#   judges/drift.py also: default_threshold(n) -> int (the N3 rule); flip_rate(flips, comparisons) -> (rate, wilson_upper);
+#     drift_threshold(f_upper, n=50, alpha=0.01) -> int (smallest c >= default_threshold(n) with
+#     P(Bin(n, f_upper) >= c) <= alpha; n + 1 if none).
+#   judges/anchors.py: AnchorItem (anchor_id, item_id, label_set, metric, label, hard_negative, judge_model, prompt_id,
+#     prompt_version, messages, raw_score; .request() -> LLMRequest, .stored_verdict()); anchor_file(model) ->
+#     judges/data/anchors/<slug>.jsonl (slug: "/" -> "_", ":" -> "-"); load_anchors(path) (ConfigError when invalid).
+#   llm/cache_epochs.py DriftFlag gains optional changed, threshold, a0 (judge_drift.json; `epoch` = the bumped cache epoch).
+#   pipeline/judge_drift.py: run_judge_drift(model, anchors_path, backend, cache_dir, *, threshold=None, a0=None, now)
+#     -> DriftResult(status ok|drift|skipped, n, agreement, changed, threshold); synchronous, builds a cacheless client.
 ```
 
 Judge prompts: `judges/prompts/<metric>_de_v<N>.txt`; output JSON `{"reason": str, "score": int}`;
@@ -1753,6 +1767,9 @@ pruefstand baseline   promote --run runs/<id> --ref main|nightly-b0|nightly-b1|n
                       prune --keep 20 [--unused-days 90]   (T6.1; run by the monthly `baseline-prune` step of baseline-promote.yml)
 pruefstand judge-drift --judge <model> --anchors <file>   (T5.4, pre-approved addition, D9-30): re-judges the 50 anchors
                       with the cache bypassed; drift per §6 is_drift -> writes judge_drift.json + invalidate_judge; exit 0
+                      (T5.4: --anchors defaults to judges/data/anchors/<slug>.jsonl; threshold and a0 come from
+                      calibration_status.yaml; no anchor file -> "skipped", no call, exit 0; a passing re-run clears an
+                      Ollama judge's flag)
                       publish-dashboard --src <dir> --repo dheena18/pruefstand-dashboard-data   (T6.1; token from env DASHBOARD_DATA_PAT)
 pruefstand build-dataset --config dataset.yaml [--stage S] [--only <prompt id>] [--resume]   # T4.7a; prints splits: and dropped_mixed_license=<n>
 pruefstand ingest     --config corpus.yaml --out corpus/ [--date YYYY-MM-DD]

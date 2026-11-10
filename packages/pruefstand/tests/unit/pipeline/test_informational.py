@@ -9,7 +9,7 @@ from pruefstand.core.config import GatePolicy, MetricPolicy
 from pruefstand.core.enums import Split
 from pruefstand.core.errors import ConfigError
 from pruefstand.core.models.run import RunManifest
-from pruefstand.judges.calibration import judges_uncalibrated, read_status, refusal_judge_passed
+from pruefstand.judges.status import judges_uncalibrated, read_status, refusal_judge_passed
 from pruefstand.pipeline.gate import informational_mapping
 
 POLICY = GatePolicy(
@@ -24,9 +24,12 @@ JUDGED = ("faithfulness", "answer_correctness")
 
 def pair(**changes: object) -> tuple[RunManifest, RunManifest]:
     fields = {
-        "stack": "a40", "workload": "nightly", "splits": (Split.FULL,), "judge_mode": "local",
+        "stack": "a40",
+        "workload": "nightly",
+        "splits": (Split.FULL,),
+        "judge_mode": "local",
         **changes,
-    }  # fmt: skip
+    }
     return (
         make_manifest(run_id="20261102T220000-aaaaaa", **fields),
         make_manifest(run_id="20261102T220001-bbbbbb", **fields),

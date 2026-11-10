@@ -1,0 +1,69 @@
+# Written by experiments/rq2/report.py (T5.4). Read by pruefstand.judges.status and
+# pipeline.fingerprints (epoch = judge_epoch, part of eval_fingerprint). Only a passing
+# re-calibration (experiments/rq2/recalibrate.py) bumps epoch. passed: false = judged
+# metrics informational in both tiers (W3.8).
+epoch: 1
+passed: false
+status: failed
+refusal_judged:
+  passed: false
+  status: pending
+  reasons:
+  - near-miss set not built (0 < 50)
+  reported:
+    n: 420
+    accuracy: 1.0
+    hedged_fpr: 0.0
+prompt_versions_tried:
+  faithfulness:
+    dev:
+    - v2
+    - v3
+    - v4
+    test:
+    - v3
+    - v2
+  answer_correctness:
+    dev:
+    - v3
+    - v4
+    test:
+    - v4
+  refusal_judged:
+    dev:
+    - v1
+    test:
+    - v1
+  perturbation_consistency:
+    dev:
+    - v1
+    test:
+    - v1
+prompt_versions:
+  faithfulness: faithfulness_de_v2
+  answer_correctness: answer_correctness_de_v4
+  perturbation_consistency: perturbation_consistency_de_v1
+  refusal_judged: refusal_judged_de_v1
+judges:
+  ollama/gemma3:12b:
+    role: gating, judge.pr and judge.nightly
+    serving: ollama gemma3:12b Q4_K_M b92b218582c5
+    metrics:
+      faithfulness:
+        status: failed
+        passed: false
+        reasons:
+        - 'memerag: kappa 0.252850768468 < 0.6'
+        - 'memerag: hard-negative specificity 0.23076923076923078 < 0.8'
+        - 'memerag: specificity Wilson low 0.15125508850526875 < 0.7'
+        - discrimination negate 0.500 < 0.9
+        - discrimination swap_first_number 0.620 < 0.9
+      answer_correctness:
+        status: failed
+        passed: false
+        reasons:
+        - discrimination negate 0.619 < 0.9
+        - discrimination swap_first_number 0.820 < 0.9
+    drift_threshold: 9
+    a0: 0.96
+    flip_rate_upper: 0.06655389051214453

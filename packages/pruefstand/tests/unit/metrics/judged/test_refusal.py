@@ -104,8 +104,9 @@ async def test_a_judge_failure_raises_llm_error_for_the_runner(
         await RefusalJudged(judge_enabled=True).acompute(make_case(0), response(TWELVE), pool)
 
 
-def test_without_the_calibration_file_the_refusal_judge_is_off() -> None:
-    assert RefusalJudged()._enabled is False  # judges/data/calibration_status.yaml is T5.4's
+def test_the_refusal_judge_stays_off_with_the_shipped_calibration_file() -> None:
+    # T5.4 ships calibration_status.yaml with refusal_judged pending (near-miss set not built, D944)
+    assert RefusalJudged()._enabled is False
 
 
 def test_ambiguity_rule() -> None:

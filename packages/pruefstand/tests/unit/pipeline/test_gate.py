@@ -15,6 +15,7 @@ from pruefstand.core.errors import GateInputError, StoreError
 from pruefstand.core.fingerprint import eval_fingerprint
 from pruefstand.core.models.gate import GateReport
 from pruefstand.core.models.run import RunArtifacts, RunManifest
+from pruefstand.pipeline import gate as gate_module
 from pruefstand.pipeline.fingerprints import build_eval_fingerprint, judge_facts
 from pruefstand.pipeline.gate import informational_mapping, run_gate
 from pruefstand.store.artifacts import ArtifactStore
@@ -214,7 +215,11 @@ def test_run_gate_finds_a_hard_fail(tmp_path: Path) -> None:
     assert [h.metric for h in report.hard_fails] == ["tenant_leak"]
 
 
-def test_a_policy_metric_without_a_registry_direction_is_a_gate_input_error(tmp_path: Path) -> None:
+def test_a_policy_metric_without_a_registry_direction_is_a_gate_input_error(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # a calibrated judge: with T5.4's passed: false the judged metric would be informational first
+    monkeypatch.setattr(gate_module, "judges_uncalibrated", lambda *_: False)
     base = stored(tmp_path, "20261102T220000-aaaaaa")
     cand = stored(tmp_path, "20261102T220001-bbbbbb")
     with pytest.raises(GateInputError, match="faithfulness"):

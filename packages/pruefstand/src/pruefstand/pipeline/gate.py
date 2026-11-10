@@ -16,7 +16,7 @@ from pruefstand.core.models.run import RunManifest, RunResults
 from pruefstand.core.protocols import BaselineStore
 from pruefstand.gate.hard_fail import find_hard_fails
 from pruefstand.gate.policy import evaluate_gate
-from pruefstand.judges.calibration import judges_uncalibrated
+from pruefstand.judges.status import judges_uncalibrated
 from pruefstand.metrics.registry import MetricRegistry
 from pruefstand.report.json_report import write_gate_json
 from pruefstand.store.artifacts import ArtifactStore
