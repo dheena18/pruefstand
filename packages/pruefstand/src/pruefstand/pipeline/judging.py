@@ -105,6 +105,7 @@ def prepare_judging(plan: Plan, build: PoolBuilder, cache: KVCache | None) -> Ju
         )  # fmt: skip
     # the canary scope (canary_in_input, selection) is for external judges; a local one may see them
     scoped = canaries if _external(judge_refs(cfg)) else None
+    require_exact_counters(pool, cfg)
     return JudgeSetup(budget, recorder, pool, _scope(plan, scoped, pooled=pool is not None))
 
 
@@ -150,8 +151,22 @@ def checked_pool(
     return pool, False
 
 
+def require_exact_counters(pool: JudgePoolLike | None, cfg: PruefstandConfig) -> None:
+    """Load (and hash-check) the exact tokenizer of every local judge before any judge call.
+
+    Raises:
+        ConfigError: A tokenizer file exists but differs from the catalogue pin.
+    """
+    if pool is not None:
+        for ref in judge_refs(cfg):
+            load_counter(ref.id)  # None (file absent) is fine; a wrong file raises
+
+
 def exact_count_missing(pool: JudgePoolLike | None, cfg: PruefstandConfig) -> bool:
-    """Whether a judge of the run lacks its exact tokenizer (cut sign (3) is skipped)."""
+    """Whether a judge of the run lacks its exact tokenizer (cut sign (3) is skipped).
+
+    Only the configured judges count: a fallback answer never uses the exact count.
+    """
     if pool is None:
         return False
     return any(

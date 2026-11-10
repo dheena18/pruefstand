@@ -4,7 +4,9 @@ The conservative estimate (``estimate_tokens``) over-counts German prose about 2
 tell a cut prompt from a normal one by comparing it with what Ollama reports. The exact count can.
 The ``tokenizer.json`` of the judge (33 MB for gemma3) is never committed: it is fetched once, at
 image build or on the executor, by ``scripts/models/fetch_judge_tokenizer.py``, and checked against
-the sha256 pin of ``infra/gpu/models.yaml`` before every use. Without the file the exact
+the sha256 pin of ``infra/gpu/models.yaml``: hashed once per process, at first use. ``load_counter``
+runs before the first judge call, so a wrong file aborts the run before any LLM call. Without
+the file the exact
 comparison is skipped and the run says so (``counts["judge_exact_count_unavailable"]``).
 """
 
@@ -152,7 +154,8 @@ def load_counter(model_id: str) -> ExactCounter | None:
 def is_cut(reported: int, exact: int, prefix: int, window: int) -> bool:
     """Whether a reported prompt count shows a cut prompt (sign (c) of ``Judge._check_not_cut``).
 
-    Only a prompt that nearly fills the window (``exact >= NEAR_WINDOW`` of it) can have been cut;
+    A prompt whose exact count is at or above the window was cut whatever Ollama reported. Below
+    it, only a prompt that nearly fills the window (``exact >= NEAR_WINDOW`` of it) can be cut;
     for it, the lowest honest report is the exact count minus the fixed prefix a prompt cache may
     serve (D343), and a report below ``CUT_RATIO`` of that is read as cut. A short prompt that
     Ollama reports as tiny (a full cache hit on a repeat) is therefore never flagged.
@@ -162,7 +165,11 @@ def is_cut(reported: int, exact: int, prefix: int, window: int) -> bool:
         (True, False)
         >>> is_cut(11_000, 11_500, 1_500, 11_904), is_cut(7_000, 11_500, 1_500, 11_904)
         (False, True)
+        >>> is_cut(11_904, 11_904, 1_500, 11_904)
+        True
     """
+    if exact >= window:
+        return True  # it cannot have fitted; no report is needed
     if exact < NEAR_WINDOW * window:
         return False
     return reported < CUT_RATIO * max(exact - prefix, 0)

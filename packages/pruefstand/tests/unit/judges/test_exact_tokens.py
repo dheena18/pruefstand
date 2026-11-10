@@ -7,6 +7,7 @@ from contextlib import contextmanager
 from pathlib import Path
 
 import pytest
+import respx
 import yaml
 from testsupport.gpu_files import OPTIONS, SHIPPED_CATALOGUE, write_endpoints
 from testsupport.judge_support import DE_ROOT, MODEL, NONCE_KEY, TAGS
@@ -18,6 +19,7 @@ from pruefstand.core.errors import ConfigError, JudgeInputTruncated
 from pruefstand.judges.exact_tokens import (
     TEMPLATE_TOKENS,
     ExactCounter,
+    fetch_tokenizer,
     is_cut,
     load_counter,
     source_url,
@@ -155,6 +157,10 @@ def test_the_sign_is_a_function_of_window_report_and_cacheable_prefix() -> None:
         10_000, 11_500, 1_500, 11_904
     )  # honest, a part of it cached (>= 0.8 x 10 000)
     assert is_cut(7_900, 11_500, 1_500, 11_904)  # well below even a cached report
+    assert is_cut(
+        1, 11_904, 0, 11_904
+    )  # exact >= window: it cannot have fitted, whatever was reported
+    assert is_cut(50_000, 12_500, 0, 11_904)
 
 
 # --- the four branches of Judge._check_not_cut -------------------------------------------------
@@ -242,3 +248,106 @@ async def test_without_the_tokenizer_sign_c_is_skipped_and_the_run_can_say_so(
     with judge_on(absent, monkeypatch, reported, present=False) as (judge, _):
         assert judge.exact_available is False
         assert (await judge.score(task)).raw_score == 1  # (a) and (b) do not hold, (c) is skipped
+
+
+def _grow(probe: Judge, fraction: float):  # type: ignore[no-untyped-def]
+    """The shortest answer whose exact prompt count is at least ``fraction`` of the window."""
+    chars = 0
+    while True:
+        chars += 50
+        task = long_task(chars)
+        exact, prefix = exact_of(probe, task)
+        if exact >= fraction * WINDOW:
+            return task, exact, prefix
+
+
+async def test_an_exact_count_at_or_above_the_window_is_a_cut_whatever_was_reported(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    install_tokenizer(tmp_path, monkeypatch, present=True)
+    probe, _ = _probe(tmp_path, monkeypatch)
+    task, exact, _ = _grow(probe, 1.0)
+    assert exact >= WINDOW
+    assert probe.prompt_tokens(task) <= probe.input_cap  # the estimate let it through
+    reported = 3_000  # honest-looking, outside the band, below the window
+    assert not NUM_CTX // 2 <= reported <= NUM_CTX // 2 + 16
+    with (
+        judge_on(tmp_path, monkeypatch, reported) as (judge, _),
+        pytest.raises(JudgeInputTruncated, match="the input was cut"),
+    ):
+        await judge.score(task)
+
+
+async def test_a_full_prefix_cache_hit_on_a_prompt_near_the_window_is_not_a_cut(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    install_tokenizer(tmp_path, monkeypatch, present=True)
+    probe, _ = _probe(tmp_path, monkeypatch)
+    task, exact, prefix = _grow(probe, 0.9)
+    assert 0.9 * WINDOW <= exact < WINDOW
+    reported = exact - prefix  # the lowest honest report: the whole fixed prefix came from cache
+    assert not NUM_CTX // 2 <= reported <= NUM_CTX // 2 + 16
+    with judge_on(tmp_path, monkeypatch, reported) as (judge, _):
+        assert (await judge.score(task)).raw_score == 1
+
+
+def test_the_exact_comparison_is_skipped_for_an_answer_of_the_fallback_judge(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    install_tokenizer(tmp_path, monkeypatch, present=True)
+    probe, _ = _probe(tmp_path, monkeypatch)
+    task, _, _ = _grow(probe, 1.0)
+    messages = probe._render(task)
+    reported = 3_000
+    with pytest.raises(JudgeInputTruncated):
+        probe._check_not_cut(reported, messages)
+    probe._check_not_cut(reported, messages, fallback=True)
+
+
+# --- fetch_tokenizer ----------------------------------------------------------------------------
+
+URL = "https://huggingface.co/acme/judge-x/resolve/abc/tokenizer.json"
+
+
+def test_fetch_downloads_verifies_and_writes_atomically(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    target = install_tokenizer(tmp_path, monkeypatch, present=False)
+    raw = char_tokenizer().to_str().encode("utf-8")
+    with respx.mock() as mock:
+        route = mock.get(URL).respond(200, content=raw)
+        written = fetch_tokenizer(MODEL)
+    assert route.called
+    assert written == target
+    assert target.read_bytes() == raw
+    assert not list(target.parent.glob("*.part"))  # the temporary file was renamed
+    assert load_counter(MODEL) is not None
+
+
+def test_fetch_refuses_a_digest_mismatch_and_leaves_no_file(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    target = install_tokenizer(tmp_path, monkeypatch, present=False)
+    with respx.mock() as mock:
+        mock.get(URL).respond(200, content=b"not the pinned tokenizer")
+        with pytest.raises(ConfigError, match="differs from the catalogue pin"):
+            fetch_tokenizer(MODEL)
+    assert not target.exists()
+    assert not list(target.parent.glob("*.part"))
+
+
+def test_fetch_reports_a_failed_download_without_the_body(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    target = install_tokenizer(tmp_path, monkeypatch, present=False)
+    with respx.mock() as mock:
+        mock.get(URL).respond(404, content=b"secret body")
+        with pytest.raises(ConfigError, match="cannot download") as raised:
+            fetch_tokenizer(MODEL)
+    assert "secret body" not in str(raised.value)
+    assert not target.exists()
+
+
+def test_a_bad_source_is_a_config_error() -> None:
+    with pytest.raises(ConfigError, match="must look like"):
+        source_url("https://example.com/tokenizer.json")

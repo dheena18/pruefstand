@@ -93,7 +93,9 @@ class Judge:
             self._cap = input_cap(self._model)
         return self._cap
 
-    def _check_not_cut(self, reported: int, messages: tuple[Message, ...]) -> None:
+    def _check_not_cut(
+        self, reported: int, messages: tuple[Message, ...], *, fallback: bool = False
+    ) -> None:
         """Raise ``JudgeInputTruncated`` when the provider cut the prompt (two independent signs).
 
         Ollama cuts a prompt that does not fit ``num_ctx - num_predict`` without a word. (1) A
@@ -104,7 +106,8 @@ class Judge:
         count is in the band is read as cut (candidate-side, worst-filled): a 17-token band,
         accepted and documented (D962). (3) With the exact tokenizer (``exact_tokens``), a report
         below 0.8 x the exact count of the prompt, less the fixed prefix a prompt cache may serve
-        (D1010), is a cut as well.
+        (D1010), is a cut as well; an exact count at or above the window is a cut by itself.
+        Sign (3) is skipped for an answer of the fallback judge (another tokenizer).
         """
         window = judge_window(self._model)
         if window is not None and reported >= window:
@@ -117,7 +120,7 @@ class Judge:
                 f"(num_ctx / 2 = {band[0]}); the input did not fit"
             )
             raise JudgeInputTruncated(msg, transient=False)
-        counter = self._counter()
+        counter = None if fallback else self._counter()  # a fallback answers with another tokenizer
         if counter is not None:
             exact = counter.prompt(messages)
             prefix = counter.fixed_prefix(messages)
@@ -197,7 +200,7 @@ class Judge:
             json_schema=output_schema(task.metric),
         )
         out, resp = await self._llm.complete_json_meta(request, output_model(task.metric))
-        self._check_not_cut(resp.usage.prompt_tokens, messages)
+        self._check_not_cut(resp.usage.prompt_tokens, messages, fallback=resp.fallback)
         return JudgeVerdict(
             score=normalise(task.metric, out.score),
             reason=out.reason,
