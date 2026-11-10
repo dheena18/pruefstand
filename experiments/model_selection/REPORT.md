@@ -59,13 +59,13 @@ visible there; the Ollama load log would show it (and fix `kv_bytes_per_token`).
 | Embeddings `jeffh/intfloat-multilingual-e5-large-instruct:f16` (1.1 GB), one German model | pull; GermanDPR/GerDaLIR download [NET]; `indomain_dev.jsonl`: tooling, rules and the 240-passage plan are done; the questions need GitHub Models (section below) |
 | bge-m3 cosine >= 0.99 vs HF checkpoint (20 passages) | HF download [NET] on the VM CPU |
 | Rerankers (`bge-reranker-v2-m3`, `gte-multilingual-reranker-base`), CPU latency, 384-token variant | compose stack with `rerank-cpu` (`stack.lock`) and HF download; `embed_bench.py` has the helpers |
-| Scoring of S3 by the GitHub Models datagen model and by a person on 10 items | datagen model (T4.2) not pinned; HUMAN |
+| Scoring of S3 by the GitHub Models datagen model | datagen model (T4.2) not pinned. The owner-reviewed, AI-assisted scoring of 10 items is done (below, D855) |
 | `provisional: false` pins in `models.yaml` | only after the above (pin check: `pins.py`, `require_final=True`) |
 
 Note: contexts in `questions_de.jsonl` are shortened statute wording written for the test; the deterministic score is a proxy,
 not a quality verdict.
 
-## Owner scoring of 10 items (HUMAN)
+## Owner scoring of 10 items (done: owner-reviewed, AI-assisted)
 
 `owner_score_10.csv` holds 10 generator answers from the committed run (`results/2026-11-03_answers.jsonl`),
 picked with a fixed seed, round-robin over the 7 kinds so each category appears at least once. Rebuild with
@@ -79,7 +79,7 @@ deterministic scorer (`bench_cases.score_case`); read `context` (the passage the
 | 1 | at least half right: the core fact is there but incomplete, partly wrong, or the wrong register |
 | 0 | empty, wrong, English, hallucinated beyond the context, a refusal where the context answers, or an answer where a refusal was required |
 
-Commit the filled file; the mean of the ten human scores is compared with the deterministic score of the same items.
+Commit the filled file; the mean of the ten owner scores is compared with the deterministic score of the same items.
 The owner-actions list of the PR repeats this.
 
 ### Result of the owner scoring (owner-reviewed, AI-assisted)
@@ -91,7 +91,7 @@ scores, not a fully independent human score (D855).
 | | mean of the 10 items |
 | --- | --- |
 | Owner-reviewed (AI-assisted) score | 1.7 |
-| Deterministic score (`bench_cases.score_case`) of the same items | 1.6 |
+| Deterministic score (`bench_cases.score_case`) of the same items | 1.6 (original scorer; 1.7 after the fix below) |
 
 The two scores differ on 4 of the 10 items (owner / deterministic): `ge02` 2 / 0, `su06` 1 / 2, `rg04` 1 / 0, `ge04` 1 / 2.
 Reasons for the owner's non-2 scores: `su06` omits which year the period starts in and the "ought to have known" condition;
@@ -111,7 +111,7 @@ The close means (1.7 vs 1.6) hide this item-level disagreement, so the determini
 | `ge04` | 1 / 2 | keyword limit: the expansion is correct (the check passes); the flaw is extra detail ("in Kraft getreten" on 25 May 2018) |
 
 Fixes (D855): the `ge02` check now accepts the declined forms, and `su06` also requires one of the two conditions
-(`entstanden`, or `fahrl`/`müsste`/`müssen`/`hätte`). Regression tests: `tests/test_owner_scored_items.py`. With the fixed scorer the
+(`entstanden`/`entsteht`, `fahrl`, `nachläss`, or a form of "hätte/müsste wissen/kennen" or "wissen müssen"; the bare modals alone no longer count). Regression tests: `tests/test_owner_scored_items.py`. With the fixed scorer the
 per-item agreement is **8 of 10**; `rg04` and `ge04` stay as pinned limits of a keyword proxy.
 Effect on the model-selection results (all stored answers re-scored): the generator `ollama/qwen3.8:27b-q8_0` mean moves from
 1.832 to 1.841 (`ge02` 0 to 2, `su06` 2 to 1); the judge model `gemma3:12b` (1.673) and the candidate `qwen3:4b` (0.0) do not change.
