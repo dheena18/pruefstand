@@ -270,6 +270,9 @@ def main(argv: Sequence[str] | None = None) -> int:
         sys.stderr.write(f"error: no workflows found in {path}\n")
         return 2
     if args.actions is not None:
+        if not args.actions.is_dir():
+            sys.stderr.write(f"error: {args.actions} is not a directory\n")
+            return 2
         n_actions, more = check_actions(args.actions)
         count, findings = count + n_actions, findings + more
     if findings:

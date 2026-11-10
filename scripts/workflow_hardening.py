@@ -25,8 +25,12 @@ VERSION_COMMENT = re.compile(r"#\s*v\d+(\.\d+)*")
 # Scopes whose ``write`` grant is checked by a dedicated table in ``check_workflows._grant``.
 _OWN_TABLE = frozenset({"contents", "statuses", "id-token", "pages", "models"})
 _EVENT_PATH = re.compile(r"github\.event(?![\w-])((?:\.[\w*-]+|\[\s*[\w*]+\s*\])*)")
-_ENV_FILE = re.compile(r"\$\{?(GITHUB_ENV|GITHUB_PATH)\b")
-_OUTPUT_EXPR = re.compile(r"\b(steps|needs)\.[\w-]+\.outputs\b")
+_ENV_FILE = re.compile(
+    r"\$\{?(GITHUB_ENV|GITHUB_PATH)\b|\$\{\{\s*github\s*\.\s*(env|path)\s*\}\}", re.I
+)
+_BARE_GITHUB = re.compile(r"(?<![\w.])github(?![\w.\[-])")
+_CONTEXT_REF = re.compile(r"\b(env|matrix)\.([\w-]+)")
+_SHELL_VAR = re.compile(r"\$\{?([A-Za-z_]\w*)")
 
 
 def pins(doc: Doc, text: str) -> list[str]:
@@ -76,7 +80,15 @@ def permissions(name: str, doc: Doc) -> list[str]:
 
 
 _TRIGGER_NAMES = frozenset(
-    {"workflow_run", "issue_comment", "pull_request_review", "pull_request_review_comment"}
+    {
+        "workflow_run",
+        "issue_comment",
+        "issues",
+        "discussion",
+        "discussion_comment",
+        "pull_request_review",
+        "pull_request_review_comment",
+    }
 )
 
 
@@ -98,7 +110,47 @@ def _bad_event_values(code: str) -> list[str]:
             path = "github.event" + re.sub(r"\s+", "", match.group(1))
             if EVENT_VALUES.fullmatch(path) is None:
                 bad.append(path)
+        if _BARE_GITHUB.search(re.sub(r"'[^']*'", "''", normalised)):  # not in literals
+            bad.append("github")  # the whole context, e.g. toJSON(github)
     return bad
+
+
+def _normalised(code: str) -> list[str]:
+    return [BRACKET_NAME.sub(r".\1", e).lower() for e in EXPRESSION.findall(code)]
+
+
+def _tainted(names: dict[str, object]) -> set[str]:
+    """Names (lower case) whose value carries an event value or an untrusted context value."""
+    return {
+        k.lower()
+        for k, v in names.items()
+        if any(_bad_event_values(s) or _untrusted(s) for s in strings(v))
+    }
+
+
+def _mapping(node: object) -> dict[str, object]:
+    return {str(k): v for k, v in node.items()} if isinstance(node, dict) else {}
+
+
+def _indirect(code: str, env: set[str], matrix: set[str]) -> list[str]:
+    """``${{ env.X }}`` / ``${{ matrix.X }}`` references to a tainted env or matrix value."""
+    found = []
+    for expression in _normalised(code):
+        for kind, name in _CONTEXT_REF.findall(expression):
+            if name in (env if kind == "env" else matrix):
+                found.append(f"{kind}.{name}")
+    return found
+
+
+def _env_file_writes(run: str, expression_env: set[str]) -> bool:
+    """A line that writes GITHUB_ENV/GITHUB_PATH with an expression or an env var set from one."""
+    for line in run.splitlines():
+        if not _ENV_FILE.search(line):
+            continue
+        rest = _ENV_FILE.sub("", line)
+        if "${{" in rest or any(v.lower() in expression_env for v in _SHELL_VAR.findall(rest)):
+            return True
+    return False
 
 
 def _untrusted(code: str) -> bool:
@@ -107,9 +159,18 @@ def _untrusted(code: str) -> bool:
     )
 
 
-def _step_findings(where: str, step: Doc, *, check_run_untrusted: bool) -> list[str]:
+def _step_findings(
+    where: str,
+    step: Doc,
+    *,
+    check_run_untrusted: bool,
+    context: tuple[dict[str, object], set[str]] = ({}, set()),
+) -> list[str]:
     out = []
     run = step.get("run")
+    env_values = {**context[0], **_mapping(step.get("env"))}
+    tainted_env, tainted_matrix = _tainted(env_values), context[1]
+    expression_env = {k.lower() for k, v in env_values.items() if "${{" in "".join(strings(v))}
     with_ = step.get("with")
     inputs = dict(with_) if isinstance(with_, dict) else {}
     for code in [run, *strings(inputs)]:
@@ -123,12 +184,19 @@ def _step_findings(where: str, step: Doc, *, check_run_untrusted: bool) -> list[
         check_run_untrusted and isinstance(run, str) and _untrusted(run)
     ):
         out.append(f"{where}: untrusted value interpolated in run/with input (injection)")
-    if (
-        isinstance(run, str)
-        and _ENV_FILE.search(run)
-        and any(_OUTPUT_EXPR.search(e) for e in EXPRESSION.findall(run))
-    ):
-        out.append(f"{where}: a step output is interpolated into GITHUB_ENV/GITHUB_PATH")
+    for code in [run, *strings(inputs)]:
+        if isinstance(code, str):
+            out += [
+                f"{where}: {ref} carries an untrusted value into run/with (injection)"
+                for ref in _indirect(code, tainted_env, tainted_matrix)
+            ]
+    if check_run_untrusted and isinstance(run, str) and "inputs." in "".join(_normalised(run)):
+        out.append(f"{where}: an action input is interpolated in run (pass it through env:)")
+    if isinstance(run, str) and _env_file_writes(run, expression_env):
+        out.append(
+            f"{where}: GITHUB_ENV/GITHUB_PATH is written from an expression or an env var set"
+            " from one"
+        )
     return out
 
 
@@ -136,9 +204,13 @@ def event_injection(doc: Doc) -> list[str]:
     """``github.event.*`` values outside ``EVENT_VALUES``, untrusted ``with:`` inputs, env files."""
     out = []
     for job_id, job in jobs(doc).items():
-        holders = [job, *steps(job)]
-        for holder in holders:
-            out += _step_findings(f"job {job_id}", holder, check_run_untrusted=False)
+        env = {**_mapping(doc.get("env")), **_mapping(job.get("env"))}
+        strategy = _mapping(job.get("strategy"))
+        matrix = _tainted(_mapping(strategy.get("matrix")))
+        for holder in [job, *steps(job)]:
+            out += _step_findings(
+                f"job {job_id}", holder, check_run_untrusted=False, context=(env, matrix)
+            )
     return out
 
 
