@@ -9,7 +9,7 @@ so ``validate_dataset`` can report them all); the strict loader for runs is
 import json
 import os
 import stat
-import tempfile
+import uuid
 from collections import Counter
 from collections.abc import Sequence
 from dataclasses import dataclass, field
@@ -202,16 +202,25 @@ def write_split_file(path: Path, cases: Sequence[TestCase]) -> None:
     """
     path.parent.mkdir(parents=True, exist_ok=True)
     text = "".join(_dump(c.model_dump(mode="json")) + "\n" for c in sorted(cases, key=_by_id))
-    descriptor, name = tempfile.mkstemp(dir=path.parent, prefix=f".{path.name}.", suffix=".tmp")
+    name = path.parent / f".{path.name}.{os.getpid()}.{uuid.uuid4().hex}.tmp"
+    # O_CREAT with 0o666 gives the normal umask-based mode (0o664 under umask 0o002), unlike mkstemp
+    descriptor = os.open(name, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o666)
     try:
         with os.fdopen(descriptor, "w", encoding="utf-8", newline="\n") as handle:
+            if path.is_file():
+                os.fchmod(handle.fileno(), stat.S_IMODE(path.stat().st_mode))  # keep its mode
             handle.write(text)
             handle.flush()
             os.fsync(handle.fileno())
-        Path(name).replace(path)
+        name.replace(path)
     except BaseException:
-        Path(name).unlink(missing_ok=True)
+        name.unlink(missing_ok=True)
         raise
+    directory = os.open(path.parent, os.O_RDONLY)
+    try:
+        os.fsync(directory)  # make the rename itself durable
+    finally:
+        os.close(directory)
 
 
 def _by_id(case: TestCase) -> str:

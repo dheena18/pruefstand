@@ -1,6 +1,8 @@
 """``dataset.io``: JSONL per split (sorted ids, sorted keys) and the manifest (T4.1 S4)."""
 
 import json
+import os
+import stat
 from pathlib import Path
 
 import pytest
@@ -89,3 +91,19 @@ def test_a_split_file_is_replaced_atomically(
         write_split_file(path, cases[:2])
     assert path.read_bytes() == before  # the old file is intact
     assert sorted(p.name for p in tmp_path.iterdir()) == ["core.jsonl"]  # the temp file is gone
+
+
+def test_split_files_get_the_umask_mode_and_an_existing_mode_is_kept(tmp_path: Path) -> None:
+    cases = _cases()
+    old = os.umask(0o002)
+    try:
+        fresh = tmp_path / "fresh.jsonl"
+        write_split_file(fresh, cases)
+        assert stat.S_IMODE(fresh.stat().st_mode) == 0o664
+        kept = tmp_path / "kept.jsonl"
+        kept.write_text("x\n", encoding="utf-8")
+        kept.chmod(0o644)
+        write_split_file(kept, cases)
+        assert stat.S_IMODE(kept.stat().st_mode) == 0o644
+    finally:
+        os.umask(old)
