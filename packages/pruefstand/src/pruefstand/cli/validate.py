@@ -9,6 +9,7 @@ import typer
 from pruefstand.cli._common import EXIT_USAGE, fail, guarded
 from pruefstand.core.config_loader import load_config
 from pruefstand.dataset.validate import validate_dataset
+from pruefstand.pipeline.datasets_hf import resolve_hf
 
 
 class Kind(StrEnum):
@@ -25,17 +26,18 @@ def register(app: typer.Typer) -> None:
     def validate_command(
         ctx: typer.Context,
         kind: Annotated[Kind, typer.Argument(help="config or dataset")],
-        path: Annotated[Path, typer.Argument(help="File (config) or directory (dataset).")],
+        path: Annotated[
+            str, typer.Argument(help="File (config), directory or hf:// reference (dataset).")
+        ],
     ) -> None:
         """Check a ``pruefstand.yaml`` or a dataset directory; exit 2 when it is invalid."""
         with guarded(ctx):
             if kind is Kind.CONFIG:
-                load_config(path)
+                load_config(Path(path))
                 typer.echo(f"ok: {path} is a valid config")
                 return
-            if str(path).startswith("hf://"):
-                fail("error: hf:// datasets arrive in T4.7b", EXIT_USAGE)
-            problems = validate_dataset(path)
+            target = resolve_hf(path) if path.startswith("hf://") else Path(path)
+            problems = validate_dataset(target)
             if problems:
                 for problem in problems:
                     typer.echo(f"error: {problem}", err=True)
