@@ -213,15 +213,34 @@ jobs:
             printf '%s\n' "$out" | tail -n 1
           }
           base="$BASELINE_DIR"
+          cand=""
+          self=false
+          fp_note=""
+          if [ -n "$base" ]; then
+            # D1000: a baseline made under another eval_fingerprint (or an unreadable one) can never be paired,
+            # and only a green push run replaces it, so it is treated exactly like "no baseline" below. The
+            # check decides nothing about pass or fail; the gate still decides on the candidate alone.
+            cand="$(run_one)" || exit $?
+            verdict="$(uv run pruefstand baseline fingerprint-check --candidate "$cand" --baseline "$base")" || exit $?
+            case "$verdict" in
+              comparable) ;;
+              "changed "*)
+                read -r _ bfp cfp <<< "$verdict"
+                fp_note="eval_fingerprint changed (baseline ${bfp}, candidate ${cfp})"
+                base="" ;;
+              unreadable)
+                fp_note="the loaded baseline could not be read"
+                base="" ;;
+              *) echo "unexpected output of fingerprint-check: $verdict"; exit 1 ;;
+            esac
+          fi
           if [ -z "$base" ]; then
-            # First run: no main baseline exists yet. Gate against a second run of this same commit; the hard
-            # fails are decided by the candidate alone, the paired deltas are noise. The comment says so.
+            # No usable main baseline. Gate against a second run of this same commit; the hard fails are
+            # decided by the candidate alone, the paired deltas are noise. The comment says so.
             base="$(PRUEFSTAND_JUDGE_MODE=skipped run_one)" || exit $?  # no judge calls for the throw-away run
             self=true
-          else
-            self=false
+            if [ -z "$cand" ]; then cand="$(run_one)" || exit $?; fi
           fi
-          cand="$(run_one)" || exit $?
           gate_rc=0
           uv run pruefstand gate --config "$CONFIG" --candidate "$cand" --baseline "$base" || gate_rc=$?
           if [ "$gate_rc" -gt 1 ]; then exit "$gate_rc"; fi
@@ -237,7 +256,9 @@ jobs:
           {
             head -n 1 comment.md
             if [ "$self" = "true" ]; then
-              if [ -n "$BASELINE_NOTE" ]; then
+              if [ -n "$fp_note" ]; then
+                echo "> Baseline not comparable: ${fp_note}; gated against a second run of this commit (no paired signal)."
+              elif [ -n "$BASELINE_NOTE" ]; then
                 echo "> Tier-1 baseline of main not loaded ($BASELINE_NOTE): gated against a second run of this commit (no paired signal)."
               else
                 echo "> No tier-1 baseline on main yet: gated against a second run of this commit (no paired signal)."
@@ -316,14 +337,14 @@ jobs:
           path: ${{ steps.gate.outputs.run_dir }}
           retention-days: 14
       - name: Upload live-baseline
-        if: github.event_name == 'push' && steps.gate.outputs.run_dir != ''
+        if: github.event_name == 'push' && steps.gate.outputs.run_dir != '' && steps.gate.outputs.gate_rc == '0'
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: live-baseline
           path: ${{ steps.gate.outputs.run_dir }}
           retention-days: 90
       - name: Upload live-baseline-nightly
-        if: github.event_name == 'schedule' && steps.gate.outputs.run_dir != ''
+        if: github.event_name == 'schedule' && steps.gate.outputs.run_dir != '' && steps.gate.outputs.gate_rc == '0'
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: live-baseline-nightly

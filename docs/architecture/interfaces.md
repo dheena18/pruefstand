@@ -1745,6 +1745,9 @@ pruefstand baseline   promote --run runs/<id> --ref main|nightly-b0|nightly-b1|n
                       # lack gate.json (never gated) but is checked for hard-fail findings. Option
                       # --allow-failed-gate (owner only, by hand; never in a workflow) waives FAIL and hard-fail
                       # findings, never a missing or unusable gate.json
+                      fingerprint-check --candidate <run> --baseline <run>   (D1000, CI fix; read by the tier-1 step of live-e2e.yml)
+                      # prints `comparable`, `changed <fp> <fp>` (12+ chars, enough to tell the two apart) or `unreadable` (baseline
+                      # run cannot be read); exit 0 for all three; exit 3 only if the CANDIDATE cannot be read. Decides nothing.
                       prune --keep 20 [--unused-days 90]   (T6.1; run by the monthly `baseline-prune` step of baseline-promote.yml)
 pruefstand judge-drift --judge <model> --anchors <file>   (T5.4, pre-approved addition, D9-30): re-judges the 50 anchors
                       with the cache bypassed; drift per §6 is_drift -> writes judge_drift.json + invalidate_judge; exit 0

@@ -1,4 +1,4 @@
-"""``pruefstand baseline``: promote, export-public, prune, publish-dashboard (T6.1 S7-S9)."""
+"""``pruefstand baseline``: promote, export-public, prune, publish-dashboard, fingerprint-check."""
 
 import re
 from datetime import UTC, datetime
@@ -14,6 +14,7 @@ from pruefstand.core.errors import GateInputError
 from pruefstand.core.protocols import BaselineStore
 from pruefstand.gate.baseline_run import check_baseline_run
 from pruefstand.metrics.registry import MetricRegistry
+from pruefstand.pipeline.baseline_fingerprint import check_baseline_fingerprint
 from pruefstand.pipeline.promotion import check_gate_for_promotion
 from pruefstand.store.artifacts import ArtifactStore
 from pruefstand.store.baseline_index import REFS
@@ -144,11 +145,33 @@ def publish_command(
         typer.echo(push_dashboard_data(src, repo))
 
 
+def fingerprint_check_command(
+    ctx: typer.Context,
+    *,
+    candidate: Annotated[Path, typer.Option("--candidate", help="Candidate run directory.")],
+    baseline: Annotated[Path, typer.Option("--baseline", help="Baseline run directory.")],
+) -> None:
+    """Print ``comparable``, ``changed <baseline fp> <candidate fp>`` or ``unreadable``; exit 0.
+
+    Tells the tier-1 workflow whether the loaded baseline can be paired with the candidate (D1000).
+    It never decides pass or fail; an unreadable candidate exits 3.
+    """
+    with guarded(ctx):
+        check = check_baseline_fingerprint(candidate, baseline)
+    if check.comparable:
+        typer.echo("comparable")
+    elif not check.baseline_readable:
+        typer.echo("unreadable")
+    else:
+        typer.echo("changed {} {}".format(*check.short()))
+
+
 def register(app: typer.Typer) -> None:
     """Add the ``baseline`` command group to ``app``."""
     baseline = typer.Typer(help="Baseline store, sanitised export and dashboard data (T6.1).")
     baseline.command("promote")(promote_command)
     baseline.command("export-public")(export_public_command)
     baseline.command("prune")(prune_command)
+    baseline.command("fingerprint-check")(fingerprint_check_command)
     baseline.command("publish-dashboard")(publish_command)
     app.add_typer(baseline, name="baseline")
