@@ -13,6 +13,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { MAX_CASE_RUNS, MAX_SHARD_CASES } from "./limits.mjs";
+import { deriveTier2 } from "./derive_tier2.mjs";
 import { emptySourceMd, sourceMd } from "./source_md.mjs";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
@@ -90,7 +91,7 @@ export function trimGate(gate, slices) {
  * `gateMode`: "full" copies gate/slices/report, "trimmed" keeps the overall rows only (no report), "none" makes the clone ungated.
  * `slim` copies the first 8 cases in their slim form.
  */
-function cloneRun(dir, source, newId, createdAt, { withCases, edit = () => {}, gateMode = "full", slim = false }) {
+export function cloneRun(dir, source, newId, createdAt, { withCases, edit = () => {}, gateMode = "full", slim = false }) {
   const from = path.join(dir, "runs", source.run_id);
   const to = path.join(dir, "runs", newId);
   const run = readJson(path.join(from, "run.json"));
@@ -107,7 +108,7 @@ function cloneRun(dir, source, newId, createdAt, { withCases, edit = () => {}, g
     Object.assign(entry, { status: null, baseline_run_id: null, no_baseline: false });
   }
   if (gateMode === "trimmed" && gate !== null) trimGate(gate, slices);
-  edit({ run, gate, entry });
+  edit({ run, gate, slices, entry });
   writeText(path.join(to, "run.json"), dumps(run));
   if (gate !== null) {
     writeText(path.join(to, "gate.json"), dumps(gate));
@@ -183,6 +184,8 @@ export function deriveExported(populated, rawRoles) {
   bigCases(populated, hard, bigId, BIG_CASES);
   entries.push(big.entry);
 
+  // Tier-2 runs (F-PASS ... D-UNSUPPORTED): synthetic, see derive_tier2.mjs
+  const tier2 = deriveTier2(populated, t1, hard, entries, newest + 55_000);
   const fixedRuns = entries.length;
   const clones = Math.max(0, TOTAL_RUNS - fixedRuns);
   const keepCases = Math.max(0, MAX_CASE_RUNS - fixedRuns);
@@ -202,7 +205,7 @@ export function deriveExported(populated, rawRoles) {
   }
   entries.sort((a, b) => Date.parse(b.created_at) - Date.parse(a.created_at) || (a.run_id < b.run_id ? -1 : 1));
   writeText(indexFile, dumps({ ...index, runs: entries }));
-  return { ids: { missing: missingId, big: bigId, ghost }, entries };
+  return { ids: { missing: missingId, big: bigId, ghost, ...tier2 }, entries };
 }
 
 export function writeEmpty(emptyDir, populated) {

@@ -57,3 +57,7 @@ datasets/_work/
 
 # T5.3: MEMERAG-derived calibration items (CC BY-NC 4.0, download-only, never committed)
 data/derived/
+
+# T8.3: Playwright output (apps/dashboard)
+apps/dashboard/playwright-report/
+apps/dashboard/test-results/
