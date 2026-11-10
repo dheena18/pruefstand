@@ -27,6 +27,7 @@ from decimal import Decimal, InvalidOperation
 from pruefstand.core.errors import PruefstandError
 
 MAX_DEPTH = 8
+MAX_EVENT_TEXT = 4096  # warning / problem / memory texts
 _FLOATS = {"nan": math.nan, "inf": math.inf, "-inf": -math.inf}
 
 
@@ -138,12 +139,12 @@ def decode(line: bytes, *, max_text: int, max_items: int) -> tuple[object, ...]:
     Raises:
         WireError: Not JSON, not an exact event, or a value above a cap.
     """
+    _prescan(line, max_items)  # on the raw bytes: exact for UTF-8, no 4-byte-per-char copy
     try:
         text = line.decode("utf-8")  # strict: the child only sends UTF-8 (json.loads would also
     except UnicodeDecodeError:  # take UTF-16/32 bytes, which the count below cannot see through)
         msg = "the reader sent a line that is not UTF-8"
         raise WireError(msg) from None
-    _prescan(text, max_items)
     try:
         data = json.loads(text, parse_constant=_no_constant)
     except (ValueError, RecursionError) as error:
@@ -162,16 +163,19 @@ def decode(line: bytes, *, max_text: int, max_items: int) -> tuple[object, ...]:
             msg = "the reader sent a row that is not a tagged mapping"
             raise WireError(msg)
         args = [args[0], _decode_value(args[1], _Caps(max_text, max_items), 0)]
+    if tag != "row" and any(isinstance(v, str) and len(v) > MAX_EVENT_TEXT for v in args):
+        msg = f"the reader sent a {tag[:20]!r} text longer than {MAX_EVENT_TEXT} characters"
+        raise WireError(msg)
     if not all(_is(v, t) for v, t in zip(args, shape, strict=True)):
         msg = f"the reader sent a malformed {tag[:20]!r} event"
         raise WireError(msg)
     return (tag, *args)
 
 
-_STRING = re.compile(r'"(?:[^"\\]++|\\.)*+"', re.DOTALL)
+_STRING = re.compile(rb'"(?:[^"\\]++|\\.)*+"', re.DOTALL)
 
 
-def _prescan(line: str, max_items: int) -> None:
+def _prescan(line: bytes, max_items: int) -> None:
     """Refuse a line with more JSON values than a row may hold, before ``json.loads`` builds them.
 
     Outside strings every value after the first in a container costs one ``,`` and every
@@ -184,13 +188,14 @@ def _prescan(line: str, max_items: int) -> None:
     The limit counts structure, not items: ``[{}, {}, ...]`` costs a ``{`` and a ``,`` per item,
     so such a line holds about 200 000 items at the default cap; a legitimate line with more than
     about 802 000 ASCII ``"`` (escaped quotes in texts included) is refused as
-    ``reader_protocol``. It runs on the decoded text (strict UTF-8), never on raw bytes.
+    ``reader_protocol``. It runs on the raw bytes (exact for UTF-8: an ASCII byte never occurs
+    inside a multi-byte character); the line is then decoded as strict UTF-8 and the text parsed.
     """
     limit = 4 * max_items + 1024
     values = _structural(line, 0, len(line))
     if values <= limit:
         return  # the usual line: no scan
-    strings = line.count('"') // 2  # every string is a value too; bounds the scan below
+    strings = line.count(b'"') // 2  # every string is a value too; bounds the scan below
     if strings > limit:
         msg = f"the reader sent a line with about {strings} JSON strings (limit {limit})"
         raise WireError(msg)
@@ -201,8 +206,8 @@ def _prescan(line: str, max_items: int) -> None:
         raise WireError(msg)
 
 
-def _structural(line: str, start: int, end: int) -> int:
-    return sum(line.count(c, start, end) for c in (",", "[", "{"))
+def _structural(line: bytes, start: int, end: int) -> int:
+    return sum(line.count(c, start, end) for c in (b",", b"[", b"{"))
 
 
 def _is(value: object, kind: type) -> bool:
