@@ -162,10 +162,39 @@ jobs:
           scripts/dashboard/build_set.sh populated
           scripts/dashboard/build_set.sh empty
 
+  basepath-smoke:
+    name: basepath-smoke
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: "22"
+      - name: Install
+        run: corepack enable && (cd apps/dashboard && pnpm install --frozen-lockfile)
+      - name: Install Chromium (Playwright 1.56.1)
+        run: (cd apps/dashboard && pnpm exec playwright install --with-deps chromium)
+      - name: Build with basePath=/pruefstand, serve under /pruefstand/, run the smoke (N5.5)
+        run: make ui-basepath
+      - name: Upload the Playwright report on failure
+        if: failure()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: basepath-smoke-report
+          path: |
+            apps/dashboard/playwright-report
+            apps/dashboard/test-results
+          retention-days: 7
+
   check:
     name: ui-check
     if: always()
-    needs: [ui-lint, ui-typecheck, ui-unit, types-fresh, fixtures, build]
+    needs: [ui-lint, ui-typecheck, ui-unit, types-fresh, fixtures, build, basepath-smoke]
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     permissions: {}
