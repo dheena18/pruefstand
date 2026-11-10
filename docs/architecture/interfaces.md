@@ -1757,10 +1757,15 @@ pruefstand baseline   promote --run runs/<id> --ref main|nightly-b0|nightly-b1|n
                       # judge_degraded / judge_truncated-informational / infra_error is never promoted (exit 1, D321)
                       # D881 (T6.1a): main / nightly-b<k> need <run>/gate.json (absent -> exit 1); status FAIL or any
                       # hard-fail finding (hard_fail, hard_fail_unverifiable; recomputed from the run) -> exit 1,
-                      # store unchanged; gate.json unreadable / invalid / of another run -> exit 3; release-b<k> may
-                      # lack gate.json (never gated) but is checked for hard-fail findings. Option
-                      # --allow-failed-gate (owner only, by hand; never in a workflow) waives FAIL and hard-fail
-                      # findings, never a missing or unusable gate.json
+                      # store unchanged; gate.json unreadable / invalid / of another run / of another
+                      # eval_fingerprint -> exit 3; release-b<k> may lack gate.json (never gated) but is checked for
+                      # hard-fail findings. D1120 (review F1): for main / nightly-b<k> gate.json must be decided
+                      # against the baseline stored now for (fingerprint, ref): baseline_run_id == candidate (a
+                      # self-gate) or != the stored run id -> exit 1, never waived; no_baseline is accepted only for
+                      # the first promote of (fingerprint, ref); later no_baseline and status INSUFFICIENT_DATA ->
+                      # exit 1 like FAIL. Option --allow-failed-gate (owner only, by hand; never in a workflow)
+                      # waives FAIL, INSUFFICIENT_DATA, a stale no_baseline and hard-fail findings, never a missing,
+                      # unusable or unbound gate.json
                       fingerprint-check --candidate <run> --baseline <run>   (D1000, CI fix; read by the tier-1 step of live-e2e.yml)
                       # prints `comparable`, `changed <fp> <fp>` (12+ chars, enough to tell the two apart) or `unreadable` (baseline
                       # run cannot be read); exit 0 for all three; exit 3 only if the CANDIDATE cannot be read. Decides nothing.

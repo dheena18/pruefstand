@@ -47,6 +47,14 @@ def _informational_metrics(stack: str, ref: str, policy: GatePolicy) -> frozense
     return frozenset({"refusal_correct"}) if ref == "main" else frozenset()
 
 
+def _current_baseline(store: BaselineStore, fingerprint: str, ref: str) -> str | None:
+    """Run id of the baseline stored now for (fingerprint, ref); release anchors are not gated."""
+    if ref.startswith("release-"):
+        return None
+    current = store.get(fingerprint, ref)
+    return None if current is None else str(current.results.manifest.run_id)
+
+
 def promote_command(
     ctx: typer.Context,
     *,
@@ -63,17 +71,25 @@ def promote_command(
 ) -> None:
     """Promote a complete run to the baseline of its fingerprint and ref.
 
-    main and nightly runs need their gate.json (run `pruefstand gate` first); a run whose gate
-    FAILed or that has a hard-fail finding is refused (exit 1) unless --allow-failed-gate is
-    given; an invalid gate.json is exit 3 (D881).
+    main and nightly runs need their gate.json (run `pruefstand gate` first), decided against
+    the baseline stored now (a self-gate or another baseline: exit 1, never waived; D1120); a
+    run whose gate FAILed or had INSUFFICIENT_DATA, a no_baseline report once a baseline is
+    stored, or a hard-fail finding is refused (exit 1) unless --allow-failed-gate is given; an
+    invalid gate.json or one of another fingerprint is exit 3 (D881).
     """
     with guarded(ctx):
         artifacts = ArtifactStore(run.parent).read_run(run)
         cfg = load_config(config)
         try:
             prepared = prepare_promotion(artifacts, ref)
+            store = build_baseline_store(cfg.baseline_store)
             check_gate_for_promotion(
-                run, artifacts.results, cfg.gate, ref=ref, allow_failed_gate=allow_failed_gate
+                run,
+                artifacts.results,
+                cfg.gate,
+                ref=ref,
+                allow_failed_gate=allow_failed_gate,
+                current=_current_baseline(store, prepared.results.manifest.eval_fingerprint, ref),
             )
             check_baseline_run(
                 prepared.results,
@@ -81,7 +97,7 @@ def promote_command(
                 MetricRegistry.full().directions(),
                 skip=_informational_metrics(prepared.results.manifest.stack, ref, cfg.gate),
             )
-            build_baseline_store(cfg.baseline_store).put(prepared, ref)
+            store.put(prepared, ref)
         except BaselineRefused as exc:
             fail(f"error: {exc}", EXIT_FAIL)
         except GateInputError as exc:

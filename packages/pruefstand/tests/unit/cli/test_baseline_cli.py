@@ -30,6 +30,7 @@ from pruefstand.core.enums import GateStatus
 from pruefstand.core.models.run import RunArtifacts
 from pruefstand.report.json_report import write_gate_json
 from pruefstand.store.artifacts import ArtifactStore
+from pruefstand.store.baseline_index import REFS
 from pruefstand.store.baselines_local import LocalDirBaselineStore
 
 
@@ -44,13 +45,24 @@ def config(tmp_path: Path) -> Path:
 
 
 def promote(cli: CliRunner, tmp_path: Path, run_dir: Path, ref: str) -> Result:
-    # These tests are about the store, not the gate guard (test_promote_gate.py): give the run a
-    # passing gate.json and waive the unverifiable leak checks of the two-metric synthetic runs.
-    if not (run_dir / "gate.json").exists():
-        write_gate_json(
-            gate_report(status=GateStatus.PASS, hard_fails=(), candidate_run_id=run_dir.name),
-            run_dir / "gate.json",
+    # These tests are about the store, not the gate guard (test_promote_gate*.py): give the run a
+    # passing gate.json bound to the stored baseline (D1120) and waive the unverifiable leak checks
+    # of the two-metric synthetic runs.
+    if run_dir.is_dir():
+        manifest = ArtifactStore(run_dir.parent).read_run(run_dir).results.manifest
+        current = None
+        if not ref.startswith("release-") and ref in REFS:
+            current = store_of(tmp_path).get(manifest.eval_fingerprint, ref)
+        against = None if current is None else current.results.manifest.run_id
+        report = gate_report(
+            status=GateStatus.PASS,
+            hard_fails=(),
+            candidate_run_id=run_dir.name,
+            eval_fingerprint=manifest.eval_fingerprint,
+            baseline_run_id=against,
+            no_baseline=against is None,
         )
+        write_gate_json(report, run_dir / "gate.json")
     args = ["baseline", "promote", "--run", str(run_dir), "--ref", ref, "--allow-failed-gate"]
     return cli.invoke(app, [*args, "--config", str(config(tmp_path))])
 
