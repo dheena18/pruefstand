@@ -9,9 +9,10 @@ import re
 from pathlib import Path
 from typing import Literal, Self
 
-from pydantic import AwareDatetime, BaseModel, ConfigDict, ValidationError
+from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, ValidationError
 
 from pruefstand.core.errors import StoreError
+from pruefstand.core.models.baseline import PromotionOverride
 from pruefstand.store._run_files import read_bounded
 from pruefstand.store._safe_error import safe_error
 
@@ -81,6 +82,7 @@ class IndexEntry(BaseModel):
     manifest_sha256: str
     promoted_at: AwareDatetime
     git_sha: str | None = None
+    override: PromotionOverride | None = Field(default=None, exclude_if=lambda v: v is None)
 
 
 class RefEntry(BaseModel):
