@@ -119,7 +119,7 @@ class ProxyHandler(BaseHTTPRequestHandler):
     def do_POST(self) -> None:
         """Cap the body size, then route the request through :func:`decide`."""
         length = self._length()
-        if length is None or length > self.cfg.max_body:
+        if length is None or not 0 <= length <= self.cfg.max_body:
             self.close_connection = True
             self._error(403, "body too large or without Content-Length")
             return

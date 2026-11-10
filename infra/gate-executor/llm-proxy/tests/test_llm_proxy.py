@@ -155,7 +155,7 @@ def test_missing_key_is_rejected(rig: Rig) -> None:
     assert rig.upstream.seen == []
 
 
-@pytest.mark.parametrize("length", ["100000", "zehn"])
+@pytest.mark.parametrize("length", ["100000", "zehn", "-1"])
 def test_oversized_or_unsized_body_is_rejected_unread(rig: Rig, length: str) -> None:
     conn = http.client.HTTPConnection("127.0.0.1", rig.port, timeout=5)
     conn.putrequest("POST", "/api/chat")
