@@ -182,6 +182,15 @@ if [ "${1:-}" = "--review" ]; then
   uv run pytest packages/pruefstand/tests/unit/dataset/test_model_review_cassette.py -q -p no:cacheprovider
   exit $?
 fi
+if [ "${1:-}" = "--private-docs" ]; then
+  # T2.6a: real answers of the local judge model (day set, gemma3:12b) to the private-document generator
+  # (6 drafts: 3 tenants x 2) for scripts/tests/test_generate_private_docs_cassette.py.
+  # Run on the VM under the GPU lock: pruefstand-lock bash scripts/models/record_cassettes.sh --private-docs
+  rm -f packages/pruefstand/tests/cassettes/private_docs/*.json
+  PRUEFSTAND_RECORD_PRIVATE_DOCS=1 uv run pytest scripts/live/tests/test_record_private_docs.py -m "live and gpu" -q -p no:cacheprovider
+  uv run pytest scripts/tests/test_generate_private_docs_cassette.py -q -p no:cacheprovider
+  exit $?
+fi
 if [ "${1:-}" = "--inner" ]; then
   inner
   exit $?

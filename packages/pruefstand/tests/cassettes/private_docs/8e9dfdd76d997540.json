@@ -1,0 +1,39 @@
+{
+  "recorded_at": "2026-11-10T07:08:24+00:00",
+  "model_id": "ollama/gemma3:12b",
+  "model_version": null,
+  "request": {
+    "role": "datagen",
+    "model": "ollama/gemma3:12b",
+    "messages": [
+      {
+        "role": "system",
+        "content": "Du schreibst vollständig erfundene Geschäftsdokumente für Software-Tests. Alle Organisationen, Personen und Zahlen sind frei erfunden. Du schreibst sachlich, natürlich und in korrektem Deutsch, wie in einem echten Unternehmen. Du gibst nur das Dokument aus, ohne Vorrede und ohne Erklärung."
+      },
+      {
+        "role": "user",
+        "content": "Schreibe das folgende interne Dokument.\n\nOrganisation: Kanzlei Müller (eine Rechtsanwaltskanzlei für Arbeitsrecht)\nDokumentart: Rahmenvertrag\n\nRegeln:\n1. Beginne mit einer Überschrift in der Form \"# Titel\" (eine Zeile, höchstens acht Wörter).\n2. Schreibe danach zwei bis drei kurze Abschnitte, insgesamt etwa 120 bis 160 Wörter.\n3. Der folgende Satz muss GENAU EINMAL und WÖRTLICH im Text stehen, in einem eigenen Absatz, und darf nirgends sonst wiederholt oder umschrieben werden:\nDie Kündigungsfrist im Rahmenvertrag mit Dornseif Medien GmbH beträgt 223 Tage.\n4. Nenne keine weiteren Zahlen mit Einheiten (Fristen, Beträge, Prozentsätze). Jahreszahlen und Paragrafen sind erlaubt.\n5. Erfinde keine Adressen, Telefonnummern, E-Mail-Adressen und keine Aktenzeichen oder Referenznummern.\n6. Beende das Dokument mit einer eigenen letzten Zeile: [ENDE]\n"
+      }
+    ],
+    "temperature": 0.0,
+    "max_tokens": 384,
+    "seed": 7,
+    "prompt_id": "datagen.private_docs.private_doc_de",
+    "prompt_version": "v1",
+    "response_format": "text"
+  },
+  "response": {
+    "text": "# Rahmenvertrag für Rechtsdienstleistungen\n\nDie Kanzlei Müller, vertreten durch den Sozietätsführer Dr. Markus Weber, und Dornseif Medien GmbH, vertreten durch die Geschäftsführerin Frau Erika Hartmann, schließen den vorliegenden Rahmenvertrag ab. Dieser regelt die Bedingungen für die Erbringung von Rechtsdienstleistungen durch die Kanzlei Müller für Dornseif Medien GmbH im Bereich des Arbeitsrechts. Ziel ist es, eine effiziente und transparente Zusammenarbeit zu gewährleisten, die den spezifischen Bedürfnissen von Dornseif Medien GmbH gerecht wird. Die Leistungen umfassen insbesondere die Beratung in arbeitsrechtlichen Fragen, die Gestaltung von Arbeitsverträgen und die Vertretung in arbeitsrechtlichen Streitigkeiten.\n\nDer Rahmenvertrag dient als Grundlage für einzelne Aufträge, die jeweils schriftlich bestätigt werden. Die konkreten Leistungen, der Zeitaufwand und die Vergütung werden für jeden Auftrag gesondert festgelegt. Die Kanzlei Müller verpflichtet sich, die Interessen von Dornseif Medien GmbH bestmöglich zu vertreten und die geltenden Gesetze und Vorschriften einzuhalten. Die Zusammenarbeit basiert auf gegenseitigem Vertrauen und der Wahrung der beruflichen Schweigepflicht.\n\nDie Kündigungsfrist im Rahmenvertrag mit Dornseif Medien GmbH beträgt 223 Tage.\n\nDieser Rahmenvertrag tritt am 1. Januar 2024 in Kraft und bleibt bis auf Widerruf gültig. Änderungen und Ergänzungen bedürfen der Schriftform.\n\n[ENDE]",
+    "model": "ollama/gemma3:12b",
+    "usage": {
+      "prompt_tokens": 317,
+      "completion_tokens": 310
+    },
+    "cost_usd": 0.0,
+    "latency_ms": 8373.611239949241,
+    "cached": false,
+    "provider": "ollama",
+    "fallback": false,
+    "model_version": null
+  }
+}

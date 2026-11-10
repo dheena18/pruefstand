@@ -1,0 +1,39 @@
+{
+  "recorded_at": "2026-11-10T07:08:30+00:00",
+  "model_id": "ollama/gemma3:12b",
+  "model_version": null,
+  "request": {
+    "role": "datagen",
+    "model": "ollama/gemma3:12b",
+    "messages": [
+      {
+        "role": "system",
+        "content": "Du schreibst vollständig erfundene Geschäftsdokumente für Software-Tests. Alle Organisationen, Personen und Zahlen sind frei erfunden. Du schreibst sachlich, natürlich und in korrektem Deutsch, wie in einem echten Unternehmen. Du gibst nur das Dokument aus, ohne Vorrede und ohne Erklärung."
+      },
+      {
+        "role": "user",
+        "content": "Schreibe das folgende interne Dokument.\n\nOrganisation: Kanzlei Müller (eine Rechtsanwaltskanzlei für Arbeitsrecht)\nDokumentart: Aktennotiz zu einem Vergleich\n\nRegeln:\n1. Beginne mit einer Überschrift in der Form \"# Titel\" (eine Zeile, höchstens acht Wörter).\n2. Schreibe danach zwei bis drei kurze Abschnitte, insgesamt etwa 120 bis 160 Wörter.\n3. Der folgende Satz muss GENAU EINMAL und WÖRTLICH im Text stehen, in einem eigenen Absatz, und darf nirgends sonst wiederholt oder umschrieben werden:\nIm Vergleich mit Herrn Sandkuhl wurde eine Abfindung von 24.844 Euro vereinbart.\n4. Nenne keine weiteren Zahlen mit Einheiten (Fristen, Beträge, Prozentsätze). Jahreszahlen und Paragrafen sind erlaubt.\n5. Erfinde keine Adressen, Telefonnummern, E-Mail-Adressen und keine Aktenzeichen oder Referenznummern.\n6. Beende das Dokument mit einer eigenen letzten Zeile: [ENDE]\n"
+      }
+    ],
+    "temperature": 0.0,
+    "max_tokens": 384,
+    "seed": 7,
+    "prompt_id": "datagen.private_docs.private_doc_de",
+    "prompt_version": "v1",
+    "response_format": "text"
+  },
+  "response": {
+    "text": "# Vergleich Sandkuhl – Aktennotiz\n\nDie Mandantin, Frau Erika Lehmann, war seit dem 1. Januar 2018 in der Kanzlei Müller als Rechtsanwaltsfachangestellte beschäftigt. Im Rahmen eines arbeitsrechtlichen Konflikts, der sich insbesondere um die Arbeitsbedingungen und die Aufgabenverteilung in den letzten Monaten entwickelte, wurde eine außergerichtliche Einigung angestrebt. Nach mehreren Verhandlungen mit dem Arbeitgeber, vertreten durch Herrn Dr. Becker, konnte ein Kompromiss erzielt werden, der den Interessen unserer Mandantin gerecht wird.\n\nDie Verhandlungen gestalteten sich schwierig, da die Positionen beider Parteien zunächst weit auseinanderlagen. Es wurden verschiedene Optionen geprüft, um eine einvernehmliche Lösung zu finden, die sowohl die finanzielle Situation der Mandantin berücksichtigt als auch die Interessen des Arbeitgebers wahrt. Im Vergleich mit Herrn Sandkuhl wurde eine Abfindung von 24.844 Euro vereinbart.\n\nDie Vergleichsvereinbarung wurde am heutigen Tag von Frau Lehmann und Herrn Dr. Becker unterzeichnet. Die Kanzlei Müller wird nun die notwendigen Schritte zur Auszahlung der Abfindung einleiten und die rechtlichen Aspekte des Vergleichs prüfen, um sicherzustellen, dass alle Bedingungen erfüllt werden. Die Mandantin wurde ausführlich über die Konsequenzen des Vergleichs aufgeklärt.\n\n[ENDE]",
+    "model": "ollama/gemma3:12b",
+    "usage": {
+      "prompt_tokens": 324,
+      "completion_tokens": 291
+    },
+    "cost_usd": 0.0,
+    "latency_ms": 5874.4661550736055,
+    "cached": false,
+    "provider": "ollama",
+    "fallback": false,
+    "model_version": null
+  }
+}
