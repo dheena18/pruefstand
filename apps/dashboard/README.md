@@ -88,3 +88,10 @@ Local dev: `DASHBOARD_DATA_DIR=fixtures/populated node ../../scripts/dashboard/b
 ## Manual accessibility check (M6, M7)
 
 NVDA + Firefox and VoiceOver + Safari through navigation and Try it in both locales; record the result here.
+
+## End-to-end tests (T8.3)
+
+- `make ui-basepath` builds `populated-bp` with `basePath=/pruefstand`, serves it under `/pruefstand/` (`scripts/dashboard/serve_under_base.sh`) and runs `e2e/basepath.spec.ts` (project `populated-basepath-1280`).
+- `make ui-e2e` builds both fixture sets and runs the PR projects (`populated-{360,1280}`, `empty-{360,1280}`).
+- Browsers: `pnpm exec playwright install chromium` (Playwright 1.49.1). On the shared VM the Chromium build is already installed per user; never use `--with-deps` there.
+- `page.route` lives only in `e2e/delay.ts` (delay a real response); mocks are forbidden (lint rule).

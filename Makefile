@@ -89,6 +89,7 @@ ui-check:
 	  scripts/dashboard/build_set.sh populated; scripts/dashboard/build_set.sh empty; \
 	  node scripts/dashboard/check_fixture_states.mjs; \
 	  (cd apps/dashboard && DASHBOARD_SETS_PREBUILT=1 pnpm test:coverage); \
+	  $(MAKE) ui-basepath; \
 	else echo "ui-check: apps/dashboard not there yet (T8.1), skipped"; fi
 
 experiments:
