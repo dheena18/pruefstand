@@ -1,0 +1,39 @@
+# Executor stack on the VM (T6.2a; project name pruefstand-exec, started by the orchestrator as user pruefstand).
+# This file holds llm-proxy and the networks (S4b). qdrant + rerank-cpu (include of infra/gpu/compose.gpu.yml) are
+# added with the orchestrator's serve step (S4). No service here publishes a host port (D242, Y1.4).
+name: pruefstand-exec
+
+services:
+  llm-proxy:
+    build:
+      context: ./llm-proxy
+    # A normal container, never network_mode: host (D242). gate-net: the candidate reaches it as
+    # http://llm-proxy:11500; proxy-egress: its only way out, to LLM_PROXY_UPSTREAM (the tunnel on 172.17.0.1).
+    networks: [gate-net, proxy-egress]
+    environment:
+      PRUEFSTAND_CANDIDATE_API_KEY: ${PRUEFSTAND_CANDIDATE_API_KEY:?set by the orchestrator from runner.env}
+      LLM_PROXY_POLICY: ${LLM_PROXY_POLICY:?written by the orchestrator from infra/gpu/models.yaml}
+      LLM_PROXY_UPSTREAM: http://172.17.0.1:11434
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    user: "10001:10001"
+    pids_limit: 128      # D1072: bounded threads per proxy
+    mem_limit: 256m
+    labels:
+      pruefstand.job: "llm-proxy"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:11500/health', timeout=2).status==200 else 1)"]
+      interval: 10s
+      timeout: 3s
+      start_period: 5s
+      retries: 3
+    restart: "no"
+
+networks:
+  gate-net:
+    name: gate-net
+    internal: true
+  proxy-egress:
+    # created by T0.7 (subnet 10.231.0.0/24) so the VM firewall can name it; never attach the candidate to it
+    external: true
