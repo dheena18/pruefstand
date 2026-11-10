@@ -1318,7 +1318,7 @@ class GitHubPublisher:
                     context: str = "pruefstand/gate") -> None
     # R13 P4.2 (D297; owner T1.9 = function + test_github.py, T6.2a = call sites): the single low-level commit-status
     # POST (`POST /repos/{repo}/statuses/{sha}`); description truncated to 140 chars, sent verbatim otherwise. The
-    # only path for non-gate-result states: the executor posts `pending` "executor busy (GPU lock held)" /
+    # only path for non-gate-result states: the executor posts `pending` "executor busy (GPU lock held); dispatch again" /
     # "tier-2 run started", `error` "executor unhealthy: <reason>" (preflight failure under the lock), and the
     # nightly result with context "pruefstand/nightly" (T6.2b). "not gated" (incl. "not gated (release version
     # bump)") is posted ONLY by gate-router.yml (§1.5), never through GitHubPublisher by the executor
@@ -1346,7 +1346,8 @@ Descriptions are truncated to GitHub's 140-character limit.
 
 | Caller | Context | State | `description` |
 | --- | --- | --- | --- |
-| executor, lock wait (T6.2a) | `pruefstand/gate` | `pending` | `"executor busy (GPU lock held)"` |
+| executor, `MAINTENANCE` present (T6.2a; no lock taken, D1064) | `pruefstand/gate` | `pending` | `"executor in maintenance; dispatch again later"` |
+| executor, lock wait timed out (T6.2a, D1064) | `pruefstand/gate` | `pending` | `"executor busy (GPU lock held); dispatch again"` |
 | executor, job start (T6.2a) | `pruefstand/gate` | `pending` | `"tier-2 run started"` |
 | executor, preflight failure (T6.2a) | `pruefstand/gate` | `error` | `"executor unhealthy: <reason>"` (e.g. `"executor unhealthy: data root unavailable"`) |
 | nightly gate phase (T6.2b) | `pruefstand/nightly` | `success` / `failure` | `"<GateStatus>: <summary>"` (non-blocking, D91) |
