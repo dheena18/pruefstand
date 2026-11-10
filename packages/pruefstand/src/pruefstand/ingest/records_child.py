@@ -1,14 +1,18 @@
-"""Reader process for parquet files under a hard memory limit (T2.3a): ``records_child``.
+"""Reader process for parquet files under hard limits (T2.3a; review F5, D1122): ``records_child``.
 
-Started by :func:`pruefstand.ingest.records_read.parquet_rows`; reads the arguments from argv
-(JSON), limits the address space to what it uses after the imports plus ``memory`` bytes, and
-streams pickled events to stdout: ``("row", number, row)``, ``("problem", Problem)``,
-``("memory", message)`` and finally ``("done", rows_left, hit)``. Only this process ever touches
-the untrusted file's decoded data; the parent reads events produced by this module.
+Started by :func:`pruefstand.ingest.records_proc.parquet_rows`; reads the arguments from argv
+(JSON), limits the address space to what it uses after the imports plus ``memory`` bytes (soft =
+hard, so it cannot be raised again) and the CPU time, and streams events to stdout as JSON lines
+(:mod:`~pruefstand.ingest.records_wire`, no pickle): ``("row", number, row)``, ``("problem",
+source, kind, detail)``, ``("warning", text)``, ``("memory", message)`` and finally ``("done",
+rows_left, hit)``. Every row is checked (``records_clean``) before it is sent: only
+``str``/``int``/``float``/
+``bool``/``None``, dates, times, ``Decimal`` and dicts/lists of them, strings up to
+``max_record_bytes`` characters, at most ``max_list_elements`` list items per row; anything else
+is one ``bad_record``. Only this process ever touches the untrusted file's decoded data.
 """
 
 import json
-import pickle
 import resource
 import sys
 from pathlib import Path
@@ -16,8 +20,10 @@ from typing import BinaryIO
 
 import pyarrow as pa
 
+from pruefstand.ingest.records_clean import RowRejectedError, clean_row
 from pruefstand.ingest.records_model import OldpLimits, Problem, RowBudget
 from pruefstand.ingest.records_read import parquet_rows_local
+from pruefstand.ingest.records_wire import WireError, encode
 
 
 def _virtual_bytes() -> int:
@@ -32,7 +38,8 @@ def _virtual_bytes() -> int:
 def _limit_memory(extra: int) -> str | None:
     """Limit the address space to its current size plus ``extra``; return a warning if it fails.
 
-    The new soft limit is clamped to an existing finite hard limit (``ulimit -v``); without
+    Soft and hard limit are set to the same value (a compromised reader cannot raise its soft
+    limit again); it is clamped to an existing finite hard limit (``ulimit -v``). Without
     ``/proc`` or when the limit cannot be set, the reader runs unlimited and says so.
     """
     if extra <= 0:
@@ -43,15 +50,42 @@ def _limit_memory(extra: int) -> str | None:
     hard = resource.getrlimit(resource.RLIMIT_AS)[1]
     soft = base + extra if hard == resource.RLIM_INFINITY else min(base + extra, hard)
     try:
-        resource.setrlimit(resource.RLIMIT_AS, (soft, hard))
+        resource.setrlimit(resource.RLIMIT_AS, (soft, soft))
     except (ValueError, OSError) as error:
         return f"memory limit not set: {error}"
     return None
 
 
-def _send(out: BinaryIO, event: tuple[object, ...]) -> None:
-    pickle.dump(event, out, protocol=pickle.HIGHEST_PROTOCOL)
+def limit_resources(limits: OldpLimits) -> str | None:
+    """Set the memory limit and the CPU-time limit; return why one could not be set.
+
+    The CPU limit is soft ``N``, hard ``N + 1``: at the soft limit Linux sends ``SIGXCPU`` (the
+    parent reports ``read_timeout``), at the hard one ``SIGKILL``.
+    """
+    warning = _limit_memory(limits.max_parquet_memory_bytes)
+    seconds = limits.max_parquet_cpu_seconds
+    try:
+        resource.setrlimit(resource.RLIMIT_CPU, (seconds, seconds + 1))
+    except (ValueError, OSError) as error:
+        return warning or f"CPU limit not set: {error}"
+    return warning
+
+
+def send(out: BinaryIO, event: tuple[object, ...]) -> None:
+    """Write one event as a JSON line (:mod:`~pruefstand.ingest.records_wire`, never pickle)."""
+    out.write(encode(event))
     out.flush()
+
+
+def _row_line(
+    number: int, row: dict[str, object], limits: OldpLimits, problems: list[Problem], path: Path
+) -> bytes | None:
+    """The row's JSON line, or None after one ``bad_record`` problem."""
+    try:
+        return encode(("row", number, clean_row(row, limits)))
+    except (RowRejectedError, WireError) as error:
+        problems.append(Problem(f"{path.name}:{number}", "bad_record", str(error)))
+        return None
 
 
 def run(argv: list[str], out: BinaryIO) -> int:
@@ -62,22 +96,29 @@ def run(argv: list[str], out: BinaryIO) -> int:
     problems: list[Problem] = []
     pa.set_cpu_count(1)
     pa.set_io_thread_count(1)
-    warning = _limit_memory(limits.max_parquet_memory_bytes)
-    if warning is not None:
-        _send(out, ("warning", warning))
-    try:
-        for number, row in parquet_rows_local(
-            Path(spec["path"]), spec["columns"], limits, problems, budget
-        ):
-            while problems:
-                _send(out, ("problem", problems.pop(0)))
-            _send(out, ("row", number, row))
-        while problems:
-            _send(out, ("problem", problems.pop(0)))
-    except MemoryError as error:
-        _send(out, ("memory", f"{type(error).__name__}: {error}"[:200]))
+    warning = limit_resources(limits)
+    if warning is not None and not limits.allow_unlimited_reader:
+        send(out, ("memory", f"limits not set, file not read (fail closed): {warning}"[:200]))
         return 0
-    _send(out, ("done", budget.left, budget.hit))
+    if warning is not None:
+        send(out, ("warning", warning))
+    path = Path(spec["path"])
+    try:
+        for number, row in parquet_rows_local(path, spec["columns"], limits, problems, budget):
+            line = _row_line(number, row, limits, problems, path)
+            while problems:
+                problem = problems.pop(0)
+                send(out, ("problem", problem.source, problem.kind, problem.detail))
+            if line is not None:
+                out.write(line)
+                out.flush()
+        while problems:
+            problem = problems.pop(0)
+            send(out, ("problem", problem.source, problem.kind, problem.detail))
+    except MemoryError as error:
+        send(out, ("memory", f"{type(error).__name__}: {error}"[:200]))
+        return 0
+    send(out, ("done", budget.left, budget.hit))
     return 0
 
 
