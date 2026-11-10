@@ -96,4 +96,4 @@ disabled by GitHub after 60 days without repository activity.
 
 ## Law texts come from a release mirror (D927)
 
-The official site refuses GitHub-hosted runners, so the `indomain_dev` stage downloads the pinned statute archives from the assets of the pre-release `data-pins-2026-11` (`PRUEFSTAND_GII_MIRROR`). The SHA-256 check against `data/sources.yaml` is the same. When a pin is refreshed (`gii:uwg` is pending), publish the new archive as an asset of the same or a new `data-pins-*` release and update the URL in the workflow step.
+The official site refuses GitHub-hosted runners, so the `indomain_dev` stage downloads the pinned statute archives from the assets of the pre-release `data-pins-2026-11b` (`PRUEFSTAND_GII_MIRROR`). The SHA-256 check against `data/sources.yaml` is the same. When a pin is refreshed (`gii:uwg` is pending), publish the new archive as an asset of the same or a new `data-pins-*` release and update the URL in the workflow step.
