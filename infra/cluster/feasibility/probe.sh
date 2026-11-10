@@ -14,7 +14,8 @@
 # else may use the GPUs). Default: SKIP. PROBE_CHECKS="id id" limits the run to those checks (tests).
 # Every check prints `CHECK <id> <PASS|FAIL|WARN> <detail>` on one line and never aborts the script.
 # All code is inside functions and `main` runs with stdin from /dev/null, so no command can swallow
-# the rest of the piped script. Env: MODELS_DIR (default /data/dheena/Models), GEN_MODEL, OLLAMA_URL,
+# the rest of the piped script. Env: MODELS_DIR (default $OLLAMA_MODELS, else Ollama's own $HOME/.ollama/models; pass the cluster models dir, which is
+# owner-supplied and not in this repo), GEN_MODEL, OLLAMA_URL,
 # LOAD_TIMEOUT_S (default 900), PROBE_PROC_ROOT (default /proc, a test seam).
 # A non-interactive ssh has a minimal PATH, so the Ollama binary is taken from the process that serves
 # :11434 (fallback `command -v ollama`); a pid counts only if we own it and its executable is a regular
@@ -30,7 +31,7 @@
 # is not scrubbed; do not add such checks.
 set -euo pipefail
 
-MODELS_DIR="${MODELS_DIR:-/data/dheena/Models}"
+MODELS_DIR="${MODELS_DIR:-${OLLAMA_MODELS:-$HOME/.ollama/models}}"
 GEN_MODEL="${GEN_MODEL:-qwen3.8:27b-q8_0}"
 OLLAMA_URL="${OLLAMA_URL:-http://127.0.0.1:11434}"
 PROC_ROOT="${PROBE_PROC_ROOT:-/proc}"

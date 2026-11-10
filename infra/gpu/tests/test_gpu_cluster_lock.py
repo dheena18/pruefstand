@@ -5,7 +5,7 @@ import subprocess
 from pathlib import Path
 
 import pytest
-from gpu_testkit import GPU_DIR, run_script
+from gpu_testkit import GPU_DIR, rendered_wrapper, run_script
 from gpu_world import ENTRIES, GpuWorld
 from vm_testkit import Result
 
@@ -32,7 +32,7 @@ def _ssh(gpu: GpuWorld) -> list[str]:
 
 def _wrap(gpu: GpuWorld, *args: str) -> Result:
     env = {**_env_for(gpu), "CLUSTER_SSH_HOST": "cairo-s101lp"}
-    return run_script(WRAPPER, *args, stubs=gpu.stubs, env=env)
+    return run_script(rendered_wrapper(gpu.root), *args, stubs=gpu.stubs, env=env)
 
 
 LOCK_WRAPPER = GPU_DIR.parent / "vm" / "pruefstand-lock"
@@ -45,7 +45,7 @@ def _through_the_real_lock(
     env = _env_for(gpu)  # PRUEFSTAND_LOCK_HELD stays unset: the real pruefstand-lock sets it
     env["GPU_LOCK_TIMEOUT_S"] = timeout
     return subprocess.run(  # noqa: S603
-        ["bash", str(LOCK_WRAPPER), "bash", str(WRAPPER), *args],  # noqa: S607
+        ["bash", str(LOCK_WRAPPER), "bash", str(rendered_wrapper(gpu.root)), *args],  # noqa: S607
         env=env, capture_output=True, text=True, check=False, timeout=60,
     )  # fmt: skip
 

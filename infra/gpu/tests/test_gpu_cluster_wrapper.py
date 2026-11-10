@@ -7,13 +7,13 @@ import subprocess
 from pathlib import Path
 
 import pytest
-from gpu_testkit import GPU_DIR, run_script
+from gpu_testkit import GPU_DIR, rendered_wrapper, run_script
 from gpu_world import ENTRIES, GpuWorld
 from vm_testkit import Result
 
 WRAPPER = GPU_DIR / "pruefstand-cluster"
 INSTALL = GPU_DIR / "install-cluster-wrapper.sh"
-BIN = "/data/dheena/pruefstand-bin"
+BIN = "/data/example/pruefstand-bin"
 
 
 def _allow(gpu: GpuWorld) -> Path:
@@ -33,7 +33,7 @@ def _wrap(gpu: GpuWorld, *args: str, held: bool = False, **env: str) -> Result:
     }
     if held:
         full["PRUEFSTAND_LOCK_HELD"] = "1"
-    return run_script(WRAPPER, *args, stubs=gpu.stubs, env=full)
+    return run_script(rendered_wrapper(gpu.root), *args, stubs=gpu.stubs, env=full)
 
 
 def _ssh(gpu: GpuWorld) -> list[str]:
@@ -95,7 +95,7 @@ def _env_for(gpu: GpuWorld) -> dict[str, str]:
 def test_the_lock_holder_may_be_a_distant_ancestor(gpu: GpuWorld) -> None:
     """pruefstand-lock -> make -> sudo -> wrapper: the holder is not the direct parent."""
     flock = shutil.which("flock") or "flock"
-    script = f"bash {WRAPPER} stop-ollama; exit $?"
+    script = f"bash {rendered_wrapper(gpu.root)} stop-ollama; exit $?"
     lock = str(gpu.lock_dir / "gpu.lock")
     proc = subprocess.run(  # noqa: S603
         [flock, lock, "bash", "-c", f"bash -c '{script}'"],
@@ -145,7 +145,7 @@ def test_ops_map_to_the_fixed_cluster_commands(gpu: GpuWorld) -> None:
 def test_bin_dev_selects_the_dev_scripts_in_either_position(gpu: GpuWorld) -> None:
     assert _wrap(gpu, "--bin-dev", "status").rc == 0
     assert _wrap(gpu, "status", "--bin-dev").rc == 0
-    assert all("/data/dheena/pruefstand-bin-dev/status.sh" in c for c in _ssh(gpu))
+    assert all("/data/example/pruefstand-bin-dev/status.sh" in c for c in _ssh(gpu))
     assert len(_ssh(gpu)) == 2
 
 

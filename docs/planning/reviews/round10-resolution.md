@@ -4,10 +4,10 @@ Owner-provided facts, 2026-10-31 (from `ollama list`, `nvidia-smi`, `df -h`, `lo
 
 | Fact | Value |
 | --- | --- |
-| Cluster host | `cairo-s101lp`, plain SSH, user workdir `/data/dheena` |
+| Cluster host | `cairo-s101lp`, plain SSH, user workdir `$CLUSTER_DATA_ROOT` |
 | GPUs | 2 × NVIDIA A40, 46 068 MiB each, idle; CUDA 13.4 driver |
 | Local disk | `/` 7 GB free (93 % used), `/data` 14 GB free (98 % used) → **no storage or caches on the cluster** |
-| NAS | TrueNAS dataset mounted at `/data/dheena/truenas-ollama` (1 PB) |
+| NAS | TrueNAS dataset mounted at `$CLUSTER_DATA_ROOT/truenas-ollama` (1 PB) |
 | Ollama | installed; model `qwen3.8:27b-q8_0` (29 GB) present (verify family/licence/context in T3.1b) |
 | Docker / vLLM | not confirmed → assume **not available** on the cluster |
 | systemd linger | `Linger=no` → no persistent user services on the cluster |
@@ -27,7 +27,7 @@ The SSH private key for the VM→cluster connection lives only on the VM (`~/.ss
 ## Z2 File bridge
 
 The cluster and the VM see the same NAS dataset. Layout under the dataset root
-(cluster path `/data/dheena/truenas-ollama/`, VM path `/mnt/pruefstand/`):
+(cluster path `$CLUSTER_DATA_ROOT/truenas-ollama/`, VM path `/mnt/pruefstand/`):
 
 ```text
 ollama-models/     OLLAMA_MODELS for both Ollama servers (models pulled once)
@@ -35,7 +35,7 @@ bin/               cluster scripts (start/stop/health/switch-mode), written by t
 data/  corpus/  datasets/  baselines/  backups/  cache/
 ```
 
-Cluster scripts are run from the VM: `ssh cairo-s101lp bash /data/dheena/truenas-ollama/bin/<script>.sh`.
+Cluster scripts are run from the VM: `ssh cairo-s101lp bash $CLUSTER_DATA_ROOT/truenas-ollama/bin/<script>.sh`.
 Nothing is written to the cluster's `/` or `/data` outside the NAS mount.
 
 ## Z3 Models (all served by Ollama; vLLM and TEI dropped from the default plan)
@@ -84,8 +84,8 @@ all cases) and SPEC MDE tables are updated.
 | The VM can SSH to the cluster (currently with credentials) and can mount the same NAS dataset | T0.7 switches the VM→cluster login to an SSH key (`ssh-keygen` + `ssh-copy-id`, key only on the VM) so `autossh` and the orchestrator run unattended; password login is never stored anywhere |
 | TrueNAS host has 128 GB RAM; the owner gives the **VM 64 GB** | VM sizing: 64 GB RAM. Small models may run on the VM CPU when they fit beside Ubuntu + Qdrant + Docker (budget ≤ 24 GB for CPU models): the reranker, the tier-1 ≤ 2B GGUF for local reproduction of tier-1 runs, and the CPU embedding model. GPU models stay on the cluster. |
 | Daily work happens in **VS Code on Windows**, with the terminal connected to the VM via Remote-SSH | The VM is the primary development + execution machine (the coding agent runs its commands on the VM through VS Code Remote-SSH). WSL2 becomes optional. T0.0 bootstrap targets the VM (Ubuntu 24.04) first; WSL steps stay as an alternative. |
-| Ollama loads models from the NAS only if its start command sets the model directory | `infra/cluster/start-ollama.sh` exports `OLLAMA_MODELS=/data/dheena/truenas-ollama/ollama-models` (and `OLLAMA_HOST=127.0.0.1:<port>`, `CUDA_VISIBLE_DEVICES=<gpu>`) before `ollama serve`, for each of the two servers. The existing `qwen3.8:27b-q8_0` is moved/re-pulled into that directory once (T3.1a). |
+| Ollama loads models from the NAS only if its start command sets the model directory | `infra/cluster/start-ollama.sh` exports `OLLAMA_MODELS=$CLUSTER_DATA_ROOT/truenas-ollama/ollama-models` (and `OLLAMA_HOST=127.0.0.1:<port>`, `CUDA_VISIBLE_DEVICES=<gpu>`) before `ollama serve`, for each of the two servers. The existing `qwen3.8:27b-q8_0` is moved/re-pulled into that directory once (T3.1a). |
 
-New variables (VM `.env` unless noted): `CLUSTER_SSH_HOST=cairo-s101lp`, `CLUSTER_NAS_ROOT=/data/dheena/truenas-ollama`,
+New variables (VM `.env` unless noted): `CLUSTER_SSH_HOST=cairo-s101lp`, `CLUSTER_NAS_ROOT=$CLUSTER_DATA_ROOT/truenas-ollama`,
 `PRUEFSTAND_DATA_ROOT=/mnt/pruefstand`, `OLLAMA_GPU0_URL=http://localhost:11434`, `OLLAMA_GPU1_URL=http://localhost:11435`.
 `PRUEFSTAND_MODEL_CACHE` is dropped.

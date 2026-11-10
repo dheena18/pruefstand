@@ -114,7 +114,7 @@ def test_a_down_server_is_started_once_and_awaited(gpu: GpuWorld) -> None:
     assert res.rc == 0, res.err
     starts = [c for c in gpu.stubs.calls("ssh") if "start-ollama.sh" in c]
     assert len(starts) == 1
-    assert "/data/dheena/pruefstand-bin/start-ollama.sh" in starts[0]
+    assert "/data/example/pruefstand-bin/start-ollama.sh" in starts[0]
     assert len(gpu.posts()) == 3
 
 

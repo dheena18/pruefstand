@@ -17,7 +17,7 @@ from vm_testkit import Result, Stubs
 GPU_FILES = (
     "pruefstand-cluster", "install-cluster-wrapper.sh", "deploy-cluster-bin.sh",
     "gpu_catalogue.py", "models.yaml", "lib/git_verify.sh", "lib/gpu_common.sh",
-    "lib/cluster_ssh.sh",
+    "lib/cluster_ssh.sh", "lib/cluster_paths.sh",
 )  # fmt: skip
 
 
@@ -48,7 +48,10 @@ class Repo:
     def run(self, script: str, *args: str, **env: str) -> Result:
         """Run ``infra/gpu/<script>`` of the checkout as the service user."""
         path = self.root / "infra" / "gpu" / script
-        base = {"PRUEFSTAND_SERVICE_USER": getpass.getuser(), "PRUEFSTAND_PYTHON": "python3"}
+        base = {
+            "PRUEFSTAND_SERVICE_USER": getpass.getuser(), "PRUEFSTAND_PYTHON": "python3",
+            "PRUEFSTAND_CLUSTER_DATA_ROOT": "/data/example",
+        }  # fmt: skip
         return run_script(path, *args, stubs=self.stubs, env={**base, **env})
 
 

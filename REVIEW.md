@@ -325,7 +325,7 @@ decisions accepted with it). The main changes:
    the gemma nightly judge runs on GPU1 and may overlap generation; the reranker runs on the VM CPU.
 3. **Isolation.** A new trusted `llm-proxy` (T6.2a) is the candidate's only route to Ollama, because Ollama has no
    API key: it allows only chat/embed calls for the run's catalogue tags and blocks pull/delete/`keep_alive`.
-4. **Storage.** One NAS dataset seen by both machines (`/data/dheena/truenas-ollama` ↔ `/mnt/pruefstand`) holds
+4. **Storage.** One NAS dataset seen by both machines (`$CLUSTER_DATA_ROOT/truenas-ollama` ↔ `/mnt/pruefstand`) holds
    models, cluster scripts, data, baselines and backups; locks and databases stay on the VM disk.
 5. **Tasks and workflow.** T0.6 becomes a facts check; new **T0.7** (VM setup) gates T3.1a and T6.2a; T3.1a/T3.1b
    are rewritten for Ollama. The VM is the primary development machine (VS Code Remote-SSH; WSL2 optional), and
@@ -421,7 +421,7 @@ After the setup log (§6–§7) showed ~14 GB free on the cluster's `/data`, ~6 
 the VM to its TrueNAS host, ADR-0019 (D328–D332) amends rounds 10–13 (items above that name the NAS, two judges or a
 70B datagen model are history):
 
-1. **Models** live on the cluster's own disk (`OLLAMA_MODELS=/data/dheena/Models`): generator `qwen3.8:27b-q8_0`,
+1. **Models** live on the cluster's own disk (`OLLAMA_MODELS=$CLUSTER_DATA_ROOT/Models`): generator `qwen3.8:27b-q8_0`,
    `bge-m3`, and **one judge** `gemma3:12b` for PR and nightly; ≥ 2 GB stay free; any other model is a swap under
    `MAINTENANCE`. The owner's `~/start-ollama.sh` is the start script of record (`KV_CACHE_TYPE=q8_0`).
 2. **Datagen**: public law/EUR-Lex text through a pinned GitHub Models free-tier model (family ≠ `qwen`, ≠
@@ -429,4 +429,4 @@ the VM to its TrueNAS host, ADR-0019 (D328–D332) amends rounds 10–13 (items 
    reject-only mode. No `datagen` mode.
 3. **Data root** `/mnt/pruefstand` is a plain directory on the VM's zvol (no NFS, no automount); unusable →
    `infra_error="data_root_unavailable"`; backups = TrueNAS zvol snapshots + weekly encrypted laptop copy.
-4. **Cluster scripts** are copied over SSH to `/data/dheena/pruefstand-bin`.
+4. **Cluster scripts** are copied over SSH to `$CLUSTER_DATA_ROOT/pruefstand-bin`.

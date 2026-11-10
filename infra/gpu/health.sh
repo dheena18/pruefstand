@@ -76,6 +76,11 @@ check_endpoints() {
 check_cluster() { # returns 1 when status.sh gave nothing usable
   local rc=0
   cluster_op status >"$tmp/status.csv" 2>"$tmp/status.err" || rc=$?
+  if [ "$rc" -eq 78 ]; then
+    row cluster-status FAIL "cluster data root not configured or untrusted (docs/ops/runbook.md); status.sh was not run"
+    codes+=(12)
+    return 1
+  fi
   if [ "$rc" -eq 255 ] || ! head -n 1 "$tmp/status.csv" | grep -q '^check,status,detail$'; then
     row cluster-status FAIL "status.sh did not answer over ssh (rc=$rc)"
     codes+=(12)
@@ -93,7 +98,15 @@ if [ "$repair" -eq 1 ]; then
 fi
 check_endpoints
 if check_cluster; then
-  expected="$(bash "$GPU_DIR/deploy-cluster-bin.sh" --print-sums 2>/dev/null | sha256sum | cut -d' ' -f1 || true)"
+  sums_rc=0
+  sums="$(bash "$GPU_DIR/deploy-cluster-bin.sh" --print-sums 2>"$tmp/sums.err")" || sums_rc=$?
+  expected=""
+  if [ "$sums_rc" -eq 0 ]; then
+    expected="$(printf '%s\n' "$sums" | sha256sum | cut -d' ' -f1)"
+  elif [ "$sums_rc" -eq 78 ]; then
+    echo "health.sh: cluster data root not configured: $(head -n 1 "$tmp/sums.err")" >&2
+    row bin-dir-config FAIL "cluster data root not configured or untrusted (docs/ops/runbook.md); the bin-dir check cannot pass"
+  fi
   analysis="$("$PY" "$GPU_DIR/gpu_health.py" --mode "$mode" --ps "$tmp"/ps-*.json --status "$tmp/status.csv" \
     --expected-sums "$expected" --min-free-vram-mib "${PRUEFSTAND_MIN_FREE_VRAM_MIB:-1024}")"
   while IFS= read -r line; do
