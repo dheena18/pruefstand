@@ -1,7 +1,8 @@
 # T3.7 (milestone M2): the 10 hand-written quality questions for the tier-2 stack (slice corpus, real models).
-# Each has the tenant that asks, the expected norm citation(s) (any of them counts) and key facts (any of them,
-# compared after the suite's normalisation: casefold, German number words as digits). `lang` is the question's
-# language; the answer must be in it. The human verdict (S4) is recorded in report.md, never here.
+# Each has the tenant that asks, the expected norm citation(s) (any of them counts; checked in the response's
+# `citations` only) and key facts (any of them, as whole words after the suite's normalisation: casefold,
+# German number words as digits). `lang` is the question's language; the answer must be recognisably in it.
+# The human verdict (S4) is recorded in report.md, never here.
 questions:
   - id: q01
     tenant: kanzlei_mueller
@@ -20,7 +21,7 @@ questions:
     lang: de
     question: Wann ist eine Kündigung sozial ungerechtfertigt?
     citation: ["§ 1 KSchG"]
-    key_facts: ["person", "verhalten", "betriebliche erfordernisse"]
+    key_facts: ["person", "verhalten", "dringende betriebliche erfordernisse"]
   - id: q04
     tenant: stadtwerke_sued
     lang: de
@@ -56,7 +57,7 @@ questions:
     lang: de
     question: Wann dürfen personenbezogene Daten von Beschäftigten für Zwecke des Beschäftigungsverhältnisses verarbeitet werden?
     citation: ["§ 26 BDSG"]
-    key_facts: ["erforderlich"]
+    key_facts: ["begründung", "durchführung", "beendigung"]
   - id: q10
     tenant: kanzlei_mueller
     lang: de

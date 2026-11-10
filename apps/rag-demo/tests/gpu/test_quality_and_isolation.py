@@ -2,17 +2,22 @@
 
 Runs on the VM against the dev stack of ``test_gpu_app.py`` (qwen3.8 generator and bge-m3 on the
 A40 Ollama server through the tunnel, ``rerank-cpu`` and Qdrant on the VM, the slice indexed with
-bge-m3), under the GPU lock:
+bge-m3 by ``make index ENCODER=ollama``; a stale index is answered with 503 "re-index"), under the
+GPU lock, the stack held for the session by ``stack-run``:
 
-    RAG_GPU_INDEXED=1 pruefstand-lock make test-gpu
+    pruefstand-lock make stack-run COMPOSE_FILES="infra/gpu/compose.rag-demo.yml" \
+        PROFILES="gpu dev" PORT_OFFSET=10000 SERVICES="qdrant rag-demo-dev rerank-cpu" \
+        CMD="env RAG_GPU_INDEXED=1 make test-gpu"
 
 ``make test-gpu`` sets ``CANARY_REGISTRY`` (the registry of the indexed corpus, mk/rag-demo.mk).
-The results go to ``apps/rag-demo/tests/gpu/report.md``; the human verdict column (S4) is filled
-in by a person who reads German, never by this suite.
+The slice registry has 2 tenants x 2 canaries (24 probes); the >= 50-probe matrix of M2 is the
+tier-1 ``integration`` suite (54 probes, D973). Before any probe each canary's owner must
+retrieve its document, so ``leaks=0`` cannot come from a stale or partial index.
+The quality test writes ``apps/rag-demo/tests/gpu/report.md``; verdicts a person entered in the
+human column (S4) are carried over, never overwritten.
 """
 
 import os
-import re
 import uuid
 from collections.abc import Iterator
 from pathlib import Path
@@ -21,10 +26,10 @@ import httpx
 import pytest
 import yaml
 from rd_support import APP_DIR
-from support.canaries import load_registry, normalise
-from support.probes import Seen, build_probes, summary, violations
-
-from rag_demo.generation.postprocess import detect_language
+from support.canaries import load_registry
+from support.probes import Probe, Seen, build_probes, summary, violations
+from support.quality import grade
+from support.report import read_verdicts, render
 
 URL = os.environ.get(
     "RAG_DEMO_URL", f"http://127.0.0.1:{os.environ.get('RAG_DEMO_HOST_PORT', '18000')}"
@@ -40,10 +45,6 @@ pytestmark = [
     ),
     pytest.mark.skipif(not REGISTRY_PATH, reason="CANARY_REGISTRY unset (make test-gpu sets it)"),
 ]
-_NORM = re.compile(
-    r"(?:§|Art\.|Artikel|Article)\s*(\d+)[^§\n]{0,40}?\b(BGB|ArbZG|KSchG|DSGVO|GDPR|BDSG)\b"
-)
-_ALIAS = {"GDPR": "DSGVO"}
 MIN_QUALITY = 9
 
 
@@ -55,72 +56,31 @@ def ask(tenant: str, question: str) -> dict[str, object]:
     return body
 
 
-def norms(text: str) -> set[tuple[str, str]]:
-    """``(number, law)`` of every norm citation in ``text`` (``Article 6 GDPR`` = ``Art. 6 DSGVO``).
-
-    Examples:
-        >>> sorted(norms("Siehe § 622 Abs. 2 Nr. 1 BGB und Article 6 GDPR."))
-        [('6', 'DSGVO'), ('622', 'BGB')]
-    """
-    return {(m.group(1), _ALIAS.get(m.group(2), m.group(2))) for m in _NORM.finditer(text)}
-
-
-def grade(row: dict[str, object], body: dict[str, object]) -> dict[str, object]:
-    """The automatic checks of one quality question (citation, key fact, language)."""
-    answer = str(body["answer"])
-    cited = norms(" ; ".join(map(str, body["citations"])) + " ; " + answer)  # type: ignore[call-overload]  # JSON list
-    expected = set().union(*(norms(c) for c in row["citation"]))  # type: ignore[attr-defined]  # YAML list
-    facts = [normalise(f) for f in row["key_facts"]]  # type: ignore[attr-defined]  # YAML list
-    checks = {
-        "citation": bool(cited & expected),
-        "key_fact": any(f in normalise(answer) for f in facts),
-        "language": detect_language(answer) == row["lang"],
-    }
-    return {
-        **checks,
-        "passed": all(checks.values()),
-        "answer": answer,
-        "citations": body["citations"],
-    }
+def chunks_of(body: dict[str, object]) -> list[dict[str, str]]:
+    chunks: list[dict[str, str]] = body["chunks"]  # type: ignore[assignment]  # JSON list
+    return chunks
 
 
 @pytest.fixture(scope="module")
 def report() -> Iterator[dict[str, object]]:
     data: dict[str, object] = {}
     yield data
-    REPORT.write_text(render(data), encoding="utf-8")
+    if "rows" in data:  # only a quality run rewrites the report
+        old = REPORT.read_text("utf-8") if REPORT.is_file() else ""
+        meta = {k: str(data.get(k, "not run")) for k in ("Stack", "Leak probes")}
+        meta["Quality (automatic)"] = str(data["quality"])
+        REPORT.write_text(render(meta, data["rows"], read_verdicts(old)), encoding="utf-8")  # type: ignore[arg-type]  # list of rows
 
 
-def _cell(text: object) -> str:
-    return str(text).replace("|", "\\|").replace("\n", "<br>")
-
-
-def render(data: dict[str, object]) -> str:
-    """The Markdown report: info, leak-probe summary and the quality table (S4 column empty)."""
-    lines = [
-        "# T3.7 tier-2 report: leak probes and the 10 German quality questions",
-        "",
-        "Written by `test_quality_and_isolation.py` (`make test-gpu` on the VM).",
-        "The **Human verdict** column is S4: a person who reads German marks each answer",
-        "`correct` / `incorrect` (with a short reason). The automatic checks never fill it.",
-        "",
-        f"- Stack: `{_cell(data.get('info', 'unknown'))}`",
-        f"- Leak probes: `{data.get('probes', 'not run')}`",
-        f"- Quality (automatic): `{data.get('quality', 'not run')}`",
-        "",
-        "| # | Tenant | Question | Answer | Citations | Expected | Citation ok | Key fact ok"
-        " | Language ok | Auto pass | Human verdict (S4) |",
-        "| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |",
+def assert_owners_retrieve_their_canaries(probes: list[Probe]) -> None:
+    """Control: for every canary the owner's own direct question returns the canary document."""
+    controls = {p.canary.doc_id: p for p in probes if p.kind == p.canary.kind}
+    missed = [
+        doc_id
+        for doc_id, p in controls.items()
+        if doc_id not in {c["doc_id"] for c in chunks_of(ask(p.owner, p.question))}
     ]
-    for r in data.get("rows", []):  # type: ignore[attr-defined]  # list of dict rows
-        yes = {True: "yes", False: "**no**"}
-        lines.append(
-            f"| {r['id']} | {r['tenant']} | {_cell(r['question'])} | {_cell(r['answer'])} | "
-            f"{_cell(', '.join(r['citations']))} | {_cell(', '.join(r['expected']))} | "
-            f"{yes[r['citation']]} | {yes[r['key_fact']]} | {yes[r['language']]} | "
-            f"{yes[r['passed']]} | _pending (S4)_ |"
-        )
-    return "\n".join(lines) + "\n"
+    assert not missed, f"owner control failed (stale or partial index?): {missed}"
 
 
 def test_no_leak_probe_returns_or_states_a_foreign_canary(report: dict[str, object]) -> None:
@@ -128,17 +88,18 @@ def test_no_leak_probe_returns_or_states_a_foreign_canary(report: dict[str, obje
     probes = build_probes(registry)
     assert probes
     info = httpx.get(f"{URL}/v1/info", timeout=30).json()
-    report["info"] = (
-        f"{info['models']['generator']}, {info['models']['embed']}, corpus {info['corpus_version']}"
-    )
+    models = info["models"]
+    report["Stack"] = f"{models['generator']}, {models['embed']}, corpus {info['corpus_version']}"
+    assert_owners_retrieve_their_canaries(probes)
+    assert len({p.canary.doc_id for p in probes}) == len(registry.canaries)
     failures: list[str] = []
     for probe in probes:
         body = ask(probe.asker, probe.question)
-        chunks = tuple((c["tenant_id"], c["text"]) for c in body["chunks"])  # type: ignore[attr-defined]  # JSON
+        chunks = tuple((c["tenant_id"], c["text"]) for c in chunks_of(body))
         seen = Seen(answer=str(body["answer"]), chunks=chunks)
         failures += [f"{probe.probe_id}: {v}" for v in violations(probe.asker, seen, registry)]
-    report["probes"] = summary(len(probes), len(failures))
-    print(f"\ngpu isolation: {report['probes']}")  # noqa: T201  # Done-when evidence
+    report["Leak probes"] = summary(len(probes), len(failures))
+    print(f"\ngpu isolation: {report['Leak probes']}")  # noqa: T201  # Done-when evidence
     assert not failures, "\n".join(failures)
 
 
@@ -146,8 +107,11 @@ def test_the_ten_quality_questions_cite_and_state_the_key_fact(report: dict[str,
     assert len(QUESTIONS) == 10
     rows = []
     for row in QUESTIONS:
-        graded = grade(row, ask(row["tenant"], row["question"]))
-        rows.append({**row, **graded, "expected": row["citation"]})
+        body = ask(row["tenant"], row["question"])
+        citations = [str(c) for c in body["citations"]]  # type: ignore[attr-defined]  # JSON list
+        checks = grade(row, str(body["answer"]), citations)
+        rows.append({**row, **checks, "answer": body["answer"], "citations": citations,
+                     "expected": row["citation"]})  # fmt: skip
     report["rows"] = rows
     passed = sum(bool(r["passed"]) for r in rows)
     report["quality"] = f"{passed}/10 automatic checks pass"

@@ -6,7 +6,7 @@ The **Human verdict** column is S4: a person who reads German marks each answer
 
 - Stack: `ollama/qwen3.8:27b-q8_0, ollama/bge-m3, corpus slice-2026-10-31.51fd4b94`
 - Leak probes: `probes=24 leaks=0`
-- Quality (automatic): `10/10 automatic checks pass`
+- Quality (automatic): `10/10 automatic checks pass (re-graded offline after review, answers unchanged)`
 
 | # | Tenant | Question | Answer | Citations | Expected | Citation ok | Key fact ok | Language ok | Auto pass | Human verdict (S4) |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |

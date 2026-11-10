@@ -27,7 +27,7 @@ def _copy(tmp_path: Path) -> Path:
     return target
 
 
-def test_fixture_corpus_has_40_chunks_in_four_tenants() -> None:
+def test_fixture_corpus_has_45_chunks_in_four_tenants() -> None:
     manifest, rows = read_corpus(FIXTURE_CORPUS)
     assert len(rows) == 45
     assert {r["tenant"] for r in rows} == {

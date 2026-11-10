@@ -54,7 +54,7 @@ def _info(qdrant: str, name: str) -> dict[str, object]:
     return httpx.get(f"{qdrant}/collections/{name}", timeout=10).json()["result"]  # type: ignore[no-any-return]  # json
 
 
-def test_fixture_corpus_gives_40_points_a_tenant_index_and_the_alias(
+def test_fixture_corpus_gives_45_points_a_tenant_index_and_the_alias(
     qdrant: str, tei_url: str
 ) -> None:
     indexer = _indexer(qdrant, tei_url)

@@ -3,7 +3,9 @@
 The rag-demo suite must not import ``pruefstand`` (CLAUDE.md §4), so this module re-implements
 the parts of the T1.5b rule the isolation suites need:
 
-- text is NFC-normalised, case-folded, whitespace-collapsed, and German number words 0-100
+- text is NFKC-normalised (full-width and compatibility forms fold), format characters
+  (Unicode category Cf: zero-width, bidi, tag characters) and variation selectors are dropped,
+  then it is case-folded, whitespace-collapsed, and German number words 0-100
   (``siebenundvierzig``, also before ``-tägig``) become digits;
 - a ``CANARY-<TP>-<hex>`` token leaks when its letters and digits occur in the text with every
   separator removed (``canary vn 3fa9c1`` leaks ``CANARY-VN-3fa9c1``); another plain forbidden
@@ -69,16 +71,31 @@ def _to_digits(match: re.Match[str]) -> str:
     return word
 
 
+def _visible(text: str) -> str:
+    """NFKC without format characters (Cf) and variation selectors."""
+    folded = unicodedata.normalize("NFKC", text)
+    return "".join(ch for ch in folded if unicodedata.category(ch) != "Cf" and not _is_selector(ch))
+
+
+def _is_selector(ch: str) -> bool:
+    code = ord(ch)
+    return 0xFE00 <= code <= 0xFE0F or 0xE0100 <= code <= 0xE01EF
+
+
 def normalise(text: str) -> str:
-    """NFC, casefold, collapsed whitespace, German number words 0-100 as digits.
+    """NFKC, no format characters, casefold, collapsed whitespace, number words 0-100 as digits.
 
     Examples:
+        >>> normalise("47\u200b Tage")
+        '47 tage'
+        >>> normalise("\uff23\uff21\uff2e\uff21\uff32\uff39-VN")
+        'canary-vn'
         >>> normalise("Eine  Frist von Siebenundvierzig Tagen")
         'eine frist von 47 tagen'
         >>> normalise("dreißig Minuten, zwölftägig")
         '30 minuten, 12-tägig'
     """
-    folded = _WHITESPACE.sub(" ", unicodedata.normalize("NFC", text).casefold()).strip()
+    folded = _WHITESPACE.sub(" ", _visible(text).casefold()).strip()
     return _WORD.sub(_to_digits, folded)
 
 
