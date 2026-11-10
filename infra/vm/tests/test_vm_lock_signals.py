@@ -19,14 +19,14 @@ FLAG_DEADLINE_S = 30.0
 # interrupts `wait` at once, so there is no polling loop and no sleep-as-assert).
 TRAPPED = (
     "sleep 600 & p=$!; "
-    "trap 'kill $p; echo \"$$\" > got; exit 7' TERM INT HUP; "
+    "trap 'kill $p; wait $p; echo \"$$\" > got; exit 7' TERM INT HUP; "
     "echo $$ > ready; wait $p"
 )
 
 
 def _lock_dir(tmp_path: Path) -> Path:
     lock_dir = tmp_path / "lock"
-    lock_dir.mkdir()
+    lock_dir.mkdir(exist_ok=True)
     (lock_dir / "gpu.lock").touch()
     return lock_dir
 
@@ -129,14 +129,21 @@ def test_a_missing_command_exits_127_without_waiting_for_the_lock(
     assert "busy" not in res.stderr
 
 
-def test_a_file_that_cannot_be_executed_is_reported_before_the_lock(
+def test_a_file_that_cannot_be_executed_exits_126_before_the_lock(
     stubs: Stubs, tmp_path: Path
 ) -> None:
     plain = tmp_path / "plain.txt"
     plain.write_text("not a program\n", encoding="utf-8")
     plain.chmod(0o644)
-    res = _run(stubs, _lock_dir(tmp_path), str(plain))
-    assert res.returncode == 127
+    lock_dir = _lock_dir(tmp_path)
+    with (lock_dir / "gpu.lock").open("rb") as holder:
+        fcntl.flock(holder, fcntl.LOCK_EX)
+        res = _run(stubs, lock_dir, str(plain), timeout_s="1")
+        as_dir = _run(stubs, lock_dir, str(tmp_path), timeout_s="1")
+    assert res.returncode == 126
+    assert as_dir.returncode == 126
+    assert "cannot execute" in res.stderr
+    assert "busy" not in res.stderr
 
 
 def test_dash_c_belongs_to_the_command_not_to_flock(stubs: Stubs, tmp_path: Path) -> None:
@@ -162,3 +169,96 @@ def test_signals_python_ignores_are_not_inherited_by_the_command(
     ignored = int(res.stdout.split()[1], 16)
     assert ignored & (1 << 12) == 0
     assert ignored & (1 << 24) == 0
+
+
+def _env_of_command(stubs: Stubs, tmp_path: Path, **extra: str) -> dict[str, str]:
+    """The environment ``env`` prints when run through pruefstand-lock with a bare environment."""
+    lock_dir = _lock_dir(tmp_path)
+    env = {"PATH": str(stubs.bin), "PRUEFSTAND_LOCK_DIR": str(lock_dir), **extra}
+    proc = subprocess.run(  # noqa: S603
+        [bash(), str(LOCK), "env"], env=env, capture_output=True, text=True, timeout=60, check=False
+    )
+    assert proc.returncode == 0, proc.stderr
+    return dict(ln.split("=", 1) for ln in proc.stdout.splitlines() if "=" in ln)
+
+
+def test_python_locale_coercion_does_not_leak_into_the_command(
+    stubs: Stubs, tmp_path: Path
+) -> None:
+    """PEP 538 would add LC_CTYPE=C.UTF-8 under the C locale; the command must not see it."""
+    for extra in ({}, {"LANG": "C"}, {"LANG": "POSIX"}, {"LC_ALL": "C"}):
+        seen = _env_of_command(stubs, tmp_path, **extra)
+        assert "LC_CTYPE" not in seen, extra
+        assert not [k for k in seen if k.startswith("PYTHON")], extra
+
+
+def test_a_callers_lc_ctype_is_passed_on_unchanged(stubs: Stubs, tmp_path: Path) -> None:
+    assert _env_of_command(stubs, tmp_path, LC_CTYPE="de_DE.UTF-8")["LC_CTYPE"] == "de_DE.UTF-8"
+    assert _env_of_command(stubs, tmp_path, LC_CTYPE="")["LC_CTYPE"] == ""
+    assert _env_of_command(stubs, tmp_path, LC_CTYPE="C", LANG="C")["LC_CTYPE"] == "C"
+
+
+def test_an_ignored_sigpipe_stays_ignored(stubs: Stubs, tmp_path: Path) -> None:
+    lock_dir = _lock_dir(tmp_path)
+    script = f"trap '' PIPE; exec {bash()} {LOCK} grep SigIgn /proc/self/status"
+    proc = subprocess.run(  # noqa: S603
+        [bash(), "-c", script],
+        env=_env(stubs, lock_dir),
+        capture_output=True,
+        text=True,
+        timeout=60,
+        check=False,
+    )
+    assert proc.returncode == 0, proc.stderr
+    assert int(proc.stdout.split()[1], 16) & (1 << 12)
+
+
+def test_a_huge_timeout_is_a_clear_error_not_a_traceback(stubs: Stubs, tmp_path: Path) -> None:
+    res = _run(stubs, _lock_dir(tmp_path), "true", timeout_s="9" * 30)
+    assert res.returncode == 64
+    assert "too large" in res.stderr
+    assert "Traceback" not in res.stderr
+
+
+def test_a_missing_python_is_a_clear_error(stubs: Stubs, tmp_path: Path) -> None:
+    lock_dir = _lock_dir(tmp_path)
+    env = {**_env(stubs, lock_dir), "PRUEFSTAND_LOCK_PYTHON": str(tmp_path / "no-python")}
+    proc = subprocess.run(  # noqa: S603
+        [bash(), str(LOCK), "true"],
+        env=env,
+        capture_output=True,
+        text=True,
+        timeout=60,
+        check=False,
+    )
+    assert proc.returncode == 78
+    assert "install python3" in proc.stderr
+
+
+def _is_waiting(pid: int) -> bool:
+    """/proc/locks lists a blocked flock request as ``<n>: -> FLOCK ... <pid> ...``."""
+    for line in Path("/proc/locks").read_text().splitlines():
+        fields = line.split()
+        if "->" in fields and str(pid) in fields:
+            return True
+    return False
+
+
+def test_ctrl_c_while_waiting_for_the_lock_exits_quietly(stubs: Stubs, tmp_path: Path) -> None:
+    lock_dir = _lock_dir(tmp_path)
+    with (lock_dir / "gpu.lock").open("rb") as holder:
+        fcntl.flock(holder, fcntl.LOCK_EX)
+        proc = subprocess.Popen(  # noqa: S603
+            [bash(), str(LOCK), "true"],
+            env=_env(stubs, lock_dir, "600"),
+            stderr=subprocess.PIPE,
+            text=True,
+        )
+        deadline = time.monotonic() + FLAG_DEADLINE_S
+        while not _is_waiting(proc.pid):
+            assert time.monotonic() < deadline, "pruefstand-lock never started waiting"
+            time.sleep(0.01)  # polling /proc/locks for the blocked request; not a timing assertion
+        proc.send_signal(signal.SIGINT)
+        _, err = proc.communicate(timeout=60)
+    assert proc.returncode in (-signal.SIGINT, 130)
+    assert "Traceback" not in err

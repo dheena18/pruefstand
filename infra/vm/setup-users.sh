@@ -40,6 +40,12 @@ while [ "$#" -gt 0 ]; do
   esac
 done
 
+# pruefstand-lock takes the lock in-process with this interpreter (T3.1d): check it before anything is planned or changed.
+LOCK_PYTHON="${PRUEFSTAND_LOCK_PYTHON:-/usr/bin/python3}"
+if [ ! -x "$LOCK_PYTHON" ]; then
+  echo "setup-users: $LOCK_PYTHON not found; install python3 first (pruefstand-lock needs it); nothing was changed" >&2
+  exit 3
+fi
 if [ -z "$OWNER" ] || [ "$OWNER" = root ]; then
   echo "setup-users: owner user unknown; run with sudo from the owner's login or pass --owner USER" >&2
   exit 2
@@ -138,7 +144,6 @@ ensure_lock() {
 
 ensure_wrapper() {
   local target="$BIN_DIR/pruefstand-lock"
-  command -v python3 >/dev/null || die "python3 is required by pruefstand-lock (it takes the lock in-process, T3.1d)"
   if ! cmp -s "$HERE/pruefstand-lock" "$target" 2>/dev/null; then
     run install -m 0755 -o root -g root "$HERE/pruefstand-lock" "$target"
   fi

@@ -207,12 +207,17 @@ def test_users_refuses_a_lock_file_that_is_not_the_one_it_opened(
     assert "changed" in res.err
 
 
-def test_users_refuses_to_install_the_lock_wrapper_without_python3(
+def test_users_refuses_up_front_without_python3(
     run_script: Runner, stubs: Stubs, tmp_path: Path
 ) -> None:
-    """pruefstand-lock takes the lock in-process with python3 (T3.1d): setup says so up front."""
+    """pruefstand-lock needs /usr/bin/python3 (T3.1d): refuse up front."""
     _user_stubs(stubs, user_exists=False, docker_members="alice")
-    (stubs.bin / "python3").unlink(missing_ok=True)
-    res = run_script("setup-users.sh", *_users_args(tmp_path))
+    env = {"PRUEFSTAND_LOCK_PYTHON": str(tmp_path / "no-python")}
+    res = run_script("setup-users.sh", *_users_args(tmp_path), env=env)
     assert res.rc == 3
-    assert "python3 is required" in res.err
+    assert "install python3" in res.err
+    assert "PLAN" not in res.out
+    assert "DO " not in res.out
+    assert not (tmp_path / "lib").exists()
+    assert not (tmp_path / "bin").exists()
+    assert "useradd" not in "".join(stubs.calls("useradd"))
