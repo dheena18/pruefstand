@@ -1,4 +1,4 @@
-"""Corpus reader (streamed, schema-checked, file:line errors) on the 40-chunk fixture corpus."""
+"""Corpus reader (streamed, schema-checked, file:line errors) on the 45-chunk fixture corpus."""
 
 import json
 import shutil
@@ -29,7 +29,7 @@ def _copy(tmp_path: Path) -> Path:
 
 def test_fixture_corpus_has_40_chunks_in_four_tenants() -> None:
     manifest, rows = read_corpus(FIXTURE_CORPUS)
-    assert len(rows) == 40
+    assert len(rows) == 45
     assert {r["tenant"] for r in rows} == {
         "kanzlei_mueller",
         "versicherung_nord",
@@ -76,7 +76,7 @@ def test_a_row_in_the_wrong_tenant_file_is_rejected(tmp_path: Path) -> None:
         dst.read_text(encoding="utf-8") + src.read_text(encoding="utf-8").splitlines()[0] + "\n",
         "utf-8",
     )
-    with pytest.raises(CorpusError, match=r"kanzlei_mueller\.chunks\.jsonl:15: .*tenant"):
+    with pytest.raises(CorpusError, match=r"kanzlei_mueller\.chunks\.jsonl:16: .*tenant"):
         read_corpus(corpus)
 
 

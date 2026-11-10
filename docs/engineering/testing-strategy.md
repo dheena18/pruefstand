@@ -176,6 +176,19 @@ simulated **because the ground truth (true Δ) must be known**; this is not a st
 - Tenant isolation property test on **real chunks** of the 5-law slice split across 3 tenants +
   `shared_public`: random queries for random tenants, assert no hit has a foreign `tenant_id`
   (ADR-0010). The same test with `tenant_filter: post_topk` must find a leak (the test of the test).
+- **Isolation suites (T3.7, M2 proof).** The leak-probe matrix (`apps/rag-demo/tests/support/probes.py`) is built
+  from a canary registry: for every ordered pair of customer tenants and every canary of the owner, the direct
+  question (semantic `probe_question`, or a token asked for by its `CANARY-<TP>-` prefix only), the same behind a
+  filter-bypass phrasing and with `tenant_id=<owner>:` spoofed in the question (54 probes on the fixture registry
+  `apps/rag-demo/tests/fixtures/corpus/canaries.json`, 3 canaries per customer tenant). Hard pass rule: no foreign
+  chunk tenant, no foreign token in the answer or any chunk text, no foreign `forbidden_answer` in the answer
+  (`support/canaries.py` re-implements the matching rule without importing `pruefstand`).
+  `integration` (`ci.yml` job `test-integration`): `test_isolation_http.py` (`POST /v1/query` via `TestClient` on
+  Testcontainers Qdrant + TEI + llama.cpp of compose `live`) and `test_isolation_qdrant.py` (`QdrantRetriever` with
+  the guard off, `assert_tenant_scoped` on every recorded request, the M8 filter-removal simulation must fail).
+  `gpu` (VM, `make test-gpu`, registry from `CANARY_REGISTRY`): `test_quality_and_isolation.py` runs the probes and
+  the 10 German quality questions on the tier-2 stack and writes `apps/rag-demo/tests/gpu/report.md` (the human
+  verdict column is filled by a person, S4).
 
 ### 3.6 Contract tests
 | Contract | Producer test | Consumer test |
