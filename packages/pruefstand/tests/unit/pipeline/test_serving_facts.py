@@ -5,6 +5,7 @@ from testsupport.gpu_files import SHIPPED_CATALOGUE
 from testsupport.pipeline_support import mini_config
 
 from pruefstand.core.config import GatePolicy, MetricPolicy
+from pruefstand.judges.output import SPECS
 from pruefstand.pipeline.fingerprints import judge_facts, judge_serving
 
 POLICY = GatePolicy(metrics={"faithfulness": MetricPolicy(max_drop=0.05)})
@@ -33,7 +34,8 @@ def test_tier_two_facts_carry_the_prompt_version_of_every_gated_judged_metric(
     monkeypatch.setenv("PRUEFSTAND_GPU_CATALOGUE", str(SHIPPED_CATALOGUE))
     cfg = mini_config(gate=POLICY)
     facts = judge_facts(cfg, stack="a40", tier="pr", epoch=0)
-    assert facts.prompt_versions == {"faithfulness": "faithfulness_de_v2"}
+    spec = SPECS["faithfulness"]
+    assert facts.prompt_versions == {"faithfulness": f"{spec.prompt_id}_{spec.version}"}
 
 
 def test_tier_one_facts_stay_empty() -> None:

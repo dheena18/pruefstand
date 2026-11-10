@@ -1,0 +1,30 @@
+# RQ2 judge calibration (T5.4): candidate judges and label sets. Read by experiments/rq2/run_judges.py.
+# Judges follow the family plan (ADR-0019, D112): never the generator family `qwen`.
+seed: 1234
+generator: ollama/qwen3.8:27b-q8_0      # the catalogue generator; check_judge_families compares against it
+concurrency: 4                          # = OLLAMA_NUM_PARALLEL in production
+cache_dir: data/derived/rq2/cache       # judge cache (llm namespace), git-ignored
+out_dir: data/derived/rq2               # raw verdicts + call logs per judge, git-ignored
+judges:
+  - {id: ollama/gemma3:12b, family: gemma, arm: a, enabled: true}         # gating judge, PR and nightly (D329)
+  # (b'') size contrast; needs the owner's MAINTENANCE swap (gpu-cluster.md §2) outside the night window
+  - {id: ollama/gemma3:4b, family: gemma, arm: b2, enabled: false}
+  # (c) tier-1 informational judge; scored from GitHub Actions only (models.github.ai answers a bare 200 on the VM)
+  # current provisional pick (examples/live, family plan judge_tier1: gpt = the public datagen family: its
+  # answer_correctness agreement is reported separately and never used to pick, AI9-26)
+  - {id: github/openai/gpt-4.1-mini, family: gpt, arm: c, enabled: false, subsample: 300}
+  - {id: github/mistral-ai/mistral-small-2503, family: mistral, arm: c, enabled: false, subsample: 300}
+  - {id: github/microsoft/phi-4, family: phi, arm: c, enabled: false, subsample: 300}
+datagen_family: gpt                     # public-text datagen family (D330, model_families.yaml plan.datagen)
+sets:
+  - {name: memerag, path: data/derived/memerag_de/faithfulness_memerag.jsonl, origin: human, local_only: true}
+  - {name: faithfulness_constructed, path: datasets/calibration/v1/faithfulness_constructed.jsonl, origin: construction}
+  - {name: correctness, path: datasets/calibration/v1/correctness.jsonl, origin: construction}
+  - {name: refusal, path: datasets/calibration/v1/refusal.jsonl, origin: construction}
+  - {name: consistency, path: datasets/calibration/v1/consistency.jsonl, origin: construction}
+  # T5.3 PR 2 (needs T4.7b + T3.6, D161); not built yet: every legal_hard number is "pending"
+  - {name: legal_hard, path: datasets/calibration/v1/legal_hard.jsonl, origin: construction, pending: true}
+# gating label sets of the pass rule (D146): kappa >= 0.6 on each, hard-negative specificity >= 0.80 (Wilson low >= 0.70)
+gating:
+  faithfulness: [memerag, legal_hard]
+  answer_correctness: [correctness, legal_hard]

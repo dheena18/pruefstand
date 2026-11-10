@@ -881,6 +881,11 @@ tok/s, so ≈ 350 generations ≈ 45–60 min on GPU0; `bge-reranker-v2-m3` on 8
 
 ### 6.3 Family plan and model choices (pin exact versions in T1.13 / T3.1b / T5.4)
 
+**T5.4 calibration (D937-D940):** the gating judge stays `ollama/gemma3:12b` (prompts `faithfulness_de_v2`,
+`answer_correctness_de_v4`); its calibration status is in `judges/data/calibration_status.yaml` (judged metrics are
+informational while it says `passed: false`). The tier-1 informational judge stays `github/openai/gpt-4.1-mini` until
+the hosted RQ2 run measures the GitHub Models candidates.
+
 **Family plan** (binding; recorded in `core/data/model_families.yaml` and `gpu-cluster.md`):
 
 | Role | Family | Rule |

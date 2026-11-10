@@ -4,8 +4,8 @@ from pruefstand.core.models.metric import MetricValue
 from pruefstand.core.models.target import TargetResponse
 from pruefstand.core.models.testcase import TestCase
 from pruefstand.core.protocols import JudgePoolLike
-from pruefstand.judges.calibration import refusal_judge_passed
 from pruefstand.judges.output import make_task
+from pruefstand.judges.status import refusal_judge_passed
 from pruefstand.metrics.deterministic.refusal import is_refusal
 from pruefstand.metrics.judged.base import JudgedBase
 from pruefstand.metrics.judged.routing import is_ambiguous

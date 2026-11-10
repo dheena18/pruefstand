@@ -96,7 +96,10 @@ def test_every_metric_has_a_spec_with_its_prompt_variables() -> None:
     }
     task = make_task("refusal_judged", frage="F?", antwort="A")
     assert (task.prompt_id, task.prompt_version) == ("refusal_judged_de", "v1")
-    assert make_task("faithfulness", **_vars("faithfulness")).prompt_version == "v2"
+    assert (
+        make_task("faithfulness", **_vars("faithfulness")).prompt_version
+        == SPECS["faithfulness"].version
+    )
     with pytest.raises(ConfigError, match="erwartet"):
         make_task("refusal_judged", frage="F?", antwort="A", erwartet="E")
 

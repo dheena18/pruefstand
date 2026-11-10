@@ -21,7 +21,7 @@ from pruefstand.core.config import LLMPolicyConfig
 from pruefstand.core.errors import ConfigError
 from pruefstand.core.protocols import JudgePoolLike
 from pruefstand.judges.judge import Judge, JudgePool
-from pruefstand.judges.output import make_task
+from pruefstand.judges.output import SPECS, make_task
 from pruefstand.llm import retry
 from pruefstand.llm.backends.litellm import LiteLLMBackend
 from pruefstand.llm.budget import Budget
@@ -54,7 +54,7 @@ async def test_a_partially_correct_verdict_is_half(
     assert (row["role"], row["prompt_id"], row["prompt_version"]) == (
         "judge",
         "answer_correctness_de",
-        "v3",
+        SPECS["answer_correctness"].version,
     )
 
 

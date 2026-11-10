@@ -32,6 +32,7 @@ dev = [
   "scipy-stubs>=1.18.1.1",
   "datasets>=5.1.0",
   "streamlit>=1.40",
+  "matplotlib>=3.10",
 ]
 # T0.4: documentation site (mkdocs-material + Mermaid fence via pymdownx.superfences, D340)
 docs = [
