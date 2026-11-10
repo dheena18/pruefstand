@@ -104,13 +104,16 @@ def test_owner_sheet_is_reproducible_and_spread_over_kinds() -> None:
     assert owner_sheet.pick_items(rows, seed=1) != first
 
 
-def test_committed_owner_sheet_matches_the_picker_and_is_unscored(tmp_path: Path) -> None:
+def test_committed_owner_sheet_matches_the_picker_and_is_scored(tmp_path: Path) -> None:
     out = tmp_path / "sheet.csv"
     assert owner_sheet.build(ANSWERS, out) == 10
-    assert out.read_bytes() == SHEET.read_bytes()
+    built = list(csv.DictReader(out.open(encoding="utf-8")))
     rows = list(csv.DictReader(SHEET.open(encoding="utf-8")))
     assert list(rows[0])[:3] == ["question", "answer", "score"]
-    assert all(r["score"] == "" and r["question"] and r["answer"] for r in rows)
+    assert [{k: v for k, v in r.items() if k != "score"} for r in rows] == [
+        {k: v for k, v in r.items() if k != "score"} for r in built
+    ]  # same ten items as the picker, only the score column was filled
+    assert all(r["score"] in {"0", "1", "2"} and r["question"] and r["answer"] for r in rows)
 
 
 def test_eviction_of_a_day_set_model_is_detected() -> None:

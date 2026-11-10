@@ -5,6 +5,10 @@ class RagDemoError(Exception):
     """Base class of every error raised by ``rag_demo``."""
 
 
+class ClientDisconnectedError(RagDemoError):
+    """The HTTP client went away before the answer was ready (nothing is sent back)."""
+
+
 class ConfigError(RagDemoError, ValueError):
     """The configuration is invalid or points at something that does not exist."""
 
