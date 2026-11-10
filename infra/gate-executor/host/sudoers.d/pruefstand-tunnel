@@ -1,0 +1,3 @@
+# T6.2a S9 (D200, D227): the only sudo right of user pruefstand: restart its tunnel unit, nothing else.
+# Install (owner): sudo install -m 0440 -o root -g root this file /etc/sudoers.d/pruefstand-tunnel && sudo visudo -c
+pruefstand ALL=(root) NOPASSWD: /usr/bin/systemctl restart pruefstand-tunnel

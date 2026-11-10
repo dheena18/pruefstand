@@ -1,0 +1,24 @@
+# Persistent GitHub Actions runner of the PRIVATE executor repo only (T6.2a S9; D100, D211, A13-M9, ADR-0019).
+# System unit as user pruefstand; no storage/mount dependency (the data root is a plain directory: an unusable one
+# fails the job in the preflight). ExecStart is the runner's own run.sh, which restarts the listener after a
+# self-update (auto-update stays on). <runner-dir> is set by the owner at install time.
+[Unit]
+Description=Pruefstand gate executor runner (private repo)
+Wants=network-online.target
+After=network-online.target docker.service
+Requires=docker.service
+
+[Service]
+User=pruefstand
+Group=pruefstand
+WorkingDirectory=/home/pruefstand/actions-runner
+ExecStart=/home/pruefstand/actions-runner/run.sh
+Restart=always
+RestartSec=10
+KillMode=process
+KillSignal=SIGTERM
+TimeoutStopSec=5min
+NoNewPrivileges=yes
+
+[Install]
+WantedBy=multi-user.target
