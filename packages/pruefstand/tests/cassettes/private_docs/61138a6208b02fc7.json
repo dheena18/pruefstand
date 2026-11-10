@@ -1,0 +1,39 @@
+{
+  "recorded_at": "2026-11-10T07:08:42+00:00",
+  "model_id": "ollama/gemma3:12b",
+  "model_version": null,
+  "request": {
+    "role": "datagen",
+    "model": "ollama/gemma3:12b",
+    "messages": [
+      {
+        "role": "system",
+        "content": "Du schreibst vollständig erfundene Geschäftsdokumente für Software-Tests. Alle Organisationen, Personen und Zahlen sind frei erfunden. Du schreibst sachlich, natürlich und in korrektem Deutsch, wie in einem echten Unternehmen. Du gibst nur das Dokument aus, ohne Vorrede und ohne Erklärung."
+      },
+      {
+        "role": "user",
+        "content": "Schreibe das folgende interne Dokument.\n\nOrganisation: Versicherung Nord (ein regionaler Versicherer)\nDokumentart: Schadenmeldung Elementar\n\nRegeln:\n1. Beginne mit einer Überschrift in der Form \"# Titel\" (eine Zeile, höchstens acht Wörter).\n2. Schreibe danach zwei bis drei kurze Abschnitte, insgesamt etwa 120 bis 160 Wörter.\n3. Der folgende Satz muss GENAU EINMAL und WÖRTLICH im Text stehen, in einem eigenen Absatz, und darf nirgends sonst wiederholt oder umschrieben werden:\nDie Meldefrist für Elementarschäden bei Kerschbaum Textil beträgt 117 Tage.\n4. Nenne keine weiteren Zahlen mit Einheiten (Fristen, Beträge, Prozentsätze). Jahreszahlen und Paragrafen sind erlaubt.\n5. Erfinde keine Adressen, Telefonnummern, E-Mail-Adressen und keine Aktenzeichen oder Referenznummern.\n6. Beende das Dokument mit einer eigenen letzten Zeile: [ENDE]\n"
+      }
+    ],
+    "temperature": 0.0,
+    "max_tokens": 384,
+    "seed": 7,
+    "prompt_id": "datagen.private_docs.private_doc_de",
+    "prompt_version": "v1",
+    "response_format": "text"
+  },
+  "response": {
+    "text": "# Elementarschadenmeldung – Verfahrenshinweise\n\nDiese Richtlinie dient als interne Orientierung für die Bearbeitung von Schadenmeldungen im Bereich Elementarschäden. Sie fasst die wesentlichen Schritte und Verantwortlichkeiten zusammen, um eine effiziente und korrekte Schadensabwicklung zu gewährleisten. Die Einhaltung dieser Verfahren ist entscheidend für die Wahrung der Interessen von Versicherung Nord und unserer Versicherten. Insbesondere bei komplexen Fällen, wie beispielsweise Schäden durch Starkregen oder Sturm, ist eine sorgfältige Dokumentation und eine enge Zusammenarbeit zwischen den beteiligten Abteilungen unerlässlich.\n\nDie Prüfung von Elementarschadenmeldungen erfordert eine detaillierte Analyse der Schadensursache und des Ausmaßes des Schadens. Hierbei sind insbesondere meteorologische Daten, Gutachten und eventuelle Zeugenaussagen zu berücksichtigen. Die Zusammenarbeit mit externen Gutachtern und Behörden ist oft notwendig, um eine umfassende Bewertung des Schadens vornehmen zu können. Die Einhaltung der gesetzlichen Bestimmungen und der Versicherungsbedingungen ist dabei stets zu gewährleisten.\n\nDie Meldefrist für Elementarschäden bei Kerschbaum Textil beträgt 117 Tage.\n\nDie vorliegende Richtlinie wird regelmäßig überprüft und bei Bedarf aktualisiert. Änderungen werden den Mitarbeitern rechtzeitig mitgeteilt. Es wird erwartet, dass alle Mitarbeiter mit den Verfahrensweisen vertraut sind und diese konsequent anwenden.\n\n[ENDE]",
+    "model": "ollama/gemma3:12b",
+    "usage": {
+      "prompt_tokens": 311,
+      "completion_tokens": 298
+    },
+    "cost_usd": 0.0,
+    "latency_ms": 6152.037039981224,
+    "cached": false,
+    "provider": "ollama",
+    "fallback": false,
+    "model_version": null
+  }
+}
