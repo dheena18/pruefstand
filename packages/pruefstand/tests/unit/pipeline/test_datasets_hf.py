@@ -15,6 +15,7 @@ from testsupport.run_builders import make_cases
 from pruefstand.core.enums import Split
 from pruefstand.core.errors import ConfigError, DatasetError
 from pruefstand.dataset.export_hf import build_hf_layout
+from pruefstand.dataset.validate import validate_dataset
 from pruefstand.pipeline import datasets_hf
 from pruefstand.pipeline.datasets import check_dataset, load_cases
 
@@ -172,3 +173,42 @@ def test_a_fully_filtered_split_leaves_the_manifest(
     manifest = json.loads((hub.snapshot / "dataset_manifest.json").read_text("utf-8"))
     assert manifest["splits"] == {"smoke": 1}
     assert {c.split for c in check_dataset(REF).cases} == {Split.SMOKE}
+
+
+def test_the_exported_manifest_recounts_blocks_and_the_judged_subset(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    core = [
+        c.model_copy(update={"judged_subset": i < 2, "tags": ("heldout",) if i == 0 else ()})
+        for i, c in enumerate(make_cases(4, split="core"))
+    ]
+    full = [
+        c.model_copy(update={"id": f"full-{i}", "base_id": f"full-{i}", "tags": tags})
+        for i, (c, tags) in enumerate(
+            zip(make_cases(3, split="full", block=0), [("private",), (), ()], strict=True)
+        )
+    ]
+    source = write_dataset(tmp_path / "src", {"core": case_rows(core), "full": case_rows(full)})
+    manifest_path = source / "dataset_manifest.json"
+    manifest = json.loads(manifest_path.read_text("utf-8"))
+    manifest.update(judged_subset=2, blocks={"refusal": 0, "0": 3, "1": 0, "2": 0})
+    manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
+    layout = tmp_path / "hf_export"
+    build_hf_layout(source, layout)
+    monkeypatch.setattr(datasets_hf, "snapshot_download", FakeHub(layout))
+    monkeypatch.setattr(datasets_hf, "CACHE_ROOT", tmp_path / "cache")
+    merged = datasets_hf.resolve_hf(REF)
+    exported = json.loads((merged / "dataset_manifest.json").read_text("utf-8"))
+    assert (exported["judged_subset"], exported["blocks"]["0"]) == (1, 2)
+    assert exported["splits"] == {"core": 3, "full": 2}
+    problems = validate_dataset(merged)
+    assert not [p for p in problems if p.startswith("manifest ")]
+
+
+def test_validate_names_a_fully_filtered_required_split(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    hub = _hub_with_heldout(tmp_path, monkeypatch, dict.fromkeys(range(4), ("private",)))
+    del hub
+    problems = validate_dataset(datasets_hf.resolve_hf(REF))
+    assert "core: split is missing from the dataset" in problems
