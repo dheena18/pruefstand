@@ -2,7 +2,11 @@
 
 Ollama silently truncates a prompt longer than ``num_ctx``, so the app counts it first. The count
 wraps every message the way the Qwen chat template does (ChatML role markers and the empty think
-block of ``think: false``); the ``bge-m3`` tokenizer is never used here (it undercounts German).
+block of ``think: false``); the ``bge-m3`` tokenizer is never used here (it undercounts
+German).
+Calibrated on the real A40 generator (D960): the count equals Ollama's ``prompt_eval_count``
+exactly unless Ollama cut the prompt, which it reports as about ``num_ctx / 2``; only the local
+count sees that.
 """
 
 import logging

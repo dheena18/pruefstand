@@ -127,6 +127,7 @@ owner's `~/start-ollama.sh`, setup log §7), **public secret**
 | `RAG_DEMO_GPU_CONFIG` | local / VM .env | owner | config inside the image used by the dev service `rag-demo-dev` (default `/app/configs/rag.gpu.yaml`; bugs under `/app/configs/bugs/gpu/`) | T3.2 | n/a |
 | `SERVING_ENGINE_VERSION`, `SERVING_GPU` | candidate container env (dev: VM .env) | orchestrator | static `/v1/info.serving` fields (X3.13) | T3.2 | n/a |
 | `ACTIONS_RUNNER_HOOK_JOB_STARTED` / `_COMPLETED` | VM `runner.env` | T6.2a install script | job hygiene hooks | T6.2a | n/a |
+| `PRUEFSTAND_GII_MIRROR` | workflow only | `cassettes-models.yml` download step | https base URL of the release `data-pins-2026-11`; unset locally (`--update-pins` refuses it) | D927 | n/a |
 | `PRUEFSTAND_SIM_GRID` | workflow, local .env | `ci.yml` nightly | `reduced` (default) or `full` | T1.6 | n/a |
 | `PRUEFSTAND_ANNOTATOR` | local .env | annotator | pseudonym for optional human labels | T5.3-opt | n/a |
 | `OTEL_EXPORTER_OTLP_ENDPOINT` | local .env (optional) | owner | OTLP export target; empty = off | T5.1 | n/a |

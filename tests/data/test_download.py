@@ -792,3 +792,17 @@ def test_gii_mirror_must_be_https(tmp_path: Path, monkeypatch: pytest.MonkeyPatc
     monkeypatch.setenv("PRUEFSTAND_GII_MIRROR", "http://example.com/x")
     with pytest.raises(FetchError, match="https://"):
         data_fetch.http_urls(load_sources(_write_sources(tmp_path, [_gii()]))[0])
+
+
+def test_update_pins_refuses_a_set_mirror(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """A pin refresh must read the official site, never the mirror (D927)."""
+    monkeypatch.setenv("PRUEFSTAND_GII_MIRROR", MIRROR)
+    monkeypatch.delenv("CI", raising=False)
+    src = _write_sources(tmp_path, [_gii()])
+    with respx.mock:
+        mirror = respx.get(f"{MIRROR}/kschg.xml.zip").respond(content=ABC)
+        assert main([*_args(tmp_path, src), "--update-pins"]) == 4
+    assert mirror.call_count == 0
+    assert "unset PRUEFSTAND_GII_MIRROR" in capsys.readouterr().err

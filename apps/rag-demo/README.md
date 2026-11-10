@@ -126,7 +126,8 @@ llama.cpp and TEI servers by `make cassettes` and from `rerank-cpu` by `make cas
 
 ## Open follow-ups
 
-- Record the Ollama generator cassette `generate_ollama_622.yaml` (`test_record.py`), run the `gpu` generator tests and calibrate `prompt_overflow` on the first GPU run (D623): lead, under `pruefstand-lock`.
+- `prompt_overflow` is calibrated on real Ollama numbers (T3.6b, D960): the ChatML + empty-think wrapper is exact; re-record `tests/fixtures/budget_calibration.json` with `RAG_RECORD=1` under `pruefstand-lock` after an Ollama or model change.
+- Tier-2 gate config (T6.2a): runner `timeout_s` > 300 s or `concurrency` <= 4 and no retry of a read timeout (D624, D961); rag-demo cancels the upstream generation when the client disconnects.
 - Build and Trivy-scan the rag-demo image in `build-images.yml`, push and sign it: T6.2b (`push-sign`).
 - Check the TEI weights SHA-256 (`live-models.yaml` `weights_sha256`) in the live stack, not only in the integration fixture: T1.12.
 - Measure the p95 margin (14.2 s against 15 s on the VM) and the guard-on injection result on the hosted runner: T1.12.
