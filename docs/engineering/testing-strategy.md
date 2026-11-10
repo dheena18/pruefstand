@@ -243,7 +243,7 @@ every unknown path); the Try-it matrix delays responses only through `e2e/delay.
 in-container `POST /v1/_test/reset` before each of the 8 combinations (N5.4, P5.4); the `basepath-smoke` row is
 "Playwright `populated-basepath-1280` · `basePath` smoke at `/pruefstand/` · every UI PR, job `basepath-smoke` in
 `ui / check`". `make ui-check` runs lint, typecheck, both fixture-set builds, the fixture-state check and Vitest with the
-`src/lib` coverage gate; T8.3 adds Playwright. T8.3 refreshes this section.
+`src/lib` coverage gate and the PR Playwright projects (`pnpm exec playwright test`); `make ui-basepath` runs the `basePath` smoke, `make ui-update-snapshots` writes visual baselines in the Playwright container, `make ui-lighthouse` runs Lighthouse CI. Nightly-only: `playwright-extended` (WebKit, mobile, visual) and `lighthouse` (informational until M7). The tier-2 fixture rows are synthetic (D1025).
 
 ### 3.11 Code mutation testing (mutmut, nightly)
 - Targets `pruefstand/gate/` and `pruefstand/metrics/`; score reported (target ≥ 80 %), survivors become issues; never blocks a PR.

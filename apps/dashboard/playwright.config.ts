@@ -83,6 +83,8 @@ export default defineConfig({
   testDir: "./e2e",
   testMatch: "**/*.spec.ts",
   outputDir: "test-results",
+  snapshotPathTemplate: "e2e/__screenshots__/{projectName}/{testFilePath}/{arg}{ext}",
+  timeout: 60_000,
   fullyParallel: true,
   forbidOnly: ci,
   retries: ci ? 1 : 0,

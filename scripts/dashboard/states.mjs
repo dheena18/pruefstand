@@ -19,11 +19,18 @@ export const T81_STATES = {
   "S-CASES-PRUNED": (e, c) => !c.published.has(e.run_id),
 };
 
-/** Rows that need tier-2 runs and land with T8.3 (allow-listed until then). */
-export const T83_STATES = [
-  "S-PASS (tier 2)", "S-WARN", "S-FAIL", "S-INSUFFICIENT", "S-HARD-FAIL (tier 2)",
-  "S-JUDGE-FALLBACK", "S-JUDGE-DEGRADED", "S-JUDGE-DRIFT", "S-UNSUPPORTED",
-];
+/** The tier-2 rows (T8.3): synthetic runs from `derive_tier2.mjs`, `stack` is `a40`. */
+export const T83_STATES = {
+  "S-PASS (tier 2)": (e) => e.stack === "a40" && e.status === "pass" && !e.judge_fallback && !e.judge_degraded && !e.judge_drift,
+  "S-WARN": (e) => e.stack === "a40" && e.status === "warn",
+  "S-FAIL": (e, c) => e.stack === "a40" && e.status === "fail" && c.gate(e)?.hard_fails.length === 0,
+  "S-INSUFFICIENT": (e, c) => e.stack === "a40" && c.gate(e)?.decisions.some((d) => d.status === "insufficient_data") === true,
+  "S-HARD-FAIL (tier 2)": (e, c) => e.stack === "a40" && e.status === "fail" && c.gate(e)?.hard_fails.length > 0,
+  "S-JUDGE-FALLBACK": (e) => e.stack === "a40" && e.judge_fallback === true,
+  "S-JUDGE-DEGRADED": (e) => e.stack === "a40" && e.judge_degraded === true,
+  "S-JUDGE-DRIFT": (e) => e.stack === "a40" && e.judge_drift === true,
+  "S-UNSUPPORTED": (e) => e.stack === "a40" && e.status === "unsupported_config",
+};
 
 export function context(dir) {
   const index = readJson(path.join(dir, "runs/index.json"));
@@ -40,7 +47,7 @@ export function context(dir) {
 export function statesOf(dir) {
   const ctx = context(dir);
   const found = {};
-  for (const [state, test] of Object.entries(T81_STATES)) {
+  for (const [state, test] of Object.entries({ ...T81_STATES, ...T83_STATES })) {
     found[state] = ctx.index.runs.filter((e) => test(e, ctx)).map((e) => e.run_id);
   }
   found["L-POPULATED"] = ctx.index.runs.length > 0 ? ["runs/index.json"] : [];

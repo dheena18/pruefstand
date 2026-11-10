@@ -11,6 +11,7 @@ export default tseslint.config(
             ".sets/**",
             "coverage/**",
             "public/**",
+            "lighthouserc.cjs",
             "fixtures/**",
             "src/types/generated/**",
             "next-env.d.ts",

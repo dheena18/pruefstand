@@ -7,6 +7,8 @@ on:
     types: [opened, synchronize, reopened]
   push:
     branches: [main]
+  schedule:
+    - cron: "37 3 * * *" # nightly: WebKit/mobile projects, visual regression, Lighthouse (informational until M7)
 
 permissions: {}
 
@@ -177,7 +179,7 @@ jobs:
           node-version: "22"
       - name: Install
         run: corepack enable && (cd apps/dashboard && pnpm install --frozen-lockfile)
-      - name: Install Chromium (Playwright 1.49.1)
+      - name: Install Chromium (Playwright 1.56.1)
         run: (cd apps/dashboard && pnpm exec playwright install --with-deps chromium)
       - name: Build both fixture sets
         run: |
@@ -210,7 +212,7 @@ jobs:
           node-version: "22"
       - name: Install
         run: corepack enable && (cd apps/dashboard && pnpm install --frozen-lockfile)
-      - name: Install Chromium (Playwright 1.49.1)
+      - name: Install Chromium (Playwright 1.56.1)
         run: (cd apps/dashboard && pnpm exec playwright install --with-deps chromium)
       - name: Build with basePath=/pruefstand, serve under /pruefstand/, run the smoke (N5.5)
         run: make ui-basepath
@@ -238,3 +240,74 @@ jobs:
         run: |
           echo "$NEEDS" | jq -r 'to_entries[] | "\(.key): \(.value.result)"'
           echo "$NEEDS" | jq -e 'all(.[]; .result == "success")' > /dev/null
+
+  playwright-extended:
+    name: playwright-extended
+    if: github.event_name == 'schedule'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    continue-on-error: true
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: "22"
+      - name: Install
+        run: corepack enable && (cd apps/dashboard && pnpm install --frozen-lockfile)
+      - name: Install browsers (Playwright 1.56.1)
+        run: (cd apps/dashboard && pnpm exec playwright install --with-deps chromium webkit)
+      - name: Build both fixture sets
+        run: |
+          scripts/dashboard/build_set.sh populated
+          scripts/dashboard/build_set.sh empty
+      - name: WebKit and mobile projects, then the visual matrix
+        env:
+          UI_EXTENDED: "1"
+          UI_VISUAL: "1"
+        run: (cd apps/dashboard && pnpm exec playwright test)
+      - name: Upload the Playwright report and diffs
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: playwright-extended-report
+          path: |
+            apps/dashboard/playwright-report
+            apps/dashboard/test-results
+          retention-days: 14
+
+  lighthouse:
+    name: lighthouse
+    if: github.event_name == 'schedule'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    continue-on-error: true
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: "22"
+      - name: Install
+        run: corepack enable && (cd apps/dashboard && pnpm install --frozen-lockfile)
+      - name: Install Chromium (Playwright 1.56.1)
+        run: (cd apps/dashboard && pnpm exec playwright install --with-deps chromium)
+      - name: Build the populated set
+        run: scripts/dashboard/build_set.sh populated
+      - name: Lighthouse CI (budgets of ui-spec 14.3; @lhci/cli is fetched on demand, not a dependency)
+        run: |
+          export CHROME_PATH="$(cd apps/dashboard && node -e "process.stdout.write(require('@playwright/test').chromium.executablePath())")"
+          (cd apps/dashboard && npx --yes @lhci/cli@0.14.0 autorun --config=lighthouserc.cjs)
+      - name: Upload the Lighthouse report
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: lighthouse-report
+          path: apps/dashboard/lighthouse-report
+          retention-days: 14
