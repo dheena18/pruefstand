@@ -192,9 +192,13 @@ class HttpTargetAdapter(TargetAdapter):
         try:
             async with asyncio.timeout(self._timeout_s):
                 status, data = await self._exchange(method, path, body)
-        except (TimeoutError, httpx.TimeoutException) as exc:
-            msg = f"{what}: timed out after {self._timeout_s:g}s"
+        except (httpx.ConnectTimeout, httpx.PoolTimeout) as exc:
+            msg = f"{what}: connection failed ({type(exc).__name__})"
             raise TargetError(msg, transient=True) from exc
+        except (TimeoutError, httpx.TimeoutException) as exc:
+            # D624: a read timeout is never retried (the target may still be generating)
+            msg = f"{what}: timed out after {self._timeout_s:g}s"
+            raise TargetError(msg, transient=False) from exc
         except httpx.HTTPError as exc:
             if _is_cert_error(exc):
                 msg = f"{what}: TLS certificate verification failed"

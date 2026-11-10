@@ -100,7 +100,7 @@ async def test_non_transient_error_is_not_retried_and_metrics_are_error(
     assert results.manifest.complete is True
 
 
-async def test_timeout_on_every_call_is_an_error_after_two_attempts(
+async def test_a_timeout_is_an_error_after_one_attempt(
     router: respx.MockRouter, adapter: HttpTargetAdapter
 ) -> None:
     started: list[int] = []
@@ -113,8 +113,8 @@ async def test_timeout_on_every_call_is_an_error_after_two_attempts(
     router.post("/v1/query").mock(side_effect=hang)
     runner = make_runner(adapter, timeout_s=0.05, max_retries=1)
     results = await run_cases(runner, [make_case(0)])
-    assert len(started) == 2
-    assert results.records[0].attempt == 2
+    assert len(started) == 1  # D624: a read timeout is not retried
+    assert results.records[0].attempt == 1
     assert results.records[0].error is not None
     assert values_of(results, 0)["error_rate"].value == 1.0
 

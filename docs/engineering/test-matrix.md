@@ -283,7 +283,7 @@ owning module's unit test dir (`pt/unit/<module>/`, `rd/unit/…`).
 | `robust_pr` via `/v1/retrieve` (T5.2b part) | `runner.runner` | T5.2b | `test_runner_judges.py` | no judge call for `mode=retrieve` records | covered |
 | Infra errors in the runner (**R11** D226; T6.2a part) | `runner.runner` | T6.2a | `pg/tests/test_health.py` | infra failure → no case scored as a candidate error | covered |
 | `finalise_refusal` (R9 D9-15) | `runner.refusal` | T5.2b | `test_runner_judges.py` | ambiguous answer, refusal judge says 1, `expect_refusal` → `refusal_correct == 1.0`, `refused_source == "judge"`; phrase match → source `phrase` | covered |
-| Retry policy | `runner.retry` | T1.8 | `test_retry.py`, `test_runner.py` | exponential backoff with seeded jitter (0-25 %), `max_retries + 1` tries, transient and timeouts only, error text ≤ 500 chars, bugs propagate | covered |
+| Retry policy | `runner.retry` | T1.8 | `test_retry.py`, `test_runner.py` | exponential backoff with seeded jitter (0-25 %), `max_retries + 1` tries, transient errors only, a timeout never retried (D624, T6.2a: `test_a_timeout_is_not_retried`, `test_a_timeout_is_an_error_after_one_attempt`; adapter read timeout non-transient, connect timeout transient), error text ≤ 500 chars, bugs propagate | covered |
 | `route_case` (T1.8; R11 D218, R13 P3.4) | `runner.routing` | T1.8 | `test_runner_modes.py` | `robust_pr` → retrieve; `core` answerable outside the subset → retrieve; injection / unanswerable / smoke → answer | covered |
 | Target cache entries carry the mode (T1.8, D366) | `runner.target_call` | T1.8 | `test_runner_modes.py`, `test_runner.py` | answer entry is a miss for a retrieve-only case; errors never cached; hit → `cached=True`, adapter not called | covered |
 

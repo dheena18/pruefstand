@@ -1,4 +1,4 @@
-"""Retry policy of target calls: transient errors and timeouts only, exponential backoff."""
+"""Retry policy of target calls: transient errors only (never a timeout, D624), with backoff."""
 
 import asyncio
 from collections.abc import Awaitable, Callable
@@ -53,9 +53,11 @@ async def call_with_retry[T](
     rng: np.random.Generator,
     sleep: Callable[[float], Awaitable[None]] = asyncio.sleep,
 ) -> Attempts[T]:
-    """Run ``call`` with a per-try timeout; retry timeouts and ``TargetError(transient=True)``.
+    """Run ``call`` with a per-try timeout; retry only ``TargetError(transient=True)``.
 
-    There are at most ``max_retries + 1`` tries. A non-transient ``TargetError`` ends at once.
+    There are at most ``max_retries + 1`` tries. A non-transient ``TargetError`` and a timeout
+    end at once: the tier-2 generator serialises requests, so a retried timeout would only queue a
+    duplicate generation (D624; rag-demo cancels the upstream call on client disconnect, D961).
     Other exceptions (bugs) propagate; so does cancellation.
 
     Args:
@@ -74,7 +76,7 @@ async def call_with_retry[T](
         try:
             value = await asyncio.wait_for(call(), timeout_s)
         except TimeoutError:
-            error, transient = f"timeout after {timeout_s:g} s", True
+            error, transient = f"timeout after {timeout_s:g} s", False
         except TargetError as exc:
             error, transient = _clip(str(exc) or type(exc).__name__), exc.transient
         else:

@@ -96,7 +96,7 @@ async def test_total_timeout_bounds_a_slow_drip(router: respx.MockRouter) -> Non
     with pytest.raises(TargetError, match="timed out") as excinfo:
         await adapter.query(REQ)
     await adapter.aclose()
-    assert excinfo.value.transient is True
+    assert excinfo.value.transient is False  # D624: a read timeout is never retried
     assert time.monotonic() - started < 8.0  # wall time is the point; 16x the timeout, < the drip
 
 
@@ -185,3 +185,13 @@ async def test_invalid_json_excerpt_redacts_an_echoed_token(
     await adapter.aclose()
     assert "tok-echo-987654321" not in str(excinfo.value)
     assert "<html>" in str(excinfo.value)
+
+
+async def test_connect_timeout_stays_transient(
+    router: respx.MockRouter, adapter: HttpTargetAdapter
+) -> None:
+    # D624: only a read timeout ends at once; a connect timeout never reached the target
+    router.post("/v1/query").mock(side_effect=httpx.ConnectTimeout("connect"))
+    with pytest.raises(TargetError, match="connection failed") as excinfo:
+        await adapter.query(REQ)
+    assert excinfo.value.transient is True

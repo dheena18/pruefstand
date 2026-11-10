@@ -43,7 +43,7 @@ budget:
   max_tokens_per_run: 3000000
 runner:
   concurrency: 8
-  timeout_s: 60
+  timeout_s: 360                  # D624: > 300 s, the tier-2 generator queue (rag-demo read timeout)
   max_retries: 3
   backoff_s: 1.0
 baseline_store:

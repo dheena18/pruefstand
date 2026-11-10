@@ -173,7 +173,6 @@ def test_tier2_runner_must_outwait_the_generator_queue(
     assert (violations(tmp_path) == []) is ok
 
 
-@pytest.mark.xfail(strict=True, reason="T6.2a, D624: root template runs core with 8 x 60 s")
 def test_root_pruefstand_yaml_follows_the_tier2_runner_rule() -> None:
     """The executor runs main's root ``pruefstand.yaml`` (core split); T6.2a must fix its runner."""
     cfg = load_config(ROOT / "pruefstand.yaml")
