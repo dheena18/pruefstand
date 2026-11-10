@@ -291,6 +291,8 @@ llm-proxy (trusted, T6.2a; module infra/gate-executor/llm-proxy/llm_proxy.py; D2
     - keep_alive: removed from the body (Ollama keeps the preload's keep_alive),
     - load-time keys other than num_ctx (num_gpu, num_batch, num_thread, use_mmap, main_gpu, low_vram, any key not
       in {num_ctx, temperature, seed, top_p, num_predict}): dropped, so no request can force a reload;
+    - think: POST /api/chat is always forwarded with "think": false (absent or any other value is rewritten;
+      D1076, CLAUDE.md §5 / D95: the gate never depends on the candidate config for this); /api/embed unchanged;
     temperature, seed, top_p and num_predict pass through unchanged when inside the catalogue option_bounds of that
     tag; a missing key gets the catalogue default; a value outside the bounds -> 403 {"error": "option out of
     bounds: <key>"}. Catalogue values are defaults, not overrides (mutation M17 and the T6.3 churn arms work)

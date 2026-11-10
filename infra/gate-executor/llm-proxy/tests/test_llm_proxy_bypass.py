@@ -117,3 +117,24 @@ def test_overflowing_numbers_are_rejected(number: str) -> None:
     # D1074: 1e400 parses to inf; it must be a 403, never an uncaught dump error
     raw = f'{{"model": "{GEN}", "messages": [], "format": {{"maximum": {number}}}}}'
     assert _rejected("/api/chat", raw)
+
+
+@pytest.mark.parametrize("think", ["true", '"high"', '"low"', "1", "null", "{}", "false"])
+def test_chat_think_is_forced_off(think: str) -> None:
+    # D1076: thinking is always off on the gate, whatever the candidate config says (CLAUDE.md §5)
+    verdict = _post("/api/chat", f'{{"model": "{GEN}", "messages": [], "think": {think}}}')
+    assert isinstance(verdict, Forward)
+    assert verdict.body is not None
+    assert json.loads(verdict.body)["think"] is False
+
+
+def test_absent_think_becomes_false_and_embed_is_unchanged() -> None:
+    verdict = _post("/api/chat", f'{{"model": "{GEN}", "messages": []}}')
+    assert isinstance(verdict, Forward)
+    assert verdict.body is not None
+    assert json.loads(verdict.body)["think"] is False
+    embed = _post("/api/embed", f'{{"model": "{EMB}", "input": "x"}}')
+    assert isinstance(embed, Forward)
+    assert embed.body is not None
+    assert "think" not in json.loads(embed.body)
+    assert _rejected("/api/embed", f'{{"model": "{EMB}", "input": "x", "think": false}}')

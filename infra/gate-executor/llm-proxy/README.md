@@ -14,6 +14,9 @@ Environment (rows in `docs/ops/secrets.md`): `PRUEFSTAND_CANDIDATE_API_KEY` (req
 `{tag: {"role", "options", "option_bounds"}}` for the run's generator + embedding tags, written by the orchestrator
 from `infra/gpu/models.yaml`; a judge tag refuses to start), `LLM_PROXY_UPSTREAM`.
 
+Thinking is always off (CLAUDE.md §5, D95): `POST /api/chat` is forwarded with `think: false` whatever the
+candidate sends, absent included (D1076); `/api/embed` is unchanged.
+
 Option policy: `num_ctx` = catalogue value; `keep_alive` and every other load-time or unknown key dropped;
 `temperature`, `top_p`, `num_predict` pass inside the catalogue `option_bounds` (else 403
 `option out of bounds: <key>`); `seed` passes when it is an integer; missing keys get the catalogue default; a key

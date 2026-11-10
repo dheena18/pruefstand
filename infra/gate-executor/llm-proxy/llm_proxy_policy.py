@@ -10,6 +10,7 @@ Rules (the single definition is interfaces 1.5):
 * only ``POST /api/chat`` (generator tags), ``POST /api/embed`` (embed tags), ``GET /api/tags``;
 * a bearer key compared in constant time; an empty configured key rejects everything;
 * the body's ``model`` must be one of the run's tags (judges are never in the policy, ADR-0018);
+* ``/api/chat`` always gets ``think: false`` (D1076, CLAUDE.md §5);
 * ``num_ctx`` is always the catalogue value; ``keep_alive`` and every other load-time or unknown
   option key are dropped; ``temperature``, ``top_p`` and ``num_predict`` pass through inside the
   catalogue ``option_bounds`` (else 403 ``option out of bounds: <key>``); ``seed`` passes when it is
@@ -212,6 +213,8 @@ def decide(  # noqa: PLR0911 - one return per rejection reason keeps the rule ta
         return options
     data.pop("keep_alive", None)
     data["options"] = options
+    if role == "generator":
+        data["think"] = False  # D1076: thinking always off, whatever the candidate sends
     try:
         return Forward(method, path, dump(data))
     except StrictJSONError as err:
