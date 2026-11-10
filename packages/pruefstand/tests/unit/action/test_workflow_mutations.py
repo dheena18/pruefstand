@@ -6,6 +6,7 @@ from testsupport.workflow_checks import (
     check_cache_saves,
     check_comment_checkout,
     check_comment_jobs,
+    check_fingerprint_rebaseline,
     check_marker,
     check_no_gate_status,
     check_no_judge_mode,
@@ -62,3 +63,17 @@ def test_a_secret_and_a_judge_mode_are_found() -> None:
 def test_the_checker_comes_from_the_base_sha() -> None:
     old = "ref: ${{ github.event.pull_request.base.sha }}"
     assert mutated(check_comment_checkout, old, "ref: ${{ github.sha }}")
+
+
+def test_dropping_the_fingerprint_check_fails() -> None:
+    old = "uv run pruefstand baseline fingerprint-check"
+    assert mutated(check_fingerprint_rebaseline, old, "uv run pruefstand version #")
+
+
+def test_a_gate_error_must_still_fail_the_step() -> None:
+    old = 'if [ "$gate_rc" -gt 1 ]; then exit "$gate_rc"; fi'
+    assert mutated(check_fingerprint_rebaseline, old, "true")
+
+
+def test_the_mismatch_note_must_stay_in_the_comment() -> None:
+    assert mutated(check_fingerprint_rebaseline, "Baseline not comparable:", "Note:")

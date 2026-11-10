@@ -87,6 +87,29 @@ def check_baseline_lookup(doc: Doc, _text: str) -> list[str]:
     return out
 
 
+def check_fingerprint_rebaseline(doc: Doc, _text: str) -> list[str]:
+    """A baseline of another eval_fingerprint is treated as no baseline, not as an error (D1000)."""
+    gate = next((s for _, s in all_steps(doc) if s.get("id") == "gate"), None)
+    if gate is None:
+        return ["no gate step"]
+    run = str(gate.get("run", ""))
+    out = []
+    for part in (
+        "pruefstand baseline fingerprint-check",
+        'case "$verdict" in',
+        'base=""',
+        "self=true",
+        "Baseline not comparable:",
+    ):
+        if part not in run:
+            out.append(f"the gate step lacks {part}")
+    if run.count("pruefstand gate ") != 1 or "|| gate_rc=$?" not in run:
+        out.append("the gate command must run once and keep its exit code")
+    if 'if [ "$gate_rc" -gt 1 ]; then exit "$gate_rc"; fi' not in run:
+        out.append("the gate step no longer fails on a gate error")
+    return out
+
+
 def check_uploads(doc: Doc, _text: str) -> list[str]:
     out = []
     for job_id, step in all_steps(doc):
