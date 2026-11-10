@@ -103,13 +103,3 @@ paths = [
 regexes = [
   '''0123456789abcdef''',
 ]
-
-[[allowlists]]
-description = "budget calibration fixture: a SHA-256 of the tokenizer file under the key tokenizer_sha256 (a public checksum, not a credential); history scan flagged it as generic-api-key"
-condition = "AND"
-paths = [
-  '''apps/rag-demo/tests/fixtures/budget_calibration\.json''',
-]
-regexes = [
-  '''tokenizer_sha256''',
-]
