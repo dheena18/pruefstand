@@ -4,8 +4,10 @@ The heuristic runs on real German reference answers; the endpoint call is checke
 scripted loopback server (request shape only: no model is behind it, so no knowledge claim is made).
 """
 
+import http.client
 import json
 from pathlib import Path
+from typing import NoReturn
 
 import pytest
 from closed_book import (
@@ -22,6 +24,7 @@ from testsupport.loopback_script import serve_script
 from testsupport.pipeline_support import case_rows, write_dataset
 from testsupport.run_builders import make_case
 
+from pruefstand.core.errors import PruefstandError
 from pruefstand.core.models.testcase import TestCase
 
 MODEL = "ollama/qwen3.8:27b-q8_0"
@@ -185,3 +188,55 @@ def test_a_failing_endpoint_exits_1(
     assert main(["--model", MODEL, "--dataset", str(directory)]) == 1
     assert "model call failed" in capsys.readouterr().err
     assert "tags" not in (directory / "core.jsonl").read_text("utf-8").replace('"tags": []', "")
+
+
+def test_a_citation_does_not_eat_the_first_letter_of_the_next_word() -> None:
+    words = content_words("Laut § 622 vier Wochen zum Monatsende")
+    assert words == content_words("Laut vier Wochen zum Monatsende")
+    assert "vier" in content_words("Laut § 622 vier Wochen zum Monatsende")
+
+
+def test_a_negated_answer_is_not_the_same_statement() -> None:
+    reference = "Eine Kündigung ist zulässig."
+    case = kuendigung().model_copy(update={"reference_answer": reference})
+    assert knows_closed_book(case, "Nach § 622 Abs. 2 BGB ist eine Kündigung zulässig.")
+    assert not knows_closed_book(case, "Nach § 622 Abs. 2 BGB ist eine Kündigung nicht zulässig.")
+
+
+def test_a_negation_in_the_reference_must_be_in_the_answer() -> None:
+    reference = "Eine Kündigung ist nicht zulässig."
+    case = kuendigung().model_copy(update={"reference_answer": reference})
+    assert not knows_closed_book(case, "Nach § 622 Abs. 2 BGB ist eine Kündigung zulässig.")
+    assert knows_closed_book(case, "Nach § 622 Abs. 2 BGB ist eine Kündigung nicht zulässig.")
+
+
+def test_a_failed_call_keeps_the_finished_part_of_the_run(tmp_path: Path) -> None:
+    directory = _dataset(tmp_path, [kuendigung(0), kuendigung(1), kuendigung(2)])
+    answers = iter([GOOD, GOOD])
+
+    def ask(_question: str) -> str:
+        try:
+            return next(answers)
+        except StopIteration:
+            msg = "model call failed"
+            raise PruefstandError(msg) from None
+
+    assert main(["--model", MODEL, "--dataset", str(directory)], asker=ask) == 1
+    rows = [json.loads(x) for x in (directory / "core.jsonl").read_text("utf-8").splitlines()]
+    assert [bool(r["tags"]) for r in rows] == [True, True, False]
+
+
+@pytest.mark.parametrize(
+    "error", [ConnectionResetError, http.client.IncompleteRead, http.client.RemoteDisconnected]
+)
+def test_connection_errors_while_reading_are_exit_1(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, error: type[Exception]
+) -> None:
+    directory = _dataset(tmp_path, [kuendigung()])
+    monkeypatch.setenv("OLLAMA_GPU0_URL", "http://127.0.0.1:9")
+
+    def broken(*_a: object, **_k: object) -> NoReturn:
+        raise error(b"") if error is http.client.IncompleteRead else error()
+
+    monkeypatch.setattr("closed_book.urllib.request.urlopen", broken)
+    assert main(["--model", MODEL, "--dataset", str(directory)]) == 1

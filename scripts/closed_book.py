@@ -13,18 +13,19 @@ content words. This is a deterministic heuristic with no judge (it may be redone
 after T5.2b); the tags are an informational slice and never gate. The tag names the model, so a
 new generator is recomputed, not reused: ``--retag`` removes the ``closed_book:*`` tags of other
 model ids first. The split file is rewritten in place (sorted by id); the manifest does not
-change. The answer text is never stored.
+change. The file is also written every 10 cases and when a call fails, so a failure keeps the
+finished part (a rerun asks everything again). The answer text is never stored.
 
 Exit codes: 0 done (prints ``tagged=<k>/<n>``), 1 a model call failed, 2 refused.
 """
 
 import argparse
+import http.client
 import json
 import os
 import re
 import sys
 import unicodedata
-import urllib.error
 import urllib.request
 from collections.abc import Callable, Sequence
 from pathlib import Path
@@ -45,6 +46,7 @@ PROMPT_VERSION = "v1"
 TAG_PREFIX = "closed_book:"
 RECALL_MIN = 0.8
 TIMEOUT_S = 300
+CHECKPOINT_EVERY = 10
 Asker = Callable[[str], str]
 """Question in, answer text out: the one place a model is called (injectable for tests)."""
 
@@ -54,18 +56,19 @@ def _words(text: str) -> frozenset[str]:
 
 
 _STOPWORDS = _words(
-    """einen eines einer einem eine sind wird werden wurde wurden oder auch sowie nicht kann koennen
+    """einen eines einer einem eine sind wird werden wurde wurden oder auch sowie kann koennen
     können muss müssen mussen nach dass diese dieser dieses diesen jeweils durch unter über ueber
     gegen ohne sich dann wenn aber haben hat sein seine seiner zwischen bereits ferner dabei dafür
     that this with from have been will shall must also their there which when than into
     under over"""
 )
 _CITATION = re.compile(
-    r"(?:§§?|Art\.?|Artikel)\s*\d+\s*[a-z]?"
+    r"(?:§§?|Art\.?|Artikel)\s*\d+(?:[a-z]\b)?"
     r"(?:\s*(?:Abs\.|Absatz|S\.|Satz|Nr\.|Nummer|lit\.)\s*\w+)*"
     r"(?:\s+[A-ZÄÖÜ]{2,}[A-Za-zäöü]*)?"
 )
 _TOKEN = re.compile(r"[^\W_]+")
+_NEGATION = re.compile(r"nicht|nie|niemals|kein\w*")
 _MIN_WORD = 4
 _ENDINGS = ("ern", "en", "em", "er", "es", "e", "n", "s")
 
@@ -119,6 +122,11 @@ def content_recall(reference: str, answer: str) -> float:
     return len(wanted & content_words(answer)) / len(wanted) if wanted else 0.0
 
 
+def _negations(text: str) -> frozenset[str]:
+    """The negation words (``nicht``, ``kein*``, ``nie``) of ``text``, casefolded."""
+    return frozenset(w for w in _TOKEN.findall(text.casefold()) if _NEGATION.fullmatch(w))
+
+
 def knows_closed_book(case: TestCase, answer: str) -> bool:
     """Whether ``answer`` shows the model knew the case: gold citation matched AND recall >= 0.8.
 
@@ -135,6 +143,8 @@ def knows_closed_book(case: TestCase, answer: str) -> bool:
     cited = extract_citations(answer)
     if not any(citations_match(p, g) for p in cited for g in gold):
         return False
+    if not _negations(answer) <= _negations(case.reference_answer):
+        return False  # the answer denies what the reference does not: not the same statement
     return content_recall(case.reference_answer, answer) >= RECALL_MIN
 
 
@@ -192,7 +202,7 @@ def default_asker(model: str) -> Asker:
         try:
             with urllib.request.urlopen(request, timeout=TIMEOUT_S) as response:  # noqa: S310
                 data = json.loads(response.read(8_000_000))
-        except (urllib.error.URLError, TimeoutError, json.JSONDecodeError) as exc:
+        except (OSError, http.client.HTTPException, json.JSONDecodeError) as exc:
             msg = f"model call failed ({type(exc).__name__})"
             raise PruefstandError(msg) from exc
         return str(data.get("message", {}).get("content", ""))
@@ -201,7 +211,13 @@ def default_asker(model: str) -> Asker:
 
 
 def tag_cases(
-    cases: Sequence[TestCase], model: str, ask: Asker, *, drop_other_models: bool
+    cases: Sequence[TestCase],
+    model: str,
+    ask: Asker,
+    *,
+    drop_other_models: bool,
+    checkpoint: Callable[[list[TestCase]], None] | None = None,
+    every: int = CHECKPOINT_EVERY,
 ) -> list[TestCase]:
     """Ask every answerable case closed-book and return the cases with updated tags.
 
@@ -210,6 +226,9 @@ def tag_cases(
         model: The generator model id (names the tag).
         ask: The model call.
         drop_other_models: ``--retag``.
+        checkpoint: Called with the full case list (done ones tagged, the rest untouched) every
+            ``every`` cases and when a model call fails, so one failure does not lose the run.
+        every: Checkpoint interval.
 
     Returns:
         The cases in input order; unanswerable cases are not asked and lose no tag but
@@ -218,8 +237,15 @@ def tag_cases(
     out: list[TestCase] = []
     for case in cases:
         askable = case.reference_answer is not None and not case.expect_refusal
-        knew = askable and knows_closed_book(case, ask(case.question))
+        try:
+            knew = askable and knows_closed_book(case, ask(case.question))
+        except PruefstandError:
+            if checkpoint is not None:
+                checkpoint([*out, *cases[len(out) :]])
+            raise
         out.append(retag(case, model, knew=knew, drop_other_models=drop_other_models))
+        if checkpoint is not None and len(out) % every == 0:
+            checkpoint([*out, *cases[len(out) :]])
     return out
 
 
@@ -248,7 +274,13 @@ def _run(args: argparse.Namespace, asker: Asker | None) -> str:
     if problems:
         raise DatasetError(problems[0])
     ask = asker or default_asker(args.model)
-    tagged = tag_cases(cases, args.model, ask, drop_other_models=args.retag)
+    tagged = tag_cases(
+        cases,
+        args.model,
+        ask,
+        drop_other_models=args.retag,
+        checkpoint=lambda rows: write_split_file(path, rows),
+    )
     write_split_file(path, tagged)
     mine = TAG_PREFIX + args.model
     return f"tagged={sum(mine in c.tags for c in tagged)}/{len(tagged)}"
