@@ -1,23 +1,35 @@
 #!/usr/bin/env bash
-# pruefstand-lock <cmd> [args...]: run <cmd> while holding the host GPU lock (Y1, D211/D212).
+# pruefstand-lock <cmd> [args...]: run <cmd> while holding the host GPU lock (Y1, D211/D212; T3.1d, D952).
 #
 # Installed to /usr/local/bin/pruefstand-lock by setup-users.sh. The owner, coding agents and the
 # executor's orchestrator all use the same file, so dev GPU work and gate jobs exclude each other.
-# The lock is held until <cmd> (and anything inheriting the lock's file description) exits. With PRUEFSTAND_LOCK_HELD=1 already set the
-# command runs at once (nested call). GPU_LOCK_TIMEOUT_S must be numeric (exit 64 otherwise).
-#   exit 75 "gpu.lock busy"   no lock within ${GPU_LOCK_TIMEOUT_S:-7200} seconds
-#   exit 64                   no command given
-#   exit 2                    gpu.lock missing (run infra/vm/setup-users.sh)
+# The lock is taken IN-PROCESS (/usr/bin/python3: flock(2) on the lock file, then exec of <cmd>): there is no helper
+# process between the caller and <cmd>, so <cmd> IS the process that holds the lock. Consequences: a signal sent to the
+# pid of pruefstand-lock reaches <cmd> itself (nothing is orphaned while it keeps the lock), the exit code is the
+# one of <cmd> with no remapping, and the pruefstand-cluster wrapper finds the holder among its ancestors. The lock is
+# held until <cmd> and every process that inherited the lock's file descriptor have exited. The command's environment
+# and signal dispositions are left as the caller had them (python's locale coercion of LC_CTYPE is undone, an ignored
+# SIGPIPE/SIGXFSZ stays ignored, otherwise they are default). With PRUEFSTAND_LOCK_HELD=1 already set the command runs at
+# once (nested call). GPU_LOCK_TIMEOUT_S must be a whole number of at most 9 digits (exit 64 otherwise); 0 means do not
+# wait.
+#   exit 75 "gpu.lock busy"   no lock within ${GPU_LOCK_TIMEOUT_S:-7200} seconds (printed only by this wrapper)
+#   exit 64                   no command given / bad GPU_LOCK_TIMEOUT_S
+#   exit 2                    gpu.lock missing or not openable (run infra/vm/setup-users.sh)
+#   exit 78                   /usr/bin/python3 missing (install python3)
+#   exit 127 / 126            <cmd> not found / exists but cannot be executed (checked before waiting for the lock)
+#   exit 130                  interrupted (Ctrl-C) while waiting for the lock
 #   otherwise                 the exit code of <cmd>
-# PRUEFSTAND_LOCK_DIR exists only so tests can point at a temp dir; production never sets it.
+# PRUEFSTAND_LOCK_DIR and PRUEFSTAND_LOCK_PYTHON exist only so tests can point at a temp dir / a fake interpreter;
+# production never sets them.
 # Limits (advisory lock, not a security boundary): PRUEFSTAND_LOCK_HELD and PRUEFSTAND_LOCK_DIR are unauthenticated
-# environment variables, so any process of the owner can skip or redirect the lock; fd 9 is inherited by daemons
-# started under the lock, which then keep it held after <cmd> returns; the exit codes 64, 75 and 2 can also be
-# returned by the wrapped command itself.
+# environment variables, so any process of the owner can skip or redirect the lock; the lock's file descriptor is
+# inherited by daemons started under the lock, which then keep it held after <cmd> returns; the exit codes 64, 75
+# and 2 can also be returned by the wrapped command itself (then this wrapper prints nothing).
 set -euo pipefail
 
 lock="${PRUEFSTAND_LOCK_DIR:-/var/lib/pruefstand}/gpu.lock"
 timeout_s="${GPU_LOCK_TIMEOUT_S:-7200}"
+py="${PRUEFSTAND_LOCK_PYTHON:-/usr/bin/python3}"
 
 if [ "$#" -lt 1 ]; then
   echo "usage: pruefstand-lock <cmd> [args...]" >&2
@@ -29,9 +41,32 @@ case "$timeout_s" in
     exit 64
     ;;
 esac
+if [ "${#timeout_s}" -gt 9 ]; then
+  echo "pruefstand-lock: GPU_LOCK_TIMEOUT_S is too large (at most 9 digits)" >&2
+  exit 64
+fi
 # Already inside a pruefstand-lock (or a job that holds the lock): do not wait for ourselves.
 if [ "${PRUEFSTAND_LOCK_HELD:-}" = 1 ]; then
   exec -- "$@"
+fi
+# A missing command is reported at once (127, like the shell), one that cannot be executed as 126, instead of after
+# waiting for the lock.
+if [[ $1 == */* ]]; then
+  if [ ! -e "$1" ]; then
+    echo "pruefstand-lock: $1: command not found" >&2
+    exit 127
+  fi
+  if [ -d "$1" ] || [ ! -x "$1" ]; then
+    echo "pruefstand-lock: $1: cannot execute" >&2
+    exit 126
+  fi
+elif ! type -P -- "$1" >/dev/null; then
+  echo "pruefstand-lock: $1: command not found" >&2
+  exit 127
+fi
+if [ ! -x "$py" ]; then
+  echo "pruefstand-lock: $py not found; install python3 (it takes the lock in-process)" >&2
+  exit 78
 fi
 if [ ! -e "$lock" ]; then
   echo "pruefstand-lock: $lock does not exist; run infra/vm/setup-users.sh first" >&2
@@ -44,12 +79,65 @@ if ! exec 9<"$lock"; then
   exit 2
 fi
 exec 9<&-
-# flock(1) takes the lock and runs <cmd> as itself or as its child, so the process that holds the lock stays an
-# ANCESTOR of <cmd> until it exits (the pruefstand-cluster wrapper relies on that to tell our lock from someone else's).
-export PRUEFSTAND_LOCK_HELD=1
-rc=0
-flock -w "$timeout_s" -E 75 "$lock" "$@" || rc=$?
-if [ "$rc" -eq 75 ]; then
-  echo "pruefstand-lock: gpu.lock busy (waited ${timeout_s}s)" >&2
+# What the caller had, which python must hand on unchanged: LC_CTYPE (set or unset) and ignored SIGPIPE/SIGXFSZ.
+lc_set=0
+lc_val=""
+if [ "${LC_CTYPE+x}" = x ]; then
+  lc_set=1
+  lc_val="$LC_CTYPE"
 fi
-exit "$rc"
+pipe_ign=0
+xfsz_ign=0
+[ -z "$(trap -p PIPE)" ] || pipe_ign=1
+[ -z "$(trap -p XFSZ)" ] || xfsz_ign=1
+export PRUEFSTAND_LOCK_HELD=1
+# The python code is a fixed string; every value is an argument, never interpolated.
+# -I: no user site or PYTHON* environment influence on the interpreter.
+# shellcheck disable=SC2016  # the program text is meant literally
+exec "$py" -I -c '
+import fcntl, os, signal, sys
+lock, timeout, lc_set, lc_val, pipe_ign, xfsz_ign, *cmd = sys.argv[1:]
+secs = int(timeout)
+# Ctrl-C while waiting ends the process quietly (no traceback) unless the caller ignored SIGINT.
+if signal.getsignal(signal.SIGINT) is signal.default_int_handler:
+    signal.signal(signal.SIGINT, signal.SIG_DFL)
+fd = os.open(lock, os.O_RDONLY)
+
+
+class Busy(Exception):
+    pass
+
+
+def on_alarm(signum, frame):
+    raise Busy
+
+
+try:
+    if secs == 0:
+        fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+    else:
+        signal.signal(signal.SIGALRM, on_alarm)
+        signal.alarm(secs)
+        fcntl.flock(fd, fcntl.LOCK_EX)
+        signal.alarm(0)
+except (Busy, BlockingIOError):
+    sys.stderr.write("pruefstand-lock: gpu.lock busy (waited %ss)\n" % timeout)
+    sys.exit(75)
+os.set_inheritable(fd, True)
+# Undo what python did to the command environment: PEP 538 puts LC_CTYPE=C.UTF-8 into it under the C locale.
+if lc_set == "1":
+    os.environ["LC_CTYPE"] = lc_val
+else:
+    os.environ.pop("LC_CTYPE", None)
+signal.signal(signal.SIGALRM, signal.SIG_DFL)
+signal.signal(signal.SIGPIPE, signal.SIG_IGN if pipe_ign == "1" else signal.SIG_DFL)
+signal.signal(signal.SIGXFSZ, signal.SIG_IGN if xfsz_ign == "1" else signal.SIG_DFL)
+try:
+    os.execvp(cmd[0], cmd)
+except FileNotFoundError:
+    sys.stderr.write("pruefstand-lock: %s: command not found\n" % cmd[0])
+    sys.exit(127)
+except PermissionError:
+    sys.stderr.write("pruefstand-lock: %s: cannot execute\n" % cmd[0])
+    sys.exit(126)
+' "$lock" "$timeout_s" "$lc_set" "$lc_val" "$pipe_ign" "$xfsz_ign" "$@"

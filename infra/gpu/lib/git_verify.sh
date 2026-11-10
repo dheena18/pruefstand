@@ -26,12 +26,18 @@ verify_reviewed_tree() { # repo-root
     echo "exported tree without .git: nothing to compare (commit: $(cat "$repo/COMMIT" 2>/dev/null || echo unknown))"
     return 0
   fi
+  # Residuals of the round-3 review (T3.1d, D954): a url.<base>.insteadOf rewrite could send the fetch to another
+  # repository, and a remapped remote.origin.fetch could point origin/main anywhere. The first is refused; the second
+  # cannot matter because the fetch below names its refspec itself.
+  if [ -n "$("${git[@]}" config --get-regexp '^url\..*\.insteadof$' 2>/dev/null || true)" ]; then
+    _gv_die "a url.<base>.insteadOf rewrite is configured (git config --get-regexp 'url.*insteadof'): refusing"
+  fi
   if [ "$(id -u)" -eq 0 ]; then
     stale="$(find "$repo/.git/FETCH_HEAD" -mmin -10 2>/dev/null || true)"
     if [ -z "$stale" ]; then
       _gv_die "run 'git fetch origin' as yourself first (root does not fetch: it would leave root-owned files in your .git)"
     fi
-  elif ! "${git[@]}" fetch -q origin; then
+  elif ! "${git[@]}" fetch -q origin '+refs/heads/main:refs/remotes/origin/main'; then
     _gv_die "git fetch origin failed"
   fi
   if ! "${git[@]}" rev-parse --verify -q origin/main >/dev/null; then _gv_die "origin/main is unknown"; fi
