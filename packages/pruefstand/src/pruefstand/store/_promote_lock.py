@@ -7,6 +7,7 @@ safe fingerprint name, so readers and ``prune`` skip it.
 """
 
 import fcntl
+import os
 from collections.abc import Iterator
 from contextlib import contextmanager
 from pathlib import Path
@@ -21,7 +22,8 @@ LOCK_NAME = ".promote.lock"
 def promote_lock(root: Path) -> Iterator[None]:
     """Hold the data root's promotion lock (blocks until it is free)."""
     root.mkdir(parents=True, exist_ok=True)
-    with (root / LOCK_NAME).open("a+b") as handle:
+    flags = os.O_RDWR | os.O_CREAT | os.O_NOFOLLOW  # a symlinked lock file is refused (ELOOP)
+    with os.fdopen(os.open(root / LOCK_NAME, flags, 0o644), "r+b") as handle:
         fcntl.flock(handle, fcntl.LOCK_EX)
         try:
             yield

@@ -11,11 +11,11 @@
 * For a gated ref the ``gate.json`` must be bound to the baseline that is stored now for
   (fingerprint, ref) (review F1, D1120): a self-gate (baseline = candidate) and a comparison with
   any other run are refused (exit 1) and never waived. A ``no_baseline`` report fits only the
-  first promote of (fingerprint, ref); once a baseline is stored it is refused like FAIL.
-* Status FAIL or INSUFFICIENT_DATA, or any hard-fail finding recomputed from the verified run with
-  the config's policy (a leak, or a leak check that could not run), is refused (exit 1) unless the
-  owner passes ``--allow-failed-gate``. The override never waives a missing, unusable or unbound
-  ``gate.json``.
+  first promote of (fingerprint, ref); once a baseline is stored it is refused, never waived.
+* Status FAIL, INSUFFICIENT_DATA or UNSUPPORTED_CONFIG, or any hard-fail finding recomputed from
+  the verified run with the config's policy (a leak, or a leak check that could not run), is
+  refused (exit 1) unless the owner passes ``--allow-failed-gate``. The override never waives a
+  missing, unusable or unbound ``gate.json``.
 """
 
 from pathlib import Path
@@ -138,15 +138,17 @@ def check_gate_for_promotion(
         policy: The gate policy of the config (its ``hard_fail`` metrics are recomputed).
         ref: The target ref; ``release-b<k>`` may lack a ``gate.json``, every other ref may not.
         allow_failed_gate: The owner's explicit ``--allow-failed-gate``; waives FAIL,
-            INSUFFICIENT_DATA, a ``no_baseline`` report after the first promote and hard-fail
-            findings, never a missing, unusable or unbound ``gate.json``.
+            INSUFFICIENT_DATA, UNSUPPORTED_CONFIG and hard-fail findings, never a missing,
+            unusable or unbound ``gate.json`` (a ``no_baseline`` report after the first promote
+            is unbound).
         current: Run id of the baseline stored now for (fingerprint, ``ref``), None when there
             is none (the first promote). Ignored for ``release-b<k>``.
 
     Raises:
         BaselineRefused: No ``gate.json`` for a gated ref, a ``gate.json`` not bound to
-            ``current`` (or a self-gate), or FAIL / INSUFFICIENT_DATA / a stale ``no_baseline``
-            report / hard fails without the override (exit 1).
+            ``current`` (a self-gate, a ``no_baseline`` report after the first promote), or
+            FAIL / INSUFFICIENT_DATA / UNSUPPORTED_CONFIG / hard fails without the override
+            (exit 1).
         StoreIntegrityError: ``gate.json`` is unreadable, invalid, of another run or of another
             fingerprint (exit 3).
 

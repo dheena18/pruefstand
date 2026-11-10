@@ -69,22 +69,37 @@ def _who() -> str:
         name = os.environ.get("GITHUB_ACTOR") or getpass.getuser()
     except (OSError, KeyError):
         name = "unknown"
-    clean = "".join(c for c in name if not unicodedata.category(c).startswith("C"))[:64]
+    clean = "".join(c for c in name if not _hidden(c))[:64]
     return clean or "unknown"
 
 
-def _note(reason: str | None, *, allow_failed_gate: bool) -> str | None:
-    """The validated ``--reason``: required with ``--allow-failed-gate``, refused without (D1123).
+_FILLERS = frozenset("\u034f\u115f\u1160\u2800\u3164\uffa0")
 
-    Control and format characters (Unicode categories ``C*``) are refused, not stripped.
+
+def _hidden(char: str) -> bool:
+    """Control, format, line/paragraph separator or invisible filler character."""
+    return (
+        unicodedata.category(char) in {"Zl", "Zp"}
+        or char in _FILLERS
+        or (unicodedata.category(char).startswith("C"))
+    )
+
+
+def _note(reason: str | None, *, allow_failed_gate: bool) -> str | None:
+    r"""The validated ``--reason``: required with ``--allow-failed-gate``, refused without (D1123).
+
+    Control and format characters (``C*``, newlines and ``\x1c``-``\x1f`` included), line and
+    paragraph separators and invisible fillers (U+034F, U+115F, U+2800, U+3164, ...) are refused
+    (exit 2), never stripped (tabs too); runs of spaces are folded to one.
     """
     if not allow_failed_gate:
         if reason is not None:
             fail("error: --reason is only allowed with --allow-failed-gate", EXIT_USAGE)
         return None
-    text = " ".join((reason or "").split())
-    if any(unicodedata.category(c).startswith("C") for c in text):
+    raw = reason or ""
+    if any(_hidden(c) for c in raw):  # checked before folding: \n, \x1c-\x1f, \x85 refused too
         fail("error: --reason must not contain control or format characters", EXIT_USAGE)
+    text = " ".join(raw.split())
     if not text or len(text) > MAX_OVERRIDE_NOTE:
         msg = f"error: --allow-failed-gate needs --reason TEXT (1 to {MAX_OVERRIDE_NOTE} chars)"
         fail(msg, EXIT_USAGE)
@@ -115,9 +130,10 @@ def promote_command(
     """Promote a complete run to the baseline of its fingerprint and ref.
 
     main and nightly runs need their gate.json (run `pruefstand gate` first), decided against
-    the baseline stored now (a self-gate or another baseline: exit 1, never waived; D1120); a
-    run whose gate FAILed or had INSUFFICIENT_DATA, a no_baseline report once a baseline is
-    stored, or a hard-fail finding is refused (exit 1) unless --allow-failed-gate is given; an
+    the baseline stored now (a self-gate, another baseline, or no_baseline once a baseline is
+    stored: exit 1, never waived; D1120); a run whose gate FAILed or had INSUFFICIENT_DATA or
+    UNSUPPORTED_CONFIG, or a hard-fail finding is refused (exit 1) unless --allow-failed-gate
+    (with --reason) is given; an
     invalid gate.json or one of another fingerprint is exit 3 (D881).
     """
     note = _note(reason, allow_failed_gate=allow_failed_gate)

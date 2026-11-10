@@ -125,7 +125,22 @@ def test_unsupported_config_is_refused_and_waivable(cli: CliRunner, tmp_path: Pa
     assert promote(cli, tmp_path, run, "--allow-failed-gate").exit_code == 0
 
 
-@pytest.mark.parametrize("reason", ["ok\x1b[31m", "zero\u200bwidth", "bidi" + chr(0x202E) + "evil"])
+@pytest.mark.parametrize(
+    "reason",
+    [
+        "ok\x1b[31m",
+        "zero\u200bwidth",
+        "bidi" + chr(0x202E) + "evil",
+        "two\nlines",
+        "sep\x1fx",
+        "nel\x85x",
+        "ls" + chr(0x2028) + "x",
+        "filler" + chr(0x3164),
+        "braille" + chr(0x2800),
+        "cgj" + chr(0x034F),
+        "jamo" + chr(0x115F),
+    ],
+)
 def test_a_reason_with_control_or_format_characters_is_refused(
     cli: CliRunner, tmp_path: Path, reason: str
 ) -> None:
@@ -200,3 +215,29 @@ def test_store_promotions_without_the_flag_record_no_override(
     manifest = json.loads((tmp_path / "store" / FP / "main" / "manifest.json").read_text("utf-8"))
     assert "override" not in manifest
     assert manifest["run_id"] == RUN
+
+
+def test_a_retry_after_a_push_that_landed_is_idempotent(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    store = GitBranchBaselineStore("owner/repo", tmp_path / "root", token_env=None)
+    (tmp_path / "root").mkdir()
+    monkeypatch.setattr(store, "_check_root", lambda: None)
+
+    def publish(change: Callable[[BaselineIndex], BaselineIndex], _message: str) -> None:
+        change(change(BaselineIndex.empty()))  # attempt 1 landed, the retry sees it
+
+    monkeypatch.setattr(store, "_publish", publish)
+    artifacts = ArtifactStore(tmp_path / "runs").read_run(stored(tmp_path))
+    store.put(artifacts, "main", expected=ExpectedBaseline(run_id=None))
+    assert (tmp_path / "root" / FP / "main").is_dir()  # not rolled back
+
+
+def test_a_symlinked_lock_file_is_refused(tmp_path: Path) -> None:
+    root = tmp_path / "store"
+    root.mkdir()
+    (tmp_path / "elsewhere").write_bytes(b"")
+    (root / ".promote.lock").symlink_to(tmp_path / "elsewhere")
+    artifacts = ArtifactStore(tmp_path / "runs").read_run(stored(tmp_path))
+    with pytest.raises(OSError, match="symbolic links"):
+        LocalDirBaselineStore(root).put(artifacts, "main")

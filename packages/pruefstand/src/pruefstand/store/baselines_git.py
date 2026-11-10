@@ -138,6 +138,8 @@ class GitBranchBaselineStore:
             def add(index: BaselineIndex) -> BaselineIndex:
                 runs = index.entries.get(promotion.fingerprint, {}).get(ref)
                 current = runs.runs[-1].run_id if runs is not None and runs.runs else None
+                if current == entry.run_id:
+                    return index  # an earlier attempt reached the remote: idempotent retry
                 check_expected(current, expected, where)  # re-checked on every fresh index
                 return with_promotion(index, promotion.fingerprint, ref, entry)
 
