@@ -806,7 +806,10 @@ evidence_recall (1 if any retrieved chunk text contains the case's evidence_span
 faithfulness, answer_correctness, perturbation_consistency, refusal_judged
 # faithfulness: the judge sees EXACTLY the chunks the generator saw (D115): R9 X3.14 = the chunks with
 #   used_in_prompt=True in rank order; fallback when no chunk carries the flag: the first top_k chunks
-# R9 X3.9 judge input cap = the judge's context window - 1 024 tokens, counted with the judge's tokenizer;
+# R9 X3.9 judge input cap = the judge's context window - 1 024 tokens, counted with the judge's tokenizer (pre-call:
+#   conservative estimate; after the call D1010: reported < window, or in the cut band, or < 0.8 x the EXACT count of
+#   the pinned tokenizer.json, installed by scripts/models/fetch_judge_tokenizer.py; counts["judge_exact_count_unavailable"]
+#   when it is missing);
 #   truncation is logged per case (details["truncated"]=True), counted in RunManifest.counts["judge_truncated"],
 #   and the truncated case ids are listed in the report; the value is still computed on the truncated input (never
 #   not_applicable). D815 (owner decision, supersedes the earlier informational rule): candidate truncation never

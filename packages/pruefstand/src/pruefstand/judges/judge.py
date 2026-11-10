@@ -9,11 +9,13 @@ from pruefstand.core.models.judge import JudgeTask, JudgeVerdict
 from pruefstand.core.models.llm import LLMRequest, LLMRole, Message
 from pruefstand.core.settings import PruefstandSettings
 from pruefstand.judges.escaping import make_nonce, wrap
+from pruefstand.judges.exact_tokens import ExactCounter, is_cut, load_counter
 from pruefstand.judges.output import normalise, output_model, output_schema, spec_of
 from pruefstand.judges.tokens import cut_signature, estimate_tokens, input_cap, judge_window
 from pruefstand.llm.client import LLMClient
 from pruefstand.llm.prompts import PromptRegistry
 
+_UNSET = object()
 JUDGE_MAX_TOKENS = (
     384  # = the catalogue num_predict of the judge; Ollama applies the catalogue value
 )
@@ -77,6 +79,7 @@ class Judge:
         self._registry = registry
         self._key = _nonce_key(nonce_key)
         self._cap: int | None = None  # read from the catalogue when first needed (D520)
+        self._exact: ExactCounter | object | None = _UNSET
 
     @property
     def model(self) -> str:
@@ -90,7 +93,7 @@ class Judge:
             self._cap = input_cap(self._model)
         return self._cap
 
-    def _check_not_cut(self, reported: int) -> None:
+    def _check_not_cut(self, reported: int, messages: tuple[Message, ...]) -> None:
         """Raise ``JudgeInputTruncated`` when the provider cut the prompt (two independent signs).
 
         Ollama cuts a prompt that does not fit ``num_ctx - num_predict`` without a word. (1) A
@@ -99,7 +102,9 @@ class Judge:
         the window, so the first sign alone misses it. The local estimate is the pre-call guard;
         it is a heuristic, so these two signs are the backstop. A genuine prompt whose reported
         count is in the band is read as cut (candidate-side, worst-filled): a 17-token band,
-        accepted and documented (D962).
+        accepted and documented (D962). (3) With the exact tokenizer (``exact_tokens``), a report
+        below 0.8 x the exact count of the prompt, less the fixed prefix a prompt cache may serve
+        (D1010), is a cut as well.
         """
         window = judge_window(self._model)
         if window is not None and reported >= window:
@@ -112,6 +117,26 @@ class Judge:
                 f"(num_ctx / 2 = {band[0]}); the input did not fit"
             )
             raise JudgeInputTruncated(msg, transient=False)
+        counter = self._counter()
+        if counter is not None:
+            exact = counter.prompt(messages)
+            prefix = counter.fixed_prefix(messages)
+            if window is not None and is_cut(reported, exact, prefix, window):
+                msg = (
+                    f"the provider reported {reported} prompt tokens for a prompt of {exact} "
+                    f"(exact count, {prefix} of them a cacheable prefix): the input was cut"
+                )
+                raise JudgeInputTruncated(msg, transient=False)
+
+    @property
+    def exact_available(self) -> bool:
+        """Whether the judge's exact tokenizer is installed (sign (3) of ``_check_not_cut``)."""
+        return self._counter() is not None
+
+    def _counter(self) -> ExactCounter | None:
+        if self._exact is _UNSET:
+            self._exact = load_counter(self._model)
+        return self._exact if isinstance(self._exact, ExactCounter) else None
 
     def prompt_tokens(self, task: JudgeTask) -> int:
         """Estimate the tokens of the prompt ``score`` would send for ``task``.
@@ -172,7 +197,7 @@ class Judge:
             json_schema=output_schema(task.metric),
         )
         out, resp = await self._llm.complete_json_meta(request, output_model(task.metric))
-        self._check_not_cut(resp.usage.prompt_tokens)
+        self._check_not_cut(resp.usage.prompt_tokens, messages)
         return JudgeVerdict(
             score=normalise(task.metric, out.score),
             reason=out.reason,

@@ -12,6 +12,7 @@ from pruefstand.core.models.attacks import CanaryRegistry
 from pruefstand.core.models.run import RunResults
 from pruefstand.core.models.target import TargetInfo
 from pruefstand.core.protocols import JudgePoolLike, KVCache
+from pruefstand.judges.exact_tokens import load_counter
 from pruefstand.judges.family_guard import check_judge_families
 from pruefstand.llm.budget import Budget
 from pruefstand.llm.policy import LOCAL_PROVIDERS, provider_of
@@ -147,6 +148,15 @@ def checked_pool(
         msg = f"{exc}; aborted run {directory}"
         raise ConfigError(msg) from exc
     return pool, False
+
+
+def exact_count_missing(pool: JudgePoolLike | None, cfg: PruefstandConfig) -> bool:
+    """Whether a judge of the run lacks its exact tokenizer (cut sign (3) is skipped)."""
+    if pool is None:
+        return False
+    return any(
+        provider_of(ref.id) == "ollama" and load_counter(ref.id) is None for ref in judge_refs(cfg)
+    )
 
 
 def count_up(results: RunResults, key: str) -> RunResults:

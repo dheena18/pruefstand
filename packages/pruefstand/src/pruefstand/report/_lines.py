@@ -39,6 +39,10 @@ def informational_lines(b: Builder) -> list[str]:
     line = b.joined("Informational (does not block):", items, SEP)
     if line:
         out.append(line)
+    if b.cand.counts.get("judge_exact_count_unavailable", 0):
+        out.append(
+            "Judge input check: exact count unavailable (tokenizer file missing); estimate only."
+        )
     cut = len(b.truncated_ids) or b.cand.counts.get("judge_truncated", 0)  # ids agree with text
     if cut > 0:
         noun = "case" if cut == 1 else "cases"
