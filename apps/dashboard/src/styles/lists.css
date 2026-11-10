@@ -1,5 +1,7 @@
 /* Tables, lists, filters and pagination of the runs list and run summary (ui-spec §4.1, §5). Tokens only. */
 .table-wrap {
+  /* Containing block for the absolutely positioned `sr-only` status words, so they scroll with the table. */
+  position: relative;
   overflow-x: auto;
   margin: var(--space-4) 0;
   border: 1px solid var(--border);
