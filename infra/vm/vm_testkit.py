@@ -57,6 +57,7 @@ SAFE_TOOLS = [
     "ssh-keygen",
     "stat",
     "flock",
+    "python3",
     "sleep",
     "true",
     "false",
