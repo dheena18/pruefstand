@@ -1,8 +1,13 @@
 """T5.4 S3: degraded pairs are deterministic, really changed, and built from top-label answers
 only."""
 
+from pathlib import Path
+
+import pytest
 from rq2.make_degraded import OUT, discrimination, load_pairs, make_pairs
 from rq2.rq2_config import REPO, load_config, load_items
+
+from pruefstand.core.errors import ConfigError
 
 CFG = load_config(REPO / "experiments/rq2/configs/rq2_judges.yaml")
 
@@ -32,3 +37,8 @@ def test_the_pair_files_are_split_by_licence() -> None:
         if (REPO / path).is_file():
             rows = (REPO / path).read_text(encoding="utf-8").splitlines()
             assert all(f'"label_set": "{name}"' in r for r in rows)  # never mixed (D864)
+
+
+def test_a_missing_pair_file_is_a_config_error(tmp_path: Path) -> None:
+    with pytest.raises(ConfigError, match="missing"):
+        load_pairs(tmp_path)

@@ -3,7 +3,8 @@ name = "pruefstand"
 version = "0.0.1"
 description = "Open-source release gate for German-language RAG"
 requires-python = ">=3.12,<3.14"
-license = "MIT"
+license = "MIT AND CC-BY-4.0 AND CC-BY-SA-4.0"   # code MIT; judges/data/anchors rows CC BY / CC BY-SA (T5.4, D946)
+license-files = ["src/pruefstand/judges/data/anchors/NOTICE.md"]
 dependencies = [
   "pydantic>=2.7",
   "pydantic-settings",

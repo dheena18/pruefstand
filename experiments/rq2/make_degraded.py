@@ -1,15 +1,16 @@
 """Degraded answer pairs for the discrimination check (T5.4 S3).
 
-From the ``test`` positives (top label) of ``correctness`` and ``faithfulness_constructed`` take
-up to
-50 answers per edit type that the T5.3 edits change: ``swap_first_number`` and ``negate``
+From the ``test`` positives (top label) of ``correctness`` and ``faithfulness_constructed`` take up
+to 50 answers per edit type that the T5.3 edits change: ``swap_first_number`` and ``negate``
 (``rq2.construct``). Order: seeded permutation of the item ids, so the pairs are deterministic.
 A judge discriminates when it scores the degraded answer strictly lower; it passes with
 >= 90 % per edit type (D146 (3)). Only 21 ``correctness`` test positives admit ``negate``
 (short annotator spans), so that cell has n = 21 (D932).
 
-    uv run python experiments/rq2/make_degraded.py   # ->
-    datasets/calibration/v1/degraded_pairs.jsonl
+    uv run python experiments/rq2/make_degraded.py
+    # -> datasets/calibration/v1/degraded_pairs_germanquad.jsonl (CC BY 4.0, ``correctness``)
+    #    datasets/calibration/v1/degraded_pairs_germanrag.jsonl (CC BY-SA 4.0, faithfulness)
+    # one file per licence, never mixed (D864, D946)
 """
 
 import json
@@ -24,6 +25,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))  # run as a script:
 from rq2.calib_schema import CalibrationItem, is_positive
 from rq2.construct import negate, swap_first_number
 from rq2.rq2_config import REPO, load_config, load_items
+
+from pruefstand.core.errors import ConfigError
 
 PAIRS_PER_EDIT = 50
 SETS = ("correctness", "faithfulness_constructed")
@@ -105,12 +108,18 @@ def main() -> int:
 
 
 def load_pairs(root: Path = REPO) -> list[dict[str, object]]:
-    """Read every pair file that exists (both licences), in ``SETS`` order."""
+    """Read both pair files (one per licence), in ``SETS`` order.
+
+    Raises:
+        ConfigError: A pair file is missing (run ``make_degraded.py`` first).
+    """
     rows: list[dict[str, object]] = []
     for name in SETS:
         path = root / OUT[name]
-        if path.is_file():
-            rows += [json.loads(line) for line in path.read_text(encoding="utf-8").splitlines()]
+        if not path.is_file():
+            msg = f"pair file {OUT[name]} is missing: run experiments/rq2/make_degraded.py"
+            raise ConfigError(msg)
+        rows += [json.loads(line) for line in path.read_text(encoding="utf-8").splitlines()]
     return rows
 
 

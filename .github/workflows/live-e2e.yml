@@ -222,13 +222,6 @@ jobs:
             self=false
           fi
           cand="$(run_one)" || exit $?
-          # T5.4 (D947): a PR that changes eval_fingerprint (judge_epoch, a judge prompt version) cannot be compared
-          # with main's baseline; like the first run, it is gated against a second run of this commit.
-          if [ "$self" = "false" ] && [ "$(jq -r '.eval_fingerprint' "$base/run.json")" != "$(jq -r '.eval_fingerprint' "$cand/run.json")" ]; then
-            BASELINE_NOTE="this PR changes eval_fingerprint; main's baseline predates it"
-            base="$(PRUEFSTAND_JUDGE_MODE=skipped run_one)" || exit $?
-            self=true
-          fi
           gate_rc=0
           uv run pruefstand gate --config "$CONFIG" --candidate "$cand" --baseline "$base" || gate_rc=$?
           if [ "$gate_rc" -gt 1 ]; then exit "$gate_rc"; fi
