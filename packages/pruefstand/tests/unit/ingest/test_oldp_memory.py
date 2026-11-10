@@ -106,13 +106,13 @@ def test_delta_byte_array_bomb_is_read_one_row_per_batch(
 
 
 def test_the_memory_backstop_ends_an_unknown_bomb_with_a_named_problem(tmp_path: Path) -> None:
-    """One row that decodes to 64 MB against a 32 MiB reader limit (footer cap raised)."""
+    """One row that decodes to 300 MB against a 64 MiB reader limit (footer cap raised)."""
     path = tmp_path / "d" / "x.parquet"
     path.parent.mkdir()
-    table = pa.table({"id": [1], "content": ["a" * 64_000_000]})
+    table = pa.table({"id": [1], "content": ["a" * 300_000_000]})
     pq.write_table(table, path, compression="zstd", use_dictionary=False)
     limits = OldpLimits(
-        max_parquet_memory_bytes=32 * MIB, max_group_bytes=4096 * MIB, max_record_bytes=4096 * MIB
+        max_parquet_memory_bytes=64 * MIB, max_group_bytes=4096 * MIB, max_record_bytes=4096 * MIB
     )
     loader = OldpLoader(limits)
     assert list(loader.load(path.parent)) == []
@@ -269,3 +269,22 @@ def test_a_limit_that_cannot_be_set_is_reported_not_silent(monkeypatch: pytest.M
     monkeypatch.setattr(records_child, "_virtual_bytes", lambda: 0)
     assert "unavailable" in str(records_child._limit_memory(512 * MIB))
     assert records_child._limit_memory(0) is None  # in-process reading asked for no limit
+
+
+@pytest.mark.parametrize("margin", [2, 8, 16])
+def test_a_tiny_limit_is_a_memory_limit_problem_not_a_bad_file(tmp_path: Path, margin: int) -> None:
+    """The reader may not even start a worker thread: that is the limit, not a corrupt file."""
+    path = tmp_path / "d" / "x.parquet"
+    path.parent.mkdir()
+    pq.write_table(pa.table({"id": [1], "content": ["x"]}), path)
+    loader = OldpLoader(OldpLimits(max_parquet_memory_bytes=margin * MIB))
+    docs = list(loader.load(path.parent))
+    assert len(docs) + loader.stats.problems.counts.get("memory_limit", 0) == 1
+    assert "bad_file" not in loader.stats.problems.counts
+
+
+def test_a_corrupt_parquet_file_is_still_a_bad_file(tmp_path: Path) -> None:
+    (tmp_path / "x.parquet").write_bytes(b"PAR1 this is not parquet PAR1")
+    loader = OldpLoader()
+    assert list(loader.load(tmp_path)) == []
+    assert loader.stats.problems.counts == {"bad_file": 1}

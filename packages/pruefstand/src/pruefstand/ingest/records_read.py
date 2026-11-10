@@ -6,6 +6,7 @@ examined is charged to a :class:`~pruefstand.ingest.records_model.RowBudget`.
 """
 
 import dataclasses
+import errno
 import json
 import os
 import pickle
@@ -120,6 +121,16 @@ def _batch_rows(
             problems.append(Problem(where, "bad_record", detail))
 
 
+_OUT_OF_MEMORY_TEXT = ("Failed to launch worker thread", "Cannot allocate memory", "bad_alloc")
+
+
+def _is_out_of_memory(error: Exception) -> bool:
+    """Whether a read error is the address-space limit biting (no memory, no thread), not a file."""
+    if isinstance(error, OSError) and error.errno in (errno.ENOMEM, errno.EAGAIN):
+        return True
+    return any(text in str(error) for text in _OUT_OF_MEMORY_TEXT)
+
+
 def parquet_rows_local(
     path: Path,
     columns: Sequence[str],
@@ -145,7 +156,8 @@ def parquet_rows_local(
     except MemoryError:
         raise
     except (pa.ArrowException, OSError, ValueError) as error:
-        problems.append(Problem(path.name, "bad_file", f"unreadable parquet: {error}"[:200]))
+        kind = "memory_limit" if _is_out_of_memory(error) else "bad_file"
+        problems.append(Problem(path.name, kind, f"unreadable parquet: {error}"[:200]))
 
 
 def parquet_rows(
