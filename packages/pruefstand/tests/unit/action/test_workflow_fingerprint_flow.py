@@ -15,10 +15,12 @@ from testsupport.workflow_checks import all_steps, load, read
 STUB = """#!/usr/bin/env bash
 # args: run pruefstand <command> ...
 shift
-echo "$*" >> "$STUB_LOG"
+echo "$* JM=${PRUEFSTAND_JUDGE_MODE:-}" >> "$STUB_LOG"
+n=$(wc -l < "$STUB_LOG")
+if [ "$n" = "${STUB_FAIL_AT:-0}" ]; then exit 7; fi
 case "$2" in
   run)
-    n=$(wc -l < "$STUB_LOG"); d="runs/run$n"; mkdir -p "$d"
+    d="runs/run$n"; mkdir -p "$d"
     echo '{"judge_mode":"skipped","cost":{"llm_calls":0},"counts":{}}' > "$d/run.json"
     echo "$d" ;;
   baseline) echo "$STUB_VERDICT" ;;
@@ -34,7 +36,7 @@ def gate_script() -> str:
 
 
 def run_step(
-    tmp_path: Path, *, baseline: str, verdict: str, gate_rc: int = 0
+    tmp_path: Path, *, baseline: str, verdict: str, gate_rc: int = 0, fail_at: int = 0
 ) -> tuple[subprocess.CompletedProcess[str], list[str], str]:
     bin_dir = tmp_path / "bin"
     bin_dir.mkdir()
@@ -47,6 +49,7 @@ def run_step(
         "STUB_LOG": str(tmp_path / "log"),
         "STUB_VERDICT": verdict,
         "STUB_GATE_RC": str(gate_rc),
+        "STUB_FAIL_AT": str(fail_at),
         "BASELINE_DIR": baseline,
         "BASELINE_NOTE": "",
         "CONFIG": "c.yaml",
@@ -77,6 +80,8 @@ def test_a_changed_fingerprint_gates_against_a_second_run_and_says_so(tmp_path: 
     assert kinds(calls) == ["run", "baseline", "run", "gate", "report"]
     gate = next(c for c in calls if c.startswith("pruefstand gate"))
     assert "--baseline runs/run3" in gate  # the throw-away run, never runs/old
+    assert calls[2].endswith("JM=skipped")  # the second run judges nothing
+    assert calls[0].endswith("JM=")  # the candidate run keeps its judge
     assert (
         "Baseline not comparable: eval_fingerprint changed "
         "(baseline aaaaaaaaaaaa, candidate bbbbbbbbbbbb)" in comment
@@ -122,6 +127,34 @@ def test_a_gate_failure_or_error_still_fails_the_step(
             done.returncode == 0
         )  # exit 1 is the gate FAIL: the later step "Gate result" fails the job
         assert "gate_rc=1" in (tmp_path / "out").read_text(encoding="utf-8")
+
+
+@pytest.mark.parametrize(
+    ("fail_at", "what"),
+    [(1, "candidate run"), (2, "fingerprint-check"), (3, "second run")],
+)
+def test_a_failing_command_fails_the_step_before_the_gate(
+    tmp_path: Path, fail_at: int, what: str
+) -> None:
+    done, calls, _ = run_step(
+        tmp_path,
+        baseline="runs/old",
+        verdict="changed aaaaaaaaaaaa bbbbbbbbbbbb",
+        fail_at=fail_at,
+    )
+    assert done.returncode == 7, what
+    assert "gate" not in kinds(calls), what
+    assert "report" not in kinds(calls), what
+
+
+@pytest.mark.parametrize("fail_at", [1, 2])
+def test_a_failing_run_without_a_baseline_fails_the_step_before_the_gate(
+    tmp_path: Path, fail_at: int
+) -> None:
+    done, calls, _ = run_step(tmp_path, baseline="", verdict="comparable", fail_at=fail_at)
+    assert done.returncode == 7
+    assert "gate" not in kinds(calls)
+    assert "report" not in kinds(calls)
 
 
 def test_an_unexpected_verdict_fails_the_step(tmp_path: Path) -> None:

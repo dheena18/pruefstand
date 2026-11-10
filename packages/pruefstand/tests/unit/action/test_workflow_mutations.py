@@ -39,8 +39,18 @@ def test_renaming_the_schedule_upload_to_live_baseline_fails() -> None:
 
 
 def test_uploading_live_baseline_on_pull_requests_fails() -> None:
-    old = "        if: github.event_name == 'push' && steps.gate.outputs.run_dir != ''"
+    old = (
+        "        if: github.event_name == 'push' && steps.gate.outputs.run_dir != ''"
+        " && steps.gate.outputs.gate_rc == '0'"
+    )
     assert mutated(check_uploads, old, "        if: steps.gate.outputs.run_dir != ''")
+
+
+@pytest.mark.parametrize("event", ["push", "schedule"])
+def test_a_baseline_upload_without_a_passing_gate_fails(event: str) -> None:
+    head = f"        if: github.event_name == '{event}' && steps.gate.outputs.run_dir != ''"
+    old, new = f"{head} && steps.gate.outputs.gate_rc == '0'", head
+    assert mutated(check_uploads, old, new)
 
 
 def test_dropping_not_gpu_from_the_marker_fails() -> None:

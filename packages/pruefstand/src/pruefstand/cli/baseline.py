@@ -160,10 +160,10 @@ def fingerprint_check_command(
         check = check_baseline_fingerprint(candidate, baseline)
     if check.comparable:
         typer.echo("comparable")
-    elif not check.baseline:
+    elif not check.baseline_readable:
         typer.echo("unreadable")
     else:
-        typer.echo(f"changed {check.baseline[:12]} {check.candidate[:12]}")
+        typer.echo("changed {} {}".format(*check.short()))
 
 
 def register(app: typer.Typer) -> None:

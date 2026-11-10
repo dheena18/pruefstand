@@ -24,6 +24,7 @@ class FingerprintCheck(BaseModel):
         baseline: The ``eval_fingerprint`` of the baseline (``""`` when it is unreadable).
         candidate: The ``eval_fingerprint`` of the candidate.
         reason: Empty when comparable, else one sentence for the PR comment.
+        baseline_readable: ``False`` when the baseline run could not be read.
     """
 
     model_config = ConfigDict(frozen=True, extra="forbid")
@@ -32,6 +33,24 @@ class FingerprintCheck(BaseModel):
     baseline: str
     candidate: str
     reason: str
+    baseline_readable: bool = True
+
+    def short(self) -> tuple[str, str]:
+        """Return both fingerprints cut to the shortest common length that tells them apart.
+
+        At least 12 characters; one more than the shared prefix when the first 12 are equal.
+
+        Returns:
+            ``(baseline, candidate)``; e.g. ``"aaaaaaaaaaaa1"`` and ``"aaaaaaaaaaaa2"`` stay
+            distinguishable at 13 characters.
+        """
+        shared = 0
+        for a, b in zip(self.baseline, self.candidate, strict=False):
+            if a != b:
+                break
+            shared += 1
+        width = max(12, shared + 1)
+        return self.baseline[:width], self.candidate[:width]
 
 
 def _fingerprint(run_dir: Path) -> str:
@@ -60,8 +79,12 @@ def check_baseline_fingerprint(candidate: Path, baseline: Path) -> FingerprintCh
         base = _fingerprint(baseline)
     except StoreError as exc:
         reason = f"baseline unreadable ({type(exc).__name__})"
-        return FingerprintCheck(comparable=False, baseline="", candidate=cand, reason=reason)
+        return FingerprintCheck(
+            comparable=False, baseline="", candidate=cand, reason=reason, baseline_readable=False
+        )
     if base == cand:
         return FingerprintCheck(comparable=True, baseline=base, candidate=cand, reason="")
-    reason = f"eval_fingerprint changed (baseline {base[:12]}, candidate {cand[:12]})"
-    return FingerprintCheck(comparable=False, baseline=base, candidate=cand, reason=reason)
+    check = FingerprintCheck(comparable=False, baseline=base, candidate=cand, reason="")
+    shown = check.short()
+    reason = f"eval_fingerprint changed (baseline {shown[0]}, candidate {shown[1]})"
+    return check.model_copy(update={"reason": reason})

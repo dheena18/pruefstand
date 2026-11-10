@@ -9,6 +9,7 @@ from typer.testing import CliRunner
 from pruefstand.cli import app
 from pruefstand.core.errors import StoreError
 from pruefstand.core.models.run import RunArtifacts
+from pruefstand.pipeline import baseline_fingerprint as module
 from pruefstand.pipeline.baseline_fingerprint import FingerprintCheck, check_baseline_fingerprint
 from pruefstand.store.artifacts import ArtifactStore
 
@@ -92,3 +93,31 @@ def test_the_command_prints_unreadable_for_a_broken_baseline(tmp_path: Path) -> 
     )
     assert result.exit_code == 0, result.output
     assert result.stdout.strip() == "unreadable"
+
+
+def test_fingerprints_sharing_a_twelve_character_prefix_are_not_comparable(tmp_path: Path) -> None:
+    base = stored(tmp_path / "b", "20261102T220000-aaaaaa", "cccccccccccc1111")
+    cand = stored(tmp_path / "c", "20261102T220001-bbbbbb", "cccccccccccc2222")
+    check = check_baseline_fingerprint(cand, base)
+    assert not check.comparable
+    assert check.short() == ("cccccccccccc1", "cccccccccccc2")
+    result = CliRunner().invoke(
+        app, ["baseline", "fingerprint-check", "--baseline", str(base), "--candidate", str(cand)]
+    )
+    assert result.stdout.strip() == "changed cccccccccccc1 cccccccccccc2"
+
+
+def test_a_readable_baseline_with_an_empty_fingerprint_is_changed_not_unreadable(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    cand = stored(tmp_path / "c", "20261102T220001-bbbbbb", NEW)
+    base = stored(tmp_path / "b", "20261102T220000-aaaaaa", OLD)
+    real = module._fingerprint
+    monkeypatch.setattr(module, "_fingerprint", lambda p: "" if p == base else real(p))
+    check = check_baseline_fingerprint(cand, base)
+    assert not check.comparable
+    assert check.baseline_readable
+    result = CliRunner().invoke(
+        app, ["baseline", "fingerprint-check", "--baseline", str(base), "--candidate", str(cand)]
+    )
+    assert result.stdout.strip().startswith("changed ")

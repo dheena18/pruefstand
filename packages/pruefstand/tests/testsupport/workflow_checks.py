@@ -115,6 +115,8 @@ def check_uploads(doc: Doc, _text: str) -> list[str]:
     for job_id, step in all_steps(doc):
         name = (step.get("with") or {}).get("name")
         condition = str(step.get("if", ""))
+        if name in {"live-baseline", "live-baseline-nightly"} and "gate_rc == '0'" not in condition:
+            out.append(f"{job_id}: {name} is uploaded although the gate did not pass")
         if name == "live-baseline" and "github.event_name == 'push'" not in condition:
             out.append(f"{job_id}: live-baseline is uploaded outside push")
         if name == "live-baseline-nightly" and "github.event_name == 'schedule'" not in condition:
