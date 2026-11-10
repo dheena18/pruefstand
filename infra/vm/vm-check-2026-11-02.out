@@ -3,12 +3,12 @@ CHECK ram PASS 61 GiB visible
 CHECK cpu PASS 160 vCPU
 CHECK disk PASS 435 GiB free on /
 CHECK docker PASS rootful Docker, no sudo needed
-CHECK docker-group PASS members: dheena pruefstand 
+CHECK docker-group PASS members: <owner> pruefstand 
 CHECK docker-gw PASS docker0 has 172.17.0.1
 CHECK proxy-net PASS proxy-egress 10.231.0.0/24 on bridge pfproxy0, not internal demo-egress 10.233.0.0/24
 CHECK firewall WARN WARN: cluster endpoint is public; not blockable by RFC1918 rules
 CHECK gh-scope PASS fine-grained token no administration right on dheena18/pruefstand (actions/permissions -> 403) dheena18/pruefstand-gate -> 404
-CHECK users PASS dheena is in group pruefstand
+CHECK users PASS <owner> is in group pruefstand
 CHECK lock-dir PASS pruefstand-lock true works
 CHECK data-root PASS plain directory, sentinel present, 435 GiB free
 CHECK data-root-rw PASS pruefstand can write, rename and delete in /mnt/pruefstand/cache

@@ -73,6 +73,10 @@ trap 'rm -rf "$stage"' EXIT
 sudoers >"$stage/sudoers"
 # render the one placeholder line (ROOT is validated plain characters: nothing special to sed)
 sed "s|^bin=\"@BIN_DIR@\"\$|bin=\"$ROOT/pruefstand-bin\"|" "$GPU_DIR/pruefstand-cluster" >"$stage/wrapper"
+if ! grep -qxF "bin=\"$ROOT/pruefstand-bin\"" "$stage/wrapper"; then
+  echo "install-cluster-wrapper.sh: the bin= line of the wrapper was not rendered; nothing installed" >&2
+  exit 1
+fi
 chmod 0755 "$stage/wrapper"
 if ! visudo -c -f "$stage/sudoers"; then
   echo "install-cluster-wrapper.sh: visudo refused the sudoers file; nothing installed" >&2
@@ -114,4 +118,5 @@ mkdir -p "$dest/usr/local/bin" "$dest/usr/local/lib" "$dest/etc/sudoers.d"
 install -m 0755 "${owner[@]}" "$stage/wrapper" "$wrapper_dst"
 install -m 0644 "${owner[@]}" "$stage/allow" "$allow_dst"
 install -m 0440 "${owner[@]}" "$stage/sudoers" "$sudoers_dst"
+echo "wrapper bin=\"$ROOT/pruefstand-bin\""
 echo "installed $wrapper_dst, $allow_dst and $sudoers_dst (commit $commit)"

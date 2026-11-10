@@ -8,7 +8,7 @@ set -euo pipefail
 : "${TS_AUTHKEY:?TS_AUTHKEY is not set in the cloud environment}"
 : "${VM_SSH_KEY:?VM_SSH_KEY is not set in the cloud environment}"
 VM_HOST="${VM_HOST:-pruefstand-exec}"
-VM_USER="${VM_USER:-dheena}"
+VM_USER="${VM_USER:?set VM_USER (the owner login on the VM) in the cloud environment}"
 
 SUDO=""
 if [ "$(id -u)" -ne 0 ]; then SUDO="sudo -E"; fi

@@ -12,6 +12,7 @@
 # PRUEFSTAND_BIN_DEV=1 selects <data root>/pruefstand-bin-dev (A11-M11). CLUSTER_SSH_HOST: the ssh alias.
 
 # shellcheck source=cluster_paths.sh
+# shellcheck source-path=SCRIPTDIR
 . "$(dirname "${BASH_SOURCE[0]}")/cluster_paths.sh"
 _CLUSTER_TAG_RE='^[a-z0-9._:/-]+$'
 _CLUSTER_LOG_N_RE='^[1-9][0-9]{0,3}$'

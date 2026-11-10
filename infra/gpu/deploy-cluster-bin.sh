@@ -56,7 +56,7 @@ staged_names() { # the files of the stage dir except SHA256SUMS, sorted
 }
 
 render() {
-  local line
+  local line LC_ALL=C # ASCII character classes only
   # shellcheck disable=SC2016  # the \$ is literal: a value may start with the text \$HOME
   local re='^[A-Z][A-Z0-9_]*=(\$HOME)?[A-Za-z0-9_./:,@%+=-]*$'
   {
