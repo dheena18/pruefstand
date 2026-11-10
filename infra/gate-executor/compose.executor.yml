@@ -18,6 +18,8 @@ services:
     cap_drop: [ALL]
     security_opt: ["no-new-privileges:true"]
     user: "10001:10001"
+    pids_limit: 128      # D1072: bounded threads per proxy
+    mem_limit: 256m
     labels:
       pruefstand.job: "llm-proxy"
     healthcheck:

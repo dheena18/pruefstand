@@ -21,6 +21,8 @@ import json
 from collections.abc import Iterable, Mapping
 from dataclasses import dataclass, field
 
+from llm_proxy_json import StrictJSONError, dump, load_object
+
 CHAT, EMBED, TAGS = "/api/chat", "/api/embed", "/api/tags"
 ROUTES: dict[tuple[str, str], str] = {
     ("POST", CHAT): "generator",
@@ -54,6 +56,14 @@ class Forward:
     method: str
     path: str
     body: bytes | None
+
+
+@dataclass(frozen=True)
+class Answer:
+    """Answer locally with ``status`` and ``body``; nothing is forwarded (``GET /api/tags``)."""
+
+    status: int
+    body: bytes
 
 
 @dataclass(frozen=True)
@@ -168,8 +178,8 @@ def decide(  # noqa: PLR0911 - one return per rejection reason keeps the rule ta
     body: bytes,
     key: str,
     policy: Mapping[str, ModelPolicy],
-) -> Forward | Reject:
-    """Map one candidate request to the request to forward, or to a 403.
+) -> Forward | Reject | Answer:
+    """Map one candidate request to the request to forward, a local answer, or a 403.
 
     Args:
         method: HTTP method.
@@ -180,7 +190,8 @@ def decide(  # noqa: PLR0911 - one return per rejection reason keeps the rule ta
         policy: the run's :func:`build_policy` result.
 
     Returns:
-        :class:`Forward` with the rewritten body, or :class:`Reject`.
+        :class:`Forward` with the rewritten body, :class:`Answer` (the synthesised tag list of
+        the run, never the upstream list, D1071) or :class:`Reject`.
     """
     role = ROUTES.get((method, path))
     if role is None:
@@ -188,13 +199,11 @@ def decide(  # noqa: PLR0911 - one return per rejection reason keeps the rule ta
     if not authorised(auth, key):
         return Reject(403, "missing or wrong bearer key")
     if method == "GET":
-        return Forward(method, path, None)
+        return tags_answer(policy)
     try:
-        data = json.loads(body)
-    except (ValueError, UnicodeDecodeError):
-        return Reject(403, "body is not JSON")
-    if not isinstance(data, dict):
-        return Reject(403, "body is not a JSON object")
+        data = load_object(body, role)
+    except StrictJSONError as err:
+        return Reject(403, str(err))
     model = policy.get(str(data.get("model")))
     if model is None or model.role != role:
         return Reject(403, "model not allowed")
@@ -203,7 +212,13 @@ def decide(  # noqa: PLR0911 - one return per rejection reason keeps the rule ta
         return options
     data.pop("keep_alive", None)
     data["options"] = options
-    return Forward(method, path, json.dumps(data, ensure_ascii=False).encode())
+    return Forward(method, path, dump(data))
+
+
+def tags_answer(policy: Mapping[str, ModelPolicy]) -> Answer:
+    """``GET /api/tags`` from the policy: only the run's generator + embed tags (D1071)."""
+    models = [{"name": tag, "model": tag} for tag in sorted(policy)]
+    return Answer(200, json.dumps({"models": models}).encode())
 
 
 def is_reload(response: bytes) -> bool:

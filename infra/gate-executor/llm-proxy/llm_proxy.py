@@ -14,6 +14,7 @@ the orchestrator from ``infra/gpu/models.yaml``), ``LLM_PROXY_UPSTREAM``. Bodies
 import json
 import logging
 import os
+import socket
 import threading
 import urllib.error
 import urllib.request
@@ -23,13 +24,24 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from typing import ClassVar
 from urllib.parse import urlsplit
 
-from llm_proxy_policy import Forward, ModelPolicy, PolicyError, build_policy, decide, is_reload
+from llm_proxy_policy import (
+    Answer,
+    Forward,
+    ModelPolicy,
+    PolicyError,
+    build_policy,
+    decide,
+    is_reload,
+)
 
 DEFAULT_LISTEN = ("0.0.0.0", 11500)  # noqa: S104 - container-internal port on gate-net, no host port (D242)
 DEFAULT_UPSTREAM = "http://172.17.0.1:11434"
 MAX_BODY_BYTES = 4 * 1024 * 1024
 UPSTREAM_TIMEOUT_S = 900.0
+CLIENT_TIMEOUT_S = 30.0  # socket timeout per client read (slowloris, D1072)
+MAX_CONNECTIONS = 32  # concurrent client connections; more are closed at once (D1072)
 LOG = logging.getLogger("llm_proxy")
+Request = socket.socket | tuple[bytes, socket.socket]
 
 
 @dataclass
@@ -69,6 +81,8 @@ class ProxyConfig:
     upstream: str = DEFAULT_UPSTREAM
     max_body: int = MAX_BODY_BYTES
     timeout_s: float = UPSTREAM_TIMEOUT_S
+    client_timeout_s: float = CLIENT_TIMEOUT_S
+    max_connections: int = MAX_CONNECTIONS
 
 
 def check_upstream(url: str) -> str:
@@ -107,6 +121,7 @@ class ProxyHandler(BaseHTTPRequestHandler):
     cfg: ClassVar[ProxyConfig]
     counters: ClassVar[Counters]
     protocol_version = "HTTP/1.1"
+
     server_version = "llm-proxy"
 
     def do_GET(self) -> None:
@@ -158,6 +173,8 @@ class ProxyHandler(BaseHTTPRequestHandler):
         )
         if isinstance(verdict, Forward):
             self._forward(verdict)
+        elif isinstance(verdict, Answer):
+            self._send(verdict.status, verdict.body)
         else:
             self._error(verdict.status, verdict.reason)
 
@@ -187,7 +204,44 @@ class ProxyHandler(BaseHTTPRequestHandler):
 
 def make_handler(cfg: ProxyConfig, counters: Counters) -> type[ProxyHandler]:
     """A request handler class bound to ``cfg`` and ``counters``."""
-    return type("BoundProxyHandler", (ProxyHandler,), {"cfg": cfg, "counters": counters})
+    attrs = {"cfg": cfg, "counters": counters, "timeout": cfg.client_timeout_s}  # D1072
+    return type("BoundProxyHandler", (ProxyHandler,), attrs)
+
+
+class _NoRedirect(urllib.request.HTTPRedirectHandler):
+    """Never follow an upstream redirect (D1073)."""
+
+    def redirect_request(self, *_args: object, **_kwargs: object) -> None:
+        """Refuse: the 3xx surfaces as ``HTTPError`` and becomes a 502."""
+        return
+
+
+# No environment proxies (HTTP_PROXY etc.), no redirects: only LLM_PROXY_UPSTREAM (D1073)
+_OPENER = urllib.request.build_opener(urllib.request.ProxyHandler({}), _NoRedirect())
+
+
+class BoundedServer(ThreadingHTTPServer):
+    """Threaded server that closes connections beyond ``max_connections`` at once (D1072)."""
+
+    daemon_threads = True
+
+    def __init__(self, address: tuple[str, int], handler: type[ProxyHandler], slots: int) -> None:
+        self._slots = threading.BoundedSemaphore(slots)
+        super().__init__(address, handler)
+
+    def process_request(self, request: Request, client_address: tuple[str, int]) -> None:
+        """Take a slot or close the connection without reading it."""
+        if not self._slots.acquire(blocking=False):
+            self.shutdown_request(request)
+            return
+        super().process_request(request, client_address)
+
+    def process_request_thread(self, request: Request, client_address: tuple[str, int]) -> None:
+        """Serve the connection, then free its slot."""
+        try:
+            super().process_request_thread(request, client_address)
+        finally:
+            self._slots.release()
 
 
 def forward(cfg: ProxyConfig, fwd: Forward) -> tuple[int, bytes]:
@@ -197,18 +251,21 @@ def forward(cfg: ProxyConfig, fwd: Forward) -> tuple[int, bytes]:
         cfg.upstream + fwd.path, data=fwd.body, method=fwd.method, headers=headers
     )
     try:
-        with urllib.request.urlopen(req, timeout=cfg.timeout_s) as resp:  # noqa: S310 - see above
+        with _OPENER.open(req, timeout=cfg.timeout_s) as resp:
             return int(resp.status), bytes(resp.read())
     except urllib.error.HTTPError as err:
+        if 300 <= err.code < 400:
+            LOG.warning("upstream redirect refused: %d", err.code)
+            return 502, json.dumps({"error": "upstream redirect refused"}).encode()
         return int(err.code), bytes(err.read())
     except (urllib.error.URLError, OSError) as err:
         LOG.warning("upstream unreachable: %s", type(err).__name__)
         return 502, json.dumps({"error": "upstream unreachable"}).encode()
 
 
-def serve(cfg: ProxyConfig, address: tuple[str, int] = DEFAULT_LISTEN) -> ThreadingHTTPServer:
-    """Create (not start) the threaded server; the caller runs ``serve_forever``."""
-    return ThreadingHTTPServer(address, make_handler(cfg, Counters()))
+def serve(cfg: ProxyConfig, address: tuple[str, int] = DEFAULT_LISTEN) -> BoundedServer:
+    """Create (not start) the bounded threaded server; the caller runs ``serve_forever``."""
+    return BoundedServer(address, make_handler(cfg, Counters()), cfg.max_connections)
 
 
 def main() -> None:

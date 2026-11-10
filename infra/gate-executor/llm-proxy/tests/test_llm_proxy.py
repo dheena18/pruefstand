@@ -110,17 +110,18 @@ def test_allowed_calls_are_forwarded_and_answers_pass_unchanged(rig: Rig) -> Non
     status, body = rig.call("POST", "/api/chat", _chat(keep_alive=0))
     assert (status, body) == (200, json.loads(rig.upstream.reply))
     assert rig.call("POST", "/api/embed", {"model": EMB, "input": ["Miete"]})[0] == 200
-    assert rig.call("GET", "/api/tags")[0] == 200
+    status, tags = rig.call("GET", "/api/tags")
+    assert status == 200
+    assert sorted(m["name"] for m in tags["models"]) == sorted([GEN, EMB])  # local, D1071
     assert [(m, p) for m, p, _ in rig.upstream.seen] == [
         ("POST", "/api/chat"),
         ("POST", "/api/embed"),
-        ("GET", "/api/tags"),
     ]
     assert "keep_alive" not in json.loads(rig.upstream.seen[0][2])
     assert rig.call("GET", "/health")[1] == {
         "model_reloads": 0,
         "upstream_errors": 0,
-        "requests": 3,
+        "requests": 2,
     }
 
 

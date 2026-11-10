@@ -36,6 +36,8 @@ def test_container_is_locked_down() -> None:
     assert not str(SERVICE["user"]).startswith("0")
     assert "privileged" not in SERVICE
     assert "volumes" not in SERVICE
+    assert SERVICE["pids_limit"] == 128
+    assert SERVICE["mem_limit"] == "256m"
 
 
 def test_no_service_publishes_a_port_or_uses_the_host_network() -> None:

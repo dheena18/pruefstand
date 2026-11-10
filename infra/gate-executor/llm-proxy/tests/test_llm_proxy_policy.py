@@ -6,7 +6,7 @@ from typing import Any
 
 import pytest
 import yaml
-from llm_proxy_policy import Forward, PolicyError, Reject, build_policy, decide, is_reload
+from llm_proxy_policy import Answer, Forward, PolicyError, Reject, build_policy, decide, is_reload
 
 ROOT = Path(__file__).resolve().parents[4]
 CATALOGUE = yaml.safe_load((ROOT / "infra/gpu/models.yaml").read_text(encoding="utf-8"))["models"]
@@ -26,7 +26,7 @@ def _chat(model: object = GEN, **extra: Any) -> bytes:
 
 def _decide(
     method: str, path: str, body: bytes = b"", auth: str | None = f"Bearer {KEY}"
-) -> Forward | Reject:
+) -> Forward | Reject | Answer:
     return decide(method, path, auth=auth, body=body, key=KEY, policy=POLICY)
 
 
@@ -42,7 +42,7 @@ def test_allowed_routes_are_forwarded() -> None:
     assert isinstance(_decide("POST", "/api/chat", _chat()), Forward)
     embed = json.dumps({"model": EMB, "input": ["Mietrecht"]}).encode()
     assert isinstance(_decide("POST", "/api/embed", embed), Forward)
-    assert _decide("GET", "/api/tags") == Forward("GET", "/api/tags", None)
+    assert isinstance(_decide("GET", "/api/tags"), Answer)  # synthesised, D1071
 
 
 @pytest.mark.parametrize(
@@ -149,10 +149,11 @@ def test_embed_without_bounds_keeps_catalogue_defaults() -> None:
     assert options["temperature"] == emb["temperature"]
 
 
-def test_other_body_fields_pass_unchanged() -> None:
+def test_allowed_body_fields_pass_unchanged_and_others_are_refused() -> None:
     out = _forwarded(_chat(think=False, stream=False, format="json"))
     assert (out["think"], out["stream"], out["format"]) == (False, False, "json")
     assert out["messages"][0]["content"].endswith("Kündigung?")
+    assert isinstance(_decide("POST", "/api/chat", _chat(system="x")), Reject)  # D1070 allow-list
 
 
 @pytest.mark.parametrize("tag", [JUDGE, "nicht-im-katalog"])
