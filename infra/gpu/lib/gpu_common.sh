@@ -94,8 +94,13 @@ residents() { # TSV: url name digest context size size_vram of every resident mo
 }
 
 load_model() { # tag url: preload with exactly the catalogue options (the embed fallback for embedding-only models)
-  post_json "$2" generate "$(cat_py preload-body "$1")" && return 0
-  [ "$(cat_py role "$1")" = embed ] || return 1
+  # An embedding-only model answers /api/generate with HTTP 400 (expected, T3.1d D953): that attempt is quiet, the
+  # /api/embed fallback is not. For every other role a failure of /api/generate stays visible.
+  if [ "$(cat_py role "$1")" != embed ]; then
+    post_json "$2" generate "$(cat_py preload-body "$1")" && return 0
+    return 1
+  fi
+  post_json "$2" generate "$(cat_py preload-body "$1")" 2>/dev/null && return 0
   post_json "$2" embed "$(cat_py preload-body "$1" --embed)"
 }
 
