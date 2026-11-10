@@ -85,9 +85,7 @@ def run_judge_drift(
 
     Raises:
         ConfigError: The anchor file is invalid or belongs to another judge.
-        LLMError: A judge call failed after the retries.
-
-    Must not be called from a running event loop (it runs its own).
+        LLMError: A judge call failed after the retries (runs its own event loop).
     """
     if not anchors_path.is_file():
         _log.info(
@@ -110,19 +108,28 @@ def run_judge_drift(
             "judge_drift_ok", model=model, agreement=agreement, changed=changed, threshold=used
         )
         return DriftResult("ok", n, agreement, changed, used)
+    result = DriftResult("drift", n, agreement, changed, used)
+    _flag_drift(cache_dir, model, result, a0=a0, now=now)
+    return result
+
+
+def _flag_drift(
+    cache_dir: Path, model: str, result: DriftResult, *, a0: float | None, now: datetime
+) -> None:
+    """Bump the judge's cache epoch and write ``judge_drift.json``."""
     epoch = invalidate_judge(cache_dir, model)
+    agreement = result.agreement if result.agreement is not None else 0.0
     flag = DriftFlag(
         model=model,
         agreement=agreement,
         epoch=epoch,
         ts=now.isoformat(),
-        changed=changed,
-        threshold=used,
+        changed=result.changed,
+        threshold=result.threshold,
         a0=a0,
     )
     _write_flag(cache_dir, flag)
-    _log.warning("judge_drift", model=model, agreement=agreement, changed=changed, threshold=used)
-    return DriftResult("drift", n, agreement, changed, used)
+    _log.warning("judge_drift", model=model, agreement=agreement, changed=result.changed)
 
 
 def _check_owner(model: str, anchors: list[AnchorItem]) -> None:

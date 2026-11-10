@@ -136,8 +136,25 @@ dataset_stage() {
   git --no-pager diff --stat -- "$dir" || true
 }
 
+perturb_stage() {
+  # T4.5 S1; also `--perturb` (cassettes-models.yml, D900: judge = a github/<model>, there is no A40 in Actions).
+  if [ -n "${PRUEFSTAND_GH_MODELS_TOKEN:-}" ] && [ -n "${PRUEFSTAND_PERTURB_REWRITE_MODEL:-}" ] \
+    && [ -n "${PRUEFSTAND_PERTURB_JUDGE_MODEL:-}" ]; then
+    rm -rf packages/pruefstand/tests/cassettes/perturb
+    uv run pytest packages/pruefstand/tests/live/perturb/test_record_perturb.py --record-mode=rewrite -q -p no:cacheprovider
+    uv run pytest packages/pruefstand/tests/unit/perturb/test_cassettes.py -q -p no:cacheprovider
+    git --no-pager diff --stat -- packages/pruefstand/tests/cassettes/perturb || true
+  else
+    echo "record_cassettes: perturb stage skipped (needs PRUEFSTAND_GH_MODELS_TOKEN and PRUEFSTAND_PERTURB_{REWRITE,JUDGE}_MODEL)" >&2
+  fi
+}
+
 if [ "${1:-}" = "--dataset" ]; then
   dataset_stage
+  exit $?
+fi
+if [ "${1:-}" = "--perturb" ]; then
+  perturb_stage
   exit $?
 fi
 if [ "${1:-}" = "--judges" ]; then
@@ -203,12 +220,4 @@ dataset_stage
 # mode, so this stage needs PRUEFSTAND_GH_MODELS_TOKEN, PRUEFSTAND_PERTURB_REWRITE_MODEL (github/<model>),
 # PRUEFSTAND_PERTURB_JUDGE_MODEL (ollama/<tag>) and the tunnel; run it as `pruefstand-lock make cassettes`
 # on the VM. Without them the stage is skipped (the unit replay test then skips as well).
-if [ -n "${PRUEFSTAND_GH_MODELS_TOKEN:-}" ] && [ -n "${PRUEFSTAND_PERTURB_REWRITE_MODEL:-}" ] \
-  && [ -n "${PRUEFSTAND_PERTURB_JUDGE_MODEL:-}" ]; then
-  rm -rf packages/pruefstand/tests/cassettes/perturb
-  uv run pytest packages/pruefstand/tests/live/perturb/test_record_perturb.py --record-mode=rewrite -q -p no:cacheprovider
-  uv run pytest packages/pruefstand/tests/unit/perturb/test_cassettes.py -q -p no:cacheprovider
-  git --no-pager diff --stat -- packages/pruefstand/tests/cassettes/perturb || true
-else
-  echo "record_cassettes: perturb stage skipped (needs PRUEFSTAND_GH_MODELS_TOKEN and PRUEFSTAND_PERTURB_{REWRITE,JUDGE}_MODEL)" >&2
-fi
+perturb_stage

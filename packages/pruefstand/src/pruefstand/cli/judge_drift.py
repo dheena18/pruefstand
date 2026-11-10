@@ -13,7 +13,6 @@ from pruefstand.judges.anchors import anchor_file
 from pruefstand.judges.status import read_status
 from pruefstand.llm.factory import build_backend
 from pruefstand.llm.families import family_of
-from pruefstand.pipeline.judge_drift import run_judge_drift
 
 
 def register(app: typer.Typer) -> None:
@@ -31,6 +30,9 @@ def register(app: typer.Typer) -> None:
         ] = None,
     ) -> None:
         """Re-judge the anchors, cache bypassed; on drift write judge_drift.json (exit 0)."""
+        # scipy-free CLI import (gate review minors): the drift pipeline loads only when run
+        from pruefstand.pipeline.judge_drift import run_judge_drift  # noqa: PLC0415
+
         with guarded(ctx):
             status = read_status()
             threshold = None if status is None else status.drift_thresholds.get(judge)
