@@ -13,7 +13,8 @@ from pathlib import Path
 
 import yaml
 from workflow_curl import curl_retries
-from workflow_model import Doc, all_uses, environment, jobs, steps, strings, triggers
+from workflow_hardening import check_action_text, hardening, pins
+from workflow_model import Doc, environment, jobs, steps, strings, triggers
 from workflow_no_repo_code import no_repo_code
 from workflow_policy import (
     ACTIONS_READ,
@@ -35,28 +36,7 @@ from workflow_policy import (
 )
 from workflow_schedule import crons as _crons
 
-SHA_USES = re.compile(r"^[\w.-]+/[\w./-]+@[0-9a-f]{40}$")
-DOCKER_USES = re.compile(r"^docker://\S+@sha256:[0-9a-f]{64}$")
-USES_LINE = re.compile(r"^\s*(?:-\s+)?uses:\s*['\"]?([^\s#'\"]+)['\"]?\s*(#.*)?$")
-VERSION_COMMENT = re.compile(r"#\s*v\d+(\.\d+)*")
 SECRET_REF = re.compile(r"secrets(?:\s*\.\s*|\s*\[\s*['\"])(\w+)", re.IGNORECASE)
-
-
-def _pins(doc: Doc, text: str) -> list[str]:
-    out = []
-    for uses in all_uses(doc):
-        local = uses.startswith("./")
-        if not (local or SHA_USES.match(uses) or DOCKER_USES.match(uses)):
-            out.append(f"uses: {uses} is not pinned to a 40-hex commit SHA")
-    for line in text.splitlines():
-        match = USES_LINE.match(line)
-        if (
-            match
-            and SHA_USES.match(match.group(1))
-            and not VERSION_COMMENT.search(match.group(2) or "")
-        ):
-            out.append(f"uses: {match.group(1)} lacks a trailing '# vX.Y.Z' comment")
-    return out
 
 
 def _self_hosted(job: Doc) -> bool:
@@ -224,7 +204,7 @@ def check_text(name: str, text: str) -> list[str]:
     if not isinstance(doc, dict):
         return [f"{name}: invalid YAML: top level is not a mapping"]
     rules = [
-        _pins(doc, text),
+        pins(doc, text),
         _triggers_and_runners(name, doc),
         _permissions(name, doc),
         _secrets_and_envs(name, doc),
@@ -233,6 +213,7 @@ def check_text(name: str, text: str) -> list[str]:
         _gate_router(name, doc),
         no_repo_code(name, doc),
         curl_retries(doc),
+        hardening(name, doc),
     ]
     return [f"{name}: {message}" for found in rules for message in found]
 
@@ -253,18 +234,34 @@ def check_dir(path: Path) -> tuple[int, list[str]]:
     return len(files), findings
 
 
+def check_actions(path: Path) -> tuple[int, list[str]]:
+    """Check every composite action ``<path>/*/action.y[a]ml`` (review F3, D1121)."""
+    files = sorted([*path.glob("*/action.yml"), *path.glob("*/action.yaml")])
+    found = [
+        f
+        for file in files
+        for f in check_action_text(
+            f"{file.parent.name}/{file.name}", file.read_text(encoding="utf-8")
+        )
+    ]
+    return len(files), found
+
+
 def main(argv: Sequence[str] | None = None) -> int:
     """Run the guard.
 
     Args:
-        argv: Arguments; one optional workflows directory (default ``.github/workflows``).
+        argv: Arguments; one optional workflows directory (default ``.github/workflows``) and
+            ``--actions <dir>`` with composite actions (``<dir>/*/action.yml``).
 
     Returns:
         0 when every workflow passes, 1 on findings, 2 when the directory does not exist.
     """
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("directory", nargs="?", default=".github/workflows", type=Path)
-    path = parser.parse_args(argv).directory
+    parser.add_argument("--actions", type=Path, default=None)
+    args = parser.parse_args(argv)
+    path = args.directory
     if not path.is_dir():
         sys.stderr.write(f"error: {path} is not a directory\n")
         return 2
@@ -272,6 +269,12 @@ def main(argv: Sequence[str] | None = None) -> int:
     if count == 0:
         sys.stderr.write(f"error: no workflows found in {path}\n")
         return 2
+    if args.actions is not None:
+        if not args.actions.is_dir():
+            sys.stderr.write(f"error: {args.actions} is not a directory\n")
+            return 2
+        n_actions, more = check_actions(args.actions)
+        count, findings = count + n_actions, findings + more
     if findings:
         sys.stdout.write("\n".join(findings) + "\n")
         return 1

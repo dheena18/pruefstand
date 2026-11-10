@@ -94,3 +94,37 @@ REPO_CODE_RUN = re.compile(
     r"|(?:bash|sh)\s+\S*scripts/|\./\S+)",
     re.MULTILINE,
 )
+
+
+# Review F3 (D1121) ---------------------------------------------------------------------------
+
+# (file, job, scope) -> reason, for every ``<scope>: write`` without a table above (deny by
+# default: packages, pull-requests, checks, issues, deployments, attestations, actions, ...).
+OTHER_WRITE: dict[tuple[str, str, str], str] = {
+    ("build-images.yml", "trivy", "security-events"): "uploads the Trivy SARIF to code scanning",
+    ("security.yml", "codeql", "security-events"): "CodeQL SARIF upload",
+    ("security.yml", "scorecard", "security-events"): "OpenSSF Scorecard SARIF upload",
+    (
+        "live-e2e.yml",
+        "comment",
+        "pull-requests",
+    ): "upserts the one bot comment on same-repo PRs; checks out the BASE sha only",
+}
+
+# (file, trigger) -> reason. Triggers that run with base-repo rights on attacker-influenced input.
+DANGEROUS_TRIGGERS: dict[tuple[str, str], str] = {
+    (
+        "docs.yml",
+        "workflow_run",
+    ): "N5.2: deploys the dashboard site after deploy.yml; provenance check first, main code only",
+}
+
+# ``github.event.*`` values that may be interpolated into run: / with: (numbers, SHAs, ids and the
+# repository name); everything else, also ``toJSON(github.event...)``, is refused.
+EVENT_VALUES = re.compile(
+    r"github\.event\.("
+    r"number|(pull_request|issue)\.number"
+    r"|pull_request\.(head|base)\.sha|workflow_run\.(id|head_sha)"
+    r"|repository\.full_name|after|before"
+    r")"
+)

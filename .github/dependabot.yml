@@ -1,5 +1,6 @@
 # Weekly, ONE group per ecosystem (uv, npm, github-actions, docker; D856) so each ecosystem produces at most one PR. PR titles stay Conventional Commits
 # (`chore(deps): ...`) so the `commitlint` job passes. Entries for directories that do not exist yet are harmless.
+# Every ecosystem waits 5 days after a release before proposing it (`cooldown`, review F6, D1121).
 # Docker Compose support: Dependabot ecosystem `docker-compose` (verified 2026-10-31); it joins the group name `docker`.
 version: 2
 updates:
@@ -7,6 +8,8 @@ updates:
     directory: /
     schedule:
       interval: weekly
+    cooldown:
+      default-days: 5
     open-pull-requests-limit: 2
     commit-message:
       prefix: chore
@@ -19,6 +22,8 @@ updates:
     directory: /apps/dashboard
     schedule:
       interval: weekly
+    cooldown:
+      default-days: 5
     open-pull-requests-limit: 2
     commit-message:
       prefix: chore
@@ -44,9 +49,12 @@ updates:
         patterns: ["*"]
         update-types: [minor, patch]
   - package-ecosystem: github-actions
-    directory: /
+    # The composite actions under .github/actions/ pin their own actions (review F6, D1121).
+    directories: ["/", "/.github/actions/*"]
     schedule:
       interval: weekly
+    cooldown:
+      default-days: 5
     open-pull-requests-limit: 2
     commit-message:
       prefix: chore
@@ -63,6 +71,8 @@ updates:
       - /infra/gpu/rerank
     schedule:
       interval: weekly
+    cooldown:
+      default-days: 5
     open-pull-requests-limit: 2
     commit-message:
       prefix: chore
@@ -81,6 +91,8 @@ updates:
       - /infra/gpu
     schedule:
       interval: weekly
+    cooldown:
+      default-days: 5
     open-pull-requests-limit: 2
     commit-message:
       prefix: chore
