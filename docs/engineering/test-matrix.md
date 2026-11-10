@@ -693,3 +693,4 @@ mapping, `write_gate_json`, and the R9 additions on both); file names corrected 
 `test_baseline_cli.py`); new rows for every R9 symbol and for the out-of-package symbols that Done-when lines name.
 
 T1.4 (D353–D355): +12 `covered` rows (7 first pass, 5 review round 2) and +3 in review round 3 (`extract_json_object`, `cache_key`, request builder, `litellm_model`, policy validation, `fetch.py`, `record_cassettes.sh`) and +1 `planned` row (cache key with `model_version`, owner T5.1); five T1.4 rows re-worded to the tests that exist.
+| `cut_signature`, `Judge._check_not_cut` | `judges.tokens`, `judges.judge` | T5.2b (D962) | `test_input_cap.py` | measured cut report 6147 (gemma3:12b, num_ctx 12288) is in the band, measured uncut 910/3610/7210/10810 are not; band edges; whole-path loopback at half+3 raises `JudgeInputTruncated`; non-Ollama judge has no band | covered |
