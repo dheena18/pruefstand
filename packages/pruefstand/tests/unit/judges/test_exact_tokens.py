@@ -1,115 +1,30 @@
 """Sign (c) of the cut check and the exact judge-token count (T5.2c, D1010)."""
 
-import hashlib
-import json
-from collections.abc import Iterator
-from contextlib import contextmanager
 from pathlib import Path
 
 import pytest
-import respx
 import yaml
-from testsupport.gpu_files import OPTIONS, SHIPPED_CATALOGUE, write_endpoints
-from testsupport.judge_support import DE_ROOT, MODEL, NONCE_KEY, TAGS
-from testsupport.loopback_script import Step, serve_script
-from tokenizers import Regex, Tokenizer, models, pre_tokenizers
+from testsupport.exact_support import (
+    NUM_CTX,
+    WINDOW,
+    exact_of,
+    grow,
+    install_tokenizer,
+    judge_on,
+    long_task,
+    make_probe,
+)
+from testsupport.gpu_files import SHIPPED_CATALOGUE
+from testsupport.judge_support import MODEL
 
-from pruefstand.core.config import LLMPolicyConfig, ModelRef
 from pruefstand.core.errors import ConfigError, JudgeInputTruncated
 from pruefstand.judges.exact_tokens import (
     TEMPLATE_TOKENS,
     ExactCounter,
-    fetch_tokenizer,
     is_cut,
     load_counter,
     source_url,
-    tokenizer_file,
 )
-from pruefstand.judges.judge import Judge
-from pruefstand.judges.output import make_task
-from pruefstand.llm.budget import Budget
-from pruefstand.llm.client import LLMClient
-from pruefstand.llm.factory import build_backend
-from pruefstand.llm.policy import LLMPolicy
-from pruefstand.llm.prompts import PromptRegistry
-from pruefstand.llm.recorder import CallRecorder
-
-NUM_CTX = int(OPTIONS["num_ctx"])
-WINDOW = NUM_CTX - int(OPTIONS["num_predict"])  # 4096 - 77 = 4019
-
-
-def char_tokenizer() -> Tokenizer:
-    """A real ``tokenizers`` tokenizer that counts one token per character (exact and simple)."""
-    vocab = {"[UNK]": 0}
-    tokenizer = Tokenizer(models.WordLevel(vocab, unk_token="[UNK]"))  # noqa: S106  (a token name)
-    tokenizer.pre_tokenizer = pre_tokenizers.Split(Regex("[\\s\\S]"), "isolated")
-    return tokenizer
-
-
-def install_tokenizer(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, *, present: bool) -> Path:
-    """A catalogue that pins the char tokenizer; the file is written only when ``present``."""
-    tmp_path.mkdir(parents=True, exist_ok=True)
-    directory = tmp_path / "tok"
-    directory.mkdir(exist_ok=True)
-    monkeypatch.setenv("T_JUDGE_URL", "http://127.0.0.1:1")
-    raw = char_tokenizer().to_str().encode("utf-8")
-    pin = {
-        "source": "hf:acme/judge-x@abc/tokenizer.json",
-        "sha256": hashlib.sha256(raw).hexdigest(),
-    }
-    entry = {
-        "id": MODEL,
-        "engine": "ollama",
-        "tag": MODEL.removeprefix("ollama/"),
-        "options": OPTIONS,
-        "tokenizer": pin,
-    }
-    catalogue = tmp_path / "models.yaml"
-    catalogue.write_text(yaml.safe_dump({"models": [entry]}), encoding="utf-8")
-    endpoints = write_endpoints(tmp_path / "ep.yaml", {"judge": ("T_JUDGE_URL", MODEL)})
-    monkeypatch.setenv("PRUEFSTAND_GPU_CATALOGUE", str(catalogue))
-    monkeypatch.setenv("PRUEFSTAND_GPU_ENDPOINTS", str(endpoints))
-    monkeypatch.setenv("PRUEFSTAND_JUDGE_TOKENIZER_DIR", str(directory))
-    file = tokenizer_file(MODEL)
-    if present:
-        file.write_bytes(raw)
-    return file
-
-
-@contextmanager
-def judge_on(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, reported: int, *, present: bool = True
-) -> Iterator[tuple[Judge, list[object]]]:
-    install_tokenizer(tmp_path, monkeypatch, present=present)
-    body = json.dumps(
-        {
-            "model": "m",
-            "message": {"role": "assistant", "content": '{"reason": "x", "score": 1}'},
-            "done": True,
-            "prompt_eval_count": reported,
-            "eval_count": 2,
-        }
-    ).encode()
-    with serve_script([Step(body=body)], tags=TAGS) as (origin, state):
-        monkeypatch.setenv("T_JUDGE_URL", origin)
-        policy = LLMPolicyConfig()
-        backend = build_backend(ModelRef(id=MODEL, family="gemma"), policy=policy)
-        client = LLMClient(backend, None, Budget(None, None), CallRecorder(), LLMPolicy(policy))
-        yield Judge(client, MODEL, PromptRegistry([DE_ROOT]), nonce_key=NONCE_KEY), [state]
-
-
-def long_task(chars: int):  # type: ignore[no-untyped-def]
-    """A refusal task whose answer is ``chars`` characters of 12-letter words."""
-    answer = ("abcdefghijkl " * (chars // 13 + 1))[:chars]
-    return make_task("refusal_judged", frage="F?", antwort=answer)
-
-
-def exact_of(judge: Judge, task) -> tuple[int, int]:  # type: ignore[no-untyped-def]
-    counter = load_counter(MODEL)
-    assert counter is not None
-    messages = judge._render(task)
-    return counter.prompt(messages), counter.fixed_prefix(messages)
-
 
 # --- the counter ----------------------------------------------------------------------------
 
@@ -190,7 +105,7 @@ async def test_a_report_far_below_the_exact_count_of_a_prompt_that_fills_the_win
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     install_tokenizer(tmp_path, monkeypatch, present=True)
-    probe, _ = _probe(tmp_path, monkeypatch)
+    probe, _ = make_probe(tmp_path, monkeypatch)
     chars = 0
     task = long_task(40)
     while True:  # grow the answer until the exact count fills 0.95 of the window
@@ -210,18 +125,11 @@ async def test_a_report_far_below_the_exact_count_of_a_prompt_that_fills_the_win
         await judge.score(task)
 
 
-def _probe(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> tuple[Judge, int]:
-    policy = LLMPolicyConfig()
-    backend = build_backend(ModelRef(id=MODEL, family="gemma"), policy=policy)
-    client = LLMClient(backend, None, Budget(None, None), CallRecorder(), LLMPolicy(policy))
-    return Judge(client, MODEL, PromptRegistry([DE_ROOT]), nonce_key=NONCE_KEY), 0
-
-
 async def test_an_honest_report_and_a_cached_short_prompt_are_not_cuts(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     install_tokenizer(tmp_path, monkeypatch, present=True)
-    probe, _ = _probe(tmp_path, monkeypatch)
+    probe, _ = make_probe(tmp_path, monkeypatch)
     task = long_task(300)
     exact, prefix = exact_of(probe, task)
     assert exact < 0.9 * WINDOW
@@ -238,7 +146,7 @@ async def test_without_the_tokenizer_sign_c_is_skipped_and_the_run_can_say_so(
     probe_dir = tmp_path / "with"
     probe_dir.mkdir()
     install_tokenizer(probe_dir, monkeypatch, present=True)
-    probe, _ = _probe(probe_dir, monkeypatch)
+    probe, _ = make_probe(probe_dir, monkeypatch)
     task = long_task(2_600)
     exact, prefix = exact_of(probe, task)
     assert exact >= 0.9 * WINDOW
@@ -250,23 +158,12 @@ async def test_without_the_tokenizer_sign_c_is_skipped_and_the_run_can_say_so(
         assert (await judge.score(task)).raw_score == 1  # (a) and (b) do not hold, (c) is skipped
 
 
-def _grow(probe: Judge, fraction: float):  # type: ignore[no-untyped-def]
-    """The shortest answer whose exact prompt count is at least ``fraction`` of the window."""
-    chars = 0
-    while True:
-        chars += 50
-        task = long_task(chars)
-        exact, prefix = exact_of(probe, task)
-        if exact >= fraction * WINDOW:
-            return task, exact, prefix
-
-
 async def test_an_exact_count_at_or_above_the_window_is_a_cut_whatever_was_reported(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     install_tokenizer(tmp_path, monkeypatch, present=True)
-    probe, _ = _probe(tmp_path, monkeypatch)
-    task, exact, _ = _grow(probe, 1.0)
+    probe, _ = make_probe(tmp_path, monkeypatch)
+    task, exact, _ = grow(probe, 1.0)
     assert exact >= WINDOW
     assert probe.prompt_tokens(task) <= probe.input_cap  # the estimate let it through
     reported = 3_000  # honest-looking, outside the band, below the window
@@ -282,8 +179,8 @@ async def test_a_full_prefix_cache_hit_on_a_prompt_near_the_window_is_not_a_cut(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     install_tokenizer(tmp_path, monkeypatch, present=True)
-    probe, _ = _probe(tmp_path, monkeypatch)
-    task, exact, prefix = _grow(probe, 0.9)
+    probe, _ = make_probe(tmp_path, monkeypatch)
+    task, exact, prefix = grow(probe, 0.9)
     assert 0.9 * WINDOW <= exact < WINDOW
     reported = exact - prefix  # the lowest honest report: the whole fixed prefix came from cache
     assert not NUM_CTX // 2 <= reported <= NUM_CTX // 2 + 16
@@ -295,59 +192,10 @@ def test_the_exact_comparison_is_skipped_for_an_answer_of_the_fallback_judge(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     install_tokenizer(tmp_path, monkeypatch, present=True)
-    probe, _ = _probe(tmp_path, monkeypatch)
-    task, _, _ = _grow(probe, 1.0)
+    probe, _ = make_probe(tmp_path, monkeypatch)
+    task, _, _ = grow(probe, 1.0)
     messages = probe._render(task)
     reported = 3_000
     with pytest.raises(JudgeInputTruncated):
         probe._check_not_cut(reported, messages)
     probe._check_not_cut(reported, messages, fallback=True)
-
-
-# --- fetch_tokenizer ----------------------------------------------------------------------------
-
-URL = "https://huggingface.co/acme/judge-x/resolve/abc/tokenizer.json"
-
-
-def test_fetch_downloads_verifies_and_writes_atomically(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    target = install_tokenizer(tmp_path, monkeypatch, present=False)
-    raw = char_tokenizer().to_str().encode("utf-8")
-    with respx.mock() as mock:
-        route = mock.get(URL).respond(200, content=raw)
-        written = fetch_tokenizer(MODEL)
-    assert route.called
-    assert written == target
-    assert target.read_bytes() == raw
-    assert not list(target.parent.glob("*.part"))  # the temporary file was renamed
-    assert load_counter(MODEL) is not None
-
-
-def test_fetch_refuses_a_digest_mismatch_and_leaves_no_file(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    target = install_tokenizer(tmp_path, monkeypatch, present=False)
-    with respx.mock() as mock:
-        mock.get(URL).respond(200, content=b"not the pinned tokenizer")
-        with pytest.raises(ConfigError, match="differs from the catalogue pin"):
-            fetch_tokenizer(MODEL)
-    assert not target.exists()
-    assert not list(target.parent.glob("*.part"))
-
-
-def test_fetch_reports_a_failed_download_without_the_body(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    target = install_tokenizer(tmp_path, monkeypatch, present=False)
-    with respx.mock() as mock:
-        mock.get(URL).respond(404, content=b"secret body")
-        with pytest.raises(ConfigError, match="cannot download") as raised:
-            fetch_tokenizer(MODEL)
-    assert "secret body" not in str(raised.value)
-    assert not target.exists()
-
-
-def test_a_bad_source_is_a_config_error() -> None:
-    with pytest.raises(ConfigError, match="must look like"):
-        source_url("https://example.com/tokenizer.json")
