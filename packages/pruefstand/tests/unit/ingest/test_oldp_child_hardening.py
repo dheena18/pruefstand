@@ -15,6 +15,7 @@ from pruefstand.ingest import records_child, records_proc
 from pruefstand.ingest.records_model import OldpLimits, Problem, RowBudget
 from pruefstand.ingest.records_proc import child_env, parquet_rows
 from pruefstand.ingest.records_read import parquet_rows_local
+from pruefstand.ingest.records_wire import encode
 
 MIB = 1024 * 1024
 BOMB_ELEMENTS = 25_000_000
@@ -93,7 +94,9 @@ def frames(*events: tuple[object, ...]) -> io.BytesIO:
     return buffer
 
 
-def consume(stream: io.BytesIO, sent: int = 10) -> tuple[list[object], list[Problem], RowBudget]:
+def consume(
+    stream: io.BytesIO, sent: int = 10
+) -> tuple[list[tuple[int, dict[str, object]]], list[Problem], RowBudget]:
     problems: list[Problem] = []
     budget = RowBudget(sent)
     rows = list(records_proc.events(stream, Path("f.parquet"), OldpLimits(), problems, budget))
@@ -131,7 +134,7 @@ def test_an_oversized_line_is_refused_without_reading_it_whole() -> None:
 
 
 def test_the_parent_caps_list_items_per_row() -> None:
-    line = records_child.encode(("row", 1, {"tags": [None] * 100_001}))
+    line = encode(("row", 1, {"tags": [None] * 100_001}))
     _, problems, _ = consume(io.BytesIO(line))
     assert [p.kind for p in problems] == ["reader_protocol"]
     assert "list elements" in problems[0].detail
