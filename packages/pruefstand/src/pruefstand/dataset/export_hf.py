@@ -31,10 +31,10 @@ from huggingface_hub import HfApi
 from pruefstand.core.enums import Split
 from pruefstand.core.errors import ConfigError, DatasetError
 from pruefstand.core.logging import get_logger
-from pruefstand.core.models.dataset import DatasetManifest
 from pruefstand.core.models.testcase import TestCase
 from pruefstand.core.settings import PruefstandSettings
-from pruefstand.dataset.io import MANIFEST_FILE, read_dataset, write_split_file
+from pruefstand.dataset.export_manifest import write_hf_manifest
+from pruefstand.dataset.io import read_dataset, write_split_file
 from pruefstand.dataset.licenses import LICENSE_CONFIGS
 
 _log = get_logger(__name__)
@@ -118,22 +118,6 @@ def _render_card(
     )
 
 
-def _write_manifest(
-    directory: Path, out: Path, grouped: dict[str, dict[Split, list[TestCase]]]
-) -> None:
-    """Copy the manifest with ``splits`` counting the exported rows (held-out ones are dropped)."""
-    manifest = DatasetManifest.model_validate_json((directory / MANIFEST_FILE).read_bytes())
-    exported = Counter[Split]()
-    for by_split in grouped.values():
-        for split, rows in by_split.items():
-            exported[split] += len(rows)
-    splits = {s: exported[s] for s in manifest.splits if exported[s] > 0}
-    (out / MANIFEST_FILE).write_text(
-        manifest.model_copy(update={"splits": splits}).model_dump_json(indent=2) + "\n",
-        encoding="utf-8",
-    )
-
-
 def build_hf_layout(
     directory: Path, out: Path, repo_id: str = "<HF_USER>/pruefstand-de"
 ) -> list[str]:
@@ -171,7 +155,7 @@ def build_hf_layout(
         for split, rows in by_split.items():
             if rows:
                 write_split_file(out / config / f"{split.value}.jsonl", rows)
-    _write_manifest(directory, out, grouped)
+    write_hf_manifest(directory, out, grouped)
     (out / MARKER).write_text("written by pruefstand.dataset.export_hf\n", encoding="utf-8")
     (out / "README.md").write_text(
         _render_card(directory, repo_id, counts, layout), encoding="utf-8"

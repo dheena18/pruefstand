@@ -167,7 +167,7 @@ def test_a_fully_filtered_split_leaves_the_manifest(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     _hub_with_heldout(tmp_path, monkeypatch, {})
-    all_private = dict.fromkeys(range(4), ("private",))
+    all_private: dict[int, tuple[str, ...]] = dict.fromkeys(range(4), ("private",))
     hub = _hub_with_heldout(tmp_path / "again", monkeypatch, all_private)
     manifest = json.loads((hub.snapshot / "dataset_manifest.json").read_text("utf-8"))
     assert manifest["splits"] == {"smoke": 1}
