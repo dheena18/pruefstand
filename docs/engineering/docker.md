@@ -198,7 +198,7 @@ and `llm-proxy` (the only container on `proxy-egress`) is the only path to Ollam
 ```
 
 **No GPU reservation exists anywhere in compose**: the VM has no GPU, and the cluster runs no Docker.
-GPU placement is Ollama's: one server with `CUDA_VISIBLE_DEVICES=0,1` on port `11434` and `OLLAMA_MODELS=/data/dheena/Models` on the cluster disk (ADR-0019)
+GPU placement is Ollama's: one server with `CUDA_VISIBLE_DEVICES=0,1` on port `11434` and `OLLAMA_MODELS=$CLUSTER_DATA_ROOT/Models` on the cluster disk (ADR-0019)
 (the existing server is reused, else started by `infra/cluster/start-ollama.sh`; `gpu-cluster.md` §4, ADR-0018);
 `health.sh` checks via `/api/ps` that each model is fully on a card. The candidate rag-demo in a gate job gets a
 read-only root fs, `--cap-drop ALL` and only the `--internal` network `gate-net` (no internet egress),

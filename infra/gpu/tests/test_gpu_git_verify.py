@@ -131,7 +131,10 @@ def test_replace_prints_a_diff_first_and_then_replaces(repo: Repo) -> None:
     assert res.rc == 0, res.err
     assert re.search(r"^[-+]echo foreign|^-echo foreign", res.out, re.M)
     assert MARKER in target.read_text()
-    assert target.read_text() == (repo.root / "infra/gpu/pruefstand-cluster").read_text()
+    source = (repo.root / "infra/gpu/pruefstand-cluster").read_text()
+    line = 'bin="/data/example/pruefstand-bin"'
+    rendered = re.sub(r'^bin="@BIN_DIR@"$', line, source, flags=re.M)
+    assert target.read_text() == rendered
 
 
 def test_our_own_earlier_install_is_updated_without_replace(repo: Repo) -> None:
