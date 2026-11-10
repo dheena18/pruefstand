@@ -82,6 +82,41 @@ deterministic scorer (`bench_cases.score_case`); read `context` (the passage the
 Commit the filled file; the mean of the ten human scores is compared with the deterministic score of the same items.
 The owner-actions list of the PR repeats this.
 
+### Result of the owner scoring (owner-reviewed, AI-assisted)
+
+**Transparency:** the owner is not fluent in German. The ten scores were drafted by Claude (Opus 5.5) with English
+explanations; the owner read each explanation and approved each score. They are therefore **owner-reviewed, AI-assisted**
+scores, not a fully independent human score (D855).
+
+| | mean of the 10 items |
+| --- | --- |
+| Owner-reviewed (AI-assisted) score | 1.7 |
+| Deterministic score (`bench_cases.score_case`) of the same items | 1.6 |
+
+The two scores differ on 4 of the 10 items (owner / deterministic): `ge02` 2 / 0, `su06` 1 / 2, `rg04` 1 / 0, `ge04` 1 / 2.
+Reasons for the owner's non-2 scores: `su06` omits which year the period starts in and the "ought to have known" condition;
+`rg04` has factual errors (it says the works council must consent to dismissals and is only heard on hiring, which is the
+reverse under sections 99 and 102 BetrVG), is cut off mid-sentence and does not use "du"; `ge04` says the DSGVO "entered into
+force" on 25 May 2018 (it applies from then; it has been in force since 2016). The deterministic scorer rates `ge02` and `rg04`
+as 0 where the owner review gave 2 and 1, and rates `su06` and `ge04` as 2 where the review found missing or wrong detail.
+The close means (1.7 vs 1.6) hide this item-level disagreement, so the deterministic score stays a proxy, not a quality verdict.
+
+**Per-item agreement (owner vs deterministic scorer): 6 of 10** (agree: um08, js03, lq32, rf10, su05, um07). Causes of the four disagreements:
+
+| Item | Owner / det. | Cause |
+| --- | --- | --- |
+| `ge02` | 2 / 0 | scorer bug: the check `Bürgerliches Gesetzbuch` missed the declined form "das **Bürgerliche** Gesetzbuch" (markdown bold was not the problem) |
+| `su06` | 1 / 2 | weak check: only `Jahr` was required, so a summary that omits the start-of-year condition and the "ought to have known" condition passed |
+| `rg04` | 1 / 0 | the register check ('du') rightly failed, but a single failed check scores 0 where the owner rubric gives 1; the answer is also cut off (512 tokens) and has factual errors, which keyword checks cannot see |
+| `ge04` | 1 / 2 | keyword limit: the expansion is correct (the check passes); the flaw is extra detail ("in Kraft getreten" on 25 May 2018) |
+
+Fixes (D855): the `ge02` check now accepts the declined forms, and `su06` also requires one of the two conditions
+(`entstanden`, or `fahrl`/`müsste`/`müssen`/`hätte`). Regression tests: `tests/test_owner_scored_items.py`. With the fixed scorer the
+per-item agreement is **8 of 10**; `rg04` and `ge04` stay as pinned limits of a keyword proxy.
+Effect on the model-selection results (all stored answers re-scored): the generator `ollama/qwen3.8:27b-q8_0` mean moves from
+1.832 to 1.841 (`ge02` 0 to 2, `su06` 2 to 1); the judge model `gemma3:12b` (1.673) and the candidate `qwen3:4b` (0.0) do not change.
+The committed result CSV keeps the values measured with the original scorer; the pick between generator and judge model is unaffected.
+
 ## Candidate pass (`make bench-models CANDIDATE=<catalogue tag>`)
 
 One candidate at a time, after the lead has pulled and loaded it by the swap rule (`MAINTENANCE`, one model, at least 2 GB free on the
