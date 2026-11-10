@@ -269,3 +269,11 @@ Data card: `datasets/calibration/README.md`.
 The test fixtures `experiments/rq2/tests/fixtures/germanquad_test_6.jsonl` (6 GermanQuAD test rows,
 CC BY 4.0) and `germanrag_4.jsonl` (4 GermanRAG rows, CC BY-SA 4.0) are unchanged upstream rows with
 the attribution in their header lines.
+
+## Publication blockers for the corpus files (T2.5a)
+
+The corpus chunk files mix licences: ODbL OLDP chunks share a tenant file with CC BY GII and EUR-Lex
+chunks and differ only by the per-chunk `license` field. Until per-source licence files are written
+next to the tenant files (planned with T8.4 / T8.5), no `corpus/<version>/` directory is published
+or released as a download; it stays a local build artefact. The committed `corpus/slice_v1` (section 8)
+is the only exception: it holds no OLDP text, and section 8 lists each part with its licence and attribution.

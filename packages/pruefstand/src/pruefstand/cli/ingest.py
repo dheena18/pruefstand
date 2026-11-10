@@ -18,9 +18,13 @@ def register(app: typer.Typer) -> None:
         ctx: typer.Context,
         *,
         config: Annotated[Path, typer.Option("--config", help="corpus.yaml (tenant plan).")],
-        out: Annotated[Path, typer.Option("--out", help="Parent of the corpus versions.")] = Path(
-            "corpus"
-        ),
+        out: Annotated[
+            Path,
+            typer.Option(
+                "--out",
+                help="Parent of the corpus versions; neither it nor its parent may be a symlink.",
+            ),
+        ] = Path("corpus"),
         date_tag: Annotated[
             str | None,
             typer.Option("--date", help="Build date YYYY-MM-DD (default: today, UTC)."),

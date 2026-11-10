@@ -65,3 +65,35 @@ def test_a_changed_file_fails_the_hash_check(
 
 def test_a_missing_directory_is_a_usage_error(tmp_path: Path) -> None:
     assert main([str(tmp_path / "nope")]) == 2
+
+
+def test_a_corpus_agrees_with_the_plan_it_was_built_with(
+    corpus: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    plan = corpus.parent.parent / "corpus.yaml"
+    assert main([str(corpus), "--plan", str(plan)]) == 0
+    assert capsys.readouterr().out.startswith("OK n=")
+
+
+def test_a_plan_that_does_not_declare_the_tenants_fails(
+    corpus: Path, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    plan = tmp_path / "corpus.yaml"
+    plan.write_text("plan: {tenants: [other], default_tenant: other}\n", encoding="utf-8")
+    assert main([str(corpus), "--plan", str(plan)]) == 1
+    assert "not declared by the plan" in capsys.readouterr().err
+
+
+def test_an_unreadable_plan_is_an_error_not_a_traceback(
+    corpus: Path, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    assert main([str(corpus), "--plan", str(tmp_path / "missing.yaml")]) == 1
+    assert capsys.readouterr().err.startswith("error: ")
+
+
+def test_the_committed_slice_fixture_fails_by_design(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    slice_dir = Path(__file__).resolve().parents[2] / "corpus" / "slice_v1"
+    assert main([str(slice_dir)]) == 1  # documented in the module docstring of validate_corpus
+    assert "corpus_version" in capsys.readouterr().err

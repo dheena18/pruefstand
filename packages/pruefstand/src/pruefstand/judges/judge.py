@@ -10,7 +10,7 @@ from pruefstand.core.models.llm import LLMRequest, LLMRole, Message
 from pruefstand.core.settings import PruefstandSettings
 from pruefstand.judges.escaping import make_nonce, wrap
 from pruefstand.judges.output import normalise, output_model, output_schema, spec_of
-from pruefstand.judges.tokens import estimate_tokens, input_cap, judge_window
+from pruefstand.judges.tokens import cut_signature, estimate_tokens, input_cap, judge_window
 from pruefstand.llm.client import LLMClient
 from pruefstand.llm.prompts import PromptRegistry
 
@@ -91,14 +91,26 @@ class Judge:
         return self._cap
 
     def _check_not_cut(self, reported: int) -> None:
-        """Raise ``JudgeInputTruncated`` when the provider saw more tokens than the window leaves.
+        """Raise ``JudgeInputTruncated`` when the provider cut the prompt (two independent signs).
 
-        Ollama cuts a prompt that does not fit ``num_ctx - num_predict`` without a word; the
-        reported ``prompt_eval_count`` is the only trace, so the estimate is checked against it.
+        Ollama cuts a prompt that does not fit ``num_ctx - num_predict`` without a word. (1) A
+        report at or above the window means the provider saw more than fits. (2) A cut prompt is
+        reported as about ``num_ctx / 2`` (the measured signature, ``cut_signature``), far below
+        the window, so the first sign alone misses it. The local estimate is the pre-call guard;
+        it is a heuristic, so these two signs are the backstop. A genuine prompt whose reported
+        count is in the band is read as cut (candidate-side, worst-filled): a 17-token band,
+        accepted and documented (D962).
         """
         window = judge_window(self._model)
         if window is not None and reported >= window:
             msg = f"the provider reported {reported} prompt tokens, the window leaves {window}"
+            raise JudgeInputTruncated(msg, transient=False)
+        band = cut_signature(self._model)
+        if band is not None and band[0] <= reported <= band[1]:
+            msg = (
+                f"the provider reported {reported} prompt tokens, the signature of a cut prompt "
+                f"(num_ctx / 2 = {band[0]}); the input did not fit"
+            )
             raise JudgeInputTruncated(msg, transient=False)
 
     def prompt_tokens(self, task: JudgeTask) -> int:

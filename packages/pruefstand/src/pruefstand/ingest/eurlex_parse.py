@@ -54,6 +54,7 @@ __all__ = [
     "parse_act",
 ]
 _MIB = 1024 * 1024
+_HEADING_CHARS = 64
 _RECITAL_CELL = re.compile(r"\(([0-9]{1,4})\)\Z")
 _TITLE_CLASSES = frozenset({"eli-title", "sti-art"})
 _STOP_CLASSES = frozenset(
@@ -142,7 +143,17 @@ def _strip_noise(root: html.HtmlElement) -> None:
 
 
 def _heading_number(p: html.HtmlElement) -> str | None:
-    found = ARTICLE.fullmatch(element_text(p))
+    """Article number of a heading paragraph, or None when it is not one.
+
+    The probe reads at most _HEADING_CHARS characters: a real heading (Artikel 16a) is
+    far shorter, and a paragraph with nested paragraphs (hostile) would otherwise rebuild its
+    whole inner text once per level (T2.4a).
+    """
+    try:
+        text = element_text(p, Budget(_HEADING_CHARS))
+    except EurLexParseError:
+        return None
+    found = ARTICLE.fullmatch(text)
     return found.group(1).lower() if found else None
 
 

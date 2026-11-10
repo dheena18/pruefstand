@@ -1458,7 +1458,8 @@ def write_corpus(chunks: Iterable[Chunk], out_dir: Path, corpus_version: str, *,
     # chunk_id, a doc_id in two tenants, empty licence, memerag source, symlinked out_dir/parent
 def provisional_manifest(chunks: Iterable[Chunk], sources: Mapping[str, str]) -> CorpusManifest   # ingest/writer.py: manifest with
     # corpus_version "", input of core.fingerprint.corpus_version; created_at of the final manifest = midnight UTC of the version date
-def verify_corpus(directory: Path) -> CorpusManifest   # ingest/corpus_verify.py (D437): DatasetError on any inconsistency
+def verify_corpus(directory: Path, plan: TenantPlan | None = None) -> CorpusManifest   # ingest/corpus_verify.py (D437, D890): DatasetError on any inconsistency;
+    # also re-applies the writer's rules (licence, banned source, sorted order) and, with `plan`, the part of the tenant plan a chunk shows (ingest/corpus_plan.py)
 def build_corpus(config_path: Path, out: Path, date_tag: str) -> CorpusManifest   # pipeline/ingest.py; hook
     # _extra_documents(cfg) -> list[Document] (empty; T4.6 injection docs; pin "synthetic"); T2.6 private docs come from corpus.yaml `private_docs` via pipeline/ingest_private.py (D723)
 ```
