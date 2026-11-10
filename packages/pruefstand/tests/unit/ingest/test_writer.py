@@ -2,7 +2,11 @@
 
 import hashlib
 import json
+import os
 import re
+import stat
+import threading
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 import numpy as np
@@ -229,13 +233,27 @@ def test_no_staging_directory_is_left_behind_after_a_failure(
     assert list(tmp_path.iterdir()) == []
 
 
-def test_a_stale_staging_directory_is_replaced(chunks: list[Chunk], tmp_path: Path) -> None:
-    version = version_of(chunks)
-    stale = tmp_path / f".{version}.partial"
+def test_a_leftover_staging_directory_is_left_alone(chunks: list[Chunk], tmp_path: Path) -> None:
+    stale = tmp_path / f".{version_of(chunks)}.partial"
     stale.mkdir()
-    (stale / "junk").write_text("x", encoding="utf-8")
     write(chunks, tmp_path)
-    assert not stale.exists()
+    assert stale.is_dir()  # each run stages in a directory of its own
+
+
+def test_concurrent_writes_of_one_version_all_succeed_and_leave_no_staging(
+    chunks: list[Chunk], tmp_path: Path
+) -> None:
+    version = version_of(chunks)
+    barrier = threading.Barrier(6)
+
+    def run(_: int) -> str:
+        barrier.wait()
+        return write_corpus(chunks, tmp_path / version, version, sources=SOURCES).corpus_version
+
+    with ThreadPoolExecutor(max_workers=6) as pool:
+        assert set(pool.map(run, range(6))) == {version}
+    assert [p.name for p in tmp_path.iterdir()] == [version]
+    assert verify_corpus(tmp_path / version).corpus_version == version
 
 
 def test_rendering_scales_linearly(chunks: list[Chunk]) -> None:
@@ -258,3 +276,18 @@ def test_rendering_scales_linearly(chunks: list[Chunk]) -> None:
 def test_any_input_order_gives_the_same_bytes(chunks: list[Chunk], data: st.DataObject) -> None:
     order = data.draw(st.permutations(chunks))
     assert render_corpus(order).files == render_corpus(chunks).files
+
+
+@pytest.mark.parametrize(
+    ("umask", "directory", "files"), [(0o022, 0o755, 0o644), (0o077, 0o700, 0o600)]
+)
+def test_published_directory_follows_the_umask(
+    chunks: list[Chunk], tmp_path: Path, umask: int, directory: int, files: int
+) -> None:
+    old = os.umask(umask)
+    try:
+        out = tmp_path / write(chunks, tmp_path).corpus_version
+    finally:
+        os.umask(old)
+    assert stat.S_IMODE(out.stat().st_mode) == directory
+    assert {stat.S_IMODE(p.stat().st_mode) for p in out.iterdir()} == {files}
