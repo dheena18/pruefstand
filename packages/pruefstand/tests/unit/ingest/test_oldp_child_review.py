@@ -44,7 +44,7 @@ def test_a_line_of_many_tiny_values_is_refused_before_parsing(item: bytes) -> No
     assert rows == 0
     assert [p.kind for p in problems] == ["reader_protocol"]
     assert "JSON " in problems[0].detail
-    assert peak < 16 * MIB  # json.loads would build 1 M objects (tens of MiB)
+    assert peak < 32 * MIB  # the line, its decoded text; json.loads would add 1 M objects
 
 
 def test_commas_inside_texts_do_not_count() -> None:
@@ -174,3 +174,21 @@ def test_the_opt_in_reads_without_limits(monkeypatch: pytest.MonkeyPatch, tmp_pa
     records_child.run([spec], out)
     assert b'["warning", "no /proc"]' in out.getvalue()
     assert b'["row", 1,' in out.getvalue()
+
+
+def test_a_utf16_line_cannot_slip_past_the_count() -> None:
+    """Re-review: json.loads(bytes) accepts UTF-16, the byte count did not (U+5C41 = 41 5C)."""
+    text = '["warning", ["X屁", ' + "[], " * 1_600_000 + '"Y"]]'
+    line = text.encode("utf-16-le") + "\n".encode("utf-16-le")[:1]
+    del text
+    rows, problems, peak = consume(line)
+    del line
+    assert rows == 0
+    assert [p.kind for p in problems] == ["reader_protocol"]
+    assert peak < 64 * MIB  # parsed as UTF-16 it built 1.6 M lists
+
+
+def test_a_line_that_is_not_utf8_is_a_protocol_problem() -> None:
+    rows, problems, _ = consume(b'["warning", "\xff"]\n')
+    assert rows == 0
+    assert "not UTF-8" in problems[0].detail

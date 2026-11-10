@@ -101,8 +101,8 @@ class OldpLimits:
         max_list_elements: Most list items (all nesting levels) one row may hold; counted on the
             Arrow arrays before any Python object is built; a row above it is one
             ``record_too_large`` (review F5, D1122).
-        max_parquet_cpu_seconds: CPU-time limit (soft = hard) of the reader process; over it the
-            file ends with one counted ``read_timeout``.
+        max_parquet_cpu_seconds: CPU-time limit of the reader process (soft N, hard N + 1: SIGXCPU
+            at the soft limit); over it the file ends with one counted ``read_timeout``.
         max_parquet_wall_seconds: Wall-time limit of the reader process (killed by the parent);
             over it the file ends with one counted ``read_timeout``.
         max_parquet_output_bytes: Most bytes the parent reads from one reader process (its JSON

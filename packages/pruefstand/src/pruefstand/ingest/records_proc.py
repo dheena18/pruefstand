@@ -227,7 +227,12 @@ def parquet_rows(
 
 
 def _kill_group(child: "subprocess.Popen[bytes]") -> None:
-    """SIGKILL the reader's process group (the reader and anything it started)."""
+    """SIGKILL the reader's process group (the reader and anything it started).
+
+    Skipped once the reader has been reaped: its pid (= process group id) may be reused.
+    """
+    if child.returncode is not None:
+        return
     try:
         os.killpg(child.pid, signal.SIGKILL)
     except (ProcessLookupError, PermissionError):
