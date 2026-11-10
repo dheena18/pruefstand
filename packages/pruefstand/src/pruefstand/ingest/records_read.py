@@ -5,13 +5,8 @@ bad row costs one ``bad_record``), JSON lines one capped line at a time. Every r
 examined is charged to a :class:`~pruefstand.ingest.records_model.RowBudget`.
 """
 
-import dataclasses
 import errno
 import json
-import os
-import pickle
-import subprocess
-import sys
 from collections.abc import Iterator, Sequence
 from pathlib import Path
 from typing import IO
@@ -19,11 +14,9 @@ from typing import IO
 import pyarrow as pa
 import pyarrow.parquet as pq
 
-from pruefstand.core.logging import get_logger
 from pruefstand.ingest.records_model import OldpLimits, Problem, RowBudget
 
 _DRAIN_CHUNK = 64 * 1024
-_log = get_logger(__name__)
 _BATCH_ROWS = 64
 _BATCH_BYTES = 1024 * 1024
 _BOUNDED_ENCODINGS = frozenset(
@@ -93,6 +86,30 @@ def cap_reached(source: str, limits: OldpLimits, problems: list[Problem]) -> Non
     problems.append(Problem(source, "too_many_rows", f"more than {limits.max_rows} rows"))
 
 
+def list_elements(array: pa.Array) -> int:
+    """Number of list items below ``array`` (all nesting levels), counted without converting.
+
+    ``nbytes`` barely grows for ``list<null>`` (no value buffer), so a row of a few bytes on disk
+    can hold millions of items that ``to_pylist`` would build (review F5, D1122).
+    """
+    kind = array.type
+    if pa.types.is_list(kind) or pa.types.is_large_list(kind) or pa.types.is_fixed_size_list(kind):
+        values = array.flatten()
+        return len(values) + list_elements(values)
+    if pa.types.is_map(kind):
+        values = array.flatten()  # the key/value struct entries
+        return len(values) + list_elements(values)
+    if pa.types.is_struct(kind):
+        return sum(list_elements(child) for child in array.flatten())
+    return 0
+
+
+def _too_many_items(batch: pa.RecordBatch, limits: OldpLimits) -> int:
+    """The batch's list items if above ``max_list_elements`` (per row allowance), else 0."""
+    items = sum(list_elements(column) for column in batch.columns)
+    return items if items > limits.max_list_elements else 0
+
+
 def _batch_rows(
     batch: pa.RecordBatch, first: int, path: Path, limits: OldpLimits, problems: list[Problem]
 ) -> Iterator[tuple[int, dict[str, object]]]:
@@ -101,7 +118,8 @@ def _batch_rows(
     A row that cannot be converted (a date outside the Python range, a time zone that is not
     installed) is one ``bad_record``; the other rows of the batch are kept.
     """
-    rows = _convert(batch) if batch.nbytes <= limits.max_record_bytes else None
+    small = batch.nbytes <= limits.max_record_bytes and not _too_many_items(batch, limits)
+    rows = _convert(batch) if small else None
     if rows is not None:
         for offset, row in enumerate(rows):
             yield first + offset, row
@@ -110,6 +128,10 @@ def _batch_rows(
         part, where = batch.slice(offset, 1), f"{path.name}:{first + offset}"
         if part.nbytes > limits.max_record_bytes:
             detail = f"decoded row of {part.nbytes} bytes > {limits.max_record_bytes}"
+            problems.append(Problem(where, "record_too_large", detail))
+            continue
+        if items := _too_many_items(part, limits):
+            detail = f"{items} list elements > {limits.max_list_elements}"
             problems.append(Problem(where, "record_too_large", detail))
             continue
         try:
@@ -158,87 +180,6 @@ def parquet_rows_local(
     except (pa.ArrowException, OSError, ValueError) as error:
         kind = "memory_limit" if _is_out_of_memory(error) else "bad_file"
         problems.append(Problem(path.name, kind, f"unreadable parquet: {error}"[:200]))
-
-
-def parquet_rows(
-    path: Path,
-    columns: Sequence[str],
-    limits: OldpLimits,
-    problems: list[Problem],
-    budget: RowBudget,
-) -> Iterator[tuple[int, dict[str, object]]]:
-    """Read a parquet file in a child process with a hard memory limit (the backstop).
-
-    Same rows and problems as :func:`parquet_rows_local`. When the child runs out of memory (or
-    dies), the file ends with one counted ``memory_limit`` problem; the machine is not affected.
-    ``limits.max_parquet_memory_bytes == 0`` reads in this process.
-    """
-    if limits.max_parquet_memory_bytes <= 0:
-        yield from parquet_rows_local(path, columns, limits, problems, budget)
-        return
-    spec = {
-        "path": str(path),
-        "columns": list(columns),
-        "limits": dataclasses.asdict(limits),
-        "left": budget.left,
-    }
-    # -I: isolated mode, so a file named like a standard module in the working directory is never
-    # imported by the reader
-    command = [sys.executable, "-I", "-m", "pruefstand.ingest.records_child", json.dumps(spec)]
-    # one malloc arena and the system allocator: per-thread arenas reserve address space that the
-    # address-space limit of the child would count
-    env = {
-        **os.environ,
-        "ARROW_DEFAULT_MEMORY_POOL": "system",
-        "MALLOC_ARENA_MAX": "1",
-        # numpy would start one BLAS thread per core (seconds of CPU on a big machine)
-        "OPENBLAS_NUM_THREADS": "1",
-        "OMP_NUM_THREADS": "1",
-        "MKL_NUM_THREADS": "1",
-    }
-    with subprocess.Popen(  # noqa: S603 (our own module, arguments are data)
-        command,
-        stdin=subprocess.DEVNULL,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.DEVNULL,
-        env=env,
-    ) as child:
-        try:
-            yield from _child_events(child, path, limits, problems, budget)
-        finally:
-            child.kill()
-
-
-def _child_events(
-    child: "subprocess.Popen[bytes]",
-    path: Path,
-    limits: OldpLimits,
-    problems: list[Problem],
-    budget: RowBudget,
-) -> Iterator[tuple[int, dict[str, object]]]:
-    assert child.stdout is not None  # noqa: S101 (PIPE was requested)
-    while True:
-        try:
-            event = pickle.load(child.stdout)  # noqa: S301 (written by records_child, our code)
-        except (EOFError, pickle.UnpicklingError):
-            code = child.wait()
-            detail = f"reader process ended with exit code {code} (memory limit or crash)"
-            problems.append(Problem(path.name, "memory_limit", detail))
-            return
-        if event[0] == "row":
-            yield event[1], event[2]
-        elif event[0] == "problem":
-            problems.append(event[1])
-        elif event[0] == "warning":
-            _log.warning("parquet_reader_unlimited", file=path.name, reason=event[1])
-        elif event[0] == "memory":
-            mib = limits.max_parquet_memory_bytes // (1024 * 1024)
-            detail = f"{event[1]}; the reader may use {mib} MiB more than it starts with"
-            problems.append(Problem(path.name, "memory_limit", detail))
-            return
-        else:
-            budget.left, budget.hit = event[1], event[2]
-            return
 
 
 def jsonl_rows(

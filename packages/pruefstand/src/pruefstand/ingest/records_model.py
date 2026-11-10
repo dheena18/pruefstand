@@ -96,7 +96,17 @@ class OldpLimits:
         max_group_bytes: Largest *uncompressed* parquet row group read (from the footer, before
             decoding). Row groups with a dictionary-encoded column are read one row per
             batch (a dictionary value is counted once in the footer but decodes once per row), the
-            others in batches of up to 64 rows; ``max_record_bytes`` also caps the decoded row.
+            others in batches of up to 64 rows; ``max_record_bytes`` also caps the decoded row's
+            Arrow size (which barely counts ``list<null>`` items: ``max_list_elements`` does).
+        max_list_elements: Most list items (all nesting levels) one row may hold; counted on the
+            Arrow arrays before any Python object is built; a row above it is one
+            ``record_too_large`` (review F5, D1122).
+        max_parquet_cpu_seconds: CPU-time limit (soft = hard) of the reader process; over it the
+            file ends with one counted ``read_timeout``.
+        max_parquet_wall_seconds: Wall-time limit of the reader process (killed by the parent);
+            over it the file ends with one counted ``read_timeout``.
+        max_parquet_output_bytes: Most bytes the parent reads from one reader process (its JSON
+            event lines); above it the file ends with one counted ``reader_protocol``.
     """
 
     max_content_chars: int = 2_000_000
@@ -107,6 +117,10 @@ class OldpLimits:
     max_files: int = 1_000
     max_group_bytes: int = 128 * _MIB
     max_parquet_memory_bytes: int = 512 * _MIB
+    max_list_elements: int = 100_000
+    max_parquet_cpu_seconds: int = 600
+    max_parquet_wall_seconds: float = 900.0
+    max_parquet_output_bytes: int = 1024 * _MIB
 
 
 class RowBudget:
