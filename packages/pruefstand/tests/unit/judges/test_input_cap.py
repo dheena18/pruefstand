@@ -12,7 +12,7 @@ from testsupport.loopback_script import Step, ollama_body
 from pruefstand.core.errors import ConfigError, JudgeInputTruncated, LLMError
 from pruefstand.judges.judge import CI_NONCE_KEY, Judge
 from pruefstand.judges.output import make_task
-from pruefstand.judges.tokens import estimate_tokens, input_cap
+from pruefstand.judges.tokens import cut_signature, estimate_tokens, input_cap
 from pruefstand.llm.prompts import PromptRegistry
 
 
@@ -117,3 +117,65 @@ def test_tier_one_may_use_the_public_ci_nonce_key(
     monkeypatch.setenv("PRUEFSTAND_STACK", "live")
     monkeypatch.setenv("PRUEFSTAND_NONCE_KEY", CI_NONCE_KEY)
     env_judge()
+
+
+# Measured on the A40 server (Ollama 0.32.13, 2026-11-09, gemma3:12b, num_ctx 12288, num_predict 1):
+# about 1.8 tokens per word gave 910 / 3610 / 7210 / 10810 prompt tokens for 500 / 2000 /
+# 4000 / 6000 words, and a constant 6147 for 8 000, 10 000, 14 000, 20 000 and 40 000 words
+# (cut): D962.
+MEASURED_CUT_REPORT = 6147
+MEASURED_UNCUT_REPORTS = (910, 3610, 7210, 10810)
+
+
+def test_the_cut_signature_of_the_shipped_judge_is_half_the_context(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("PRUEFSTAND_GPU_CATALOGUE", str(SHIPPED_CATALOGUE))
+    band = cut_signature("ollama/gemma3:12b")
+    assert band == (6_144, 6_160)
+    assert band[0] <= MEASURED_CUT_REPORT <= band[1]
+    assert not any(band[0] <= n <= band[1] for n in MEASURED_UNCUT_REPORTS)
+    assert MEASURED_CUT_REPORT < 12_288 - 1_024  # why `reported >= window` alone never sees a cut
+    assert cut_signature("github/openai/gpt-4.1-mini") is None
+
+
+async def test_a_cut_prompt_reported_far_below_the_window_is_a_truncation_error(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The measured quirk: a cut prompt is reported as about num_ctx / 2 (loopback: 2048)."""
+    window = 4096 - 77
+    reported = 4096 // 2 + 3  # the +3 measured for the shipped judge
+    assert reported < window
+    body = json.dumps(
+        {
+            "model": "m",
+            "message": {"role": "assistant", "content": '{"reason": "x", "score": 1}'},
+            "done": True,
+            "prompt_eval_count": reported,
+            "eval_count": 2,
+        }
+    ).encode()
+    task = make_task("refusal_judged", frage="F?", antwort="A.")
+    with (
+        judges(tmp_path, monkeypatch, [Step(body=body)]) as (pool, _, _),
+        pytest.raises(JudgeInputTruncated, match="signature of a cut prompt"),
+    ):
+        await pool.for_metric("refusal_judged").score(task)
+
+
+async def test_reports_just_outside_the_cut_band_are_fine(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    for reported in (4096 // 2 - 1, 4096 // 2 + 17):
+        body = json.dumps(
+            {
+                "model": "m",
+                "message": {"role": "assistant", "content": '{"reason": "x", "score": 1}'},
+                "done": True,
+                "prompt_eval_count": reported,
+                "eval_count": 2,
+            }
+        ).encode()
+        task = make_task("refusal_judged", frage="F?", antwort="A.")
+        with judges(tmp_path, monkeypatch, [Step(body=body)]) as (pool, _, _):
+            assert (await pool.for_metric("refusal_judged").score(task)).raw_score == 1
