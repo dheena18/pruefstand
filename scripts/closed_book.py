@@ -149,16 +149,9 @@ def knows_closed_book(case: TestCase, answer: str) -> bool:
 
 
 def retag(case: TestCase, model: str, *, knew: bool, drop_other_models: bool) -> TestCase:
-    """Return ``case`` with its ``closed_book:<model>`` tag set or removed, other tags kept.
+    """Return ``case`` with its ``closed_book:<model>`` tag set (``knew``) or removed; idempotent.
 
-    Args:
-        case: The case.
-        model: The generator model id.
-        knew: Whether the heuristic says the model knew the case.
-        drop_other_models: Remove ``closed_book:*`` tags of other model ids (``--retag``).
-
-    Returns:
-        A copy; idempotent (the tag appears at most once).
+    ``drop_other_models`` (``--retag``) also removes ``closed_book:*`` tags of other model ids.
     """
     mine = TAG_PREFIX + model
     kept = [
