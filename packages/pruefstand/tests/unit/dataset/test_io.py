@@ -3,6 +3,7 @@
 import json
 from pathlib import Path
 
+import pytest
 from testsupport.dataset_support import CORPUS, answerable_clusters, case
 
 from pruefstand.core.enums import Category, Split
@@ -12,6 +13,7 @@ from pruefstand.dataset.io import (
     read_dataset,
     read_split,
     write_dataset,
+    write_split_file,
 )
 
 
@@ -67,3 +69,23 @@ def test_a_symlinked_split_is_refused(tmp_path: Path) -> None:
 
 def test_missing_manifest_is_a_problem_not_an_exception(tmp_path: Path) -> None:
     assert read_dataset(tmp_path).problems
+
+
+def test_a_split_file_is_replaced_atomically(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    cases = _cases()
+    path = tmp_path / "core.jsonl"
+    write_split_file(path, cases)
+    before = path.read_bytes()
+    assert sorted(p.name for p in tmp_path.iterdir()) == ["core.jsonl"]  # no temp file left
+
+    def broken(self: Path, target: Path) -> Path:
+        msg = "disk full"
+        raise OSError(msg)
+
+    monkeypatch.setattr(Path, "replace", broken)
+    with pytest.raises(OSError, match="disk full"):
+        write_split_file(path, cases[:2])
+    assert path.read_bytes() == before  # the old file is intact
+    assert sorted(p.name for p in tmp_path.iterdir()) == ["core.jsonl"]  # the temp file is gone

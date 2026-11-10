@@ -12,15 +12,14 @@ from typing import NoReturn
 import pytest
 from closed_book import (
     TAG_PREFIX,
-    content_recall,
-    content_words,
     knows_closed_book,
     main,
     retag,
     tag_cases,
 )
+from closed_book_text import content_recall, negations
 from testsupport.gpu_files import SHIPPED_CATALOGUE, SHIPPED_ENDPOINTS
-from testsupport.loopback_script import serve_script
+from testsupport.loopback_script import Step, serve_script
 from testsupport.pipeline_support import case_rows, write_dataset
 from testsupport.run_builders import make_case
 
@@ -71,17 +70,6 @@ def test_a_wrong_absatz_is_not_a_match() -> None:
 def test_an_unknown_answer_is_not_tagged() -> None:
     assert not knows_closed_book(kuendigung(), "Das weiß ich nicht.")
     assert not knows_closed_book(kuendigung(), "Unbekannt")
-
-
-def test_the_reference_citation_does_not_count_as_content() -> None:
-    reference = "Vier Wochen zum Fünfzehnten oder zum Monatsende (§ 622 Abs. 1 BGB)."
-    words = content_words(reference)
-    assert not {"622", "abs", "bgb"} & words
-    assert content_recall(reference, "vier wochen zum fünfzehnten oder monatsende") == 1.0
-
-
-def test_inflected_forms_match() -> None:
-    assert content_words("Kalendermonats") == content_words("Kalendermonat")
 
 
 def test_the_threshold_is_eighty_percent() -> None:
@@ -190,12 +178,6 @@ def test_a_failing_endpoint_exits_1(
     assert "tags" not in (directory / "core.jsonl").read_text("utf-8").replace('"tags": []', "")
 
 
-def test_a_citation_does_not_eat_the_first_letter_of_the_next_word() -> None:
-    words = content_words("Laut § 622 vier Wochen zum Monatsende")
-    assert words == content_words("Laut vier Wochen zum Monatsende")
-    assert "vier" in content_words("Laut § 622 vier Wochen zum Monatsende")
-
-
 def test_a_negated_answer_is_not_the_same_statement() -> None:
     reference = "Eine Kündigung ist zulässig."
     case = kuendigung().model_copy(update={"reference_answer": reference})
@@ -240,3 +222,70 @@ def test_connection_errors_while_reading_are_exit_1(
 
     monkeypatch.setattr("closed_book.urllib.request.urlopen", broken)
     assert main(["--model", MODEL, "--dataset", str(directory)]) == 1
+
+
+LONG_REFERENCE = (
+    "Der Arbeitgeber darf das Arbeitsverhältnis während der Elternzeit nicht ordentlich kündigen."
+)
+
+
+def test_a_dropped_negation_is_not_tagged_even_with_high_recall() -> None:
+    case = kuendigung().model_copy(update={"reference_answer": LONG_REFERENCE})
+    dropped = LONG_REFERENCE.replace(" nicht", "")
+    assert content_recall(LONG_REFERENCE, dropped) >= 0.8
+    assert not knows_closed_book(case, f"{dropped} (§ 622 Abs. 2 BGB)")
+    assert knows_closed_book(case, f"{LONG_REFERENCE} (§ 622 Abs. 2 BGB)")
+
+
+def test_nichts_and_the_other_negation_words_count() -> None:
+    reference = "Der Arbeitgeber muss das Urlaubsgeld vollständig auszahlen."
+    case = kuendigung().model_copy(update={"reference_answer": reference})
+    denied = "Der Arbeitgeber muss vom Urlaubsgeld nichts vollständig auszahlen (§ 622 Abs. 2 BGB)."
+    assert not knows_closed_book(case, denied)
+    for word in ("nichts", "niemand", "niemandem", "nirgends", "weder", "nie", "niemals"):
+        assert negations(f"Es gilt {word} so.") != frozenset(), word
+
+
+def test_inflected_kein_forms_are_one_negation() -> None:
+    assert negations("kein keine keinen keinem keiner keines") == frozenset({"kein"})
+    reference = "Eine Abfindung gibt es in keinem Fall."
+    case = kuendigung().model_copy(update={"reference_answer": reference})
+    assert knows_closed_book(case, "Nach § 622 Abs. 2 BGB gibt es eine Abfindung in keinen Fall.")
+
+
+def test_an_interrupted_run_marks_the_split_and_a_rerun_is_consistent(tmp_path: Path) -> None:
+    stale = (TAG_PREFIX + MODEL,)
+    directory = _dataset(tmp_path, [kuendigung(0), kuendigung(1), kuendigung(2, tags=stale)])
+    calls = iter([GOOD])
+
+    def dies_on_the_second(_question: str) -> str:
+        try:
+            return next(calls)
+        except StopIteration:
+            msg = "model call failed"
+            raise PruefstandError(msg) from None
+
+    args = ["--model", MODEL, "--dataset", str(directory)]
+    assert main(args, asker=dies_on_the_second) == 1
+    marker = directory / "core.jsonl.partial"
+    assert marker.is_file()
+    rows = [json.loads(x) for x in (directory / "core.jsonl").read_text("utf-8").splitlines()]
+    assert [bool(r["tags"]) for r in rows] == [True, False, False]  # the stale tag is gone
+    assert main(args, asker=lambda _q: GOOD) == 0
+    assert not marker.exists()
+    rows = [json.loads(x) for x in (directory / "core.jsonl").read_text("utf-8").splitlines()]
+    assert [r["tags"] for r in rows] == [[TAG_PREFIX + MODEL]] * 3
+
+
+@pytest.mark.parametrize(
+    "body", [b"\xff\xfe not utf-8", b"[1, 2]", b'{"message": 5}', b'{"message": {"content": 7}}']
+)
+def test_a_malformed_response_is_a_failure_with_a_checkpoint(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, body: bytes
+) -> None:
+    directory = _dataset(tmp_path, [kuendigung()])
+    with serve_script([Step(body=body)]) as (origin, _state):
+        monkeypatch.setenv("OLLAMA_GPU0_URL", origin)
+        assert main(["--model", MODEL, "--dataset", str(directory)]) == 1
+    assert (directory / "core.jsonl.partial").is_file()
+    assert json.loads((directory / "core.jsonl").read_text("utf-8").splitlines()[0])["tags"] == []

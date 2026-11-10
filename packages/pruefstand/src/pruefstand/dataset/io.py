@@ -9,6 +9,7 @@ so ``validate_dataset`` can report them all); the strict loader for runs is
 import json
 import os
 import stat
+import tempfile
 from collections import Counter
 from collections.abc import Sequence
 from dataclasses import dataclass, field
@@ -194,10 +195,23 @@ def write_dataset(directory: Path, cases: Sequence[TestCase], manifest: DatasetM
 
 
 def write_split_file(path: Path, cases: Sequence[TestCase]) -> None:
-    """Write ``cases`` as JSONL (sorted by id, sorted keys, UTF-8, LF), creating parent folders."""
+    """Write ``cases`` as JSONL (sorted by id, sorted keys, UTF-8, LF), creating parent folders.
+
+    Atomic: a temp file in the same folder is fsynced and renamed over ``path``, so a reader or a
+    crash never sees a half-written split.
+    """
     path.parent.mkdir(parents=True, exist_ok=True)
     text = "".join(_dump(c.model_dump(mode="json")) + "\n" for c in sorted(cases, key=_by_id))
-    path.write_text(text, encoding="utf-8", newline="\n")
+    descriptor, name = tempfile.mkstemp(dir=path.parent, prefix=f".{path.name}.", suffix=".tmp")
+    try:
+        with os.fdopen(descriptor, "w", encoding="utf-8", newline="\n") as handle:
+            handle.write(text)
+            handle.flush()
+            os.fsync(handle.fileno())
+        Path(name).replace(path)
+    except BaseException:
+        Path(name).unlink(missing_ok=True)
+        raise
 
 
 def _by_id(case: TestCase) -> str:

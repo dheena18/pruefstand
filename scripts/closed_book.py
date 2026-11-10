@@ -13,8 +13,9 @@ content words. This is a deterministic heuristic with no judge (it may be redone
 after T5.2b); the tags are an informational slice and never gate. The tag names the model, so a
 new generator is recomputed, not reused: ``--retag`` removes the ``closed_book:*`` tags of other
 model ids first. The split file is rewritten in place (sorted by id); the manifest does not
-change. The file is also written every 10 cases and when a call fails, so a failure keeps the
-finished part (a rerun asks everything again). The answer text is never stored.
+change. Stale tags of the model are cleared first and `<split>.jsonl.partial` marks an unfinished
+run; the file is written every 10 cases and when a call fails (a rerun asks everything
+again). The answer text is never stored.
 
 Exit codes: 0 done (prints ``tagged=<k>/<n>``), 1 a model call failed, 2 refused.
 """
@@ -23,12 +24,12 @@ import argparse
 import http.client
 import json
 import os
-import re
 import sys
-import unicodedata
 import urllib.request
 from collections.abc import Callable, Sequence
 from pathlib import Path
+
+from closed_book_text import content_recall, negations
 
 from pruefstand.core.citations import citations_match, extract_citations
 from pruefstand.core.enums import Split
@@ -47,84 +48,9 @@ TAG_PREFIX = "closed_book:"
 RECALL_MIN = 0.8
 TIMEOUT_S = 300
 CHECKPOINT_EVERY = 10
+PARTIAL_SUFFIX = ".partial"
 Asker = Callable[[str], str]
 """Question in, answer text out: the one place a model is called (injectable for tests)."""
-
-
-def _words(text: str) -> frozenset[str]:
-    return frozenset(text.split())
-
-
-_STOPWORDS = _words(
-    """einen eines einer einem eine sind wird werden wurde wurden oder auch sowie kann koennen
-    können muss müssen mussen nach dass diese dieser dieses diesen jeweils durch unter über ueber
-    gegen ohne sich dann wenn aber haben hat sein seine seiner zwischen bereits ferner dabei dafür
-    that this with from have been will shall must also their there which when than into
-    under over"""
-)
-_CITATION = re.compile(
-    r"(?:§§?|Art\.?|Artikel)\s*\d+(?:[a-z]\b)?"
-    r"(?:\s*(?:Abs\.|Absatz|S\.|Satz|Nr\.|Nummer|lit\.)\s*\w+)*"
-    r"(?:\s+[A-ZÄÖÜ]{2,}[A-Za-zäöü]*)?"
-)
-_TOKEN = re.compile(r"[^\W_]+")
-_NEGATION = re.compile(r"nicht|nie|niemals|kein\w*")
-_MIN_WORD = 4
-_ENDINGS = ("ern", "en", "em", "er", "es", "e", "n", "s")
-
-
-def _stem(word: str) -> str:
-    for ending in _ENDINGS:
-        if word.endswith(ending) and len(word) - len(ending) >= _MIN_WORD:
-            return word[: -len(ending)]
-    return word
-
-
-def content_words(text: str) -> frozenset[str]:
-    """The content words of ``text``: citations removed, casefolded, stopwords dropped, stemmed.
-
-    A content word is a number or a word of at least four letters that is not a stopword; a
-    light German suffix strip (``Kalendermonats`` -> ``kalendermonat``) makes inflections match.
-
-    Args:
-        text: A reference or a model answer.
-
-    Returns:
-        The set of stems.
-
-    Examples:
-        >>> sorted(content_words("Einen Monat zum Ende eines Kalendermonats (§ 622 Abs. 2 BGB)."))
-        ['ende', 'kalendermonat', 'monat']
-    """
-    plain = _CITATION.sub(" ", unicodedata.normalize("NFC", text)).casefold()
-    words = _TOKEN.findall(plain)
-    return frozenset(
-        _stem(w) for w in words if (w.isdigit() or len(w) >= _MIN_WORD) and w not in _STOPWORDS
-    )
-
-
-def content_recall(reference: str, answer: str) -> float:
-    """Share of the reference's content words found in the answer (0.0 when it has none).
-
-    Args:
-        reference: The reference answer.
-        answer: The model answer.
-
-    Returns:
-        A value in ``[0, 1]``.
-
-    Examples:
-        >>> reference = "Einen Monat zum Ende eines Kalendermonats."
-        >>> content_recall(reference, "Nach § 622 BGB einen Monat.")
-        0.3333333333333333
-    """
-    wanted = content_words(reference)
-    return len(wanted & content_words(answer)) / len(wanted) if wanted else 0.0
-
-
-def _negations(text: str) -> frozenset[str]:
-    """The negation words (``nicht``, ``kein*``, ``nie``) of ``text``, casefolded."""
-    return frozenset(w for w in _TOKEN.findall(text.casefold()) if _NEGATION.fullmatch(w))
 
 
 def knows_closed_book(case: TestCase, answer: str) -> bool:
@@ -143,8 +69,8 @@ def knows_closed_book(case: TestCase, answer: str) -> bool:
     cited = extract_citations(answer)
     if not any(citations_match(p, g) for p in cited for g in gold):
         return False
-    if not _negations(answer) <= _negations(case.reference_answer):
-        return False  # the answer denies what the reference does not: not the same statement
+    if negations(answer) != negations(case.reference_answer):
+        return False  # a dropped or added negation is another statement, whatever the recall
     return content_recall(case.reference_answer, answer) >= RECALL_MIN
 
 
@@ -195,10 +121,14 @@ def default_asker(model: str) -> Asker:
         try:
             with urllib.request.urlopen(request, timeout=TIMEOUT_S) as response:  # noqa: S310
                 data = json.loads(response.read(8_000_000))
-        except (OSError, http.client.HTTPException, json.JSONDecodeError) as exc:
-            msg = f"model call failed ({type(exc).__name__})"
+            content = data["message"]["content"]
+        except (OSError, http.client.HTTPException, ValueError, KeyError, TypeError) as exc:
+            msg = f"model call failed ({type(exc).__name__})"  # ValueError: bad JSON or bytes
             raise PruefstandError(msg) from exc
-        return str(data.get("message", {}).get("content", ""))
+        if not isinstance(content, str):
+            msg = "model call failed (unexpected response shape)"
+            raise PruefstandError(msg)
+        return content
 
     return ask
 
@@ -267,14 +197,20 @@ def _run(args: argparse.Namespace, asker: Asker | None) -> str:
     if problems:
         raise DatasetError(problems[0])
     ask = asker or default_asker(args.model)
+    # stale tags of this model go first: an interrupted run must not mix old and new answers
+    fresh = [retag(c, args.model, knew=False, drop_other_models=args.retag) for c in cases]
+    marker = path.with_name(path.name + PARTIAL_SUFFIX)
+    marker.write_text(f"interrupted run of {args.model}: tags are incomplete, rerun\n", "utf-8")
+    write_split_file(path, fresh)
     tagged = tag_cases(
-        cases,
+        fresh,
         args.model,
         ask,
         drop_other_models=args.retag,
         checkpoint=lambda rows: write_split_file(path, rows),
     )
     write_split_file(path, tagged)
+    marker.unlink()
     mine = TAG_PREFIX + args.model
     return f"tagged={sum(mine in c.tags for c in tagged)}/{len(tagged)}"
 
