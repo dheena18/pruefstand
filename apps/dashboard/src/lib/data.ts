@@ -17,7 +17,10 @@ import type {
 } from "@/types/generated";
 
 import { NotFoundError, UnsupportedSchemaError, ValidationError } from "./errors";
+import { SAFE_ID } from "./ids";
 import { check, makeValidators, type Kind } from "./validate.mjs";
+
+export { dataUrl } from "./data-url";
 
 /**
  * Build-time data layer (ui-spec §2.4): every page reads the data tree that `pnpm build` copied to
@@ -33,8 +36,6 @@ const validators = makeValidators({
   dashboard_cases: dashboardCases,
   labels,
 });
-
-const SAFE_ID = /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/;
 
 /** The directory the build copied the data tree to (`DASHBOARD_PUBLIC_DATA` overrides it for tests). */
 export function defaultDataDir(): string {

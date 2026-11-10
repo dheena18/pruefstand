@@ -15,6 +15,8 @@ export interface MetricTableProps {
   caption: string;
   /** `gated`: 7 columns with status (block G); `reported`: tier-1 block R without status words. */
   variant: "gated" | "reported";
+  /** Keep the given row order (the Diff table follows the chart's sort) instead of FAIL → WARN → PASS. */
+  keepOrder?: boolean;
 }
 
 const RANK: Record<string, number> = { fail: 0, warn: 1, pass: 2, insufficient_data: 3 };
@@ -56,7 +58,7 @@ function Header({ locale, variant }: Pick<MetricTableProps, "locale" | "variant"
 /** Block G (7 columns incl. δ and MDE) or block R (tier 1, reported; no status word). Numbers per §10.2. */
 export function MetricTable(props: MetricTableProps) {
   const { locale, labels, rows, caption, variant } = props;
-  const ordered = variant === "gated" ? sortByStatus(rows) : rows;
+  const ordered = variant === "gated" && props.keepOrder !== true ? sortByStatus(rows) : rows;
   return (
     <div className="table-wrap" role="region" aria-label={caption} tabIndex={0}>
       <table className="data">

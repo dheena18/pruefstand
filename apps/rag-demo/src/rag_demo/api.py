@@ -7,12 +7,14 @@ from typing import Any
 
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.exceptions import RequestValidationError
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, Response
 
 from rag_demo.body_limit import BodyLimitMiddleware
 from rag_demo.catalogue import CatalogueEntry
 from rag_demo.config import Settings, load_config
+from rag_demo.disconnect import cancel_on_disconnect
 from rag_demo.errors import (
+    ClientDisconnectedError,
     IndexMismatchError,
     IndexUnavailableError,
     RagDemoError,
@@ -162,18 +164,34 @@ async def _checked_tenant(parts: _Parts, tenant_id: str) -> None:
         raise HTTPException(422, "unknown tenant")
 
 
+async def _answer(
+    parts: _Parts, request: Request, req: QueryRequest, hits: list[Hit]
+) -> GenOutput | None:
+    """Generate the answer; ``None`` when the client hung up first (D624).
+
+    A disconnect cancels the upstream generation instead of leaving it queued in Ollama.
+    """
+    try:
+        return await cancel_on_disconnect(request, parts.generator.answer(req.question, hits))
+    except ClientDisconnectedError:
+        _log.info("request_id=%s client disconnected, generation cancelled", req.request_id)
+        return None
+
+
 def _add_routes(app: FastAPI, cfg: RagConfig, parts: _Parts) -> None:
     @app.post("/v1/query", operation_id="query", response_model=QueryResponse)
-    async def query(req: QueryRequest) -> dict[str, Any]:
+    async def query(req: QueryRequest, request: Request) -> dict[str, Any] | Response:
         await _checked_tenant(parts, req.tenant_id)
         parts.stats.requests += 1
         try:
             hits = await asyncio.to_thread(
                 parts.retriever.retrieve, req.tenant_id, req.question, req.top_k or cfg.top_k
             )
-            gen = await parts.generator.answer(req.question, hits)
+            gen = await _answer(parts, request, req, hits)
         except RagDemoError as err:
             raise _http_error(err, "query") from None
+        if gen is None:
+            return Response(status_code=499)  # the client is gone; nobody reads this
         by_id = {h.chunk_id: h for h in hits}
         prompted = prompt_hits([by_id[i] for i in gen.prompt_chunk_ids], cfg)
         _log.debug("request_id=%s prompt_chunk_ids=%s", req.request_id, gen.prompt_chunk_ids)

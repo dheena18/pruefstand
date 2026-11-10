@@ -9,7 +9,7 @@ The dashboard is for browsing runs, diffs and failing cases. It must never compu
 Python package is the single source of truth for them. It should also be cheap to host.
 
 ## Decision
-- Next.js (App Router) with `output: "export"`, TypeScript `strict`, Tailwind and Recharts.
+- Next.js (App Router) with `output: "export"`, TypeScript `strict`, Tailwind and hand-written SVG charts (no chart library; amended by T8.2b, D664: owner-accepted on condition that every chart is accessible, see ui-spec §8).
 - Data is static JSON. `pruefstand report --format json` (or an export script) writes it to `apps/dashboard/public/data/`,
   or the dashboard fetches it from a static URL.
 - **Hosting: GitHub Pages** (free; D235). The build (data checkout, validation, CSP hashing) runs in

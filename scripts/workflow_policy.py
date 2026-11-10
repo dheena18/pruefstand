@@ -28,7 +28,7 @@ PAGES_WRITE: dict[tuple[str, str], str] = {
 }
 
 # Files that may grant ``models: read`` (security.md X2); ``models: write`` is never allowed.
-MODELS_READ_FILES = frozenset({"live-e2e.yml", "cassettes.yml"})
+MODELS_READ_FILES = frozenset({"live-e2e.yml", "cassettes.yml", "cassettes-models.yml"})
 
 # (file, job) -> reason, for ``actions: read`` (R13 P5.2).
 ACTIONS_READ: dict[tuple[str, str], str] = {

@@ -2,6 +2,8 @@
 @import "../styles/tokens.css";
 @import "../styles/components.css";
 @import "../styles/lists.css";
+@import "../styles/charts.css";
+@import "../styles/cases.css";
 
 /* Tailwind reads the tokens (ui-spec §7). */
 @theme inline {

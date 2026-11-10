@@ -1,6 +1,6 @@
 import Link from "next/link";
 
-import { formatDelta } from "@/lib/format";
+import { formatClusters, formatDelta } from "@/lib/format";
 import { metricLabel } from "@/lib/labels";
 import { t, type Locale } from "@/lib/i18n";
 import { sliceSuffix } from "@/lib/summary";
@@ -47,7 +47,7 @@ export function NotApplicableLine({ locale, labels, gate }: Common & { gate: Gat
 export function InsufficientLine({ locale, labels, rows }: Common & { rows: SliceDecision[] }) {
   if (rows.length === 0) return null;
   const items = rows.map((d) => {
-    const n = t(locale, "summary.clusters", { n: d.n_clusters ?? "–" });
+    const n = formatClusters(d.n_clusters, locale);
     return `${metricLabel(locale, labels, d.metric)}${sliceSuffix(d)} (${n})`;
   });
   return (
