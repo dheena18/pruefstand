@@ -177,7 +177,7 @@ jobs:
           node-version: "22"
       - name: Install
         run: corepack enable && (cd apps/dashboard && pnpm install --frozen-lockfile)
-      - name: Install Chromium (Playwright 1.49.1)
+      - name: Install Chromium (Playwright 1.56.1)
         run: (cd apps/dashboard && pnpm exec playwright install --with-deps chromium)
       - name: Build with basePath=/pruefstand, serve under /pruefstand/, run the smoke (N5.5)
         run: make ui-basepath

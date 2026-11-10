@@ -93,5 +93,5 @@ NVDA + Firefox and VoiceOver + Safari through navigation and Try it in both loca
 
 - `make ui-basepath` builds `populated-bp` with `basePath=/pruefstand`, serves it under `/pruefstand/` (`scripts/dashboard/serve_under_base.sh`) and runs `e2e/basepath.spec.ts` (project `populated-basepath-1280`).
 - `make ui-e2e` builds both fixture sets and runs the PR projects (`populated-{360,1280}`, `empty-{360,1280}`).
-- Browsers: `pnpm exec playwright install chromium` (Playwright 1.49.1). On the shared VM the Chromium build is already installed per user; never use `--with-deps` there.
+- Browsers: `pnpm exec playwright install chromium` (Playwright 1.56.1). On the shared VM the Chromium build is already installed per user; never use `--with-deps` there.
 - `page.route` lives only in `e2e/delay.ts` (delay a real response); mocks are forbidden (lint rule).
