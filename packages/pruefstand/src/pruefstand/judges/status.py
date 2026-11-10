@@ -23,6 +23,8 @@ from pruefstand.core.errors import ConfigError
 
 FILE = "calibration_status.yaml"
 _MAX_BYTES = 100_000
+MAX_DRIFT_THRESHOLD = 10
+"""Cap of a stored drift threshold for the 50 anchors (2 x the N3 default, D945)."""
 
 
 @dataclass(frozen=True)
@@ -61,6 +63,11 @@ def _per_judge(data: dict[object, object]) -> tuple[dict[str, int], dict[str, fl
             continue
         threshold = entry.get("drift_threshold")
         if isinstance(threshold, int) and not isinstance(threshold, bool) and threshold > 0:
+            if threshold > MAX_DRIFT_THRESHOLD:
+                msg = (
+                    f"{FILE}: drift_threshold {threshold} of {model} is above {MAX_DRIFT_THRESHOLD}"
+                )
+                raise ConfigError(msg)
             thresholds[str(model)] = threshold
         a0 = entry.get("a0")
         if isinstance(a0, int | float) and not isinstance(a0, bool):
@@ -75,7 +82,8 @@ def read_status(path: Path | None = None) -> CalibrationStatus | None:
         path: The file; default the shipped ``judges/data/calibration_status.yaml``.
 
     Raises:
-        ConfigError: The file exists but is too large, not YAML or not a mapping.
+        ConfigError: The file exists but is too large, not YAML or not a mapping, or a judge's
+            ``drift_threshold`` is above ``MAX_DRIFT_THRESHOLD`` (judge unfit, D945).
     """
     raw = _raw(path)
     if raw is None:

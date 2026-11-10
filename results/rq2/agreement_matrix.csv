@@ -1,6 +1,6 @@
-label_set,judge_a,judge_b,n_common,kappa,ceiling
-consistency,ollama/gemma3:12b,ollama/gemma3:12b,573,1.0,n/a (labels by construction)
-correctness,ollama/gemma3:12b,ollama/gemma3:12b,395,1.0,n/a (labels by construction)
-faithfulness_constructed,ollama/gemma3:12b,ollama/gemma3:12b,420,1.0,n/a (labels by construction)
-memerag,ollama/gemma3:12b,ollama/gemma3:12b,274,1.0,"AC1 0.84 / Fleiss kappa 0.81 (DE, MEMERAG Table 2, 3 annotators x 10 questions)"
-refusal,ollama/gemma3:12b,ollama/gemma3:12b,420,1.0,n/a (labels by construction)
+kind,label_set,judge_a,judge_b,n_common,kappa,ceiling
+self (sanity),consistency,ollama/gemma3:12b,ollama/gemma3:12b,573,1.0,n/a (labels by construction)
+self (sanity),correctness,ollama/gemma3:12b,ollama/gemma3:12b,395,1.0,n/a (labels by construction)
+self (sanity),faithfulness_constructed,ollama/gemma3:12b,ollama/gemma3:12b,420,1.0,n/a (labels by construction)
+self (sanity),memerag,ollama/gemma3:12b,ollama/gemma3:12b,274,1.0,"AC1 0.84 / Fleiss kappa 0.81 (DE, MEMERAG Table 2, 3 annotators x 10 questions)"
+self (sanity),refusal,ollama/gemma3:12b,ollama/gemma3:12b,420,1.0,n/a (labels by construction)

@@ -6,13 +6,18 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 import pytest
+from typer.testing import CliRunner
 
+from pruefstand.cli import app
+from pruefstand.cli import judge_drift as cli_module
 from pruefstand.core.models.llm import LLMRequest, LLMResponse
 from pruefstand.judges.anchors import AnchorItem, anchor_file, load_anchors
 from pruefstand.judges.output import output_model
+from pruefstand.judges.status import read_status
 from pruefstand.llm.cache_epochs import current_epoch, read_drift
 from pruefstand.llm.cassettes import CassetteRecorder
 from pruefstand.llm.client import cache_key
+from pruefstand.pipeline import judge_drift as pipeline_module
 from pruefstand.pipeline.fingerprints import calibration_epoch
 from pruefstand.pipeline.judge_drift import DriftResult, run_judge_drift
 
@@ -110,3 +115,28 @@ def test_five_changed_anchors_flag_drift_and_invalidate_the_cache(tmp_path: Path
 def test_a_missing_anchor_file_is_skipped(tmp_path: Path) -> None:
     result = _run(tmp_path / "missing.jsonl", tmp_path / "cache")
     assert result.status == "skipped"
+
+
+def test_the_cli_passes_threshold_and_a0_from_the_status_file(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+
+    status = tmp_path / "calibration_status.yaml"
+    status.write_text(
+        f"epoch: 1\npassed: false\njudges:\n  {JUDGE}: {{drift_threshold: 9, a0: 0.96}}\n",
+        encoding="utf-8",
+    )
+    seen: dict[str, object] = {}
+
+    def fake(*args: object, **kwargs: object) -> DriftResult:
+        seen.update(kwargs)
+        return DriftResult("ok", 50, 0.9, 5, 9)
+
+    monkeypatch.setattr(cli_module, "read_status", lambda: read_status(status))
+    monkeypatch.setattr(pipeline_module, "run_judge_drift", fake)
+    monkeypatch.setenv("PRUEFSTAND_CACHE_DIR", str(tmp_path / "cache"))
+    monkeypatch.setenv("OLLAMA_GPU1_URL", "http://127.0.0.1:9")
+    result = CliRunner().invoke(app, ["judge-drift", "--judge", JUDGE])
+    assert result.exit_code == 0, result.output
+    assert (seen["threshold"], seen["a0"]) == (9, 0.96)
+    assert "threshold=9" in result.output

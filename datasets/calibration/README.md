@@ -15,6 +15,11 @@ is used to build them (D860-D868). Builder: `experiments/rq2/build_calibration_s
 | `consistency` | `perturbation_consistency` (0/1) | 818 | 449 × 1, 369 × 0 | 83 `number_date_swap` (tagged, not required) | CC BY 4.0, `germanquad_derived` |
 | `faithfulness_memerag` (**not here**: `data/derived/memerag_de/`, git-ignored) | `faithfulness` | 391 | 280 × 2, 111 × 0 | 111 `memerag_not_supported` | CC BY-NC 4.0, never published |
 
+T5.4 discrimination pairs (D932, D946), one file per licence, never mixed:
+`degraded_pairs_germanquad.jsonl` (71 pairs from `correctness` test positives: 50 `swap_first_number`,
+21 `negate`; CC BY 4.0, `germanquad_derived`) and `degraded_pairs_germanrag.jsonl` (100 pairs from
+`faithfulness_constructed` test positives, 50 per edit; CC BY-SA 4.0, `germanrag_derived`).
+
 Hard negatives per metric: faithfulness 291 (204 in `test`, MEMERAG included), answer_correctness 169
 (118 in `test`). `stats.json` has the full counts per set, label, `hard_type`, construction and split.
 

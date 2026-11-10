@@ -14,7 +14,6 @@ into ``results/rq2/bias.csv``).
 
 import argparse
 import asyncio
-import json
 import sys
 from pathlib import Path
 
@@ -23,6 +22,7 @@ import polars as pl
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))  # run as a script: import rq2.*
 
+from rq2.make_degraded import load_pairs
 from rq2.rq2_config import REPO, load_config, slug
 from rq2.run_judges import CALIBRATION_NONCE
 
@@ -44,7 +44,6 @@ from pruefstand.perturb.validate import RewriteValidator
 
 AXES = ("gender", "register")
 FLAG = 0.05
-PAIRS = REPO / "datasets/calibration/v1/degraded_pairs.jsonl"
 
 
 def bias_delta(df: pl.DataFrame, seed: int = 1234) -> tuple[float, float, float]:
@@ -117,7 +116,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--rewriter", default="ollama/qwen3.8:27b-q8_0")
     args = parser.parse_args(argv)
     cfg = load_config(REPO / "experiments/rq2/configs/rq2_judges.yaml")
-    pairs = [json.loads(line) for line in PAIRS.read_text(encoding="utf-8").splitlines()]
+    pairs = load_pairs()
     bases = [
         p for p in pairs if p["label_set"] == "correctness" and p["edit"] == "swap_first_number"
     ]

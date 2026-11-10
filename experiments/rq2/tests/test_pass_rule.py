@@ -94,7 +94,7 @@ def test_refusal_judge_with_a_high_hedged_fpr_fails() -> None:
     labels = [1] * 50 + [0] * 50
     types = [None] * 50 + ["hedged_answer"] * 25 + [None] * 25
     preds = [1] * 48 + [0] * 2 + [1] * 2 + [0] * 48
-    out = refusal_outcome(labels, preds, types)
+    out = refusal_outcome(labels, preds, types, near_misses=50)
     assert not out.passed
     assert any("FPR" in r for r in out.reasons)
 
@@ -140,3 +140,12 @@ def test_tier1_choice_prefers_a_non_datagen_family_on_ties() -> None:
     families = {"github/openai/gpt-4.1-mini": "gpt", "github/mistral-ai/m": "mistral"}
     assert select_tier1(kappas, families, "gpt") == "github/mistral-ai/m"
     assert select_tier1({}, families, "gpt") is None
+
+
+def test_a_clean_refusal_result_without_the_near_miss_set_is_pending_never_passed() -> None:
+    labels = [1] * 50 + [0] * 50
+    types = [None] * 50 + ["hedged_answer"] * 25 + [None] * 25
+    perfect = refusal_outcome(labels, labels, types, near_misses=0)
+    assert perfect.status == "pending"
+    assert not perfect.passed
+    assert refusal_outcome(labels, labels, types, near_misses=50).passed

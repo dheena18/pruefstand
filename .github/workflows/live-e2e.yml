@@ -250,16 +250,6 @@ jobs:
           { echo "run_dir=$cand"; echo "gate_rc=$gate_rc"; echo "self_baseline=$self"; } >> "$GITHUB_OUTPUT"
           cat comment.md >> "$GITHUB_STEP_SUMMARY"
       # Report files are best effort: a render failure must not skip the upload, the PR comment or the baseline.
-      # T5.4 (D195, D253): nightly drift check of the tier-1 GitHub Models judge on its 50 stored anchors (cache
-      # bypassed). Until T5.4's hosted follow-up records the anchors of the tier-1 judge the command logs
-      # "skipped" and makes no call. Informational: tier-1 judged metrics never gate (W1.4).
-      - name: Judge drift (nightly, tier-1 judge)
-        if: github.event_name == 'schedule' && env.PRUEFSTAND_JUDGE_MODE != 'skipped'
-        continue-on-error: true
-        env:
-          PRUEFSTAND_GH_MODELS_TOKEN: ${{ github.token }}  # the drift step judges too (D333)
-        run: |
-          uv run pruefstand judge-drift --judge github/openai/gpt-4.1-mini | tee -a "$GITHUB_STEP_SUMMARY"
       - name: Render report.html and evidence.json
         if: steps.gate.outputs.run_dir != ''
         continue-on-error: true
@@ -305,6 +295,17 @@ jobs:
             echo "wall time: $(( $(date +%s) - JOB_START )) s (budget 20 min, cache-warm target 12 min)"
             jq -r '"judge_mode=\(.judge_mode) judged_cases=\(.judged_cases) cost=\(.cost | tojson) duration_s=\(.duration_s)"' "$RUN_DIR/run.json"
           } >> "$GITHUB_STEP_SUMMARY"
+      # T5.4 (D195, D253): nightly drift check of the tier-1 GitHub Models judge on its 50 stored anchors (cache
+      # bypassed). Until T5.4's hosted follow-up records the anchors of the tier-1 judge the command logs
+      # "skipped" and makes no call. Informational: tier-1 judged metrics never gate (W1.4).
+      - name: Judge drift (nightly, tier-1 judge)
+        # always(): the anchors do not depend on tonight's run, so a failed run still gets its drift check
+        if: always() && github.event_name == 'schedule' && env.PRUEFSTAND_JUDGE_MODE != 'skipped'
+        continue-on-error: true
+        env:
+          PRUEFSTAND_GH_MODELS_TOKEN: ${{ github.token }}  # the drift step judges too (D333)
+        run: |
+          uv run pruefstand judge-drift --judge github/openai/gpt-4.1-mini | tee -a "$GITHUB_STEP_SUMMARY"
       - name: Upload the report
         if: always() && steps.gate.outputs.run_dir != ''
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2

@@ -36,6 +36,14 @@ async def judge_anchor_runs(
     return runs
 
 
+def _threshold(upper: float, n: int) -> int | None:
+    """The judge's drift threshold, None when it is unfit (above the cap, D945)."""
+    try:
+        return drift_threshold(upper, n)
+    except ValueError:
+        return None
+
+
 def flip_summary(runs: Sequence[Sequence[int]], judge: str) -> dict[str, object]:
     """Flip rate against run 1, its Wilson upper bound, ``a0`` and the drift threshold.
 
@@ -60,6 +68,6 @@ def flip_summary(runs: Sequence[Sequence[int]], judge: str) -> dict[str, object]
         "flip_rate": rate,
         "flip_rate_upper": upper,
         "a0": a0,
-        "drift_threshold": drift_threshold(upper, n),
+        "drift_threshold": _threshold(upper, n),
         "changed_anchors": sum(1 for i in range(n) if len({run[i] for run in runs}) > 1),
     }

@@ -42,13 +42,14 @@ seed 1234); hard-negative specificity with its Wilson lower bound.
 | faithfulness | legal_hard | - | pending | | | | pending |
 | answer_correctness | correctness (constructed) | 395 | 0.82 (0.76-0.87) | 0.82 | 0.97 (0.93) | 0.82 / 0.62 (n 21) | **fail** (discrimination) |
 | answer_correctness | legal_hard | - | pending | | | | pending |
-| refusal_judged | refusal | 420 | 1.00 | 1.00 | hedged FPR 0.00 | - | **pass** (D193) |
+| refusal_judged | refusal | 420 | 1.00 | 1.00 | hedged FPR 0.00 | - | **pending**: reported, not a pass (near-miss set not built, D944) |
 | perturbation_consistency | consistency | 573 | 0.92 (0.88-0.94) | 0.92 | 0.78 (0.65) | - | reported |
 
 Outcome: `calibration_status.yaml` `passed: false` (judged metrics informational in both tiers; the refusal judge
-may decide ambiguous answers), `judge_epoch` 1. Ceiling for MEMERAG (German): AC1 0.84 / Fleiss kappa 0.81
-(MEMERAG paper, Table 2). Cost: USD 0, about 1 360 GPU-s and no quota per 1 000 judgments, latency p50 4.9 s / p95
-9.6 s at 4 in flight. Drift anchors: 4 flips in 150 comparisons, f_upper 0.067, `drift_threshold` 9, `a0` 0.96.
+stays off until its near-miss set exists), `judge_epoch` 1. Ceiling for MEMERAG (German): AC1 0.84 / Fleiss kappa 0.81
+(MEMERAG paper, Table 2). Cost: USD 0, about 1 395 GPU-s and no quota per 1 000 judgments, latency p50 4.9 s / p95
+9.6 s at 4 in flight. Drift anchors: 4 flips in 150 comparisons, f_upper 0.067, `drift_threshold` 9, `a0` 0.96. The 4 flips sit on only 2 anchors, so the per-anchor binomial
+model overstates the spread; replacing those anchors or storing their majority verdict is a follow-up (D945).
 Bias: not measurable on this sample: the T4.5 gender/register rewrites changed none of the 50 short answers (D942).
 Judge (c) and the GitHub Models arms are not measured yet (hosted runner follow-up, D939); the agreement matrix
 therefore has one judge.

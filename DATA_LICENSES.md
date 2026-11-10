@@ -263,8 +263,19 @@ Data card: `datasets/calibration/README.md`.
 | --- | --- | --- | --- | --- |
 | `correctness.jsonl`, `consistency.jsonl` | GermanQuAD test split (questions, annotator answers, paragraphs) | CC BY 4.0 | `germanquad_derived` | GermanQuAD by deepset (Möller, Risch, Pietsch, 2021), CC BY 4.0. Modified (answers paired, edited, framed). |
 | `faithfulness_constructed.jsonl`, `refusal.jsonl` | GermanRAG (questions, answers, passages incl. the GermanDPR hard negatives it ships) | CC BY-SA 4.0 (§7 override) | `germanrag_derived`, never mixed with another config | GermanRAG by DiscoResearch, based on GermanDPR, CC BY-SA 4.0. Modified (answers edited, hedged, paired with other passages; fixed refusal sentences added). |
+| `degraded_pairs_germanquad.jsonl` (T5.4) | GermanQuAD test answers with one edit (`swap_first_number`, `negate`) | CC BY 4.0 | `germanquad_derived` | GermanQuAD by deepset (Möller, Risch, Pietsch, 2021), CC BY 4.0. Modified (one number or the polarity changed). |
+| `degraded_pairs_germanrag.jsonl` (T5.4) | GermanRAG test answers with one edit | CC BY-SA 4.0 (§7 override) | `germanrag_derived`, never mixed | GermanRAG by DiscoResearch, based on GermanDPR, CC BY-SA 4.0. Modified (one number or the polarity changed). |
 | `stats.json` | counts only, incl. the counts of the MEMERAG set | CC BY 4.0 | – | – |
 | `data/derived/memerag_de/faithfulness_memerag.jsonl` (git-ignored) | MEMERAG German, both files | CC BY-NC 4.0 | **none** | Local only; aggregate agreement numbers are published with the §1 attribution. |
+
+**Drift anchors inside the package (T5.4, D946).** `packages/pruefstand/src/pruefstand/judges/data/anchors/ollama_gemma3-12b.jsonl`
+ships 50 rendered judge prompts (with a verdict) inside the MIT-licensed `pruefstand` package: 25 rows from GermanQuAD
+(`correctness` 14, `consistency` 11; CC BY 4.0) and 25 rows from GermanRAG (`faithfulness_constructed` 14,
+`refusal` 11; CC BY-SA 4.0); the `label_set` field of every row names its source. The file is a collection, not an adaptation of
+the code: the MIT licence covers the code only, and the data rows keep their own licences. `NOTICE.md` next to the file
+carries both attributions and the licence of each row group; anyone redistributing the wheel passes it on. If the
+owner prefers no CC BY-SA text in the wheel, the anchors move out of the package (`--anchors` already takes a path);
+this is listed as an owner decision in the T5.4 PR.
 
 The test fixtures `experiments/rq2/tests/fixtures/germanquad_test_6.jsonl` (6 GermanQuAD test rows,
 CC BY 4.0) and `germanrag_4.jsonl` (4 GermanRAG rows, CC BY-SA 4.0) are unchanged upstream rows with

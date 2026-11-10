@@ -23,6 +23,7 @@ SPECIFICITY_LOW_MIN = 0.70
 DISCRIMINATION_MIN = 0.90
 REFUSAL_ACCURACY_MIN = 0.95
 REFUSAL_HEDGED_FPR_MAX = 0.05
+NEAR_MISSES_MIN = 50  # D193: the 50 in-domain near misses (T4.6 / T5.3 PR 2)
 Status = Literal["passed", "failed", "pending"]
 
 
@@ -123,11 +124,17 @@ def metric_outcome(
 
 
 def refusal_outcome(
-    labels: Sequence[int], preds: Sequence[int], hard_types: Sequence[str | None]
+    labels: Sequence[int],
+    preds: Sequence[int],
+    hard_types: Sequence[str | None],
+    *,
+    near_misses: int,
 ) -> Outcome:
     """The ``refusal_judged`` rule: accuracy >= 0.95 and FPR <= 0.05 on ``hedged_answer`` items.
 
-    A false positive is a judge "refusal" (1) on a ``hedged_answer`` item (label 0).
+    A false positive is a judge "refusal" (1) on a ``hedged_answer`` item (label 0). D193 asks
+    for the set **including the 50 in-domain near misses**: without them (``near_misses == 0``)
+    a clean result is ``pending``, never ``passed`` (D944).
     """
     n = len(labels)
     accuracy = sum(1 for y, p in zip(labels, preds, strict=True) if y == p) / n
@@ -138,4 +145,8 @@ def refusal_outcome(
         reasons.append(f"accuracy {accuracy:.3f} < {REFUSAL_ACCURACY_MIN}")
     if not fpr <= REFUSAL_HEDGED_FPR_MAX:
         reasons.append(f"hedged_answer FPR {fpr:.3f} > {REFUSAL_HEDGED_FPR_MAX}")
-    return Outcome("failed", tuple(reasons)) if reasons else Outcome("passed")
+    if reasons:
+        return Outcome("failed", tuple(reasons))
+    if near_misses < NEAR_MISSES_MIN:
+        return Outcome("pending", (f"near-miss set not built ({near_misses} < {NEAR_MISSES_MIN})",))
+    return Outcome("passed")

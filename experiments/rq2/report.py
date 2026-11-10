@@ -160,12 +160,7 @@ def status_document(
         )
         outcomes.append(out)
         metrics[metric] = {"status": out.status, "passed": out.passed, "reasons": list(out.reasons)}
-    ref = labels.filter(pl.col("label_set") == "refusal").join(
-        verdicts.filter(pl.col("judge") == judge).drop_nulls("score"), on=["item_id", "metric"]
-    )
-    refusal = refusal_outcome(
-        ref["label"].to_list(), ref["score"].to_list(), ref["hard_type"].to_list()
-    )
+    refusal_entry = _refusal_entry(cfg, labels, verdicts, judge)
     flips_path = RESULTS / "anchor_flips.json"
     flips = json.loads(flips_path.read_text(encoding="utf-8")) if flips_path.is_file() else {}
     doc = read_document()
@@ -180,7 +175,7 @@ def status_document(
         "epoch": epoch_of(doc),
         "passed": status == "passed",
         "status": status,
-        "refusal_judged": {"passed": refusal.passed, "reasons": list(refusal.reasons)},
+        "refusal_judged": refusal_entry,
         "prompt_versions_tried": PROMPT_VERSIONS_TRIED,
         "prompt_versions": {m: f"{s.prompt_id}_{s.version}" for m, s in SPECS.items()},
         "judges": {
@@ -193,6 +188,33 @@ def status_document(
                 "flip_rate_upper": flips.get("flip_rate_upper"),
             }
         },
+    }
+
+
+def _refusal_entry(
+    cfg: RQ2Config, labels: pl.DataFrame, verdicts: pl.DataFrame, judge: str
+) -> dict[str, object]:
+    """The ``refusal_judged`` block: the D193 outcome plus the measured numbers (D944)."""
+    ref = labels.filter(pl.col("label_set") == "refusal").join(
+        verdicts.filter(pl.col("judge") == judge).drop_nulls("score"), on=["item_id", "metric"]
+    )
+    items = load_items(cfg.set_named("refusal"), "test")
+    near = sum(1 for i in items if i.construction.startswith("near_miss"))
+    out = refusal_outcome(
+        ref["label"].to_list(), ref["score"].to_list(), ref["hard_type"].to_list(), near_misses=near
+    )
+    y, p = ref["label"].to_numpy(), ref["score"].to_numpy()
+    hedged = ref.filter(pl.col("hard_type") == "hedged_answer")["score"].to_numpy()
+    reported = {
+        "n": int(ref.height),
+        "accuracy": float((y == p).mean()) if ref.height else None,
+        "hedged_fpr": float(hedged.mean()) if hedged.size else None,
+    }
+    return {
+        "passed": out.passed,
+        "status": out.status,
+        "reasons": list(out.reasons),
+        "reported": reported,
     }
 
 

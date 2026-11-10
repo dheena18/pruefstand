@@ -2,6 +2,9 @@
 
 from pathlib import Path
 
+import pytest
+
+from pruefstand.core.errors import ConfigError
 from pruefstand.judges.calibration import read_status as reexported
 from pruefstand.judges.status import drift_threshold_of, read_status
 
@@ -31,3 +34,10 @@ def test_a_file_without_judges_still_reads_and_the_old_path_works(tmp_path: Path
     assert status is not None
     assert status.passed is True
     assert status.drift_thresholds == {}
+
+
+def test_a_threshold_above_the_cap_is_refused(tmp_path: Path) -> None:
+    path = tmp_path / "s.yaml"
+    path.write_text("epoch: 1\njudges:\n  ollama/x: {drift_threshold: 11}\n", encoding="utf-8")
+    with pytest.raises(ConfigError, match="above"):
+        read_status(path)

@@ -4,7 +4,13 @@ import pytest
 from scipy import stats
 
 from pruefstand.core.models.judge import JudgeVerdict
-from pruefstand.judges.drift import anchor_agreement, drift_threshold, flip_rate, is_drift
+from pruefstand.judges.drift import (
+    anchor_agreement,
+    drift_threshold,
+    flip_rate,
+    is_drift,
+    threshold_cap,
+)
 
 
 def _v(raw: int) -> JudgeVerdict:
@@ -63,3 +69,13 @@ def test_flip_rate_upper_bound() -> None:
     rate, upper = flip_rate(0, 200)
     assert rate == 0.0
     assert 0.0 < upper < 0.02
+
+
+def test_a_threshold_above_the_cap_means_the_judge_is_unfit() -> None:
+    assert threshold_cap(50) == 10
+    assert drift_threshold(0.067, 50) == 9  # the measured gemma3:12b bound
+    with pytest.raises(ValueError, match="unfit"):
+        drift_threshold(0.15, 50)
+    with pytest.raises(ValueError, match="cap"):
+        is_drift(0.70, 50, threshold=11)
+    assert is_drift(0.80, 50, threshold=10)

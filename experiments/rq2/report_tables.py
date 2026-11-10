@@ -124,6 +124,7 @@ def agreement_matrix(verdicts: pl.DataFrame) -> pl.DataFrame:
                 kappa = 1.0 if a == b else cohens_kappa(xa, xb)
                 rows.append(
                     {
+                        "kind": "self (sanity)" if a == b else "pair",
                         "label_set": name,
                         "judge_a": a,
                         "judge_b": b,

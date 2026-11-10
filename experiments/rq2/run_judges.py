@@ -9,7 +9,6 @@ second run free; it prints ``new LLM calls: <n>``. GPU judges run under ``pruefs
 
 import argparse
 import asyncio
-import json
 import sys
 from pathlib import Path
 
@@ -19,6 +18,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))  # run as a script:
 
 from rq2.binarise import check_route, is_local
 from rq2.calib_schema import CalibrationItem
+from rq2.make_degraded import load_pairs
 from rq2.rq2_config import (
     REPO,
     JudgeEntry,
@@ -120,9 +120,6 @@ async def judge_items(
     return list(await asyncio.gather(*(one(s, i) for s, i in items)))
 
 
-PAIRS = Path("datasets/calibration/v1/degraded_pairs.jsonl")
-
-
 async def judge_pairs(
     judge: Judge, pairs: list[dict[str, object]], concurrency: int
 ) -> list[dict[str, object]]:
@@ -201,10 +198,8 @@ def run(cfg: RQ2Config, args: argparse.Namespace) -> int:
         suffix = "".join(f"_{m}-{v}" for m, v in sorted(prompts.items()))
         name = f"{slug(entry.id)}_{args.split}{suffix}"
         frame.write_parquet(out_dir / f"verdicts_{name}.parquet")
-        if args.pairs and (REPO / PAIRS).is_file():
-            pairs = [
-                json.loads(line) for line in (REPO / PAIRS).read_text(encoding="utf-8").splitlines()
-            ]
+        pairs = load_pairs() if args.pairs else []
+        if pairs:
             scored = asyncio.run(judge_pairs(judge, pairs, cfg.concurrency))
             pl.DataFrame(scored, infer_schema_length=None).write_parquet(
                 out_dir / f"pairs_{slug(entry.id)}.parquet"

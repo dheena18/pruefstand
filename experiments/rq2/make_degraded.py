@@ -31,7 +31,12 @@ EDITS: dict[str, Callable[[str], str | None]] = {
     "swap_first_number": swap_first_number,
     "negate": negate,
 }
-OUT = Path("datasets/calibration/v1/degraded_pairs.jsonl")
+#: One file per source licence, never mixed (D864, D946):
+#: GermanQuAD CC BY 4.0, GermanRAG CC BY-SA 4.0.
+OUT: dict[str, Path] = {
+    "correctness": Path("datasets/calibration/v1/degraded_pairs_germanquad.jsonl"),
+    "faithfulness_constructed": Path("datasets/calibration/v1/degraded_pairs_germanrag.jsonl"),
+}
 
 
 def make_pairs(
@@ -91,13 +96,22 @@ def discrimination(pairs: Sequence[tuple[int, int]]) -> float:
 def main() -> int:
     """Write the pair file for the ``test`` split."""
     cfg = load_config(REPO / "experiments/rq2/configs/rq2_judges.yaml")
+    for name in SETS:
+        rows = make_pairs(load_items(cfg.set_named(name), "test"), name, cfg.seed)
+        text = "".join(json.dumps(r, ensure_ascii=False, sort_keys=True) + "\n" for r in rows)
+        (REPO / OUT[name]).write_text(text, encoding="utf-8")
+        sys.stdout.write(f"{len(rows)} pairs -> {OUT[name]}\n")
+    return 0
+
+
+def load_pairs(root: Path = REPO) -> list[dict[str, object]]:
+    """Read every pair file that exists (both licences), in ``SETS`` order."""
     rows: list[dict[str, object]] = []
     for name in SETS:
-        rows.extend(make_pairs(load_items(cfg.set_named(name), "test"), name, cfg.seed))
-    text = "".join(json.dumps(r, ensure_ascii=False, sort_keys=True) + "\n" for r in rows)
-    (REPO / OUT).write_text(text, encoding="utf-8")
-    sys.stdout.write(f"{len(rows)} pairs -> {OUT}\n")
-    return 0
+        path = root / OUT[name]
+        if path.is_file():
+            rows += [json.loads(line) for line in path.read_text(encoding="utf-8").splitlines()]
+    return rows
 
 
 if __name__ == "__main__":

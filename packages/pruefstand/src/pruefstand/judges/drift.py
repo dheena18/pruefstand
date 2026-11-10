@@ -57,6 +57,18 @@ def default_threshold(n: int) -> int:
     return max(3, math.ceil(0.1 * n))
 
 
+def threshold_cap(n: int) -> int:
+    """Largest acceptable drift threshold: twice the N3 default (n = 50 -> 10; D945).
+
+    A judge whose flip rate needs more is unfit for the anchor drift check.
+
+    Examples:
+        >>> threshold_cap(50)
+        10
+    """
+    return 2 * default_threshold(n)
+
+
 def is_drift(
     agreement: float, n: int, *, a0: float | None = None, threshold: int | None = None
 ) -> bool:
@@ -75,7 +87,8 @@ def is_drift(
         True on drift.
 
     Raises:
-        ValueError: ``n < 1``, ``agreement`` outside [0, 1], or a threshold below the default.
+        ValueError: ``n < 1``, ``agreement`` outside [0, 1], or a threshold below the default
+            or above ``threshold_cap(n)``.
 
     Examples:
         >>> is_drift(0.92, 50), is_drift(0.90, 50), is_drift(0.98, 50, a0=1.0)
@@ -90,6 +103,9 @@ def is_drift(
     floor = default_threshold(n)
     if threshold is not None and threshold < floor:
         msg = f"drift threshold {threshold} is below the default {floor} for n={n}"
+        raise ValueError(msg)
+    if threshold is not None and threshold > threshold_cap(n):
+        msg = f"drift threshold {threshold} is above the cap {threshold_cap(n)}: judge unfit (D945)"
         raise ValueError(msg)
     changed = n - round(agreement * n)
     return changed >= (floor if threshold is None else threshold)
@@ -120,10 +136,11 @@ def drift_threshold(f_upper: float, n: int = 50, alpha: float = MAX_FALSE_DRIFT)
         alpha: Accepted false-alarm probability per night.
 
     Returns:
-        The judge's threshold (``n + 1`` if even all n flips are too likely).
+        The judge's threshold, at most ``threshold_cap(n)``.
 
     Raises:
-        ValueError: ``f_upper`` outside [0, 1] or ``n < 1``.
+        ValueError: ``f_upper`` outside [0, 1], ``n < 1``, or the needed threshold is above
+            ``threshold_cap(n)``: the judge is unfit for the drift check (D945).
 
     Examples:
         P(Bin(50, 0.06) >= 7) = 0.029 > 0.01, P(>= 8) = 0.009:
@@ -134,7 +151,9 @@ def drift_threshold(f_upper: float, n: int = 50, alpha: float = MAX_FALSE_DRIFT)
     if n < 1 or not 0.0 <= f_upper <= 1.0:
         msg = f"need n >= 1 and 0 <= f_upper <= 1 (got n={n}, f_upper={f_upper})"
         raise ValueError(msg)
-    for c in range(default_threshold(n), n + 1):
+    for c in range(default_threshold(n), threshold_cap(n) + 1):
         if float(stats.binom.sf(c - 1, n, f_upper)) <= alpha:
             return c
-    return n + 1
+    cap = threshold_cap(n)
+    msg = f"flip rate upper bound {f_upper:.3f} needs a threshold above {cap}: judge unfit"
+    raise ValueError(msg)
