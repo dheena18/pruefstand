@@ -6,6 +6,7 @@ from testsupport.workflow_checks import (
     check_cache_saves,
     check_comment_checkout,
     check_comment_jobs,
+    check_fingerprint_rebaseline,
     check_marker,
     check_no_gate_status,
     check_no_judge_mode,
@@ -38,8 +39,18 @@ def test_renaming_the_schedule_upload_to_live_baseline_fails() -> None:
 
 
 def test_uploading_live_baseline_on_pull_requests_fails() -> None:
-    old = "        if: github.event_name == 'push' && steps.gate.outputs.run_dir != ''"
+    old = (
+        "        if: github.event_name == 'push' && steps.gate.outputs.run_dir != ''"
+        " && steps.gate.outputs.gate_rc == '0'"
+    )
     assert mutated(check_uploads, old, "        if: steps.gate.outputs.run_dir != ''")
+
+
+@pytest.mark.parametrize("event", ["push", "schedule"])
+def test_a_baseline_upload_without_a_passing_gate_fails(event: str) -> None:
+    head = f"        if: github.event_name == '{event}' && steps.gate.outputs.run_dir != ''"
+    old, new = f"{head} && steps.gate.outputs.gate_rc == '0'", head
+    assert mutated(check_uploads, old, new)
 
 
 def test_dropping_not_gpu_from_the_marker_fails() -> None:
@@ -62,3 +73,17 @@ def test_a_secret_and_a_judge_mode_are_found() -> None:
 def test_the_checker_comes_from_the_base_sha() -> None:
     old = "ref: ${{ github.event.pull_request.base.sha }}"
     assert mutated(check_comment_checkout, old, "ref: ${{ github.sha }}")
+
+
+def test_dropping_the_fingerprint_check_fails() -> None:
+    old = "uv run pruefstand baseline fingerprint-check"
+    assert mutated(check_fingerprint_rebaseline, old, "uv run pruefstand version #")
+
+
+def test_a_gate_error_must_still_fail_the_step() -> None:
+    old = 'if [ "$gate_rc" -gt 1 ]; then exit "$gate_rc"; fi'
+    assert mutated(check_fingerprint_rebaseline, old, "true")
+
+
+def test_the_mismatch_note_must_stay_in_the_comment() -> None:
+    assert mutated(check_fingerprint_rebaseline, "Baseline not comparable:", "Note:")
