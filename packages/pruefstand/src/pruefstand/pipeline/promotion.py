@@ -124,7 +124,7 @@ def check_gate_for_promotion(
     ref: str,
     allow_failed_gate: bool,
     current: str | None,
-) -> None:
+) -> list[str]:
     """Refuse a run whose gate FAILed or that has a hard-fail finding, unless overridden.
 
     Args:
@@ -144,6 +144,10 @@ def check_gate_for_promotion(
             report / hard fails without the override (exit 1).
         StoreIntegrityError: ``gate.json`` is unreadable, invalid, of another run or of another
             fingerprint (exit 3).
+
+    Returns:
+        The reasons the owner's override waived (empty when nothing was waived); the caller
+        records them with the baseline (D1123).
     """
     run_id = str(results.manifest.run_id)
     report = _read_gate(run, run_id, results.manifest.eval_fingerprint)
@@ -155,9 +159,10 @@ def check_gate_for_promotion(
         _check_binding(report, run_id, current)
     reasons = _reasons(report, results, policy, current, gated=gated)
     if not reasons:
-        return
+        return []
     text = f"run {run_id}: {' and '.join(reasons)}"
     if not allow_failed_gate:
         msg = f"{text}; not promoted (the owner can pass {OVERRIDE_FLAG})"
         raise BaselineRefused(msg)
     _log.warning("promote_failed_gate_overridden", run_id=run_id, reasons=reasons)
+    return reasons

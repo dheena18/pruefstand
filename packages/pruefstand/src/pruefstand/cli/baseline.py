@@ -1,5 +1,7 @@
 """``pruefstand baseline``: promote, export-public, prune, publish-dashboard, fingerprint-check."""
 
+import getpass
+import os
 import re
 from datetime import UTC, datetime
 from pathlib import Path
@@ -11,6 +13,7 @@ from pruefstand.cli._common import EXIT_FAIL, EXIT_USAGE, fail, guarded
 from pruefstand.core.config import GatePolicy
 from pruefstand.core.config_loader import load_config
 from pruefstand.core.errors import GateInputError
+from pruefstand.core.models.baseline import MAX_OVERRIDE_NOTE, PromotionOverride
 from pruefstand.core.protocols import BaselineStore
 from pruefstand.gate.baseline_run import check_baseline_run
 from pruefstand.metrics.registry import MetricRegistry
@@ -55,6 +58,27 @@ def _current_baseline(store: BaselineStore, fingerprint: str, ref: str) -> str |
     return None if current is None else str(current.results.manifest.run_id)
 
 
+def _who() -> str:
+    """``GITHUB_ACTOR`` when set, else the OS user name (bounded, printable)."""
+    try:
+        name = os.environ.get("GITHUB_ACTOR") or getpass.getuser()
+    except (OSError, KeyError):
+        name = "unknown"
+    clean = "".join(c for c in name if c.isprintable())[:64]
+    return clean or "unknown"
+
+
+def _note(reason: str | None, *, allow_failed_gate: bool) -> str | None:
+    """The validated ``--reason`` (required with ``--allow-failed-gate``, D1123)."""
+    if not allow_failed_gate:
+        return None
+    text = " ".join((reason or "").split())
+    if not text or len(text) > MAX_OVERRIDE_NOTE:
+        msg = f"error: --allow-failed-gate needs --reason TEXT (1 to {MAX_OVERRIDE_NOTE} chars)"
+        fail(msg, EXIT_USAGE)
+    return text
+
+
 def promote_command(
     ctx: typer.Context,
     *,
@@ -68,6 +92,13 @@ def promote_command(
             help="Promote although the gate FAILed or the run has hard fails (owner only).",
         ),
     ] = False,
+    reason: Annotated[
+        str | None,
+        typer.Option(
+            "--reason",
+            help="Why the gate is overridden; required with --allow-failed-gate (D1123).",
+        ),
+    ] = None,
 ) -> None:
     """Promote a complete run to the baseline of its fingerprint and ref.
 
@@ -77,13 +108,14 @@ def promote_command(
     stored, or a hard-fail finding is refused (exit 1) unless --allow-failed-gate is given; an
     invalid gate.json or one of another fingerprint is exit 3 (D881).
     """
+    note = _note(reason, allow_failed_gate=allow_failed_gate)
     with guarded(ctx):
         artifacts = ArtifactStore(run.parent).read_run(run)
         cfg = load_config(config)
         try:
             prepared = prepare_promotion(artifacts, ref)
             store = build_baseline_store(cfg.baseline_store)
-            check_gate_for_promotion(
+            waived = check_gate_for_promotion(
                 run,
                 artifacts.results,
                 cfg.gate,
@@ -97,7 +129,12 @@ def promote_command(
                 MetricRegistry.full().directions(),
                 skip=_informational_metrics(prepared.results.manifest.stack, ref, cfg.gate),
             )
-            store.put(prepared, ref)
+            override = None
+            if waived and note is not None:
+                override = PromotionOverride(
+                    by=_who(), at=datetime.now(UTC), reasons=tuple(waived), note=note
+                )
+            store.put(prepared, ref, override=override)
         except BaselineRefused as exc:
             fail(f"error: {exc}", EXIT_FAIL)
         except GateInputError as exc:
@@ -107,6 +144,8 @@ def promote_command(
             )
         manifest = prepared.results.manifest
         typer.echo(f"promoted {manifest.run_id} to {manifest.eval_fingerprint}/{ref}")
+        if override is not None:
+            typer.echo(f"override recorded: by {override.by}, {len(override.reasons)} reason(s)")
 
 
 def export_public_command(

@@ -15,6 +15,7 @@ from pruefstand.core.enums import GateStatus
 from pruefstand.core.models.run import RunArtifacts
 from pruefstand.report.json_report import write_gate_json
 from pruefstand.store.artifacts import ArtifactStore
+from pruefstand.store.baseline_index import REFS
 from pruefstand.store.baselines_local import LocalDirBaselineStore
 
 RUN = "20261102T220001-bbbbbb"
@@ -52,9 +53,35 @@ def promote(cli: CliRunner, tmp_path: Path, run: Path, *extra: str, ref: str = "
     store = BaselineStoreConfig(type="local_dir", path=tmp_path / "store")
     cfg = config_file(tmp_path / "cfg.yaml", mini_config(baseline_store=store))
     args = ["baseline", "promote", "--run", str(run), "--ref", ref, "--config", str(cfg)]
+    if "--allow-failed-gate" in extra and "--reason" not in extra:
+        extra = (*extra, "--reason", "owner accepted it in a test")  # required since D1123
     return cli.invoke(app, [*args, *extra])
 
 
 def promoted(tmp_path: Path, run_id: str = RUN) -> bool:
     current = LocalDirBaselineStore(tmp_path / "store").get(FP, "main")
     return current is not None and current.results.manifest.run_id == run_id
+
+
+def promote_store_test(cli: CliRunner, run_dir: Path, ref: str, cfg: Path, store: Path) -> Result:
+    """``baseline promote`` for store tests: a PASS gate.json bound to the stored baseline (D1120).
+
+    The unverifiable leak checks of the two-metric synthetic runs are waived with a reason (D1123).
+    """
+    if run_dir.is_dir():
+        manifest = ArtifactStore(run_dir.parent).read_run(run_dir).results.manifest
+        current = None
+        if not ref.startswith("release-") and ref in REFS:
+            current = LocalDirBaselineStore(store).get(manifest.eval_fingerprint, ref)
+        against = None if current is None else current.results.manifest.run_id
+        report = gate_report(
+            status=GateStatus.PASS,
+            hard_fails=(),
+            candidate_run_id=run_dir.name,
+            eval_fingerprint=manifest.eval_fingerprint,
+            baseline_run_id=against,
+            no_baseline=against is None,
+        )
+        write_gate_json(report, run_dir / "gate.json")
+    args = ["baseline", "promote", "--run", str(run_dir), "--ref", ref, "--config", str(cfg)]
+    return cli.invoke(app, [*args, "--allow-failed-gate", "--reason", "store tests"])

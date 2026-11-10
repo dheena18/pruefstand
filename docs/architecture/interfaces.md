@@ -968,7 +968,11 @@ class ArtifactStore:           def __init__(self, root: Path) -> None
                                # RunManifest.counts atomically (only "model_reloads" and "upstream_errors" are accepted,
                                # other keys -> StoreError); other files untouched
 class BaselineStore(Protocol): def get(self, eval_fingerprint: str, ref: str = "main") -> RunArtifacts | None
-                               def put(self, run: RunArtifacts, ref: str = "main") -> None
+                               def put(self, run: RunArtifacts, ref: str = "main", *,
+                                       override: PromotionOverride | None = None) -> None
+                               # D1123 (review F8): override = core.models.baseline.PromotionOverride {by, at, reasons,
+                               # note}; stored in the baseline's manifest.json (current + history) and its index.json entry;
+                               # the key is omitted when None (byte layout of plain promotions unchanged)
 class LocalDirBaselineStore(BaselineStore); class GitBranchBaselineStore(BaselineStore)
 # store/canary_source.py (T6.1; reused by T8.1): load_canary_registry() -> CanaryRegistry — registry source of
 #   `baseline export-public` and `export-dashboard`: slice corpus/*/canaries.public.json + T2.6 registries + held-out
@@ -1765,7 +1769,10 @@ pruefstand baseline   promote --run runs/<id> --ref main|nightly-b0|nightly-b1|n
                       # the first promote of (fingerprint, ref); later no_baseline and status INSUFFICIENT_DATA ->
                       # exit 1 like FAIL. Option --allow-failed-gate (owner only, by hand; never in a workflow)
                       # waives FAIL, INSUFFICIENT_DATA, a stale no_baseline and hard-fail findings, never a missing,
-                      # unusable or unbound gate.json
+                      # unusable or unbound gate.json. D1123 (review F8): --allow-failed-gate needs --reason TEXT
+                      # (1-500 chars after whitespace folding; missing or longer -> exit 2); when the flag waives
+                      # something, the stored baseline records override {by: GITHUB_ACTOR or the OS user, at: UTC,
+                      # reasons: what the guard would have refused, note: --reason} in manifest.json and index.json
                       fingerprint-check --candidate <run> --baseline <run>   (D1000, CI fix; read by the tier-1 step of live-e2e.yml)
                       # prints `comparable`, `changed <fp> <fp>` (12+ chars, enough to tell the two apart) or `unreadable` (baseline
                       # run cannot be read); exit 0 for all three; exit 3 only if the CANDIDATE cannot be read. Decides nothing.

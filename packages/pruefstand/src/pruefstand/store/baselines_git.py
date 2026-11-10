@@ -14,6 +14,7 @@ from pathlib import Path
 
 from pruefstand.core.errors import StoreError, StoreIntegrityError
 from pruefstand.core.logging import get_logger
+from pruefstand.core.models.baseline import PromotionOverride
 from pruefstand.core.models.run import RunArtifacts
 from pruefstand.store._baseline_dir import read_baseline
 from pruefstand.store._baseline_write import Clock, promote_to_disk, safe_rollback, utc_now
@@ -111,7 +112,9 @@ class GitBranchBaselineStore:
             raise StoreIntegrityError(msg)
         return art
 
-    def put(self, run: RunArtifacts, ref: str = "main") -> None:
+    def put(
+        self, run: RunArtifacts, ref: str = "main", *, override: PromotionOverride | None = None
+    ) -> None:
         """Store ``run``: files first (write-then-rename), then one index commit.
 
         If the index cannot be pushed the data root is rolled back to the previous baseline.
@@ -121,7 +124,7 @@ class GitBranchBaselineStore:
             StoreError: Unknown ref, a missing data root, a failed write, or a failed push.
         """
         self._check_root()
-        promotion = promote_to_disk(self._root, run, ref, self._clock)
+        promotion = promote_to_disk(self._root, run, ref, self._clock, override=override)
         entry = promotion.entry
 
         def add(index: BaselineIndex) -> BaselineIndex:

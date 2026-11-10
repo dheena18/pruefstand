@@ -11,6 +11,7 @@ import numpy as np
 from pydantic import BaseModel
 
 from pruefstand.core.enums import Category
+from pruefstand.core.models.baseline import PromotionOverride
 from pruefstand.core.models.corpus import Chunk, Document
 from pruefstand.core.models.judge import JudgeTask, JudgeVerdict
 from pruefstand.core.models.llm import LLMRequest, LLMResponse
@@ -93,8 +94,10 @@ class BaselineStore(Protocol):
         """Return the baseline for the fingerprint and ref, or None."""
         ...
 
-    def put(self, run: RunArtifacts, ref: str = "main") -> None:
-        """Store ``run`` as the baseline for its fingerprint and ref."""
+    def put(
+        self, run: RunArtifacts, ref: str = "main", *, override: PromotionOverride | None = None
+    ) -> None:
+        """Store ``run`` as the baseline for its fingerprint and ref (``override``: D1123)."""
         ...
 
 
