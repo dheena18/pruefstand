@@ -11,8 +11,7 @@ import re
 import shutil
 from collections import defaultdict
 from pathlib import Path
-
-from huggingface_hub import snapshot_download
+from typing import Any
 
 from pruefstand.core.errors import ConfigError, DatasetError
 from pruefstand.pipeline.dataset_files import (
@@ -56,6 +55,13 @@ def parse_hf_ref(dataset: str) -> tuple[str, str]:
         msg = f"{dataset!r}: expected hf://<user>/<name>@<revision>"
         raise ConfigError(msg)
     return f"{match['user']}/{match['name']}", match["rev"] or "main"
+
+
+def snapshot_download(**kwargs: Any) -> str:  # noqa: ANN401  (forwarded to huggingface_hub)
+    """``huggingface_hub.snapshot_download``, imported on first use (tests replace this name)."""
+    from huggingface_hub import snapshot_download as real  # noqa: PLC0415
+
+    return str(real(**kwargs))
 
 
 def _download(repo_id: str, revision: str, raw: Path) -> None:

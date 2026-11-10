@@ -127,10 +127,48 @@ def test_a_symlinked_split_file_in_the_snapshot_is_refused(hub: FakeHub, tmp_pat
 
 
 @pytest.mark.network
-def test_the_real_hub_resolves_a_public_dataset_revision(tmp_path: Path) -> None:
+def test_the_real_hub_resolves_a_public_dataset_revision(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     """Needs the internet and a published repo; the owner sets ``PRUEFSTAND_HF_TEST_REF``."""
     ref = os.environ.get("PRUEFSTAND_HF_TEST_REF")
     if not ref:
         pytest.skip("PRUEFSTAND_HF_TEST_REF (hf://<user>/<name>@<tag>) is not set")
-    datasets_hf.CACHE_ROOT = tmp_path / "cache"
+    monkeypatch.setattr(datasets_hf, "CACHE_ROOT", tmp_path / "cache")
     assert check_dataset(ref).cases
+
+
+def _hub_with_heldout(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, tags_of: dict[int, tuple[str, ...]]
+) -> FakeHub:
+    cases = [
+        c.model_copy(update={"tags": tags_of.get(i, ())})
+        for i, c in enumerate(make_cases(4, split="core"))
+    ]
+    smoke = make_cases(5, split="smoke")[4:]
+    source = write_dataset(tmp_path / "src", {"core": case_rows(cases), "smoke": case_rows(smoke)})
+    layout = tmp_path / "hf_export"
+    build_hf_layout(source, layout)
+    fake = FakeHub(layout)
+    monkeypatch.setattr(datasets_hf, "snapshot_download", fake)
+    monkeypatch.setattr(datasets_hf, "CACHE_ROOT", tmp_path / "cache")
+    return fake
+
+
+def test_a_heldout_case_is_not_exported_and_the_counts_follow(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _hub_with_heldout(tmp_path, monkeypatch, {1: ("heldout",)})
+    _, _, cases = load_cases(REF, (Split.CORE,))
+    assert len(cases) == 3
+
+
+def test_a_fully_filtered_split_leaves_the_manifest(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _hub_with_heldout(tmp_path, monkeypatch, {})
+    all_private = dict.fromkeys(range(4), ("private",))
+    hub = _hub_with_heldout(tmp_path / "again", monkeypatch, all_private)
+    manifest = json.loads((hub.snapshot / "dataset_manifest.json").read_text("utf-8"))
+    assert manifest["splits"] == {"smoke": 1}
+    assert {c.split for c in check_dataset(REF).cases} == {Split.SMOKE}
