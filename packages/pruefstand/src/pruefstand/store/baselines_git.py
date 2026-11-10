@@ -14,11 +14,12 @@ from pathlib import Path
 
 from pruefstand.core.errors import StoreError, StoreIntegrityError
 from pruefstand.core.logging import get_logger
-from pruefstand.core.models.baseline import PromotionOverride
+from pruefstand.core.models.baseline import ExpectedBaseline, PromotionOverride
 from pruefstand.core.models.run import RunArtifacts
 from pruefstand.store._baseline_dir import read_baseline
 from pruefstand.store._baseline_write import Clock, promote_to_disk, safe_rollback, utc_now
 from pruefstand.store._git import Git, remote_url
+from pruefstand.store._promote_lock import check_expected, promote_lock
 from pruefstand.store.baseline_index import (
     BaselineIndex,
     read_index_file,
@@ -28,6 +29,7 @@ from pruefstand.store.baseline_index import (
     validate_ref,
     with_promotion,
 )
+from pruefstand.store.promote import BaselineRefused
 from pruefstand.store.retention import prune_baselines
 
 _log = get_logger(__name__)
@@ -113,7 +115,12 @@ class GitBranchBaselineStore:
         return art
 
     def put(
-        self, run: RunArtifacts, ref: str = "main", *, override: PromotionOverride | None = None
+        self,
+        run: RunArtifacts,
+        ref: str = "main",
+        *,
+        override: PromotionOverride | None = None,
+        expected: ExpectedBaseline | None = None,
     ) -> None:
         """Store ``run``: files first (write-then-rename), then one index commit.
 
@@ -124,18 +131,22 @@ class GitBranchBaselineStore:
             StoreError: Unknown ref, a missing data root, a failed write, or a failed push.
         """
         self._check_root()
-        promotion = promote_to_disk(self._root, run, ref, self._clock, override=override)
-        entry = promotion.entry
+        with promote_lock(self._root):
+            promotion = promote_to_disk(self._root, run, ref, self._clock, override=override)
+            entry, where = promotion.entry, f"{promotion.fingerprint}/{ref}"
 
-        def add(index: BaselineIndex) -> BaselineIndex:
-            return with_promotion(index, promotion.fingerprint, ref, entry)
+            def add(index: BaselineIndex) -> BaselineIndex:
+                runs = index.entries.get(promotion.fingerprint, {}).get(ref)
+                current = runs.runs[-1].run_id if runs is not None and runs.runs else None
+                check_expected(current, expected, where)  # re-checked on every fresh index
+                return with_promotion(index, promotion.fingerprint, ref, entry)
 
-        try:
-            self._publish(add, f"promote {promotion.fingerprint}/{ref} {entry.run_id}")
-        except BaseException:
-            safe_rollback(promotion)
-            raise
-        promotion.commit()
+            try:
+                self._publish(add, f"promote {where} {entry.run_id}")
+            except BaseException:
+                safe_rollback(promotion)
+                raise
+            promotion.commit()
 
     def prune(self, *, keep: int = 20, unused_days: int = 90, now: datetime) -> list[str]:
         """Prune the data root, then drop the removed runs from the index in one commit.
@@ -199,6 +210,8 @@ class GitBranchBaselineStore:
                     git.run(
                         "push", "--quiet", self._url, f"HEAD:refs/heads/{self._branch}", cwd=work
                     )
+                except BaselineRefused:
+                    raise  # a changed baseline is a verdict, not a transient push failure
                 except StoreError as exc:
                     last = exc
                     _log.warning("baseline_index_push_failed", attempt=attempt + 1, error=str(exc))

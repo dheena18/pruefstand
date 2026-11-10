@@ -76,6 +76,12 @@ def _check_binding(report: GateReport, run_id: str, current: str | None) -> None
     if against is not None and str(against) == run_id:
         msg = f"run {run_id}: its {GATE_FILE} compares the run against itself; not promoted"
         raise BaselineRefused(msg)
+    if against is None and current is not None:
+        msg = (
+            f"run {run_id}: its {GATE_FILE} was decided with no baseline, but {current} is stored;"
+            " run `pruefstand gate` against the current baseline; not promoted"
+        )
+        raise BaselineRefused(msg)
     if against is None or (current is not None and str(against) == current):
         return
     stored = f"the stored baseline is {current}" if current else "no baseline is stored"
@@ -86,17 +92,17 @@ def _check_binding(report: GateReport, run_id: str, current: str | None) -> None
     raise BaselineRefused(msg)
 
 
-def _status_reasons(report: GateReport | None, current: str | None, *, gated: bool) -> list[str]:
+def _status_reasons(report: GateReport | None, *, gated: bool) -> list[str]:
     if report is None:
         return []
     if report.status is GateStatus.FAIL:
         return [f"its gate result is FAIL ({GATE_FILE})"]
     if not gated:
         return []
-    if report.no_baseline and current is not None:
-        return [f"its {GATE_FILE} was decided with no baseline, but {current} is stored"]
     if report.status is GateStatus.INSUFFICIENT_DATA and not report.no_baseline:
         return [f"its gate result is INSUFFICIENT_DATA ({GATE_FILE})"]
+    if report.status is GateStatus.UNSUPPORTED_CONFIG:
+        return [f"its gate result is UNSUPPORTED_CONFIG ({GATE_FILE})"]
     return []
 
 
@@ -104,11 +110,10 @@ def _reasons(
     report: GateReport | None,
     results: RunResults,
     policy: GatePolicy,
-    current: str | None,
     *,
     gated: bool,
 ) -> list[str]:
-    reasons = _status_reasons(report, current, gated=gated)
+    reasons = _status_reasons(report, gated=gated)
     findings = find_hard_fails(results, policy.hard_fail)
     if findings:
         names = sorted({f"{f.metric} ({f.rule})" for f in findings})
@@ -157,7 +162,7 @@ def check_gate_for_promotion(
         raise BaselineRefused(msg)
     if report is not None and gated:
         _check_binding(report, run_id, current)
-    reasons = _reasons(report, results, policy, current, gated=gated)
+    reasons = _reasons(report, results, policy, gated=gated)
     if not reasons:
         return []
     text = f"run {run_id}: {' and '.join(reasons)}"

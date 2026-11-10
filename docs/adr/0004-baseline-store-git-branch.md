@@ -65,7 +65,8 @@ so the repo never shrinks (R9-11).
   `eval_fingerprint` is exit 3. Amended by D1120 (review F1): for `main` / `nightly-b<k>` the `gate.json` must be
   decided against the baseline stored now for (fingerprint, ref); a self-gate (baseline = candidate) or a comparison
   with any other run is refused (exit 1, never waived); a `no_baseline` report is accepted only for the first promote
-  of (fingerprint, ref), afterwards it is refused like FAIL, and so is status `INSUFFICIENT_DATA`. The
+  of (fingerprint, ref), afterwards it is refused and never waived; status `INSUFFICIENT_DATA` and
+  `UNSUPPORTED_CONFIG` are refused like FAIL. The store re-checks the baseline under a lock (no race). The
   release anchors `release-b<k>` are never gated, so they may lack a `gate.json`; they are checked for hard-fail
   findings only. Only the owner's `--allow-failed-gate`, run by hand (`runbook.md` section 3a), waives a FAIL or a
   hard-fail finding; `baseline-promote.yml` never passes it and treats exit 1 as "not promoted, reported" (not retried

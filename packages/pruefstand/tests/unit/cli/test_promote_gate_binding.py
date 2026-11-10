@@ -92,8 +92,8 @@ def test_a_no_baseline_report_is_refused_once_a_baseline_is_stored(
     assert result.exit_code == 1
     assert "no baseline" in result.output
     assert not promoted(tmp_path)
-    assert promote(cli, tmp_path, run, "--allow-failed-gate").exit_code == 0
-    assert promoted(tmp_path)
+    assert promote(cli, tmp_path, run, "--allow-failed-gate").exit_code == 1  # never waived
+    assert not promoted(tmp_path)
 
 
 def test_insufficient_data_against_the_stored_baseline_is_refused_and_waivable(

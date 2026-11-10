@@ -295,7 +295,7 @@ new Ollama model digest, D103). In the browser (or the GitHub mobile app) run `b
 knowingly accepted drop the new `main` run never becomes the baseline and every later PR gates against the old one.
 Decide first that the drop is accepted (and that it is no leak: hard fails are never an accepted drop). Then, on the VM
 as the owner and **by hand, never from a workflow**: `pruefstand baseline promote --run <run dir of main's run> --ref main
---allow-failed-gate --reason "<why the drop is accepted>" --config <pruefstand.yaml>` (under `pruefstand-lock` if it touches the data root while a job runs).
+--allow-failed-gate --reason "<why the drop is accepted>" --config <pruefstand.yaml>` (the stored `override.by` is `GITHUB_ACTOR` or your OS user name: a label for the audit trail, not authentication) (under `pruefstand-lock` if it touches the data root while a job runs).
 Note the run id and the reason in `docs/ops/bypass-log.md`. A missing or invalid `gate.json` (exit 1 / 3) is not waived,
 nor is one decided against another run than the stored baseline (D1120): run `pruefstand gate` for the run first.
 

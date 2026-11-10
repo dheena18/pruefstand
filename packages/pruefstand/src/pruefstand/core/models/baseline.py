@@ -24,3 +24,14 @@ class PromotionOverride(BaseModel):
     at: AwareDatetime
     reasons: tuple[str, ...] = Field(min_length=1, max_length=20)
     note: str = Field(min_length=1, max_length=MAX_OVERRIDE_NOTE)
+
+
+class ExpectedBaseline(BaseModel):
+    """The baseline a promotion was gated against; ``run_id`` None = none stored (D1120).
+
+    The store re-checks it under its lock and refuses the promotion when it changed.
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    run_id: str | None

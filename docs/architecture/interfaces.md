@@ -969,7 +969,10 @@ class ArtifactStore:           def __init__(self, root: Path) -> None
                                # other keys -> StoreError); other files untouched
 class BaselineStore(Protocol): def get(self, eval_fingerprint: str, ref: str = "main") -> RunArtifacts | None
                                def put(self, run: RunArtifacts, ref: str = "main", *,
-                                       override: PromotionOverride | None = None) -> None
+                                       override: PromotionOverride | None = None,
+                                       expected: ExpectedBaseline | None = None) -> None
+                               # expected (D1120 review): run id gated against; the store refuses (BaselineRefused)
+                               # under its promote lock when another baseline is stored by now
                                # D1123 (review F8): override = core.models.baseline.PromotionOverride {by, at, reasons,
                                # note}; stored in the baseline's manifest.json (current + history) and its index.json entry;
                                # the key is omitted when None (byte layout of plain promotions unchanged)
@@ -1766,11 +1769,13 @@ pruefstand baseline   promote --run runs/<id> --ref main|nightly-b0|nightly-b1|n
                       # hard-fail findings. D1120 (review F1): for main / nightly-b<k> gate.json must be decided
                       # against the baseline stored now for (fingerprint, ref): baseline_run_id == candidate (a
                       # self-gate) or != the stored run id -> exit 1, never waived; no_baseline is accepted only for
-                      # the first promote of (fingerprint, ref); later no_baseline and status INSUFFICIENT_DATA ->
-                      # exit 1 like FAIL. Option --allow-failed-gate (owner only, by hand; never in a workflow)
-                      # waives FAIL, INSUFFICIENT_DATA, a stale no_baseline and hard-fail findings, never a missing,
+                      # the first promote of (fingerprint, ref), later -> exit 1, never waived; status
+                      # INSUFFICIENT_DATA / UNSUPPORTED_CONFIG -> exit 1 like FAIL; the store re-checks the
+                      # expected baseline under its lock (a concurrent promote loses with exit 1). Option --allow-failed-gate (owner only, by hand; never in a workflow)
+                      # waives FAIL, INSUFFICIENT_DATA, UNSUPPORTED_CONFIG and hard-fail findings, never a missing,
                       # unusable or unbound gate.json. D1123 (review F8): --allow-failed-gate needs --reason TEXT
-                      # (1-500 chars after whitespace folding; missing or longer -> exit 2); when the flag waives
+                      # (1-500 chars after whitespace folding; missing, longer, control/format chars, or --reason
+                      # without the flag -> exit 2; `by` is a label, not authentication); when the flag waives
                       # something, the stored baseline records override {by: GITHUB_ACTOR or the OS user, at: UTC,
                       # reasons: what the guard would have refused, note: --reason} in manifest.json and index.json
                       fingerprint-check --candidate <run> --baseline <run>   (D1000, CI fix; read by the tier-1 step of live-e2e.yml)

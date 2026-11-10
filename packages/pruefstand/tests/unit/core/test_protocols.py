@@ -2,7 +2,7 @@ from collections.abc import Iterator
 from pathlib import Path
 
 from pruefstand.core.enums import Category
-from pruefstand.core.models.baseline import PromotionOverride
+from pruefstand.core.models.baseline import ExpectedBaseline, PromotionOverride
 from pruefstand.core.models.corpus import Chunk, Document
 from pruefstand.core.models.metric import MetricKind, MetricValue
 from pruefstand.core.models.run import RunArtifacts
@@ -54,7 +54,12 @@ class DummyStore:
         return None
 
     def put(
-        self, run: RunArtifacts, ref: str = "main", *, override: PromotionOverride | None = None
+        self,
+        run: RunArtifacts,
+        ref: str = "main",
+        *,
+        override: PromotionOverride | None = None,
+        expected: ExpectedBaseline | None = None,
     ) -> None:
         return None
 

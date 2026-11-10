@@ -3,6 +3,7 @@
 import getpass
 import os
 import re
+import unicodedata
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Annotated
@@ -13,7 +14,11 @@ from pruefstand.cli._common import EXIT_FAIL, EXIT_USAGE, fail, guarded
 from pruefstand.core.config import GatePolicy
 from pruefstand.core.config_loader import load_config
 from pruefstand.core.errors import GateInputError
-from pruefstand.core.models.baseline import MAX_OVERRIDE_NOTE, PromotionOverride
+from pruefstand.core.models.baseline import (
+    MAX_OVERRIDE_NOTE,
+    ExpectedBaseline,
+    PromotionOverride,
+)
 from pruefstand.core.protocols import BaselineStore
 from pruefstand.gate.baseline_run import check_baseline_run
 from pruefstand.metrics.registry import MetricRegistry
@@ -64,15 +69,22 @@ def _who() -> str:
         name = os.environ.get("GITHUB_ACTOR") or getpass.getuser()
     except (OSError, KeyError):
         name = "unknown"
-    clean = "".join(c for c in name if c.isprintable())[:64]
+    clean = "".join(c for c in name if not unicodedata.category(c).startswith("C"))[:64]
     return clean or "unknown"
 
 
 def _note(reason: str | None, *, allow_failed_gate: bool) -> str | None:
-    """The validated ``--reason`` (required with ``--allow-failed-gate``, D1123)."""
+    """The validated ``--reason``: required with ``--allow-failed-gate``, refused without (D1123).
+
+    Control and format characters (Unicode categories ``C*``) are refused, not stripped.
+    """
     if not allow_failed_gate:
+        if reason is not None:
+            fail("error: --reason is only allowed with --allow-failed-gate", EXIT_USAGE)
         return None
     text = " ".join((reason or "").split())
+    if any(unicodedata.category(c).startswith("C") for c in text):
+        fail("error: --reason must not contain control or format characters", EXIT_USAGE)
     if not text or len(text) > MAX_OVERRIDE_NOTE:
         msg = f"error: --allow-failed-gate needs --reason TEXT (1 to {MAX_OVERRIDE_NOTE} chars)"
         fail(msg, EXIT_USAGE)
@@ -115,13 +127,14 @@ def promote_command(
         try:
             prepared = prepare_promotion(artifacts, ref)
             store = build_baseline_store(cfg.baseline_store)
+            current = _current_baseline(store, prepared.results.manifest.eval_fingerprint, ref)
             waived = check_gate_for_promotion(
                 run,
                 artifacts.results,
                 cfg.gate,
                 ref=ref,
                 allow_failed_gate=allow_failed_gate,
-                current=_current_baseline(store, prepared.results.manifest.eval_fingerprint, ref),
+                current=current,
             )
             check_baseline_run(
                 prepared.results,
@@ -134,7 +147,8 @@ def promote_command(
                 override = PromotionOverride(
                     by=_who(), at=datetime.now(UTC), reasons=tuple(waived), note=note
                 )
-            store.put(prepared, ref, override=override)
+            expected = None if ref.startswith("release-") else ExpectedBaseline(run_id=current)
+            store.put(prepared, ref, override=override, expected=expected)
         except BaselineRefused as exc:
             fail(f"error: {exc}", EXIT_FAIL)
         except GateInputError as exc:
