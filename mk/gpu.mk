@@ -15,6 +15,8 @@ endif
 GPU_LOCK := pruefstand-lock
 # The owner steps fetch this exact URL (not the `origin` remote, whose refspec could be remapped) and export FETCH_HEAD.
 GPU_REPO_URL := https://github.com/dheena18/pruefstand
+# Refuse a url.<base>.insteadOf rewrite: it could send the fetch of the exact URL below to another repository (D954).
+GPU_NO_REWRITE = if git config --get-regexp '^url\..*\.insteadof$$' | grep -q .; then echo "refusing: a url.<base>.insteadOf rewrite is configured (git config --get-regexp 'url.*insteadof')" >&2; exit 1; fi
 need_id = $(if $(ID),,$(error ID=<models.yaml id, e.g. ollama/bge-m3> is required))
 
 # Day and night load the same set (ADR-0019); the names stay for logs and the night window.
@@ -47,13 +49,13 @@ gpu-rm:
 # dev worktree must not be able to borrow sudo or the cluster key (M3). The cluster key belongs to user pruefstand, which
 # cannot read the owner's checkout, hence the world-readable temp dir. No lock needed. DEPLOY_ARGS=--check only compares.
 gpu-deploy-bin:
-	git fetch -q $(GPU_REPO_URL) main && d=$$(mktemp -d) && git archive FETCH_HEAD infra/gpu infra/cluster | tar -x -C "$$d" \
+	$(GPU_NO_REWRITE); git fetch -q $(GPU_REPO_URL) main && d=$$(mktemp -d) && git archive FETCH_HEAD infra/gpu infra/cluster | tar -x -C "$$d" \
 	  && git rev-parse FETCH_HEAD > "$$d/COMMIT" && chmod -R a+rX "$$d" \
 	  && { sudo -u pruefstand "$$d/infra/gpu/deploy-cluster-bin.sh" $(DEPLOY_ARGS); rc=$$?; rm -rf "$$d"; exit $$rc; }
 
 # Installs the pruefstand-cluster wrapper, its allow-list and the sudoers file from origin/main (INSTALL_ARGS=--replace).
 gpu-install-wrapper:
-	git fetch -q $(GPU_REPO_URL) main && d=$$(mktemp -d) && git archive FETCH_HEAD infra/gpu infra/cluster | tar -x -C "$$d" \
+	$(GPU_NO_REWRITE); git fetch -q $(GPU_REPO_URL) main && d=$$(mktemp -d) && git archive FETCH_HEAD infra/gpu infra/cluster | tar -x -C "$$d" \
 	  && git rev-parse FETCH_HEAD > "$$d/COMMIT" && chmod -R a+rX "$$d" \
 	  && { sudo "$$d/infra/gpu/install-cluster-wrapper.sh" $(INSTALL_ARGS); rc=$$?; rm -rf "$$d"; exit $$rc; }
 
