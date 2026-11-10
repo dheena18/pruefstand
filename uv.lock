@@ -1954,6 +1954,7 @@ dependencies = [
     { name = "regex" },
     { name = "scipy" },
     { name = "structlog" },
+    { name = "tokenizers" },
     { name = "typer" },
     { name = "zstandard" },
 ]
@@ -1976,6 +1977,7 @@ requires-dist = [
     { name = "regex", specifier = ">=2026.9.29" },
     { name = "scipy", specifier = ">=1.13" },
     { name = "structlog" },
+    { name = "tokenizers", specifier = ">=0.21" },
     { name = "typer" },
     { name = "zstandard", specifier = ">=0.25.0" },
 ]

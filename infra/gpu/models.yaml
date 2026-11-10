@@ -74,7 +74,7 @@ models:
     options: {num_ctx: 12288, num_predict: 384, temperature: 0.0, seed: 42, top_p: 1.0}
     option_bounds: {temperature: [0.0, 1.0], top_p: [0.0, 1.0], num_predict: [1, 384]}
     tokenizer:
-      source: hf:unsloth/gemma-3-12b-it/tokenizer.json
+      source: hf:unsloth/gemma-3-12b-it@9478e665381f42974aa06177b019352fb6291876/tokenizer.json
       sha256: 4667f2089529e8e7657cfb6d1c19910ae71ff5f28aa7ab2ff2763330affad795
   # Swap candidates (not part of day/night): M11 smaller same-family generator, RQ1/M3 e5 embedding.
   - id: ollama/qwen3:4b

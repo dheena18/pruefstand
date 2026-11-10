@@ -7,11 +7,12 @@ from typing import Any
 import pytest
 import respx
 from contract.adapter_contract import load_openapi_example
+from testsupport.gpu_files import SHIPPED_CATALOGUE
 from testsupport.pipeline_support import CORPUS_VERSION, case_rows, synthetic_config, write_dataset
 from testsupport.run_builders import make_cases
 from testsupport.runner_support import SpyPool
 
-from pruefstand.core.config import LLMPolicyConfig, ModelRef
+from pruefstand.core.config import JudgeConfig, LLMPolicyConfig, ModelRef
 from pruefstand.core.enums import Split
 from pruefstand.core.errors import ConfigError
 from pruefstand.core.models.llm import LLMRequest, LLMResponse, LLMRole, Message
@@ -164,3 +165,24 @@ async def test_without_a_fallback_the_flag_stays_off(
     use_pool(monkeypatch, SpyPool())
     results = await go(dataset, tmp_path)
     assert results.manifest.judge_fallback is False
+
+
+async def test_a_wrong_tokenizer_file_aborts_before_any_judge_call(
+    router: respx.MockRouter,
+    dataset: Path,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    serve(router, None)
+    pool = SpyPool()
+    use_pool(monkeypatch, pool)
+    monkeypatch.setenv("PRUEFSTAND_GPU_CATALOGUE", str(SHIPPED_CATALOGUE))
+    directory = tmp_path / "tok"
+    directory.mkdir()
+    (directory / "gemma3_12b.json").write_bytes(b"{}")  # exists, but is not the pinned file
+    monkeypatch.setenv("PRUEFSTAND_JUDGE_TOKENIZER_DIR", str(directory))
+    local = ModelRef(id="ollama/gemma3:12b", family="gemma")
+    with pytest.raises(ConfigError, match="differs from the catalogue pin"):
+        await go(dataset, tmp_path, judge=JudgeConfig(pr=local, nightly=local))
+    assert pool.tasks == []
+    assert not (tmp_path / "runs").exists()  # not even a run directory: nothing started

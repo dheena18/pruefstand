@@ -5,11 +5,9 @@ an Ollama judge, the documented input limit of ``llm/quotas.yaml`` for a GitHub 
 No tokenizer file is available offline, so the count is a conservative estimate (letters 0.4,
 digits, punctuation and non-ASCII one, long unbroken runs one per character): it over-counts
 German prose and truncates earlier than a real tokenizer would, never later. After each call the
-judge also compares the provider's reported prompt tokens with the window (``judge_window``)
-and with
-the band Ollama reports for a silently cut prompt (``cut_signature``, D962; a count that LiteLLM
-estimated because Ollama left the field out is not Ollama's and means nothing for the band). The
-catalogue tokenizer (``tokenizer.source``) is a follow-up: it needs a new dependency.
+judge also compares the provider's reported prompt tokens with the window (``judge_window``),
+with the band Ollama reports for a silently cut prompt (``cut_signature``, D962) and, when the
+catalogue tokenizer is installed, with the exact count (``exact_tokens``, D1010).
 """
 
 import math
