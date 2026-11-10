@@ -107,6 +107,9 @@ class OldpLimits:
             over it the file ends with one counted ``read_timeout``.
         max_parquet_output_bytes: Most bytes the parent reads from one reader process (its JSON
             event lines); above it the file ends with one counted ``reader_protocol``.
+        allow_unlimited_reader: Read even when the reader process cannot set its memory or CPU
+            limit (no ``/proc``, ``setrlimit`` refused); off by default: such a file ends with one
+            counted ``memory_limit`` (fail closed).
     """
 
     max_content_chars: int = 2_000_000
@@ -121,6 +124,7 @@ class OldpLimits:
     max_parquet_cpu_seconds: int = 600
     max_parquet_wall_seconds: float = 900.0
     max_parquet_output_bytes: int = 1024 * _MIB
+    allow_unlimited_reader: bool = False
 
 
 class RowBudget:

@@ -219,7 +219,7 @@ def test_the_child_pins_soft_and_hard_limits_and_caps_cpu(monkeypatch: pytest.Mo
     limits = OldpLimits(max_parquet_memory_bytes=512 * MIB, max_parquet_cpu_seconds=60)
     assert records_child.limit_resources(limits) is None
     assert fake.set_to[fake.RLIMIT_AS] == (1512 * MIB, 1512 * MIB)
-    assert fake.set_to[fake.RLIMIT_CPU] == (60, 60)
+    assert fake.set_to[fake.RLIMIT_CPU] == (60, 61)  # SIGXCPU at the soft limit (review)
 
 
 def test_in_process_reading_still_checks_the_list_size(tmp_path: Path) -> None:

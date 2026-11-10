@@ -14,6 +14,7 @@ from typing import IO
 import pyarrow as pa
 import pyarrow.parquet as pq
 
+from pruefstand.ingest.records_clean import RowRejectedError, clean_row
 from pruefstand.ingest.records_model import OldpLimits, Problem, RowBudget
 
 _DRAIN_CHUNK = 64 * 1024
@@ -86,6 +87,17 @@ def cap_reached(source: str, limits: OldpLimits, problems: list[Problem]) -> Non
     problems.append(Problem(source, "too_many_rows", f"more than {limits.max_rows} rows"))
 
 
+_LIST_TYPES = (
+    pa.types.is_list,
+    pa.types.is_large_list,
+    pa.types.is_fixed_size_list,
+    pa.types.is_list_view,
+    pa.types.is_large_list_view,
+    pa.types.is_map,
+)
+_UNCOUNTABLE = 1 << 62
+
+
 def list_elements(array: pa.Array) -> int:
     """Number of list items below ``array`` (all nesting levels), counted without converting.
 
@@ -93,14 +105,13 @@ def list_elements(array: pa.Array) -> int:
     can hold millions of items that ``to_pylist`` would build (review F5, D1122).
     """
     kind = array.type
-    if pa.types.is_list(kind) or pa.types.is_large_list(kind) or pa.types.is_fixed_size_list(kind):
-        values = array.flatten()
-        return len(values) + list_elements(values)
-    if pa.types.is_map(kind):
-        values = array.flatten()  # the key/value struct entries
+    if any(check(kind) for check in _LIST_TYPES):
+        values = array.flatten()  # a map flattens to its key/value struct entries
         return len(values) + list_elements(values)
     if pa.types.is_struct(kind):
-        return sum(list_elements(child) for child in array.flatten())
+        return len(kind) * len(array) + sum(list_elements(c) for c in array.flatten())
+    if pa.types.is_nested(kind) or pa.types.is_dictionary(kind):
+        return _UNCOUNTABLE  # union, run-end encoded, dictionary, ...: not read (fail closed)
     return 0
 
 
@@ -122,7 +133,10 @@ def _batch_rows(
     rows = _convert(batch) if small else None
     if rows is not None:
         for offset, row in enumerate(rows):
-            yield first + offset, row
+            if (
+                clean := _cleaned(row, f"{path.name}:{first + offset}", limits, problems)
+            ) is not None:
+                yield first + offset, clean
         return
     for offset in range(batch.num_rows):
         part, where = batch.slice(offset, 1), f"{path.name}:{first + offset}"
@@ -135,12 +149,26 @@ def _batch_rows(
             problems.append(Problem(where, "record_too_large", detail))
             continue
         try:
-            yield first + offset, part.to_pylist()[0]
+            row = part.to_pylist()[0]
         except MemoryError:
             raise
         except _CONVERT_ERRORS as error:
             detail = f"unconvertible row: {type(error).__name__}: {error}"
             problems.append(Problem(where, "bad_record", detail))
+            continue
+        if (clean := _cleaned(row, where, limits, problems)) is not None:
+            yield first + offset, clean
+
+
+def _cleaned(
+    row: dict[str, object], where: str, limits: OldpLimits, problems: list[Problem]
+) -> dict[str, object] | None:
+    """``clean_row`` or None after one ``bad_record`` (also in process, review F5)."""
+    try:
+        return clean_row(row, limits)
+    except RowRejectedError as error:
+        problems.append(Problem(where, "bad_record", str(error)))
+        return None
 
 
 _OUT_OF_MEMORY_TEXT = ("Failed to launch worker thread", "Cannot allocate memory", "bad_alloc")

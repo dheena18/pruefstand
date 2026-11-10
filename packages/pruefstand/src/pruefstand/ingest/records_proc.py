@@ -16,7 +16,8 @@ import signal
 import subprocess
 import sys
 import threading
-from collections.abc import Generator, Iterator, Mapping, Sequence
+import time
+from collections.abc import Callable, Generator, Iterator, Mapping, Sequence
 from pathlib import Path
 from typing import IO
 
@@ -45,6 +46,53 @@ def child_env(environ: Mapping[str, str]) -> dict[str, str]:
     return {**kept, **_CHILD_SETTINGS}
 
 
+class Watch:
+    """Wall-time budget of the reader that counts only the time spent waiting for it (F7).
+
+    ``waiting`` / ``consumed`` bracket each read; time the caller spends on a yielded row is not
+    counted. ``left`` is pure (clock injected); the thread in :func:`parquet_rows` uses it.
+    """
+
+    def __init__(self, seconds: float, clock: Callable[[], float] = time.monotonic) -> None:
+        self.seconds, self._clock = seconds, clock
+        self._used = 0.0
+        self._since: float | None = None
+        self.expired = threading.Event()
+        self.changed = threading.Condition()
+
+    def waiting(self) -> None:
+        """A read starts."""
+        with self.changed:
+            self._since = self._clock()
+            self.changed.notify_all()
+
+    def consumed(self) -> None:
+        """A read ended; its time is charged."""
+        with self.changed:
+            if self._since is not None:
+                self._used += self._clock() - self._since
+            self._since = None
+            self.changed.notify_all()
+
+    def left(self) -> float | None:
+        """Seconds left while a read is running, None while the caller holds a row."""
+        if self._since is None:
+            return None
+        return self.seconds - self._used - (self._clock() - self._since)
+
+
+def _guard(watch: Watch, stop: Callable[[], None], done: threading.Event) -> None:
+    """Thread body: call ``stop`` once the reads have used up the wall-time budget."""
+    with watch.changed:
+        while not done.is_set():
+            left = watch.left()
+            if left is not None and left <= 0:
+                watch.expired.set()
+                stop()
+                return
+            watch.changed.wait(None if left is None else left)
+
+
 def _line(stream: IO[bytes], cap: int) -> bytes | None:
     """One event line, None at the end of the stream (a cut last line is the end too)."""
     line = stream.readline(cap + 1)
@@ -55,7 +103,13 @@ def _line(stream: IO[bytes], cap: int) -> bytes | None:
 
 
 def events(
-    stream: IO[bytes], path: Path, limits: OldpLimits, problems: list[Problem], budget: RowBudget
+    stream: IO[bytes],
+    path: Path,
+    limits: OldpLimits,
+    problems: list[Problem],
+    budget: RowBudget,
+    *,
+    watch: Watch | None = None,
 ) -> Generator[tuple[int, dict[str, object]], None, str]:
     """Yield the rows of the child's event stream; problems and the budget are applied.
 
@@ -66,7 +120,7 @@ def events(
     sent, received, total = budget.left, 0, 0
     cap = 2 * limits.max_record_bytes + 1024 * 1024
     try:
-        while (line := _line(stream, cap)) is not None:
+        while (line := _watched_line(stream, cap, watch)) is not None:
             total += len(line)
             event = _decode(line, total, limits)
             tag, number, row = event[0], event[1], event[2] if len(event) > 2 else None
@@ -90,6 +144,16 @@ def events(
         problems.append(Problem(path.name, "reader_protocol", str(error)))
         return "protocol"
     return "eof"
+
+
+def _watched_line(stream: IO[bytes], cap: int, watch: Watch | None) -> bytes | None:
+    if watch is None:
+        return _line(stream, cap)
+    watch.waiting()
+    try:
+        return _line(stream, cap)
+    finally:
+        watch.consumed()
 
 
 def _decode(line: bytes, total: int, limits: OldpLimits) -> tuple[object, ...]:
@@ -146,20 +210,28 @@ def parquet_rows(
         stdout=subprocess.PIPE,
         stderr=subprocess.DEVNULL,
         env=child_env(os.environ),
+        start_new_session=True,  # its own process group: killpg also ends anything it started
     ) as child:
-        timed_out = threading.Event()
-
-        def stop() -> None:
-            timed_out.set()
-            child.kill()
-
-        watchdog = threading.Timer(limits.max_parquet_wall_seconds, stop)
-        watchdog.start()
+        watch, done = Watch(limits.max_parquet_wall_seconds), threading.Event()
+        guard = threading.Thread(
+            target=_guard, args=(watch, lambda: _kill_group(child), done), daemon=True
+        )
+        guard.start()
         try:
-            yield from _child_rows(child, path, limits, problems, budget, timed_out=timed_out)
+            yield from _child_rows(child, path, limits, problems, budget, watch=watch)
         finally:
-            watchdog.cancel()
-            child.kill()
+            done.set()
+            with watch.changed:
+                watch.changed.notify_all()
+            _kill_group(child)
+
+
+def _kill_group(child: "subprocess.Popen[bytes]") -> None:
+    """SIGKILL the reader's process group (the reader and anything it started)."""
+    try:
+        os.killpg(child.pid, signal.SIGKILL)
+    except (ProcessLookupError, PermissionError):
+        child.kill()
 
 
 def _child_rows(
@@ -169,15 +241,15 @@ def _child_rows(
     problems: list[Problem],
     budget: RowBudget,
     *,
-    timed_out: threading.Event,
+    watch: Watch,
 ) -> Iterator[tuple[int, dict[str, object]]]:
     assert child.stdout is not None  # noqa: S101 (PIPE was requested)
-    end = yield from events(child.stdout, path, limits, problems, budget)
+    end = yield from events(child.stdout, path, limits, problems, budget, watch=watch)
     if end != "eof":
         return
     code = child.wait()
-    if timed_out.is_set() or code == -signal.SIGXCPU:
-        why = "wall time" if timed_out.is_set() else "CPU time"
+    if watch.expired.is_set() or code == -signal.SIGXCPU:
+        why = "wall time" if watch.expired.is_set() else "CPU time"
         problems.append(Problem(path.name, "read_timeout", f"reader stopped: over its {why} limit"))
         return
     detail = f"reader process ended with exit code {code} (memory limit or crash)"

@@ -20,6 +20,7 @@ Examples:
 
 import json
 import math
+import re
 from datetime import date, datetime, time, timedelta
 from decimal import Decimal, InvalidOperation
 
@@ -67,9 +68,17 @@ class _Caps:
         self.max_text, self.max_items, self.items = max_text, max_items, 0
 
 
+def _mapping(raw: dict[str, object], caps: _Caps, depth: int) -> dict[str, object]:
+    caps.items += len(raw)
+    if caps.items > caps.max_items:
+        msg = f"more than {caps.max_items} list elements or mapping keys in one row"
+        raise WireError(msg)
+    return {k: _decode_value(v, caps, depth + 1) for k, v in raw.items()}
+
+
 def _tagged(tag: str, raw: object, caps: _Caps, depth: int) -> object:  # noqa: PLR0911
     if tag == "$o" and isinstance(raw, dict):
-        return {k: _decode_value(v, caps, depth + 1) for k, v in raw.items()}
+        return _mapping(raw, caps, depth)
     if tag == "$f" and isinstance(raw, str) and raw in _FLOATS:
         return _FLOATS[raw]
     if not isinstance(raw, str | list) or len(raw) > 64:
@@ -129,6 +138,7 @@ def decode(line: bytes, *, max_text: int, max_items: int) -> tuple[object, ...]:
     Raises:
         WireError: Not JSON, not an exact event, or a value above a cap.
     """
+    _prescan(line, max_items)
     try:
         data = json.loads(line, parse_constant=_no_constant)
     except (ValueError, RecursionError) as error:
@@ -151,6 +161,38 @@ def decode(line: bytes, *, max_text: int, max_items: int) -> tuple[object, ...]:
         msg = f"the reader sent a malformed {tag[:20]!r} event"
         raise WireError(msg)
     return (tag, *args)
+
+
+_STRING = re.compile(rb'"(?:[^"\\]++|\\.)*+"', re.DOTALL)
+
+
+def _prescan(line: bytes, max_items: int) -> None:
+    """Refuse a line with more JSON values than a row may hold, before ``json.loads`` builds them.
+
+    Outside strings every value after the first in a container costs one ``,`` and every
+    container one ``[`` or ``{``, so their count bounds the number of Python objects the parse
+    creates (about 4 per allowed item: tags, keys, values). Strings are skipped (a comma in a
+    text is no value). What remains is the size of the strings themselves (bounded by the line
+    cap) and one float or int object per counted value. The scan of strings runs only when the
+    raw count is above the limit and keeps one match object at a time.
+    """
+    limit = 4 * max_items + 1024
+    values = _structural(line, 0, len(line))
+    if values <= limit:
+        return  # the usual line: no scan
+    strings = line.count(b'"') // 2  # every string is a value too; bounds the scan below
+    if strings > limit:
+        msg = f"the reader sent a line with about {strings} JSON strings (limit {limit})"
+        raise WireError(msg)
+    for match in _STRING.finditer(line):  # one match object at a time, nothing kept
+        values -= _structural(line, match.start(), match.end())
+    if values > limit:
+        msg = f"the reader sent a line with {values} JSON values (limit {limit})"
+        raise WireError(msg)
+
+
+def _structural(line: bytes, start: int, end: int) -> int:
+    return sum(line.count(c, start, end) for c in (b",", b"[", b"{"))
 
 
 def _is(value: object, kind: type) -> bool:
