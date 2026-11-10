@@ -110,3 +110,10 @@ def test_tags_are_synthesised_from_the_policy() -> None:
     names = sorted(m["name"] for m in json.loads(verdict.body)["models"])
     assert names == sorted([GEN, EMB])
     assert JUDGE not in verdict.body.decode()
+
+
+@pytest.mark.parametrize("number", ["1e400", "-1e400"])
+def test_overflowing_numbers_are_rejected(number: str) -> None:
+    # D1074: 1e400 parses to inf; it must be a 403, never an uncaught dump error
+    raw = f'{{"model": "{GEN}", "messages": [], "format": {{"maximum": {number}}}}}'
+    assert _rejected("/api/chat", raw)

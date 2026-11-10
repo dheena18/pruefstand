@@ -54,3 +54,11 @@ def test_dockerfile_pinned_non_root_with_healthcheck() -> None:
     assert "HEALTHCHECK" in DOCKERFILE
     assert "127.0.0.1:11500/health" in DOCKERFILE
     assert "pip install" not in DOCKERFILE
+
+
+def test_image_contains_every_proxy_module() -> None:
+    modules = sorted(p.name for p in HERE.glob("llm_proxy*.py"))
+    assert len(modules) == 4
+    for name in modules:
+        assert "COPY --from=builder" in DOCKERFILE
+        assert DOCKERFILE.count(name) >= 3, name  # builder COPY, py_compile, runtime COPY

@@ -14,13 +14,12 @@ the orchestrator from ``infra/gpu/models.yaml``), ``LLM_PROXY_UPSTREAM``. Bodies
 import json
 import logging
 import os
-import socket
 import threading
 import urllib.error
 import urllib.request
 from collections.abc import Mapping
 from dataclasses import dataclass, field
-from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from http.server import BaseHTTPRequestHandler
 from typing import ClassVar
 from urllib.parse import urlsplit
 
@@ -33,15 +32,16 @@ from llm_proxy_policy import (
     decide,
     is_reload,
 )
+from llm_proxy_server import BoundedServer, health_only, request_read
 
 DEFAULT_LISTEN = ("0.0.0.0", 11500)  # noqa: S104 - container-internal port on gate-net, no host port (D242)
 DEFAULT_UPSTREAM = "http://172.17.0.1:11434"
 MAX_BODY_BYTES = 4 * 1024 * 1024
 UPSTREAM_TIMEOUT_S = 900.0
 CLIENT_TIMEOUT_S = 30.0  # socket timeout per client read (slowloris, D1072)
+REQUEST_DEADLINE_S = 60.0  # request line + headers + body, in total (D1075)
 MAX_CONNECTIONS = 32  # concurrent client connections; more are closed at once (D1072)
 LOG = logging.getLogger("llm_proxy")
-Request = socket.socket | tuple[bytes, socket.socket]
 
 
 @dataclass
@@ -83,6 +83,7 @@ class ProxyConfig:
     timeout_s: float = UPSTREAM_TIMEOUT_S
     client_timeout_s: float = CLIENT_TIMEOUT_S
     max_connections: int = MAX_CONNECTIONS
+    request_deadline_s: float = REQUEST_DEADLINE_S
 
 
 def check_upstream(url: str) -> str:
@@ -126,19 +127,26 @@ class ProxyHandler(BaseHTTPRequestHandler):
 
     def do_GET(self) -> None:
         """Serve ``/health`` or route the request through :func:`decide`."""
+        request_read(self.server)
         if self.path == "/health":
             self._send(200, json.dumps(self.counters.snapshot()).encode())
+            return
+        if not self._health_slot_ok():
             return
         self._handle(b"")
 
     def do_POST(self) -> None:
         """Cap the body size, then route the request through :func:`decide`."""
+        if not self._health_slot_ok():
+            return
         length = self._length()
         if length is None or not 0 <= length <= self.cfg.max_body:
             self.close_connection = True
             self._error(403, "body too large or without Content-Length")
             return
-        self._handle(self.rfile.read(length))
+        body = self.rfile.read(length)
+        request_read(self.server)
+        self._handle(body)
 
     def do_PUT(self) -> None:
         """Always 403."""
@@ -151,6 +159,12 @@ class ProxyHandler(BaseHTTPRequestHandler):
     def do_HEAD(self) -> None:
         """Always 403."""
         self._refuse()
+
+    def _health_slot_ok(self) -> bool:
+        if health_only(self.server):
+            self._error(503, "busy: only /health is served now")
+            return False
+        return True
 
     def _refuse(self) -> None:
         self.close_connection = True
@@ -191,7 +205,9 @@ class ProxyHandler(BaseHTTPRequestHandler):
         self._send(status, json.dumps({"error": reason}).encode())
 
     def _send(self, status: int, payload: bytes) -> None:
+        self.close_connection = True  # one request per connection (D1075)
         self.send_response(status)
+        self.send_header("Connection", "close")
         self.send_header("Content-Type", "application/json")
         self.send_header("Content-Length", str(len(payload)))
         self.end_headers()
@@ -220,30 +236,6 @@ class _NoRedirect(urllib.request.HTTPRedirectHandler):
 _OPENER = urllib.request.build_opener(urllib.request.ProxyHandler({}), _NoRedirect())
 
 
-class BoundedServer(ThreadingHTTPServer):
-    """Threaded server that closes connections beyond ``max_connections`` at once (D1072)."""
-
-    daemon_threads = True
-
-    def __init__(self, address: tuple[str, int], handler: type[ProxyHandler], slots: int) -> None:
-        self._slots = threading.BoundedSemaphore(slots)
-        super().__init__(address, handler)
-
-    def process_request(self, request: Request, client_address: tuple[str, int]) -> None:
-        """Take a slot or close the connection without reading it."""
-        if not self._slots.acquire(blocking=False):
-            self.shutdown_request(request)
-            return
-        super().process_request(request, client_address)
-
-    def process_request_thread(self, request: Request, client_address: tuple[str, int]) -> None:
-        """Serve the connection, then free its slot."""
-        try:
-            super().process_request_thread(request, client_address)
-        finally:
-            self._slots.release()
-
-
 def forward(cfg: ProxyConfig, fwd: Forward) -> tuple[int, bytes]:
     """Send ``fwd`` upstream; return ``(status, body)``, or ``(502, error)`` when unreachable."""
     headers = {"Content-Type": "application/json"} if fwd.body is not None else {}
@@ -265,7 +257,10 @@ def forward(cfg: ProxyConfig, fwd: Forward) -> tuple[int, bytes]:
 
 def serve(cfg: ProxyConfig, address: tuple[str, int] = DEFAULT_LISTEN) -> BoundedServer:
     """Create (not start) the bounded threaded server; the caller runs ``serve_forever``."""
-    return BoundedServer(address, make_handler(cfg, Counters()), cfg.max_connections)
+    handler = make_handler(cfg, Counters())
+    return BoundedServer(
+        address, handler, slots=cfg.max_connections, deadline_s=cfg.request_deadline_s
+    )
 
 
 def main() -> None:

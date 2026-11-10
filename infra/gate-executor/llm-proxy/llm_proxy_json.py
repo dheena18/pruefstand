@@ -8,6 +8,7 @@ of its route. The forwarded body is written back ASCII-only (lone surrogates bec
 """
 
 import json
+import math
 import unicodedata
 
 TOP_LEVEL_KEYS: dict[str, frozenset[str]] = {
@@ -38,6 +39,14 @@ def _pairs(pairs: list[tuple[str, object]]) -> dict[str, object]:
     return dict(pairs)
 
 
+def _finite(text: str) -> float:
+    value = float(text)
+    if not math.isfinite(value):
+        msg = "number out of range"
+        raise StrictJSONError(msg)
+    return value
+
+
 def _no_constant(name: str) -> object:
     msg = f"JSON constant {name} not allowed"
     raise StrictJSONError(msg)
@@ -51,7 +60,9 @@ def load_object(body: bytes, role: str) -> dict[str, object]:
             Infinity, or a top-level key outside the route's exact ASCII allow-list.
     """
     try:
-        data = json.loads(body, object_pairs_hook=_pairs, parse_constant=_no_constant)
+        data = json.loads(
+            body, object_pairs_hook=_pairs, parse_constant=_no_constant, parse_float=_finite
+        )
     except StrictJSONError:
         raise
     except (ValueError, UnicodeDecodeError) as err:
@@ -69,5 +80,13 @@ def load_object(body: bytes, role: str) -> dict[str, object]:
 
 
 def dump(data: object) -> bytes:
-    """Serialise for the upstream: ASCII-only, no NaN (a lone surrogate becomes an escape)."""
-    return json.dumps(data, ensure_ascii=True, allow_nan=False).encode("ascii")
+    """Serialise for the upstream: ASCII-only, no NaN (a lone surrogate becomes an escape).
+
+    Raises:
+        StrictJSONError: the data cannot be written (e.g. a non-finite number), so a 403.
+    """
+    try:
+        return json.dumps(data, ensure_ascii=True, allow_nan=False).encode("ascii")
+    except (ValueError, TypeError, RecursionError) as err:
+        msg = "body cannot be forwarded"
+        raise StrictJSONError(msg) from err

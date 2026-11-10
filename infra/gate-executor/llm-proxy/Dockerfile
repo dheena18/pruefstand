@@ -6,13 +6,14 @@ FROM python:3.12-slim-bookworm@sha256:935c3c5b12357a7e10caa9c1e6ca5692344d97cf22
 
 FROM base AS builder
 WORKDIR /app
-COPY llm_proxy.py llm_proxy_policy.py ./
-RUN python -m py_compile llm_proxy.py llm_proxy_policy.py
+COPY llm_proxy.py llm_proxy_policy.py llm_proxy_json.py llm_proxy_server.py ./
+RUN python -m py_compile llm_proxy.py llm_proxy_policy.py llm_proxy_json.py llm_proxy_server.py
 
 FROM base AS runtime
 RUN groupadd --system --gid 10001 app \
     && useradd --system --uid 10001 --gid app --no-create-home --home-dir /nonexistent app
-COPY --from=builder /app/llm_proxy.py /app/llm_proxy_policy.py /app/
+COPY --from=builder /app/llm_proxy.py /app/llm_proxy_policy.py /app/llm_proxy_json.py \
+    /app/llm_proxy_server.py /app/
 ARG GIT_SHA=unknown
 LABEL org.opencontainers.image.source="https://github.com/dheena18/pruefstand" \
       org.opencontainers.image.revision="${GIT_SHA}" \

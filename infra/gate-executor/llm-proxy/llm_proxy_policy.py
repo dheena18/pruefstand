@@ -212,7 +212,10 @@ def decide(  # noqa: PLR0911 - one return per rejection reason keeps the rule ta
         return options
     data.pop("keep_alive", None)
     data["options"] = options
-    return Forward(method, path, dump(data))
+    try:
+        return Forward(method, path, dump(data))
+    except StrictJSONError as err:
+        return Reject(403, str(err))
 
 
 def tags_answer(policy: Mapping[str, ModelPolicy]) -> Answer:

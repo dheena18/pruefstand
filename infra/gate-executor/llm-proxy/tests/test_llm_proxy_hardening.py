@@ -120,8 +120,8 @@ def test_a_slow_client_is_cut_off_by_the_socket_timeout(ports: tuple[int, int]) 
         sock.close()
 
 
-def test_connections_beyond_the_cap_are_closed_at_once(ports: tuple[int, int]) -> None:
-    held = [_idle(ports[0]), _idle(ports[0])]
+def test_connections_beyond_cap_and_reserve_are_closed_at_once(ports: tuple[int, int]) -> None:
+    held = [_idle(ports[0]) for _ in range(2 + 2)]  # cap 2 + the 2 reserved /health slots
     extra = socket.create_connection(("127.0.0.1", ports[0]), timeout=5)
     try:
         extra.sendall(b"GET /health HTTP/1.1\r\nHost: x\r\n\r\n")
