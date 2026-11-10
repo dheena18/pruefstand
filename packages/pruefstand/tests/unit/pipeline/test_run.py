@@ -101,9 +101,9 @@ async def test_an_opaque_target_continues(
     assert results.manifest.complete is True
 
 
-async def test_hf_datasets_raise_a_config_error(tmp_path: Path) -> None:
-    cfg = mini_config(dataset="hf://x/y@v1", splits=(Split.SMOKE,))
-    with pytest.raises(ConfigError, match=r"T4\.7b"):
+async def test_a_malformed_hf_reference_raises_a_config_error(tmp_path: Path) -> None:
+    cfg = mini_config(dataset="hf://x", splits=(Split.SMOKE,))
+    with pytest.raises(ConfigError, match=r"hf://"):
         await run_eval(cfg, tier="pr", out=tmp_path / "runs")
 
 

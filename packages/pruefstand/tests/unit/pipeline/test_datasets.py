@@ -9,8 +9,9 @@ from testsupport.run_builders import make_case, make_cases
 from testsupport.timing import assert_scales_linearly
 
 from pruefstand.core.enums import Split
-from pruefstand.core.errors import ConfigError, DatasetError
-from pruefstand.pipeline.datasets import MAX_LINE_BYTES, load_cases
+from pruefstand.core.errors import DatasetError
+from pruefstand.pipeline.dataset_files import MAX_LINE_BYTES
+from pruefstand.pipeline.datasets import load_cases
 
 
 def test_a_bad_row_names_file_and_line(tmp_path: Path) -> None:
@@ -19,11 +20,6 @@ def test_a_bad_row_names_file_and_line(tmp_path: Path) -> None:
     directory = write_dataset(tmp_path, {"smoke": [good[0], good[1], bad]})
     with pytest.raises(DatasetError, match=r"smoke\.jsonl:3"):
         load_cases(str(directory), (Split.SMOKE,))
-
-
-def test_hf_datasets_are_not_supported_yet() -> None:
-    with pytest.raises(ConfigError, match=r"T4\.7b"):
-        load_cases("hf://x/y@v1", (Split.CORE,))
 
 
 def test_smoke_live_split_loads(tmp_path: Path) -> None:
