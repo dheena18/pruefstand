@@ -121,7 +121,7 @@ Human: T0.5; T0.6 probe over SSH + admin questions; after merge, the 24-hour quo
 
 Merge: T1.6 → T1.5b → T1.3 → T1.4 → T2.2 → T3.1a.
 Checkpoint: `make check`; `make test-live` (llama.cpp container, under `stack.lock`); `pruefstand-lock make test-gpu`.
-Human: T3.1a S2b (pull `bge-m3` and `gemma3:12b` into `/data/dheena/Models`, ≥ 2 GB free, ADR-0019) and S8 bring-up in day/night.
+Human: T3.1a S2b (pull `bge-m3` and `gemma3:12b` into `$CLUSTER_DATA_ROOT/Models`, ≥ 2 GB free, ADR-0019) and S8 bring-up in day/night.
 
 ### Wave 5 (6 agents)
 

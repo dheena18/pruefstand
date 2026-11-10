@@ -15,6 +15,7 @@ from pruefstand.cli import build_dataset as _build_dataset
 from pruefstand.cli import export_dashboard as _export_dashboard
 from pruefstand.cli import gate as _gate
 from pruefstand.cli import ingest as _ingest
+from pruefstand.cli import judge_drift as _judge_drift
 from pruefstand.cli import power as _power
 from pruefstand.cli import report as _report
 from pruefstand.cli import run as _run
@@ -65,5 +66,6 @@ for _module in (
     _baseline,
     _export_dashboard,
     _build_dataset,
+    _judge_drift,
 ):
     _module.register(app)

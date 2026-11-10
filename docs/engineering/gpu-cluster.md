@@ -17,14 +17,14 @@ root a plain directory on the VM disk.** What the owner already set up is record
 
 | Fact | Value | Consequence |
 | --- | --- | --- |
-| Cluster host | `cairo-s101lp`, plain SSH (no Slurm), user workdir `/data/dheena` | the cluster is reached only by SSH |
+| Cluster host | `cairo-s101lp`, plain SSH (no Slurm), user workdir `$CLUSTER_DATA_ROOT` | the cluster is reached only by SSH |
 | GPUs | 2 × A40, 46 068 MiB each, idle; driver for CUDA 13.4 | ≈ 45 GiB usable per card (§3) |
-| Local disk | `/` 7 GB free, `/data` 14 GB free next to the 29 GB generator (ADR-0019) | models live in `<models-dir>` (generator + `bge-m3` + one ~8 GB judge, ≥ 2 GB kept free; swap rule §2); besides them only the Prüfstand scripts (`/data/dheena/pruefstand-bin`, a few KB) and `/data/dheena/ollama.log`: no checkout, no caches, no state |
+| Local disk | `/` 7 GB free, `/data` 14 GB free next to the 29 GB generator (ADR-0019) | models live in `<models-dir>` (generator + `bge-m3` + one ~8 GB judge, ≥ 2 GB kept free; swap rule §2); besides them only the Prüfstand scripts (`$CLUSTER_DATA_ROOT/pruefstand-bin`, a few KB) and `$CLUSTER_DATA_ROOT/ollama.log`: no checkout, no caches, no state |
 | NAS on the cluster | rclone WebDAV mount (setup log §7), **~6 MB/s** | **not used** by Prüfstand (rejected in ADR-0019: ≈ 80 min per generator load) |
 | Ollama | **one** server already running on `127.0.0.1:11434` (process of the cluster user) that sees **both** A40s (setup log §1, §3; ADR-0018); `/api/tags`: `qwen3.8:27b-q8_0`, Ollama family `qwen35`, 27.3 B, `Q8_0`, 29 978 242 050 bytes, digest `8f5fb6b71ea00052cbe8545738c55ce61112c4e571cb60ca4dad00b131766039`, native context 262 144, capabilities `completion, tools, thinking, vision` | the tier-2 generator; family `qwen35` → plan family `qwen` (`core/data/model_families.yaml`), `think: false` required; licence **verify** with `ollama show` (T0.6 C3); the server runs from the owner's `~/start-ollama.sh` with `OLLAMA_MODELS=<models-dir>` (setup log §7, ADR-0019); T0.6 C4 records its environment from `/proc/<pid>/environ` |
 | Docker / vLLM | not confirmed | **assumed absent** on the cluster; vLLM and TEI are dropped from the default plan |
 | systemd linger | `Linger=no` | no persistent user services on the cluster; the running server is reused; only if none runs is the one server started **detached with `setsid nohup`** (Y5.4, ADR-0018; survives logout unless logind kills the session scope (`KillUserProcesses=yes`): `setsid` changes the process session, not the cgroup; T0.6 C4 decides go/no-go, the fallback is linger or an admin exception; A12-M10) and relaunched by the VM preflight when down (§8) |
-| Copying files | no shared folder between VM and cluster (ADR-0019) | code reaches the cluster only as scripts in `/data/dheena/pruefstand-bin`, copied by the VM over SSH from its git checkout; no data goes to the cluster |
+| Copying files | no shared folder between VM and cluster (ADR-0019) | code reaches the cluster only as scripts in `$CLUSTER_DATA_ROOT/pruefstand-bin`, copied by the VM over SSH from its git checkout; no data goes to the cluster |
 | GitHub | Pro (no Copilot); free providers only | unchanged (CLAUDE.md §5, §7) |
 | VM access to the cluster (Z7) | **done** (setup log §2): user `pruefstand` logs in with the key `/home/pruefstand/.ssh/id_ed25519_cluster` through the alias `cairo-s101lp` in `/home/pruefstand/.ssh/config`, which uses a public TCP endpoint with a non-default `Port` (placeholders only in git) | no password is ever stored; a new endpoint port changes only `Port` in that file (setup log §6) |
 | VM size (Z7) | TrueNAS host 128 GB RAM; VM gets **64 GB** | CPU models on the VM ≤ 24 GB in total (reranker, tier-1 ≤ 2B GGUF, CPU embeddings); GPU models stay on the cluster |
@@ -102,7 +102,7 @@ flowchart LR
   DR[("data root /mnt/pruefstand · VM disk (zvol)")]
   VM --- DR
   OL -->|"load models"| MD[("cluster disk <models-dir>")]
-  RUN -->|"SSH copy of scripts"| BIN[("cluster /data/dheena/pruefstand-bin")]
+  RUN -->|"SSH copy of scripts"| BIN[("cluster $CLUSTER_DATA_ROOT/pruefstand-bin")]
 ```
 
 ## 2. Models, families and modes (Z3)
@@ -314,7 +314,7 @@ T3.1b's VRAM measurement still fails, D306).
 
 ## 4. Serving commands (baseline; verify against the pinned Ollama version in T3.1a)
 
-Cluster side (`infra/cluster/start-ollama.sh`, run from `/data/dheena/pruefstand-bin`; ADR-0018, ADR-0019).
+Cluster side (`infra/cluster/start-ollama.sh`, run from `$CLUSTER_DATA_ROOT/pruefstand-bin`; ADR-0018, ADR-0019).
 **Reuse first:** if an Ollama server already answers `/api/tags` on `127.0.0.1:11434` (the existing server,
 setup log §7), the script starts nothing and exits 0; `status.sh` reports its pid and its `OLLAMA_*` environment
 (from `/proc/<pid>/environ`) and flags differences from `cluster.env` as WARN. **Only if none runs** does it
@@ -323,7 +323,7 @@ server and never a server with its own environment. It refuses to start if `~/st
 
 ```text
 # only when no server answers on 127.0.0.1:11434 (the owner's start command, setup log §7)
-setsid nohup ~/start-ollama.sh > /data/dheena/ollama.log 2>&1 < /dev/null &
+setsid nohup ~/start-ollama.sh > $CLUSTER_DATA_ROOT/ollama.log 2>&1 < /dev/null &
 modes (day, night) never restart the server: they only load/unload models through the API
 ```
 
@@ -332,10 +332,10 @@ the session scope (`KillUserProcesses=yes`; `setsid` does not leave the cgroup);
 the fallback is linger or an admin exception (D228 wording, A12-M10). There is no pid file (ADR-0019): `status.sh`
 and `stop-ollama.sh` find the server by `pgrep -u "$USER" -x ollama` and act on a pid only if
 `/proc/<pid>/cmdline` is `ollama serve` **and** `:11434` is listening for that pid. The log is
-`/data/dheena/ollama.log` (the owner's start command). `stop-ollama.sh` runs only under the GPU lock through the
+`$CLUSTER_DATA_ROOT/ollama.log` (the owner's start command). `stop-ollama.sh` runs only under the GPU lock through the
 wrapper; normally the owner restarts the server by hand (runbook §2a). The expected values have one source:
 `cluster.env`, rendered by T3.1a from `infra/cluster/cluster.env.template` and copied over SSH to
-`/data/dheena/pruefstand-bin/` (Y6.3); `start-ollama.sh` derives the bin dir from its own path.
+`$CLUSTER_DATA_ROOT/pruefstand-bin/` (Y6.3); `start-ollama.sh` derives the bin dir from its own path.
 
 **Placement check (ADR-0018).** `GET /api/ps` must show `size_vram == size` for every resident model (else
 `health.sh` exit 15). `status.sh` reports the card of each model by joining
@@ -440,20 +440,20 @@ internal-only services use `docker compose exec` or the `dev` ports, never `loca
 ## 8. Operations (Z5)
 
 Recurring and incident procedures are in `docs/ops/runbook.md`. All commands run **on the VM**; cluster
-scripts are invoked as `ssh "$CLUSTER_SSH_HOST" bash /data/dheena/pruefstand-bin/<script>.sh` (ADR-0019).
+scripts are invoked as `ssh "$CLUSTER_SSH_HOST" bash $CLUSTER_DATA_ROOT/pruefstand-bin/<script>.sh` (ADR-0019).
 
 | Task | Command |
 | --- | --- |
 | GPU lock (D101, X2.1, Y1.1) | **`/var/lib/pruefstand/gpu.lock`** on the **VM's local disk** (mode 0660, group `pruefstand`; one host-wide path for every user; never in the data root or on a network share). Taken **once per job** by the orchestrator (`flock -w`, ≤ 2 h PR/promote, ≤ 8 h nightly) or, for the owner and agents, by the wrapper **`pruefstand-lock <cmd>`** (installed by T0.7 in `/usr/local/bin`; `flock` on the same file, exports `PRUEFSTAND_LOCK_HELD=1`), which the `mk/gpu.mk` targets use. `switch-mode.sh`, `health.sh`, `fetch-model.sh` (T3.1a) never take the lock and refuse without `PRUEFSTAND_LOCK_HELD=1` |
 | Maintenance | file **`/var/lib/pruefstand/MAINTENANCE`** (Y1.2; not a per-user variable): `pruefstand-lock touch /var/lib/pruefstand/MAINTENANCE` → dispatched gates post `pending` "executor in maintenance; re-dispatch later", and `executor-health.yml` suppresses health-field alerts (heartbeat `maintenance`, A13-M4); nightly posts success "skipped: maintenance"; `rm` it to resume. Used for model swaps (ADR-0019 swap rule: `ollama rm` a non-generator model, `fetch-model.sh` the new one, restore the set); there is no `datagen` mode |
-| Preflight (every job, after the lock) | `infra/gpu/health.sh --repair`: data root check (ADR-0019: `$PRUEFSTAND_DATA_ROOT` exists, is writable by `pruefstand`, ≥ 20 GB free; else exit 16 → `infra_error="data_root_unavailable"`); tunnel port `11434` answers (else `sudo systemctl restart pruefstand-tunnel`, allowed for `pruefstand` by one `sudoers` line); if no Ollama server answers, `ssh … /data/dheena/pruefstand-bin/start-ollama.sh` (starts the owner's `~/start-ollama.sh` detached with `setsid nohup` only if none runs; ADR-0018, ADR-0019), wait for `/api/tags` (≤ 5 min); then `/api/ps` must show **exactly** the mode's catalogue models with catalogue digests, each with `size_vram == size` (exit 15 otherwise; the card per model is reported): catalogue models outside the mode are unloaded first (e.g. an RQ2 candidate or e5 left by a killed job, A12-M12; non-catalogue models of other users are reported as WARN and left alone; T3.1a test: an extra catalogue model resident + `--repair day` → only the day models remain), missing ones are preloaded with the catalogue `options`; GPU memory and `/data` free space via `ssh … status.sh` (`nvidia-smi` CSV, `df`; < 2 GB free → WARN). A cluster reboot needs no manual step |
+| Preflight (every job, after the lock) | `infra/gpu/health.sh --repair`: data root check (ADR-0019: `$PRUEFSTAND_DATA_ROOT` exists, is writable by `pruefstand`, ≥ 20 GB free; else exit 16 → `infra_error="data_root_unavailable"`); tunnel port `11434` answers (else `sudo systemctl restart pruefstand-tunnel`, allowed for `pruefstand` by one `sudoers` line); if no Ollama server answers, `ssh … $CLUSTER_DATA_ROOT/pruefstand-bin/start-ollama.sh` (starts the owner's `~/start-ollama.sh` detached with `setsid nohup` only if none runs; ADR-0018, ADR-0019), wait for `/api/tags` (≤ 5 min); then `/api/ps` must show **exactly** the mode's catalogue models with catalogue digests, each with `size_vram == size` (exit 15 otherwise; the card per model is reported): catalogue models outside the mode are unloaded first (e.g. an RQ2 candidate or e5 left by a killed job, A12-M12; non-catalogue models of other users are reported as WARN and left alone; T3.1a test: an extra catalogue model resident + `--repair day` → only the day models remain), missing ones are preloaded with the catalogue `options`; GPU memory and `/data` free space via `ssh … status.sh` (`nvidia-smi` CSV, `df`; < 2 GB free → WARN). A cluster reboot needs no manual step |
 | Infra failure mid-run (Y5.2) | Ollama down, tunnel lost or data root unavailable during a run (or `llm-proxy`/judge upstream errors > 0, or **a model reload during the run**) → run `stop_reason="aborted"` with `infra_error`, commit status **`error`** (not `failure`), not recorded as processed; **one** automatic retry after `health.sh --repair`; a **second** infra failure is recorded in `processed.jsonl` with `result: "error"` and the status says "…; re-dispatch to retry" (A12-M1, P1.2, `ci-cd.md` §1.2) |
 | Mode switch | `infra/gpu/switch-mode.sh day|night` (VM, under the lock; both load the same set, ADR-0019): only unload/load through the Ollama API (`keep_alive: 0` / `"24h"`, load with the catalogue `options`); no server start or stop, no per-GPU server (ADR-0018) |
-| Deploy cluster scripts | `infra/gpu/deploy-cluster-bin.sh` (VM, T3.1a): copies `infra/cluster/*.sh` + `cluster.env` from the VM checkout **over SSH** to `/data/dheena/pruefstand-bin/` on the cluster (`ssh … 'cat > <name>.partial && mv <name>.partial <name>'`) plus `SHA256SUMS` (ADR-0019; a few KB); the orchestrator re-runs it when `infra/cluster/**` changed on `main`. It talks to the cluster with plain ssh, so it runs as `pruefstand`; the owner runs `make gpu-deploy-bin` (copies the scripts to a world-readable temp dir, then `sudo -u pruefstand …/deploy-cluster-bin.sh`); any other user writes `pruefstand-bin-dev/` (D415) |
+| Deploy cluster scripts | `infra/gpu/deploy-cluster-bin.sh` (VM, T3.1a): copies `infra/cluster/*.sh` + `cluster.env` from the VM checkout **over SSH** to `$CLUSTER_DATA_ROOT/pruefstand-bin/` on the cluster (`ssh … 'cat > <name>.partial && mv <name>.partial <name>'`) plus `SHA256SUMS` (ADR-0019; a few KB); the orchestrator re-runs it when `infra/cluster/**` changed on `main`. It talks to the cluster with plain ssh, so it runs as `pruefstand`; the owner runs `make gpu-deploy-bin` (copies the scripts to a world-readable temp dir, then `sudo -u pruefstand …/deploy-cluster-bin.sh`); any other user writes `pruefstand-bin-dev/` (D415) |
 | Pull / update a model | `fetch-model.sh <models.yaml id>` (VM, under the lock): `ssh … OLLAMA_HOST=127.0.0.1:11434 ollama pull <tag>` into the server's store (`<models-dir>`), after checking that `/data` keeps ≥ 2 GB free with the new model (else exit 17 "free space first: swap rule; ask the owner", ADR-0019, D413), then compare the manifest digest with `models.yaml`; mismatch → `ollama rm <tag>`, exit 1. One pull at a time; `fetch-model.sh --rm <id>` removes a non-generator model under `MAINTENANCE` |
 | Swap sequence (ADR-0019, stated once) | 1. owner: `pruefstand-lock touch /var/lib/pruefstand/MAINTENANCE`; 2. `make gpu-down` (unload) and `make gpu-rm ID=ollama/<non-generator id>` (exit 3 without `MAINTENANCE`, 64 for the generator); 3. `make gpu-pull ID=ollama/<new id>` (digest check; **exit 17 when the disk is too full: free space first, the script never starts the pull**); 4. run the swap (RQ2 candidate, M11, e5); 5. `make gpu-rm` the swapped model, `make gpu-pull` the standard model again if it was removed; 6. `make gpu-up`; owner: `rm` `MAINTENANCE`. Every step is a lock-taking `make` target (one `pruefstand-lock` per target) |
-| Logs | the owner's start command writes `/data/dheena/ollama.log` (truncated at each start). Read it with **`sudo -n -u pruefstand /usr/local/bin/pruefstand-cluster log [N]`** (T3.1e, D560-D562): the last N lines (1..1000, default 200), read-only, no lock, **redacted on the cluster** (`<models-dir>`, `<home>`, `<cluster-user>`, `<ollama-bin>`, `<host>`, `<data-dir>`, addresses other than `127.0.0.1:11434`, secrets) and fail closed (nothing printed, exit 5, when redaction fails or the final scan finds a leak; the scan covers IPv4/IPv6, URL hosts, `user@host`, uuids, sha256, login/host/home/models-dir and secret pairs, but bare hostnames, `host:port` and `port N` depend on the redaction rules alone, D562). The model load lines (parallel slots, KV buffer size, layers offloaded) give `kv_bytes_per_token`, the generator slot count and `overhead_gib`. Status: `… pruefstand-cluster status` |
-| Stop GPU serving | normally: unload all models (`switch-mode.sh` / API `keep_alive: 0`), the server keeps running. Stopping the server itself: executor `ssh … /data/dheena/pruefstand-bin/stop-ollama.sh` (as `pruefstand`, under the lock; pid checked as in §4); owner `pruefstand-lock sudo -n -u pruefstand /usr/local/bin/pruefstand-cluster stop-ollama` (T3.1a wrapper); a restart is the owner's (runbook §2a). The wrapper's mutating ops (`start-ollama`, `stop-ollama`, `pull`, `rm`) require the GPU lock: sudoers `env_keep += PRUEFSTAND_LOCK_HELD`, and the wrapper checks that `flock -n /var/lib/pruefstand/gpu.lock true` **fails** (lock held); `status`/`show` are lock-free (A12-M5) |
+| Logs | the owner's start command writes `$CLUSTER_DATA_ROOT/ollama.log` (truncated at each start). Read it with **`sudo -n -u pruefstand /usr/local/bin/pruefstand-cluster log [N]`** (T3.1e, D560-D562): the last N lines (1..1000, default 200), read-only, no lock, **redacted on the cluster** (`<models-dir>`, `<home>`, `<cluster-user>`, `<ollama-bin>`, `<host>`, `<data-dir>`, addresses other than `127.0.0.1:11434`, secrets) and fail closed (nothing printed, exit 5, when redaction fails or the final scan finds a leak; the scan covers IPv4/IPv6, URL hosts, `user@host`, uuids, sha256, login/host/home/models-dir and secret pairs, but bare hostnames, `host:port` and `port N` depend on the redaction rules alone, D562). The model load lines (parallel slots, KV buffer size, layers offloaded) give `kv_bytes_per_token`, the generator slot count and `overhead_gib`. Status: `… pruefstand-cluster status` |
+| Stop GPU serving | normally: unload all models (`switch-mode.sh` / API `keep_alive: 0`), the server keeps running. Stopping the server itself: executor `ssh … $CLUSTER_DATA_ROOT/pruefstand-bin/stop-ollama.sh` (as `pruefstand`, under the lock; pid checked as in §4); owner `pruefstand-lock sudo -n -u pruefstand /usr/local/bin/pruefstand-cluster stop-ollama` (T3.1a wrapper); a restart is the owner's (runbook §2a). The wrapper's mutating ops (`start-ollama`, `stop-ollama`, `pull`, `rm`) require the GPU lock: sudoers `env_keep += PRUEFSTAND_LOCK_HELD`, and the wrapper checks that `flock -n /var/lib/pruefstand/gpu.lock true` **fails** (lock held); `status`/`show` are lock-free (A12-M5) |
 | Runner status | `systemctl status pruefstand-runner` on the VM; heartbeat on branch `heartbeat` of `pruefstand-dashboard-data`, refreshed **every 15 min** during long jobs and lock waits (Y5.1) |
 | Free disk | VM: `docker system prune --filter until=168h` (never volumes); run dirs rotated by `runs-prune`. Cluster: only models; keep ≥ 2 GB free on `/data` (swap rule, ADR-0019) |
 
@@ -477,7 +477,7 @@ before the next one starts (cluster paths as `<models-dir>`, no login or home pa
 | `PRUEFSTAND_DATA_ROOT` (VM) | `/mnt/pruefstand` | plain directory on the VM disk (layout below; setup log §6) |
 | `CLUSTER_SSH_HOST` (VM `.env`) | `cairo-s101lp` | SSH target of the tunnel and of the cluster scripts |
 | `OLLAMA_GPU0_URL`, `OLLAMA_GPU1_URL` (VM `.env`) | both `http://127.0.0.1:11434` (ADR-0018) | the one tunnel end; generator lane and judge lane |
-| cluster paths (fixed, in `cluster.env`) | `<models-dir>` (`OLLAMA_MODELS`), `/data/dheena/pruefstand-bin` (scripts), `/data/dheena/ollama.log`, `~/start-ollama.sh` (owner's) | models, scripts, log; nothing else on the cluster |
+| cluster paths (fixed, in `cluster.env`) | `<models-dir>` (`OLLAMA_MODELS`), `$CLUSTER_DATA_ROOT/pruefstand-bin` (scripts), `$CLUSTER_DATA_ROOT/ollama.log`, `~/start-ollama.sh` (owner's) | models, scripts, log; nothing else on the cluster |
 
 `PRUEFSTAND_MODEL_CACHE` is **dropped** (tier 1 uses `LIVE_MODEL_DIR`, D203). `CLUSTER_NAS_ROOT` is **dropped**
 (ADR-0019: no NAS path on the cluster).
@@ -505,8 +505,8 @@ Cluster layout (ADR-0019; nothing else is stored there):
 | Path | Content | Single writer |
 | --- | --- | --- |
 | `<models-dir>` | `OLLAMA_MODELS` of the one server: generator + `bge-m3` + `gemma3:12b`, ≥ 2 GB free; swaps by the swap rule (§2) | `fetch-model.sh` via the one server |
-| `/data/dheena/pruefstand-bin/` | cluster scripts, `cluster.env` (Y6.3) + `SHA256SUMS`, copied over SSH | `deploy-cluster-bin.sh` (VM executor, trusted `main` checkout) |
-| `/data/dheena/ollama.log` | server log of the owner's start command (truncated at each start) | the server |
+| `$CLUSTER_DATA_ROOT/pruefstand-bin/` | cluster scripts, `cluster.env` (Y6.3) + `SHA256SUMS`, copied over SSH | `deploy-cluster-bin.sh` (VM executor, trusted `main` checkout) |
+| `$CLUSTER_DATA_ROOT/ollama.log` | server log of the owner's start command (truncated at each start) | the server |
 
 **Data root rules (binding for every task).**
 

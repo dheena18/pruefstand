@@ -12,6 +12,7 @@ splits: [smoke_live]
 generator_family: qwen            # llama.cpp generator, thinking off (D95)
 judge:
   # Informational tier-1 judge: a GitHub Models model of a non-qwen family (T0.6 S4b, pinned in T1.12).
+  # T5.4 (D939): kept provisionally; the hosted calibration run (experiments/rq2, arm c) may replace it.
   # No llm.fallback_judge: quota exhausted -> judge_mode=skipped (D97).
   pr:      {id: github/openai/gpt-4.1-mini, family: gpt}
   nightly: {id: github/openai/gpt-4.1-mini, family: gpt}

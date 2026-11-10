@@ -33,7 +33,7 @@ only when it does not fit on one.
 
 1. **One Ollama server** on the cluster serves both GPUs: `CUDA_VISIBLE_DEVICES=0,1`,
    `OLLAMA_HOST=127.0.0.1:11434`, `OLLAMA_MAX_LOADED_MODELS=3`, `OLLAMA_NUM_PARALLEL=4`,
-   `OLLAMA_KEEP_ALIVE=24h`, `OLLAMA_MODELS=/data/dheena/Models` on the cluster's own disk (ADR-0019; the NAS
+   `OLLAMA_KEEP_ALIVE=24h`, `OLLAMA_MODELS=$CLUSTER_DATA_ROOT/Models` on the cluster's own disk (ADR-0019; the NAS
    path is rejected), plus `OLLAMA_NOPRUNE=1`, `OLLAMA_KV_CACHE_TYPE=q8_0` (ADR-0019; was `f16`),
    `OLLAMA_CONTEXT_LENGTH=8192` (default only), `OLLAMA_FLASH_ATTENTION=1`. There is no second port, no per-GPU server,
    no datagen server and no `OLLAMA_SCHED_SPREAD`.

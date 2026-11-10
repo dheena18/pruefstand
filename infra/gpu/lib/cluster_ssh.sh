@@ -5,13 +5,15 @@
 #   pull <tag> <bytes>   (<bytes> = the catalogue size; the cluster re-checks it against the free space, exit 17)
 #   tag matches ^[a-z0-9._:/-]+$, does not start with "-" and contains no "..".
 # As the service user (PRUEFSTAND_SERVICE_USER, default pruefstand: the only holder of the cluster key) the op
-# runs over ssh against the scripts in /data/dheena/pruefstand-bin; as anyone else it goes through
+# runs over ssh against the scripts in <data root>/pruefstand-bin (lib/cluster_paths.sh); as anyone else it goes through
 #   sudo -n -u pruefstand /usr/local/bin/pruefstand-cluster <op> [tag] [--bin-dev]
 # which re-validates against its installed allow-list (it takes the size from there, not from the caller) and, for the
 # mutating ops, demands proof that the GPU lock is held by an ancestor process (A12-M5, M1).
-# PRUEFSTAND_BIN_DEV=1 selects /data/dheena/pruefstand-bin-dev (A11-M11). CLUSTER_SSH_HOST: the ssh alias.
+# PRUEFSTAND_BIN_DEV=1 selects <data root>/pruefstand-bin-dev (A11-M11). CLUSTER_SSH_HOST: the ssh alias.
 
-CLUSTER_BIN_BASE="/data/dheena/pruefstand-bin"
+# shellcheck source=cluster_paths.sh
+# shellcheck source-path=SCRIPTDIR
+. "$(dirname "${BASH_SOURCE[0]}")/cluster_paths.sh"
 _CLUSTER_TAG_RE='^[a-z0-9._:/-]+$'
 _CLUSTER_LOG_N_RE='^[1-9][0-9]{0,3}$'
 _CLUSTER_BYTES_RE='^[1-9][0-9]{0,14}$'
@@ -23,7 +25,7 @@ _cluster_tag_ok() { # tag
 }
 
 cluster_op() { # op [tag [bytes]]
-  local op="${1:-}" tag="${2:-}" bytes="${3:-}" dir="$CLUSTER_BIN_BASE" remote host
+  local op="${1:-}" tag="${2:-}" bytes="${3:-}" dir remote host
   local -a args=("$op")
   case "$op" in
     start-ollama | stop-ollama | status)
@@ -49,8 +51,9 @@ cluster_op() { # op [tag [bytes]]
       ;;
     *) return 64 ;;
   esac
-  if [ "${PRUEFSTAND_BIN_DEV:-}" = 1 ]; then dir="$CLUSTER_BIN_BASE-dev"; fi
   if [ "$(id -un)" = "${PRUEFSTAND_SERVICE_USER:-pruefstand}" ]; then
+    dir="$(cluster_data_root)/pruefstand-bin" || return 78
+    if [ "${PRUEFSTAND_BIN_DEV:-}" = 1 ]; then dir="$dir-dev"; fi
     host="${CLUSTER_SSH_HOST:-cairo-s101lp}"
     case "$op" in
       pull)

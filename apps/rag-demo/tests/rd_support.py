@@ -52,7 +52,7 @@ def attack_hits() -> list[Hit]:
 
 
 def fixture_rows() -> dict[str, dict[str, object]]:
-    """The 40 real chunks of the test corpus by chunk id (``tests/fixtures/corpus``)."""
+    """The 45 real chunks of the test corpus by chunk id (``tests/fixtures/corpus``)."""
     rows: dict[str, dict[str, object]] = {}
     for path in sorted(FIXTURE_CORPUS.glob("*.chunks.jsonl")):
         for line in path.read_text(encoding="utf-8").splitlines():

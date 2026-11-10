@@ -1,0 +1,12 @@
+{
+  "a0": 0.96,
+  "changed_anchors": 2,
+  "comparisons": 150,
+  "drift_threshold": 9,
+  "flip_rate": 0.02666666666666667,
+  "flip_rate_upper": 0.06655389051214453,
+  "flips": 4,
+  "judge": "ollama/gemma3:12b",
+  "n_anchors": 50,
+  "repeats": 4
+}

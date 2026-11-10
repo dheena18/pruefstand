@@ -25,3 +25,8 @@ GENERATOR_TOKENIZER ?= $(HOME)/.cache/pruefstand/models/tokenizers/generator.jso
 fetch-generator-tokenizer:
 	RAG_MODEL_CATALOGUE=infra/gpu/models.yaml uv run python -m rag_demo.index.fetch_tokenizer \
 	    --config apps/rag-demo/configs/rag.gpu.yaml --out $(GENERATOR_TOKENIZER)
+
+# T3.7: the canary registry the gpu isolation suite (apps/rag-demo/tests/gpu/test_quality_and_isolation.py) reads, a
+# variable of the existing test-gpu target only. Default: the public registry of the indexed slice; set CANARY_REGISTRY
+# to datasets/canaries/<corpus_version>/canaries.json once the T2.6 corpus is the indexed one.
+test-gpu: export CANARY_REGISTRY ?= $(CURDIR)/corpus/slice_v1/canaries.public.json

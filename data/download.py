@@ -217,6 +217,12 @@ def main(argv: Sequence[str] | None = None) -> int:
             return 4
         sources = [s for s in sources if s.id in args.only]
     if args.update_pins:
+        if os.environ.get("PRUEFSTAND_GII_MIRROR", "").strip():
+            print(
+                "error: --update-pins reads the official sites: unset PRUEFSTAND_GII_MIRROR",
+                file=sys.stderr,
+            )
+            return 4
         if os.environ.get("CI"):
             print("error: --update-pins never runs in CI", file=sys.stderr)
             return 4

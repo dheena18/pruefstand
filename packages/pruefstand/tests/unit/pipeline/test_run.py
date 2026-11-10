@@ -22,6 +22,7 @@ from pruefstand.core.errors import ConfigError, CorpusMismatch
 from pruefstand.core.fingerprint import target_fingerprint
 from pruefstand.core.hashing import stable_hash
 from pruefstand.core.models.target import TargetInfo
+from pruefstand.pipeline.fingerprints import calibration_epoch
 from pruefstand.pipeline.run import run_eval
 from pruefstand.store.artifacts import ArtifactStore
 
@@ -69,7 +70,7 @@ async def test_writes_a_readable_run_directory_with_a_completed_manifest(
     assert set(m.metric_versions) >= {"context_recall", "tenant_leak"}
     assert m.judge_models == {}
     assert m.judge_prompt_versions == {}
-    assert m.judge_epoch == 0
+    assert m.judge_epoch == calibration_epoch()  # T5.4 ships calibration_status.yaml
 
 
 async def test_corpus_mismatch_aborts_before_any_query(

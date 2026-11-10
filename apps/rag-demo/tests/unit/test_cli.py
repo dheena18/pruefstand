@@ -76,7 +76,7 @@ def test_tei_index_prints_the_chunk_count_and_the_alias_switch() -> None:
         ],
     )
     assert result.exit_code == 0, result.output
-    assert result.stdout.startswith("indexed 40 chunks into chunks__fixture-2026-11-03-")
+    assert result.stdout.startswith("indexed 45 chunks into chunks__fixture-2026-11-03-")
     assert result.stdout.strip().endswith("alias chunks_active switched")
 
 
@@ -98,7 +98,7 @@ def test_pr_collection_with_no_alias_says_the_alias_is_unchanged() -> None:
         ],
     )
     assert result.exit_code == 0, result.output
-    assert "indexed 40 chunks into pr_7_abc1234, alias unchanged" in result.stdout
+    assert "indexed 45 chunks into pr_7_abc1234, alias unchanged" in result.stdout
     assert not any("aliases" in path for _, path in calls)
 
 

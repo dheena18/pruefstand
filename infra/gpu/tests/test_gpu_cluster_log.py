@@ -1,12 +1,12 @@
 """T3.1e CPU tests: the ``log [N]`` op of the ``pruefstand-cluster`` wrapper and cluster_ssh.sh."""
 
 import pytest
-from gpu_testkit import GPU_DIR, run_script
+from gpu_testkit import GPU_DIR, rendered_wrapper, run_script
 from gpu_world import ENTRIES, GpuWorld
 from vm_testkit import Result
 
 WRAPPER = GPU_DIR / "pruefstand-cluster"
-BIN = "/data/dheena/pruefstand-bin"
+BIN = "/data/example/pruefstand-bin"
 
 
 def _wrap(gpu: GpuWorld, *args: str, **env: str) -> Result:
@@ -19,7 +19,7 @@ def _wrap(gpu: GpuWorld, *args: str, **env: str) -> Result:
         "PRUEFSTAND_CLUSTER_ALLOW": str(allow),
         **env,
     }
-    return run_script(WRAPPER, *args, stubs=gpu.stubs, env=full)
+    return run_script(rendered_wrapper(gpu.root), *args, stubs=gpu.stubs, env=full)
 
 
 def _cmds(gpu: GpuWorld) -> list[str]:

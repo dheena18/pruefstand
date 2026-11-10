@@ -17,13 +17,15 @@
 # lock held by someone else (the executor during a gate run) is no proof: exit 2 "run under the GPU lock".
 # status, show and log need no lock. `log [N]` (T3.1e, D560) prints the last N lines (integer 1..1000, default 200) of
 # the Ollama server log, redacted ON THE CLUSTER by log-tail.sh (read-only; it prints nothing and fails when it cannot
-# redact). --bin-dev selects /data/dheena/pruefstand-bin-dev (A11-M11).
+# redact). --bin-dev selects "$bin-dev" (A11-M11).
+# `bin` below is the cluster scripts dir; the repo file carries the placeholder line bin="@BIN_DIR@" and the installer renders it from
+# the owner-supplied data root (T3.1c, D950); an unrendered copy refuses to run (exit 64).
 # Self-contained on purpose: it is copied to a root-owned path and must not load anything from a checkout.
 # Exit: the remote command's, 2 not under the lock, 3 rm without MAINTENANCE, 64 usage / unknown tag.
 # PRUEFSTAND_LOCK_DIR and PRUEFSTAND_CLUSTER_ALLOW are test seams (sudo drops the environment).
 set -euo pipefail
 
-bin="/data/dheena/pruefstand-bin"
+bin="@BIN_DIR@"
 host="${CLUSTER_SSH_HOST:-cairo-s101lp}"
 lock_dir="${PRUEFSTAND_LOCK_DIR:-/var/lib/pruefstand}"
 allow="${PRUEFSTAND_CLUSTER_ALLOW:-/usr/local/lib/pruefstand-cluster.allow}"
@@ -38,6 +40,7 @@ fail() { # message exit-code
   exit "$2"
 }
 
+if [[ $bin == @* ]]; then fail "not installed by install-cluster-wrapper.sh (no cluster data root rendered)" 64; fi
 if ! [[ $host =~ $host_re ]]; then fail "invalid CLUSTER_SSH_HOST" 64; fi
 dev=0
 args=()

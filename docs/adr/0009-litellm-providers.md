@@ -23,7 +23,7 @@ and no systemd linger, so the planned vLLM + TEI containers cannot run there.
 
 | Provider | LiteLLM prefix | Use |
 | --- | --- | --- |
-| **Ollama on the A40s** (one server on `:11434` for both GPUs, ADR-0018, reached from the VM through the `autossh` tunnel) | `ollama/<tag>` in configs and the catalogue (D209, D221); `LiteLLMBackend` translates it to LiteLLM's native `ollama_chat/<tag>` (`/api/chat`, `/api/embed`; D219), never Ollama's `/v1/*`; base URL from `infra/gpu/endpoints.yaml`: `OLLAMA_GPU0_URL` / `OLLAMA_GPU1_URL` (both the same server, ADR-0018) | generator `qwen3.8:27b-q8_0` (Ollama family `qwen35` → `qwen`, `think: false`, pinned digest `8f5fb6b7…1766039`) and `bge-m3` embeddings (generator lane), the one judge `gemma3:12b` for PR and nightly (judge lane; also writes synthetic private docs, canaries and held-out data locally, role `DATAGEN`; ADR-0019); models on the cluster's own disk `/data/dheena/Models` |
+| **Ollama on the A40s** (one server on `:11434` for both GPUs, ADR-0018, reached from the VM through the `autossh` tunnel) | `ollama/<tag>` in configs and the catalogue (D209, D221); `LiteLLMBackend` translates it to LiteLLM's native `ollama_chat/<tag>` (`/api/chat`, `/api/embed`; D219), never Ollama's `/v1/*`; base URL from `infra/gpu/endpoints.yaml`: `OLLAMA_GPU0_URL` / `OLLAMA_GPU1_URL` (both the same server, ADR-0018) | generator `qwen3.8:27b-q8_0` (Ollama family `qwen35` → `qwen`, `think: false`, pinned digest `8f5fb6b7…1766039`) and `bge-m3` embeddings (generator lane), the one judge `gemma3:12b` for PR and nightly (judge lane; also writes synthetic private docs, canaries and held-out data locally, role `DATAGEN`; ADR-0019); models on the cluster's own disk `$CLUSTER_DATA_ROOT/Models` |
 | CPU reranker on the VM (`rerank-cpu`, sentence-transformers, TEI-compatible `POST /rerank`) | – (not an LLM; called by rag-demo through `RERANK_URL`) | `BAAI/bge-reranker-v2-m3`, tier 2 only |
 | llama.cpp server on CPU (OpenAI-compatible) | `openai/` + local `api_base` | tier-1 live CI generator (called by rag-demo's own client); laptops |
 | GitHub Models (free tier, rate-limited) | `github/` | tier-1 **informational** judge via `PRUEFSTAND_GH_MODELS_TOKEN` (`models: read`; in Actions `PRUEFSTAND_GH_MODELS_TOKEN: ${{ github.token }}`, D333; ≤ 10 calls/PR, ≤ 60/nightly), **public-text datagen** (T4.2 questions/references, T4.5 rewrites, T5.3 `legal_hard` review; ADR-0019), RQ2 large free-tier judges, cross-check samples of public items |
@@ -67,7 +67,7 @@ and no systemd linger, so the planned vLLM + TEI containers cannot run there.
   are defaults, not overrides), so a candidate cannot reload, offload or resize the shared generator,
   while M17 and the T6.3 churn runs really change sampling. Server env (one server, ADR-0018) `CUDA_VISIBLE_DEVICES=0,1`, `OLLAMA_NUM_PARALLEL=4`,
   `OLLAMA_MAX_LOADED_MODELS=3`, `OLLAMA_KEEP_ALIVE=24h` (mode switches manage residency), `OLLAMA_NOPRUNE=1`
-  (**verify**), `OLLAMA_FLASH_ATTENTION=1`, `OLLAMA_KV_CACHE_TYPE=q8_0`, `OLLAMA_MODELS=/data/dheena/Models` (the
+  (**verify**), `OLLAMA_FLASH_ATTENTION=1`, `OLLAMA_KV_CACHE_TYPE=q8_0`, `OLLAMA_MODELS=$CLUSTER_DATA_ROOT/Models` (the
   cluster's own disk, ADR-0019), `OLLAMA_HOST=127.0.0.1:11434`, `OLLAMA_CONTEXT_LENGTH=8192` as a default only (the
   catalogue `num_ctx` on every request is the control); source of record: the owner's `~/start-ollama.sh`.
   Models are pinned by tag **and manifest digest** (tags are mutable). Embeddings: `bge-m3` via

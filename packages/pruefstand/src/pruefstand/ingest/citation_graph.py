@@ -62,11 +62,22 @@ def _law_key(section: str, code: str, unknown: set[str]) -> str:
 
 
 def _check_outcome(
-    raw_dir: Path, rows: int, edges: int, unresolved: int, problems: ProblemLog
+    raw_dir: Path, counts: tuple[int, int, int], problems: ProblemLog, before: tuple[int, int]
 ) -> None:
-    """Fail closed: damaged input and unresolvable edges are errors, an empty graph is not."""
-    if rows == 0 and problems.total:
-        msg = f"no readable edge row in {raw_dir}: {problems[0].kind} ({problems[0].source})"
+    """Fail closed: damaged input and unresolvable edges are errors, an empty graph is not.
+
+    Args:
+        raw_dir: The edge directory.
+        counts: ``(rows, edges, unresolved)`` of this load.
+        problems: The log; only problems counted after ``before`` of it belong to this load, so
+            a reused log does not make an empty graph an error (T2.3a).
+        before: ``(problems.total, len(problems))`` at the start of the load.
+    """
+    rows, edges, unresolved = counts
+    total, stored = before
+    if rows == 0 and problems.total > total:
+        first = problems[stored] if len(problems) > stored else problems[-1]
+        msg = f"no readable edge row in {raw_dir}: {first.kind} ({first.source})"
         raise OldpDataError(msg)
     if edges == 0 and unresolved > 0:
         msg = f"none of {unresolved} Case->Law edges resolve to a decision (wrong decisions dump?)"
@@ -116,6 +127,7 @@ def load_citation_graph(
 def _load(
     raw_dir: Path, decisions_dir: Path | None, limits: OldpLimits, problems: ProblemLog
 ) -> dict[DocId, tuple[str, ...]]:
+    before = (problems.total, len(problems))
     slug_ids = _slug_ids(decisions_dir or raw_dir.parent / "oldp_decisions", limits, problems)
     keys: dict[int, set[str]] = {}
     unknown: set[str] = set()
@@ -134,7 +146,7 @@ def _load(
             continue
         edges += 1
         keys.setdefault(number, set()).add(_law_key(section, code, unknown))
-    _check_outcome(raw_dir, rows, edges, unresolved, problems)
+    _check_outcome(raw_dir, (rows, edges, unresolved), problems, before)
     _log.info(
         "citation_graph_loaded",
         decisions=len(keys), edges=edges, unresolved=unresolved, problems=problems.total,

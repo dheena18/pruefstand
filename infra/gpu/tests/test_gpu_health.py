@@ -191,7 +191,7 @@ def test_bad_arguments_exit_64(gpu: GpuWorld, args: tuple[str, ...]) -> None:
 def test_the_csv_never_contains_a_real_path_or_the_tunnel_host(gpu: GpuWorld) -> None:
     _healthy(gpu)
     res = gpu.script("health.sh")
-    assert not re.search(r"/home/|/data/dheena/Models", res.out)
+    assert not re.search(r"/home/|/data/[A-Za-z0-9_]+/Models", res.out)
 
 
 def test_models_reported_with_latest_pass_the_digest_and_placement_checks(gpu: GpuWorld) -> None:

@@ -12,6 +12,7 @@ from testsupport.workflow_checks import (
     check_cache_saves,
     check_comment_checkout,
     check_comment_jobs,
+    check_fingerprint_rebaseline,
     check_marker,
     check_no_gate_status,
     check_no_judge_mode,
@@ -43,6 +44,7 @@ def selftest() -> tuple[Doc, str]:
     [
         check_comment_jobs,
         check_baseline_lookup,
+        check_fingerprint_rebaseline,
         check_uploads,
         check_marker,
         check_cache_saves,

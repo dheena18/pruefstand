@@ -6,7 +6,7 @@
 | Metric | Prompt file | Variables (labelled blocks) | Raw scale |
 | --- | --- | --- | --- |
 | `faithfulness` | `prompts/faithfulness_de_v2.txt` | `frage`, `kontext`, `antwort` | 0 / 1 / 2 |
-| `answer_correctness` | `prompts/answer_correctness_de_v3.txt` | `frage`, `referenz`, `antwort` | 0 / 1 / 2 |
+| `answer_correctness` | `prompts/answer_correctness_de_v4.txt` | `frage`, `referenz`, `antwort` | 0 / 1 / 2 |
 | `perturbation_consistency` | `prompts/perturbation_consistency_de_v1.txt` | `frage`, `referenz`, `antwort` | 0 / 1 |
 | `refusal_judged` | `prompts/refusal_judged_de_v1.txt` | `frage`, `antwort` | 0 / 1 |
 
@@ -46,7 +46,7 @@ The real-judge run is `packages/pruefstand/tests/gpu/test_judge_injection.py`.
 `quotas.yaml` `tokens_per_request` for GitHub Models); `Judge.prompt_tokens(task)` estimates the rendered prompt
 (digits 1 token each, other ASCII 0.4, non-ASCII 1: deliberately high). The metrics fit their inputs before they ask (`metrics/judged/truncate.py`: the
 lowest-ranked `kontext` chunks go first, then the last chunk is cut at a sentence end; question, answer and reference
-are never cut). `Judge.score` refuses a prompt over the cap with `LLMError` before any call, so Ollama never cuts
+are never cut). `Judge.score` refuses a prompt over the cap with `LLMError` before any call, so Ollama rarely cuts (the estimate is a heuristic; a cut that slips through is caught by the reported-count checks, window and cut signature, D962)
 silently. A judge failure never carries the judge's output: `reason` is not stored and `llm/json_call.py` does not echo it.
 
 ## Calibration status

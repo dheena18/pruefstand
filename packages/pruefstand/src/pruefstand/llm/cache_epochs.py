@@ -5,7 +5,9 @@ every cached verdict of that judge miss. It is **not** ``judge_epoch`` (that one
 re-calibration bumps, T5.4) and it never enters ``eval_fingerprint``.
 
 Files in ``cache_dir``: ``cache_epochs.json`` (``{model: epoch}``) and ``judge_drift.json``
-(``{model, agreement, epoch, ts}``, written by T5.4's nightly step).
+(``{model, agreement, epoch, ts}`` plus ``changed``, ``threshold``, ``a0``; written by T5.4's
+nightly
+step; ``epoch`` is the cache epoch after the bump).
 """
 
 import json
@@ -30,6 +32,9 @@ class DriftFlag(BaseModel):
     agreement: float
     epoch: int
     ts: str
+    changed: int | None = None  # T5.4 (D253): anchors whose raw score differs from the stored one
+    threshold: int | None = None  # T5.4 (D308): the threshold the decision used
+    a0: float | None = None  # T5.4 (D253): self-agreement, recorded only
 
 
 def drift_file(cache_dir: Path) -> Path:
