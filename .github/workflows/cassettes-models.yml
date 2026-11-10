@@ -138,7 +138,7 @@ jobs:
         env:
           PYTHONPATH: experiments
           # the official site refuses GitHub-hosted runners (first run, 2026-11-09): same bytes from our release
-          PRUEFSTAND_GII_MIRROR: https://github.com/dheena18/pruefstand/releases/download/data-pins-2026-11
+          PRUEFSTAND_GII_MIRROR: https://github.com/dheena18/pruefstand/releases/download/data-pins-2026-11b
         run: |
           # GII archives at their pinned versions (data/sources.yaml, SHA-256 checked, mirror or not)
           ids="$(uv run python -c "from model_selection import indomain_cli as c; print(' '.join('--only ' + i for i in c.source_ids()))")"
