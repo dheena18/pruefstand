@@ -97,9 +97,9 @@ class Judge:
         report at or above the window means the provider saw more than fits. (2) A cut prompt is
         reported as about ``num_ctx / 2`` (the measured signature, ``cut_signature``), far below
         the window, so the first sign alone misses it. The local estimate is the pre-call guard;
-        it is a heuristic, so these two signs are the backstop. A genuine prompt of exactly that
-        many tokens is read as cut (candidate-side, worst-filled): a 17-token band, accepted and
-        documented (D962).
+        it is a heuristic, so these two signs are the backstop. A genuine prompt whose reported
+        count is in the band is read as cut (candidate-side, worst-filled): a 17-token band,
+        accepted and documented (D962).
         """
         window = judge_window(self._model)
         if window is not None and reported >= window:

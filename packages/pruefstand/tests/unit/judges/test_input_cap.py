@@ -121,8 +121,8 @@ def test_tier_one_may_use_the_public_ci_nonce_key(
 
 # Measured on the A40 server (Ollama 0.32.13, 2026-11-09, gemma3:12b, num_ctx 12288, num_predict 1):
 # about 1.8 tokens per word gave 910 / 3610 / 7210 / 10810 prompt tokens for 500 / 2000 /
-# 4000 / 6000 words, and a constant 6147 for 8 000, 10 000, 14 000, 20 000 and 40 000 words
-# (cut): D962.
+# 4000 / 6000 words, and a constant 6147 for 8 000 to 40 000 words (cut; about 14 000 to 72 000
+# tokens): D962.
 MEASURED_CUT_REPORT = 6147
 MEASURED_UNCUT_REPORTS = (910, 3610, 7210, 10810)
 
@@ -179,3 +179,24 @@ async def test_reports_just_outside_the_cut_band_are_fine(
         task = make_task("refusal_judged", frage="F?", antwort="A.")
         with judges(tmp_path, monkeypatch, [Step(body=body)]) as (pool, _, _):
             assert (await pool.for_metric("refusal_judged").score(task)).raw_score == 1
+
+
+async def test_reports_on_the_inside_edges_of_the_cut_band_are_truncation_errors(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    for reported in (4096 // 2, 4096 // 2 + 16):
+        body = json.dumps(
+            {
+                "model": "m",
+                "message": {"role": "assistant", "content": '{"reason": "x", "score": 1}'},
+                "done": True,
+                "prompt_eval_count": reported,
+                "eval_count": 2,
+            }
+        ).encode()
+        task = make_task("refusal_judged", frage="F?", antwort="A.")
+        with (
+            judges(tmp_path, monkeypatch, [Step(body=body)]) as (pool, _, _),
+            pytest.raises(JudgeInputTruncated),
+        ):
+            await pool.for_metric("refusal_judged").score(task)
