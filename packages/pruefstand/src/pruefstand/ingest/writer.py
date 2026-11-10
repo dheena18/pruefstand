@@ -13,6 +13,7 @@ import hashlib
 import json
 import os
 import shutil
+import tempfile
 from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
 from datetime import UTC, datetime
@@ -23,9 +24,8 @@ from pruefstand.core.fingerprint import corpus_version as compute_corpus_version
 from pruefstand.core.ids import ChunkId, DocId, TenantId
 from pruefstand.core.models.corpus import Chunk, CorpusManifest
 from pruefstand.ingest.corpus_files import (
-    BANNED_SOURCES,
     MANIFEST_NAME,
-    checked_tenant,
+    check_chunk_rules,
     created_at,
     file_sha256,
     tenant_file,
@@ -70,17 +70,6 @@ def serialise_chunk(chunk: Chunk) -> bytes:
         raise DatasetError(msg) from exc
 
 
-def _check(chunk: Chunk) -> None:
-    where = f"chunk {chunk.chunk_id}"
-    checked_tenant(chunk.tenant, f"{where}: tenant")
-    if not chunk.license.strip():
-        msg = f"{where}: license is empty (every chunk carries its source licence)"
-        raise DatasetError(msg)
-    if not chunk.source.strip() or any(b in chunk.source.casefold() for b in BANNED_SOURCES):
-        msg = f"{where}: source {chunk.source[:40]!r} is empty or banned (memerag is download-only)"
-        raise DatasetError(msg)
-
-
 def render_corpus(chunks: Iterable[Chunk]) -> RenderedCorpus:
     """Validate and serialise ``chunks`` into one sorted file per tenant.
 
@@ -98,7 +87,7 @@ def render_corpus(chunks: Iterable[Chunk]) -> RenderedCorpus:
     seen: set[ChunkId] = set()
     owner: dict[DocId, TenantId] = {}
     for chunk in chunks:
-        _check(chunk)
+        check_chunk_rules(chunk)
         if chunk.chunk_id in seen:
             msg = f"chunk {chunk.chunk_id}: occurs twice"
             raise DatasetError(msg)
@@ -169,7 +158,10 @@ def write_corpus(
     The files are written to a staging directory next to ``out_dir``, their hashes are checked
     after writing, and the directory is renamed into place, so ``out_dir`` never holds a half
     written corpus. A corpus version is immutable: if ``out_dir`` exists it must hold exactly
-    these bytes (then nothing changes), otherwise the call fails.
+    these bytes (then nothing changes), otherwise the call fails. Every call stages in a directory
+    of its own (``.<version>.<random>.partial``), so concurrent ingests of one version do not share
+    files and the loser of the final rename compares with the winner's bytes. A killed run leaves
+    its ``.<version>.<random>.partial`` directory behind; it is safe to delete by hand.
 
     Args:
         chunks: All chunks of the corpus in any order.
@@ -203,23 +195,43 @@ def _publish(out_dir: Path, files: dict[str, bytes], manifest: CorpusManifest) -
         msg = f"{out_dir}: the output directory and its parent must not be symlinks"
         raise DatasetError(msg)
     parent.mkdir(parents=True, exist_ok=True)
-    staging = parent / f".{out_dir.name}.partial"
-    if staging.is_symlink():
-        msg = f"{staging}: staging path is a symlink"
-        raise DatasetError(msg)
-    if staging.exists():
-        shutil.rmtree(staging)
-    staging.mkdir()
+    staging = Path(tempfile.mkdtemp(prefix=f".{out_dir.name}.", suffix=".partial", dir=parent))
+    staging.chmod(0o777 & ~_umask())  # mkdtemp makes it 0700; publish it as the umask says
     try:
         for name, data in files.items():
             _write_new(staging / name, data)
         _check_written(staging, manifest)
-        if out_dir.exists():
-            _same_as_existing(out_dir, files)
-        else:
-            staging.rename(out_dir)
+        _move_into_place(staging, out_dir, files)
     finally:
         shutil.rmtree(staging, ignore_errors=True)
+
+
+def _move_into_place(staging: Path, out_dir: Path, files: dict[str, bytes]) -> None:
+    """Rename ``staging`` to ``out_dir``; an existing directory must hold the same bytes.
+
+    Two ingests of the same version may run at once: each has its own staging directory, and
+    when the other one wins the rename, the loser compares with what is there instead of failing.
+    """
+    if not out_dir.exists():
+        try:
+            staging.rename(out_dir)
+        except OSError:
+            if not out_dir.exists():
+                raise
+        else:
+            return
+    _same_as_existing(out_dir, files)
+
+
+def _umask() -> int:
+    """The process umask without changing it (``os.umask`` is process-wide and not thread-safe)."""
+    try:
+        for line in Path("/proc/self/status").read_text(encoding="ascii").splitlines():
+            if line.startswith("Umask:"):
+                return int(line.split()[1], 8)
+    except (OSError, ValueError):
+        pass
+    return 0o022
 
 
 def _write_new(path: Path, data: bytes) -> None:

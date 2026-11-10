@@ -90,6 +90,7 @@ class _CitationScore(BaseMetric):
     """Precision, recall or F1 with the 1 / 0.5 / 0 credit of ``citation_credit`` (AI9-17)."""
 
     higher_is_better = True
+    version = "2"  # D890: the law alias table gained ZPO, VwGO, SGG, EStG
     component: Literal["precision", "recall", "f1"]
 
     def _compute(self, case: TestCase, resp: TargetResponse) -> MetricValue:
@@ -139,6 +140,7 @@ class CitationGrounded(BaseMetric):
     """
 
     name = "citation_grounded"
+    version = "2"  # D890: see _CitationScore
     higher_is_better = True
     requires = frozenset({"chunks"})
 
