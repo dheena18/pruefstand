@@ -1,6 +1,7 @@
 """Testcontainers fixtures: real Qdrant (slice snapshot or fresh index) and real TEI."""
 
 import json
+import os
 from collections.abc import Iterator
 
 import httpx
@@ -8,6 +9,7 @@ import pytest
 import yaml
 from rd_support import (
     CONFIGS,
+    FIXTURE_CORPUS,
     MODEL_DIR,
     REPO,
     SLICE,
@@ -138,3 +140,46 @@ def leak_probes() -> list[str]:
     assert len(probes) == 20
     assert all(isinstance(p, str) for p in probes)
     return [str(p) for p in probes]
+
+
+# --- T3.7: the fixture corpus with its canaries and the real llama.cpp generator (`live`) ---
+
+
+@pytest.fixture(scope="session")
+def fixture_qdrant_url(tei_url: str) -> Iterator[str]:
+    """Pinned Qdrant with the fixture corpus (``tests/fixtures/corpus``, canaries included)."""
+    container = DockerContainer(compose_image("qdrant")).with_exposed_ports(6333)
+    with container:
+        url = f"http://127.0.0.1:{container.get_exposed_port(6333)}"
+        wait_http(f"{url}/readyz")
+        cfg = load_config(CONFIGS / "rag.yaml")
+        Indexer(
+            url,
+            _dense(cfg, tei_url),
+            _analyzer(cfg),
+            SparseEncoder(),
+            target=IndexTarget(cfg.embed.model),
+        ).index(FIXTURE_CORPUS)
+        yield url
+
+
+@pytest.fixture(scope="session")
+def llm_url() -> Iterator[str]:
+    """The pinned llama.cpp server of compose ``live`` with the pinned tier-1 GGUF."""
+    pins = yaml.safe_load((REPO / "infra" / "models" / "live-models.yaml").read_text("utf-8"))
+    gguf = pins["models"][0]["file"]
+    if not (MODEL_DIR / gguf).is_file():
+        pytest.fail(f"{MODEL_DIR / gguf} missing: run scripts/models/fetch.py (CLAUDE.md §3)")
+    container = (
+        DockerContainer(compose_image("llm"))
+        .with_command(
+            f"--model /models/{gguf} --host 0.0.0.0 --port 8080 --ctx-size 4096 "
+            f"--threads {os.environ.get('LIVE_LLM_THREADS', '4')} --parallel 1 --seed 0 --jinja"
+        )
+        .with_volume_mapping(str(MODEL_DIR), "/models", "ro")
+        .with_exposed_ports(8080)
+    )
+    with container:
+        url = f"http://127.0.0.1:{container.get_exposed_port(8080)}"
+        wait_http(f"{url}/health")
+        yield url

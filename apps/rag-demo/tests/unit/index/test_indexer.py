@@ -155,14 +155,14 @@ def test_every_build_goes_into_a_fresh_collection_and_the_alias_switches_last() 
     indexer.index(FIXTURE_CORPUS)
     report = indexer.last_report
     assert report is not None
-    assert report.chunks == 40
+    assert report.chunks == 45
     assert report.collection.startswith("chunks__fixture-2026-11-03-")
     assert report.collection.endswith("__b1")
     assert report.alias_switched is True
     steps = qdrant.steps()
     assert steps[0] == ("PUT", report.collection)  # create
     assert steps[-1] == ("POST", "aliases")  # last: the switch
-    assert steps.count(("PUT", "points")) == 2  # 40 chunks, batches of 32
+    assert steps.count(("PUT", "points")) == 2  # 45 chunks, batches of 32
     create = next(b for m, p, b in qdrant.calls if m == "PUT" and p.endswith(report.collection))
     assert create["vectors"] == {"dense": {"size": 2, "distance": "Cosine"}}
     assert create["sparse_vectors"] == {"sparse": {"modifier": "idf"}}

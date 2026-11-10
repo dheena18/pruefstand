@@ -1,0 +1,66 @@
+# T3.7 (milestone M2): the 10 hand-written quality questions for the tier-2 stack (slice corpus, real models).
+# Each has the tenant that asks, the expected norm citation(s) (any of them counts; checked in the response's
+# `citations` only) and key facts (any of them, as whole words after the suite's normalisation: casefold,
+# German number words as digits). `lang` is the question's language; the answer must be recognisably in it.
+# The human verdict (S4) is recorded in report.md, never here.
+questions:
+  - id: q01
+    tenant: kanzlei_mueller
+    lang: de
+    question: Welche Kündigungsfrist gilt für den Arbeitgeber, wenn das Arbeitsverhältnis zwei Jahre bestanden hat?
+    citation: ["§ 622 BGB"]
+    key_facts: ["einen monat", "ein monat", "1 monat"]
+  - id: q02
+    tenant: kanzlei_mueller
+    lang: de
+    question: Wie viele Stunden darf die werktägliche Arbeitszeit höchstens betragen?
+    citation: ["§ 3 ArbZG"]
+    key_facts: ["8 stunden", "10 stunden"]
+  - id: q03
+    tenant: kanzlei_mueller
+    lang: de
+    question: Wann ist eine Kündigung sozial ungerechtfertigt?
+    citation: ["§ 1 KSchG"]
+    key_facts: ["person", "verhalten", "dringende betriebliche erfordernisse"]
+  - id: q04
+    tenant: stadtwerke_sued
+    lang: de
+    question: Welche Rechtsgrundlagen für eine Verarbeitung nennt die DSGVO?
+    citation: ["Art. 6 DSGVO"]
+    key_facts: ["einwilligung"]
+  - id: q05
+    tenant: stadtwerke_sued
+    lang: en
+    question: What does Article 6 GDPR require?
+    citation: ["Art. 6 DSGVO"]
+    key_facts: ["consent"]
+  - id: q06
+    tenant: kanzlei_mueller
+    lang: de
+    question: Wie lange muss die ununterbrochene Ruhezeit nach Beendigung der täglichen Arbeitszeit mindestens sein?
+    citation: ["§ 5 ArbZG"]
+    key_facts: ["11 stunden"]
+  - id: q07
+    tenant: kanzlei_mueller
+    lang: de
+    question: Innerhalb welcher Frist muss ein Arbeitnehmer Klage gegen eine sozial ungerechtfertigte Kündigung erheben?
+    citation: ["§ 4 KSchG"]
+    key_facts: ["3 wochen"]
+  - id: q08
+    tenant: versicherung_nord
+    lang: de
+    question: Welche Form ist für die Kündigung eines Arbeitsverhältnisses vorgeschrieben?
+    citation: ["§ 623 BGB"]
+    key_facts: ["schriftform", "schriftlich"]
+  - id: q09
+    tenant: stadtwerke_sued
+    lang: de
+    question: Wann dürfen personenbezogene Daten von Beschäftigten für Zwecke des Beschäftigungsverhältnisses verarbeitet werden?
+    citation: ["§ 26 BDSG"]
+    key_facts: ["begründung", "durchführung", "beendigung"]
+  - id: q10
+    tenant: kanzlei_mueller
+    lang: de
+    question: Welche Ruhepausen sind bei einer Arbeitszeit von mehr als sechs bis zu neun Stunden vorgeschrieben?
+    citation: ["§ 4 ArbZG"]
+    key_facts: ["30 minuten"]

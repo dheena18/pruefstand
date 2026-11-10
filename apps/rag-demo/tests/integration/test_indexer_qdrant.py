@@ -54,7 +54,7 @@ def _info(qdrant: str, name: str) -> dict[str, object]:
     return httpx.get(f"{qdrant}/collections/{name}", timeout=10).json()["result"]  # type: ignore[no-any-return]  # json
 
 
-def test_fixture_corpus_gives_40_points_a_tenant_index_and_the_alias(
+def test_fixture_corpus_gives_45_points_a_tenant_index_and_the_alias(
     qdrant: str, tei_url: str
 ) -> None:
     indexer = _indexer(qdrant, tei_url)
@@ -62,7 +62,7 @@ def test_fixture_corpus_gives_40_points_a_tenant_index_and_the_alias(
     report = indexer.last_report
     assert report is not None
     info = _info(qdrant, report.collection)
-    assert info["points_count"] == 40
+    assert info["points_count"] == 45
     schema = info["payload_schema"]["tenant_id"]  # type: ignore[index]  # json
     assert schema["data_type"] == "keyword"
     assert schema["params"]["is_tenant"] is True
@@ -92,7 +92,7 @@ def test_rerun_builds_a_fresh_collection_swaps_the_alias_and_removes_the_old_one
     assert first.last_report is not None
     assert second.last_report is not None
     assert second.last_report.collection != first.last_report.collection
-    assert _info(qdrant, ALIAS)["points_count"] == 40  # no duplicates
+    assert _info(qdrant, ALIAS)["points_count"] == 45  # no duplicates
     assert QdrantAdmin(qdrant).alias_target(ALIAS) == second.last_report.collection
     assert QdrantAdmin(qdrant).collection_info(first.last_report.collection) is None
 
@@ -120,7 +120,7 @@ def test_pr_collection_leaves_the_active_alias_and_can_be_dropped(
     _indexer(qdrant, tei_url, collection="pr_7_abc1234", alias=None).index(FIXTURE_CORPUS)
     admin = QdrantAdmin(qdrant)
     assert admin.alias_target(ALIAS) == active.last_report.collection
-    assert _info(qdrant, "pr_7_abc1234")["points_count"] == 40
+    assert _info(qdrant, "pr_7_abc1234")["points_count"] == 45
     admin.drop("pr_7_abc1234", alias=ALIAS)
     assert admin.collection_info("pr_7_abc1234") is None
 
