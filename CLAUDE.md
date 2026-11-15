@@ -129,7 +129,7 @@ optional alternatives: WSL2 Ubuntu 24.04, Linux, macOS (all commands are POSIX).
 all files are LF (`.gitattributes`: `* text=auto eol=lf`).
 Prerequisites (T0.0, each with a verify command): git, make, jq, uv, Python 3.12 (`uv python install`),
 Node 22 LTS (fnm) + pnpm (`corepack enable`), Docker (+ Compose, user in `docker` group), gh (HTTPS; on the VM with the public-repo-only fine-grained token, §1 rule 9).
-GitHub Models credential outside Actions = `PRUEFSTAND_GH_MODELS_TOKEN`, never `GITHUB_TOKEN` (D333); never export `.env` wholesale into a shell that runs `gh` (an exported `GITHUB_TOKEN`/`GH_TOKEN` overrides gh's stored login → 404 on `actions/runs`); if one is set, use `env -u GITHUB_TOKEN -u GH_TOKEN gh …`.
+GitHub Models is retired (2026-07-30, D1202); its old credential `PRUEFSTAND_GH_MODELS_TOKEN` (never `GITHUB_TOKEN`, D333) is read only by the `github` datagen backend; never export `.env` wholesale into a shell that runs `gh` (an exported `GITHUB_TOKEN`/`GH_TOKEN` overrides gh's stored login → 404 on `actions/runs`); if one is set, use `env -u GITHUB_TOKEN -u GH_TOKEN gh …`.
 
 | Target | Runs |
 | --- | --- |
@@ -143,7 +143,7 @@ GitHub Models credential outside Actions = `PRUEFSTAND_GH_MODELS_TOKEN`, never `
 | `make test` | `pytest -m "not integration and not e2e and not live and not gpu and not slow and not network"` plus `--doctest-modules packages/pruefstand/src` (D128) (pytest `--import-mode=importlib`; **one** root list used for both pytest `pythonpath` and mypy `mypy_path` (R9 X4.2): `packages/pruefstand/src`, `apps/rag-demo/src`, `packages/pruefstand/tests`, `apps/rag-demo/tests`, `scripts`, `data`, `experiments`, `tools`, `action`, `infra/gpu`, `benchmarks`, `infra/vm`, `infra/cluster`, `infra/gate-executor/orchestrator`, `infra/gate-executor/llm-proxy` (R11 D232) — exact TOML in `docs/engineering/coding-standards.md` §1.1; mypy `explicit_package_bases`; env `LITELLM_LOCAL_MODEL_COST_MAP=True`) |
 | `make coverage` | the `make test` set (incl. doctests) with `--cov`, then `scripts/check_coverage.py` (the gate is defined once, in §6) |
 | `make test-e2e` | `pytest -m e2e`: full pipeline against the **real** stack (`docker compose --profile live`: Qdrant + rag-demo + llama.cpp + embeddings) |
-| `make test-live` | `pytest -m live`: real model calls (llama.cpp container; GitHub Models when `PRUEFSTAND_GH_MODELS_TOKEN` (Models: read) is set, D333) |
+| `make test-live` | `pytest -m live`: real model calls (the llama.cpp container; on the VM also the VM CPU model when started with `scripts/models/vm_llm.sh start`, D1200; no GitHub Models, D1202) |
 | `make cassettes` | re-records `tests/cassettes/` from **real** model calls (needs the `live` stack) |
 | `make test-integration` | `pytest -m integration` (Docker needed) |
 | `make test-slow` | `pytest -m slow` (PR: reduced simulation grid, 500 sims; nightly sets `PRUEFSTAND_SIM_GRID=full` for 4 000 sims, D131) |
@@ -226,7 +226,9 @@ Modules in the same row never import each other. All shared types live in `core`
   the native `/api/chat` / `/api/embed` API, LiteLLM `ollama_chat` inside `llm/backends/litellm.py` only, per-model
   `options` from `infra/gpu/models.yaml`; R11 D219–D221; R12 D252: `num_ctx` is fixed per model, sampling options are
   catalogue defaults within `option_bounds`, `llm-proxy` enforces only `num_ctx`, `keep_alive` and the allow-list), llama.cpp (CPU),
-  GitHub Models free tier. `LLMPolicyConfig`
+  and the VM CPU model for public-text datagen (`PRUEFSTAND_DATAGEN_BACKEND=vm`, the default: Ministral 3 14B via
+  `scripts/models/vm_llm.sh`, id `openai_compatible_local/ministral-3-14b-instruct-2512`, D1200/D1201; private docs and
+  canaries stay on the local judge model `gemma3:12b`, D330). GitHub Models is retired (D1202). `LLMPolicyConfig`
   allows nothing else unless listed (opt-in free tiers: Mistral, Gemini, Groq, OpenRouter `:free`); paid
   providers need `allow_paid: true` (off). Private docs, canaries and held-out data are **never** sent to an
   external provider; `LLMPolicy` enforces this. No hosted generator anywhere (D126).
@@ -267,8 +269,8 @@ Modules in the same row never import each other. All shared types live in `core`
   statistics are never gated at n = 20. Tier-1 baselines are two artefacts (R9 X1.4): `live-baseline` (written
   only by push-to-main runs of the 20-case `smoke_live` PR shape) and `live-baseline-nightly` (nightly 40-case
   runs); PRs compare only to `live-baseline`.
-  Judged metrics are informational: as many cases as fit in 10 GitHub Models **calls** per PR, cached; no quota →
-  `judge_mode=skipped`; no CPU judge (D94–D97). The bug-switch scenario matrix runs nightly and on PRs touching
+  Judged metrics are not run in tier 1: there is no GitHub Models judge any more and no CPU judge, so every tier-1
+  job runs `judge_mode=skipped` (D94–D97, D1202); judged metrics come from tier 2. The bug-switch scenario matrix runs nightly and on PRs touching
   `apps/rag-demo/**`, one job per scenario, deterministic outcomes only (D98). **Tier 2 full** (private executor
   on the A40s: core + robust_pr, trusted PRs, main, nightly) holds the statistical gate and the statistical scenarios.
 - Committed configs under `examples/**` and `apps/**/configs/**` keep `gate.min_clusters ≥ 30`
@@ -303,7 +305,7 @@ Modules in the same row never import each other. All shared types live in `core`
   D324–D327 (2026-10-31, owner-verified cluster facts, `docs/ops/setup-log.md`) implement ADR-0018: one Ollama server for both GPUs, port 11434 only, ngrok rejected.
   D328–D332 (2026-10-31, owner decision, setup log §6–§7) implement ADR-0019: models on the cluster's own disk, one judge
   `gemma3:12b` for PR and nightly, no local datagen model (public text via GitHub Models, private docs/canaries via the
-  local judge model), data root a plain directory on the VM disk, cluster scripts copied over SSH.
+  local judge model; public text moved to the VM CPU model by D1201), data root a plain directory on the VM disk, cluster scripts copied over SSH.
 - Several agents in parallel: follow `tasks/PARALLEL-PLAN.md` (one task = one worktree = one PR; shared files
   only as your own hunk in the last commit; GPU steps under `pruefstand-lock` (`/var/lib/pruefstand/gpu.lock`),
   compose stacks under `stack.lock`; each worktree gets `.env` copied or symlinked by the lead agent, never committed,
@@ -320,7 +322,8 @@ Modules in the same row never import each other. All shared types live in `core`
   `docs/engineering/ci-cd.md` (incl. `pruefstand/gate`, **pinned** to the App `pruefstand-bot`, D287). The maintainer
   merges.
 - Every PR gets an AI review with `prompts/_review.md` in a fresh session **and** a second review from a
-  different model family via GitHub Models (`gh models run <model> < review-input.md`). Copilot code
+  different model family (GitHub Models, `gh models run`, is retired, D1202: use the VM CPU model, family `mistral`,
+  via `scripts/models/vm_llm.sh` and its OpenAI-compatible API, or another free provider of §5). Copilot code
   review is optional (not part of GitHub Pro). Findings are fixed or answered before merge.
 
 ## 8. Docker and deployment
