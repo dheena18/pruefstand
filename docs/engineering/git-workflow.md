@@ -67,7 +67,7 @@ None | <paragraph: what, why, impact> + ADR link
 ## Checklist
 - [ ] Tests written first; `make check` green
 - [ ] Coverage gates hold; no rule weakened
-- [ ] Docs updated (docstrings, module README, diagrams, `docs/decisions.md`)
+- [ ] Docs updated (docstrings, module README, diagrams, `docs/decisions/D<n>.md`)
 - [ ] `prompts/_review.md` run in a fresh Claude session and via `gh models run` (second family); findings resolved
 - [ ] Copilot code review comments answered (only if Copilot is enabled)
 - [ ] No secrets, raw corpora or model weights added
