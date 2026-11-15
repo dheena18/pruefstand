@@ -196,7 +196,9 @@ class HttpTargetAdapter(TargetAdapter):
             msg = f"{what}: connection failed ({type(exc).__name__})"
             raise TargetError(msg, transient=True) from exc
         except (TimeoutError, httpx.TimeoutException) as exc:
-            # D624: a read timeout is never retried (the target may still be generating)
+            # D624/D1065: read and write timeouts are never retried: after a read timeout the target
+            # may still be generating; a write timeout means it stopped reading our (small) body,
+            # i.e. it is stalled, and a retry would only queue more work
             msg = f"{what}: timed out after {self._timeout_s:g}s"
             raise TargetError(msg, transient=False) from exc
         except httpx.HTTPError as exc:

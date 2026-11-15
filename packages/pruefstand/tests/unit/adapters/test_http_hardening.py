@@ -195,3 +195,17 @@ async def test_connect_timeout_stays_transient(
     with pytest.raises(TargetError, match="connection failed") as excinfo:
         await adapter.query(REQ)
     assert excinfo.value.transient is True
+
+
+@pytest.mark.parametrize(
+    ("exc", "transient"),
+    [(httpx.PoolTimeout("pool"), True), (httpx.WriteTimeout("write"), False)],
+)
+async def test_pool_timeout_is_transient_write_timeout_is_not(
+    router: respx.MockRouter, adapter: HttpTargetAdapter, exc: Exception, *, transient: bool
+) -> None:
+    # D1065: a pool timeout never sent the request; a write timeout means the target stopped reading
+    router.post("/v1/query").mock(side_effect=exc)
+    with pytest.raises(TargetError) as excinfo:
+        await adapter.query(REQ)
+    assert excinfo.value.transient is transient

@@ -7,7 +7,7 @@ target:
   type: http                      # the system under test is always a real HTTP service (target API v1)
   url: http://localhost:8000
   auth_env: null                  # e.g. TARGET_TOKEN
-  timeout_s: 60
+  timeout_s: 360                  # D624/D1065: the adapter deadline must also outwait the queue
 dataset: hf://<HF_USER>/pruefstand-de@v1
 splits: [smoke, core, robust_pr]
 generator_family: qwen            # the judge family must differ from it (ADR-0009)
