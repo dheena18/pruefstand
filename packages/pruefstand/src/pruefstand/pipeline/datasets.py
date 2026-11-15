@@ -4,29 +4,27 @@ The files are untrusted input: regular files only (no symlink), every line is re
 cap, parsing is linear, and errors name ``file:line`` but never quote the row.
 """
 
-import os
-import stat
 from collections.abc import Sequence
 from dataclasses import dataclass
 from pathlib import Path
-from typing import BinaryIO
 
 from pydantic import ValidationError
 
 from pruefstand.core.config.gate import redact_key
 from pruefstand.core.enums import Split
-from pruefstand.core.errors import ConfigError, DatasetError
+from pruefstand.core.errors import DatasetError
 from pruefstand.core.models.dataset import DatasetManifest
 from pruefstand.core.models.testcase import TestCase
+from pruefstand.pipeline.dataset_files import (
+    MANIFEST_FILE,
+    MAX_MANIFEST_BYTES,
+    lines_of,
+    open_regular,
+)
+from pruefstand.pipeline.datasets_hf import resolve_hf
 
-MAX_LINE_BYTES = 1_000_000
-"""Longest accepted line of a split file."""
-MAX_FILE_BYTES = 512 * 1024 * 1024
-MAX_MANIFEST_BYTES = 1_000_000
-MAX_CASES = 500_000
 _DETAIL_CHARS = 200
 _MAX_DETAILS = 3
-MANIFEST_FILE = "dataset_manifest.json"
 
 
 @dataclass(frozen=True)
@@ -37,21 +35,6 @@ class Dataset:
     version: str
     corpus_version: str
     cases: tuple[TestCase, ...]
-
-
-def _open_regular(path: Path) -> BinaryIO:
-    flags = os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0) | getattr(os, "O_NONBLOCK", 0)
-    try:
-        fd = os.open(path, flags)
-    except OSError as exc:
-        msg = f"{path}: cannot open (must be a regular file, not a symlink): {exc.strerror}"
-        raise DatasetError(msg) from exc
-    handle = os.fdopen(fd, "rb")
-    if not stat.S_ISREG(os.fstat(handle.fileno()).st_mode):
-        handle.close()
-        msg = f"{path}: not a regular file"
-        raise DatasetError(msg)
-    return handle
 
 
 def read_manifest(directory: Path) -> DatasetManifest:
@@ -70,7 +53,7 @@ def read_manifest(directory: Path) -> DatasetManifest:
     if not path.exists() and not path.is_symlink():
         msg = f"{path}: missing {MANIFEST_FILE}"
         raise DatasetError(msg)
-    with _open_regular(path) as handle:
+    with open_regular(path) as handle:
         raw = handle.read(MAX_MANIFEST_BYTES + 1)
     if len(raw) > MAX_MANIFEST_BYTES:
         msg = f"{path}: larger than {MAX_MANIFEST_BYTES} bytes"
@@ -93,29 +76,6 @@ def _describe(exc: ValidationError) -> str:
     return "; ".join(parts)
 
 
-def _lines(path: Path) -> list[tuple[int, bytes]]:
-    """Return ``(line number, bytes)`` of the non-blank lines, refusing over-long ones."""
-    found: list[tuple[int, bytes]] = []
-    total = 0
-    with _open_regular(path) as handle:
-        number = 0
-        while chunk := handle.readline(MAX_LINE_BYTES + 1):
-            number += 1
-            total += len(chunk)
-            unterminated = len(chunk) > MAX_LINE_BYTES and not chunk.endswith(b"\n")
-            if unterminated or total > MAX_FILE_BYTES:
-                msg = f"{path}:{number}: line too long (limit {MAX_LINE_BYTES} bytes)"
-                if total > MAX_FILE_BYTES:
-                    msg = f"{path}: larger than {MAX_FILE_BYTES} bytes"
-                raise DatasetError(msg)
-            if chunk.strip():
-                found.append((number, chunk))
-            if len(found) > MAX_CASES:
-                msg = f"{path}: more than {MAX_CASES} cases"
-                raise DatasetError(msg)
-    return found
-
-
 def _row(path: Path, number: int, raw: bytes) -> TestCase:
     try:
         return TestCase.model_validate_json(raw)
@@ -132,7 +92,7 @@ def _load_split(
         msg = f"{path}: split file {split.value}.jsonl is missing"
         raise DatasetError(msg)
     cases: list[TestCase] = []
-    for number, raw in _lines(path):
+    for number, raw in lines_of(path):
         case = _row(path, number, raw)
         if case.split is not split:
             msg = f"{path}:{number}: split is {case.split.value!r}, the file holds {split.value!r}"
@@ -153,10 +113,7 @@ def _load_split(
 
 
 def _directory(dataset: str) -> Path:
-    if dataset.startswith("hf://"):
-        msg = "hf:// datasets arrive in T4.7b"
-        raise ConfigError(msg)
-    directory = Path(dataset)
+    directory = resolve_hf(dataset) if dataset.startswith("hf://") else Path(dataset)
     if not directory.is_dir():
         msg = f"{dataset}: not a directory (expected datasets/<name>/<version>/)"
         raise DatasetError(msg)
@@ -167,15 +124,17 @@ def load_dataset(dataset: str, splits: Sequence[Split]) -> Dataset:
     """Load and validate the cases of ``splits`` from a local dataset directory.
 
     Args:
-        dataset: Path of ``datasets/<name>/<version>/`` (``hf://`` is not supported yet).
+        dataset: Path of ``datasets/<name>/<version>/`` or ``hf://<user>/<name>@<revision>``
+            (downloaded once into ``.cache/pruefstand/datasets/``, then loaded like a directory).
         splits: Splits to load; the cases come back in this order, file order within a split.
 
     Returns:
         The dataset with name, version and corpus version taken from its manifest.
 
     Raises:
-        ConfigError: ``dataset`` is an ``hf://`` reference.
-        DatasetError: A file or the manifest is missing or invalid, a row fails validation
+        ConfigError: ``dataset`` is a malformed ``hf://`` reference.
+        DatasetError: An hf:// download fails, a file or the manifest is missing or invalid, a row
+            fails validation
             (the message names ``file:line``), a row's split or ``corpus_version`` disagrees with
             its file or the manifest, a case id repeats, or a count differs from the manifest.
     """
@@ -199,7 +158,7 @@ def load_cases(dataset: str, splits: Sequence[Split]) -> tuple[str, str, list[Te
         Dataset name, dataset version and the validated cases.
 
     Raises:
-        ConfigError: ``dataset`` is an ``hf://`` reference (arrives in T4.7b).
+        ConfigError: ``dataset`` is a malformed ``hf://`` reference.
         DatasetError: See ``load_dataset``.
     """
     loaded = load_dataset(dataset, splits)
@@ -216,7 +175,7 @@ def check_dataset(dataset: str) -> Dataset:
         The dataset with all cases.
 
     Raises:
-        ConfigError: ``dataset`` is an ``hf://`` reference.
+        ConfigError: ``dataset`` is a malformed ``hf://`` reference.
         DatasetError: See ``load_dataset``.
     """
     manifest = read_manifest(_directory(dataset))
