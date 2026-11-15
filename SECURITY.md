@@ -11,7 +11,8 @@ with synthetic data, and redact anything sensitive from logs and screenshots.
 
 ## Supported versions
 
-Prüfstand is pre-1.0. Only the `main` branch and the latest release receive security fixes.
+Prüfstand is pre-1.0. Only the `main` branch receives security fixes until the first release; after that, the
+`main` branch and the latest release.
 
 ## What to expect
 
@@ -22,7 +23,8 @@ Prüfstand is pre-1.0. Only the `main` branch and the latest release receive sec
 
 ## Scope
 
-In scope: the gate (the `pruefstand` package and CLI), the GitHub Action, and the dashboard.
+In scope: the gate (the `pruefstand` package and CLI), the GitHub Action, the dashboard, the CI workflows in
+`.github/workflows` (including the `pull_request_target` gate-router workflow), and `infra/gate-executor`.
 
 Out of scope: vulnerabilities in third-party dependencies, unless this repository uses them in an unsafe way.
 Report those to the upstream project.

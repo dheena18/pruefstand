@@ -29,17 +29,17 @@ if ! command -v tailscale >/dev/null 2>&1; then
     exit 1
   fi
   ts_dir="$(mktemp -d)"
+  trap 'rm -rf "$ts_dir"' EXIT
   curl -fsSL --retry 3 --retry-all-errors --retry-delay 5 -o "$ts_dir/ts.tgz" \
     "https://pkgs.tailscale.com/stable/tailscale_${TS_VERSION}_amd64.tgz"
   if ! echo "$TS_SHA256  $ts_dir/ts.tgz" | sha256sum -c - >/dev/null 2>&1; then
     echo "tailscale tarball SHA-256 mismatch; refusing to install" >&2
-    rm -rf "$ts_dir"
     exit 1
   fi
-  tar -xzf "$ts_dir/ts.tgz" -C "$ts_dir"
+  tar -xzf "$ts_dir/ts.tgz" -C "$ts_dir" --no-same-owner \
+    "tailscale_${TS_VERSION}_amd64/tailscale" "tailscale_${TS_VERSION}_amd64/tailscaled"
   $SUDO install -m 0755 "$ts_dir/tailscale_${TS_VERSION}_amd64/tailscale" /usr/local/bin/tailscale
   $SUDO install -m 0755 "$ts_dir/tailscale_${TS_VERSION}_amd64/tailscaled" /usr/local/bin/tailscaled
-  rm -rf "$ts_dir"
 fi
 
 # Userspace networking: cloud VMs may not allow a TUN device. The daemon is per session.

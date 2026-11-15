@@ -310,13 +310,13 @@ systemctl --user disable --now telebit 2>/dev/null; rm -rf ~/Applications/telebi
 VM side (done 2026-10-31; one-time browser login with the owner's account):
 
 ```bash
-# install: the pinned, SHA-256-checked tarball of scripts/cloud/connect-vm.sh (D1220), as root:
-TS_VERSION=1.104.7; TS_SHA256=e56693ff74a64f2591b7e819c280635a100aae1ddfb0ef058fcd052b7cd8d16c  # D1220
-curl -fsSL --retry 3 --retry-all-errors --retry-delay 5 -o /tmp/ts.tgz "https://pkgs.tailscale.com/stable/tailscale_${TS_VERSION}_amd64.tgz"
-echo "$TS_SHA256  /tmp/ts.tgz" | sha256sum -c - && tar -xzf /tmp/ts.tgz -C /tmp && install -m 0755 /tmp/tailscale_${TS_VERSION}_amd64/tailscale{,d} /usr/local/bin/
+sudo apt-get install -y tailscale   # from Tailscale's signed apt repository (tailscaled runs as a systemd service)
 sudo tailscale up --hostname=pruefstand-exec   # open the printed login link once
 tailscale status && tailscale ip -4            # shows pruefstand-exec with a 100.x address
 ```
+
+The VM runs tailscale 1.104.5, installed from Tailscale's signed apt repo; upgrade with `apt-get install tailscale`
+(current stable 1.104.7). The pinned tarball below is only for the cloud sessions, which have no systemd.
 
 Tailscale admin console: **Machines → pruefstand-exec → Disable key expiry**; **Settings → Keys → Generate auth
 key** (reusable, ephemeral, ≤ 90 days) → cloud environment secret `TS_AUTHKEY` (`docs/ops/secrets.md`).
@@ -333,7 +333,8 @@ settings icon of an existing one):
 - **Network access:** **Custom**, allowed domains `*.tailscale.com` and `*.tailscale.io`, with **Also include
   default list of common package managers** ticked (or **Full**).
 - **Environment variables** (`.env` format): `TS_AUTHKEY=…` and `VM_SSH_KEY=…`.
-- **Setup script:**
+- **Setup script** (the `|| true` is safe: `scripts/cloud/connect-vm.sh` re-installs the pinned tarball when
+  `tailscale` is missing and fails closed on a hash mismatch):
 
 ```bash
 #!/bin/bash
