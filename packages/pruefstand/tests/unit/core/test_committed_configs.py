@@ -194,3 +194,9 @@ def test_tier1_configs_wait_180_s_for_a_slow_cpu_call(path: Path) -> None:
     cfg = load_config(path)
     assert cfg.target.timeout_s == cfg.runner.timeout_s == 180
     assert cfg.runner.max_consecutive_timeouts == 3  # D1084: a hung target ends in about 10 min
+
+
+def test_root_tier2_config_stops_only_after_two_waves_of_timeouts() -> None:
+    # D1084: 2 x concurrency, so one transient stall of a single wave does not abort the run
+    cfg = load_config(ROOT / "pruefstand.yaml")
+    assert cfg.runner.max_consecutive_timeouts == 2 * cfg.runner.concurrency

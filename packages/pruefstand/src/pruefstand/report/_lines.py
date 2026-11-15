@@ -49,6 +49,13 @@ def informational_lines(b: Builder) -> list[str]:
         out.append(
             f"Timeouts: {timeouts} {noun} timed out (scored as candidate errors in error_rate)."
         )
+    not_run = b.cand.counts.get("aborted_after_timeouts", 0)
+    if not_run > 0:  # D1084: report only, the gate is unchanged
+        noun = "case" if not_run == 1 else "cases"
+        out.append(
+            f"Not run: {not_run} {noun} after consecutive timeouts "
+            "(runner.max_consecutive_timeouts; recorded as candidate errors)."
+        )
     cut = len(b.truncated_ids) or b.cand.counts.get("judge_truncated", 0)  # ids agree with text
     if cut > 0:
         noun = "case" if cut == 1 else "cases"

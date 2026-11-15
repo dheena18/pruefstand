@@ -86,3 +86,30 @@ def test_only_the_runner_and_adapter_timeout_texts_count(
     expected: bool,  # noqa: FBT001 - parametrized
 ) -> None:
     assert is_timeout(text) is expected
+
+
+@pytest.mark.parametrize("failure", ["5xx", "connection"])
+async def test_other_errors_reset_the_streak(router: respx.MockRouter, failure: str) -> None:
+    # D1084: only timeouts count toward the stop; a 5xx or a connection error breaks the streak
+    calls = 0
+
+    async def mixed(request: httpx.Request) -> httpx.Response:
+        nonlocal calls
+        calls += 1
+        if calls % 2:
+            await asyncio.sleep(5)  # timeout
+        if failure == "5xx":
+            return httpx.Response(503, json={"detail": "busy"})
+        msg = "refused"
+        raise httpx.ConnectError(msg)
+
+    router.post("/v1/query").mock(side_effect=mixed)
+    adapter = new_adapter(timeout_s=0.05)
+    try:
+        runner = make_runner(adapter, concurrency=1, max_retries=0, max_consecutive_timeouts=2)
+        results = await run_cases(runner, make_cases(5))
+    finally:
+        await adapter.aclose()
+    assert calls == 5
+    assert "aborted_after_timeouts" not in results.manifest.counts
+    assert results.manifest.counts["timeout"] == 3

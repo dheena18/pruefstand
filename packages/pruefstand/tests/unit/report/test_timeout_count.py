@@ -22,3 +22,16 @@ def test_one_timeout_is_singular() -> None:
 
 def test_no_timeout_line_without_timeouts() -> None:
     assert "Timeouts:" not in _comment({"ok": 20})
+
+
+def test_cases_not_run_after_timeouts_are_shown_next_to_timeouts() -> None:
+    out = _comment({"ok": 2, "error": 18, "timeout": 3, "aborted_after_timeouts": 15})
+    assert "Timeouts: 3 cases timed out (scored as candidate errors in error_rate)." in out
+    assert (
+        "Not run: 15 cases after consecutive timeouts (runner.max_consecutive_timeouts; "
+        "recorded as candidate errors)." in out
+    )
+
+
+def test_no_not_run_line_without_an_abort() -> None:
+    assert "Not run:" not in _comment({"ok": 19, "error": 1, "timeout": 1})
