@@ -40,7 +40,14 @@ async function resolveFile(urlPath) {
 
 createServer(async (req, res) => {
     const url = new URL(req.url ?? "/", "http://localhost");
-    const found = await resolveFile(url.pathname);
+    let found;
+    try {
+        found = await resolveFile(url.pathname);
+    } catch {
+        // a malformed %-escape: decodeURIComponent throws URIError
+        res.writeHead(400, { "Content-Type": "text/plain" }).end("400");
+        return;
+    }
     if (found.kind === "redirect") {
         res.writeHead(301, { Location: `${url.pathname}/${url.search}` }).end();
         return;
