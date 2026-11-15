@@ -58,7 +58,7 @@ ROW_FOR_EXIT: dict[int, tuple[tuple[str, ...], str]] = {
 }
 
 
-def _fail_row(csv: str, code: int) -> str:
+def fail_row(csv: str, code: int) -> str:
     """``"<check> <detail>"`` of the FAIL row matching ``code`` (else the first FAIL row)."""
     prefixes, needle = ROW_FOR_EXIT.get(code, ((), ""))
     fails = [
@@ -80,7 +80,7 @@ def _health(mode: Mode, health_sh: Path, run: Runner, env: Mapping[str, str]) ->
     code, out = run(("bash", str(health_sh), "--repair", "--mode", mode), env)
     if code == 0:
         return Preflight()
-    detail = _fail_row(out, code) or f"health.sh exit {code}"
+    detail = fail_row(out, code) or f"health.sh exit {code}"
     reason = REASONS.get(code, f"health.sh exit {code}")
     if code == DATA_ROOT_EXIT:
         return Preflight(reason, f"data_root_unavailable: {detail}")
