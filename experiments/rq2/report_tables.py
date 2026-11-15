@@ -7,7 +7,7 @@ import polars as pl
 from rq2.calib_schema import CalibrationItem
 from rq2.pass_rule import SetEvidence
 
-from pruefstand.judges.calibration import cohens_kappa
+from pruefstand.judges.calibration import cohens_kappa, wilson_interval
 from pruefstand.judges.output import spec_of
 
 #: Human-human ceiling per label set (S5). MEMERAG: the inter-annotator agreement reported by the
@@ -71,17 +71,45 @@ def cost_columns(calls: pl.DataFrame, judge: str, concurrency: int) -> dict[str,
     }
 
 
-def discrimination_table(pairs: pl.DataFrame) -> pl.DataFrame:
-    """Share of pairs with a strictly lower degraded score, per judge, set, metric and edit."""
+def discrimination_table(pairs: pl.DataFrame, by: Sequence[str] = ()) -> pl.DataFrame:
+    """Share of pairs with a strictly lower degraded score, per judge, set, metric and edit.
+
+    Args:
+        pairs: Scored pairs (``judge, label_set, metric, edit, base, degraded`` and ``by``).
+        by: Extra grouping columns (``form`` for the T5.4b span/sentence breakdown; reported
+            only, the pass rule reads the per-edit rows).
+
+    Returns:
+        One row per group: ``n``, ``discrimination``, its 95 % Wilson interval
+        (``discrimination_ci_low`` / ``_high``) and ``base_top_share``.
+    """
+    keys = ["judge", "label_set", "metric", "edit", *by]
     scored = pairs.drop_nulls(["base", "degraded"])
-    return (
-        scored.group_by(["judge", "label_set", "metric", "edit"])
+    table = (
+        scored.group_by(keys)
         .agg(
             pl.len().alias("n"),
             (pl.col("degraded") < pl.col("base")).mean().alias("discrimination"),
             (pl.col("base") == pl.col("base").max()).mean().alias("base_top_share"),
         )
-        .sort(["judge", "label_set", "edit"])
+        .sort(keys)
+    )
+    bounds = [
+        wilson_interval(round(d * n), n)
+        for d, n in zip(table["discrimination"], table["n"], strict=True)
+    ]
+    return table.with_columns(
+        pl.Series("discrimination_ci_low", [b[0] for b in bounds], dtype=pl.Float64),
+        pl.Series("discrimination_ci_high", [b[1] for b in bounds], dtype=pl.Float64),
+    ).select(
+        [
+            *keys,
+            "n",
+            "discrimination",
+            "discrimination_ci_low",
+            "discrimination_ci_high",
+            "base_top_share",
+        ]
     )
 
 

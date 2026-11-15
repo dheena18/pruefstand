@@ -11,9 +11,9 @@ STATUS_PATH = (
 )
 HEADER = (
     "# Written by experiments/rq2/report.py (T5.4). Read by pruefstand.judges.status and\n"
-    "# pipeline.fingerprints (epoch = judge_epoch, part of eval_fingerprint). Only a passing\n"
-    "# re-calibration (experiments/rq2/recalibrate.py) bumps epoch. passed: false = judged\n"
-    "# metrics informational in both tiers (W3.8).\n"
+    "# pipeline.fingerprints (epoch = judge_epoch, part of eval_fingerprint). epoch is bumped\n"
+    "# by a passing re-calibration or an owner-approved anchor change (recalibrate.py, D1251).\n"
+    "# passed: false = judged metrics informational in both tiers (W3.8).\n"
 )
 
 

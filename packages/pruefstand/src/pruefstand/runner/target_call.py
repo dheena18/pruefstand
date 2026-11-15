@@ -20,10 +20,12 @@ from pruefstand.core.logging import get_logger
 from pruefstand.core.models.target import CaseRecord, TargetRequest, TargetResponse
 from pruefstand.core.models.testcase import TestCase
 from pruefstand.core.protocols import KVCache, TargetAdapter
-from pruefstand.runner.retry import Attempts, call_with_retry
+from pruefstand.runner.retry import Attempts, call_with_retry, is_timeout
 from pruefstand.runner.routing import Route
 
 _log = get_logger(__name__)
+NOT_RUN_PREFIX = "not run: stopped after "
+NOT_RUN = NOT_RUN_PREFIX + "{n} consecutive timeouts (runner.max_consecutive_timeouts)"
 Mode = Literal["answer", "retrieve"]
 
 
@@ -60,6 +62,8 @@ class TargetCaller:
         self._cache = cache
         self._cfg = cfg
         self._cache_failed = False
+        self._timeouts_in_a_row = 0
+        self._stopped: str | None = None
 
     async def fetch(
         self, case: TestCase, route: Route, *, target_fingerprint: str, rng: np.random.Generator
@@ -85,6 +89,11 @@ class TargetCaller:
             hit_result = Attempts(response, None, 0)
             record = _record(case, request, hit_result, latency_ms, route.mode, cached=True)
             return Fetched(record, fallback=False)
+        if self._stopped is not None:  # D1084: never call a target that just hung N times
+            stopped: Attempts[TargetResponse | None] = Attempts(None, self._stopped, 0)
+            return Fetched(
+                _record(case, request, stopped, 0.0, route.mode, cached=False), fallback=False
+            )
         mode, fallback = route.mode, False
         timing = [0.0]
         result = await self._attempt(self._timed(self._call(mode, request), timing), rng)
@@ -94,9 +103,17 @@ class TargetCaller:
         record = _record(
             case, request, _require_valid_unicode(result), timing[0], mode, cached=False
         )
+        self._count_timeout(record.error)
         if record.response is not None:
             await self._store(key, record)
         return Fetched(record, fallback=fallback)
+
+    def _count_timeout(self, error: str | None) -> None:
+        limit = self._cfg.max_consecutive_timeouts
+        self._timeouts_in_a_row = self._timeouts_in_a_row + 1 if is_timeout(error) else 0
+        if limit is not None and self._stopped is None and self._timeouts_in_a_row >= limit:
+            self._stopped = NOT_RUN.format(n=limit)
+            _log.warning("target_stopped_after_timeouts", consecutive=limit)
 
     def _call(
         self, mode: Mode, request: TargetRequest

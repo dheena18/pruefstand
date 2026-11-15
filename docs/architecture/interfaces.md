@@ -570,13 +570,15 @@ class RunManifest(BaseModel):    # (schema) -> run.json
     judge_models: dict[str, str]; judge_prompt_versions: dict[str, str]
     judge_serving: dict[str, str] = {}   # R9 X3.3: metric -> "<engine> <engine_version> <quantization> <digest[:12]>" of its
                                          # GATED judge (digest = Ollama manifest digest; R11 AI11-09, R12 AI12-04)
-    judge_epoch: int = 0                 # R9 X3.3: from judges/data/calibration_status.yaml (T5.4); bumped only by re-calibration
+    judge_epoch: int = 0                 # R9 X3.3: from judges/data/calibration_status.yaml (T5.4); bumped by a passing re-calibration (D163, D934) or an owner bump without a pass (D1251)
     metric_versions: dict[str, str]; seed: int; cost: CostSummary
     duration_s: float; counts: dict[str, int]
     # counts keys (R9, single owner = the runner, D9-07/D9-21): ok, error, cached, not_applicable, judge_error,
     #   judge_skipped (details reason "judge_quota" | "judge_cap"), judge_truncated (X3.9), think_stripped, corpus_mismatch,
     #   retrieve (R11 D218: robust_pr cases sent to /v1/retrieve), retrieve_fallback (target without /v1/retrieve),
     #   metric_truncated (T1.8, D366: deterministic metric values with details.truncated; logged as well),
+    #   timeout (D1082: cases whose error is a client timeout; also counted in error; only when > 0),
+    #   aborted_after_timeouts (D1084: cases not run after runner.max_consecutive_timeouts; also in error),
     #   model_reloads, upstream_errors (R12 N6.4, D267: llm-proxy /health differences over the run, measured by the
     #   orchestrator and written with ArtifactStore.add_counts; absent in tier 1 and in local runs),
     #   (no infra_error count: the infra failure is the field below, R11 integration D245)
@@ -937,6 +939,8 @@ def is_drift(agreement: float, n: int, *, a0: float | None = None, threshold: in
 #   judges/anchors.py: AnchorItem (anchor_id, item_id, label_set, metric, label, hard_negative, judge_model, prompt_id,
 #     prompt_version, messages, raw_score; .request() -> LLMRequest, .stored_verdict()); anchor_file(model) ->
 #     judges/data/anchors/<slug>.jsonl (slug: "/" -> "_", ":" -> "-"); load_anchors(path) (ConfigError when invalid).
+#   T5.4d (D1250, D1251, additive): judges/drift.py majority_scores(runs) -> list[int], count_flips(stored, runs) -> (flips, comparisons),
+#     unstable_anchors(runs, min_share=0.8, max_spread=1) -> list[int]; AnchorItem gains majority_runs: int = 1 (old files still load).
 #   llm/cache_epochs.py DriftFlag gains optional changed, threshold, a0 (judge_drift.json; `epoch` = the bumped cache epoch).
 #   pipeline/judge_drift.py: run_judge_drift(model, anchors_path, backend, cache_dir, *, threshold=None, a0=None, now)
 #     -> DriftResult(status ok|drift|skipped, n, agreement, changed, threshold); synchronous, builds a cacheless client.
@@ -1060,6 +1064,8 @@ class RunIndex:                # DuckDB over runs/*/run.json + results.parquet (
 
 ```python
 class RunnerConfig(BaseModel): concurrency: int = 8; timeout_s: float = 60; max_retries: int = 3; backoff_s: float = 1.0
+                               max_consecutive_timeouts: int | None = None   # D1084: stop calling the target after N
+                               # timeouts in a row; later cases are recorded as errors, counts["aborted_after_timeouts"]
 class RunResults(BaseModel):   manifest: RunManifest; records: tuple[CaseRecord, ...]; values: tuple[ScoredCase, ...]
 class ScoredCase(BaseModel):   case: TestCase; values: tuple[MetricValue, ...]   # each metric at most once (ValidationError, T1.7a)
 class RunArtifacts(BaseModel): results: RunResults; root: Path   # a run as stored on disk (runs/<run_id>/)

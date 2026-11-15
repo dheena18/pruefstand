@@ -1,8 +1,9 @@
 """Judge cache epochs and the drift flag file (T5.1 S13, D114, round 9 X3.3).
 
 The *cache epoch* of a model is a suffix of ``model_version`` in the LLM cache key: bumping it makes
-every cached verdict of that judge miss. It is **not** ``judge_epoch`` (that one only a successful
-re-calibration bumps, T5.4) and it never enters ``eval_fingerprint``.
+every cached verdict of that judge miss. It is **not** ``judge_epoch`` (that one is bumped by a
+passing re-calibration, T5.4, or an owner bump without a pass, D1251) and it never enters
+``eval_fingerprint``.
 
 Files in ``cache_dir``: ``cache_epochs.json`` (``{model: epoch}``) and ``judge_drift.json``
 (``{model, agreement, epoch, ts}`` plus ``changed``, ``threshold``, ``a0``; written by T5.4's
