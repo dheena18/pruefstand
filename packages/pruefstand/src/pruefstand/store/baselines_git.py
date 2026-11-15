@@ -137,9 +137,12 @@ class GitBranchBaselineStore:
 
             def add(index: BaselineIndex) -> BaselineIndex:
                 runs = index.entries.get(promotion.fingerprint, {}).get(ref)
-                current = runs.runs[-1].run_id if runs is not None and runs.runs else None
-                if current == entry.run_id:
-                    return index  # an earlier attempt reached the remote: idempotent retry
+                newest = runs.runs[-1] if runs is not None and runs.runs else None
+                if newest == entry:
+                    return index  # this very promotion reached the remote: idempotent retry
+                # Same run id but another entry = another promote of the run already rewrote
+                # the data root: never keep its manifest hash, re-check like any change.
+                current = newest.run_id if newest is not None else None
                 check_expected(current, expected, where)  # re-checked on every fresh index
                 return with_promotion(index, promotion.fingerprint, ref, entry)
 

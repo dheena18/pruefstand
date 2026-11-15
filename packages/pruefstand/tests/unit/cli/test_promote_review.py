@@ -241,3 +241,40 @@ def test_a_symlinked_lock_file_is_refused(tmp_path: Path) -> None:
     artifacts = ArtifactStore(tmp_path / "runs").read_run(stored(tmp_path))
     with pytest.raises(OSError, match="symbolic links"):
         LocalDirBaselineStore(root).put(artifacts, "main")
+
+
+def fake_remote(store: GitBranchBaselineStore, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Keep the index in memory: ``_publish`` applies the change, ``get`` reads it back."""
+    remote = {"index": BaselineIndex.empty()}
+
+    def publish(change: Callable[[BaselineIndex], BaselineIndex], _message: str) -> None:
+        remote["index"] = change(remote["index"])
+
+    monkeypatch.setattr(store, "_check_root", lambda: None)
+    monkeypatch.setattr(store, "_publish", publish)
+    monkeypatch.setattr(store, "_fetch_index", lambda _git, _clone: (remote["index"], True))
+
+
+def ticking() -> Callable[[], datetime]:
+    ticks = iter(range(1, 100))
+    return lambda: AT.replace(second=next(ticks))
+
+
+def test_a_second_promote_of_the_same_run_never_splits_index_and_disk(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # Opus finding on #143: the idempotent shortcut compared only run_id, so promote B of the run
+    # A had just promoted rewrote the data root (new promoted_at, new manifest) but kept A's
+    # manifest_sha256 in the index; every later get() raised StoreIntegrityError.
+    store = GitBranchBaselineStore("owner/repo", tmp_path / "root", token_env=None, clock=ticking())
+    (tmp_path / "root").mkdir()
+    fake_remote(store, monkeypatch)
+    artifacts = ArtifactStore(tmp_path / "runs").read_run(stored(tmp_path))
+    store.put(artifacts, "main", expected=ExpectedBaseline(run_id=None))  # promote A
+    with pytest.raises(BaselineRefused, match="changed during the promote"):
+        store.put(artifacts, "main", expected=ExpectedBaseline(run_id=None))  # B, same gate
+    got = store.get(FP, "main")  # disk rolled back to A, matching the index
+    assert got is not None
+    assert got.results.manifest.run_id == RUN
+    store.put(artifacts, "main")  # an unbound re-promotion updates the index entry
+    assert store.get(FP, "main") is not None
