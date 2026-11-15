@@ -2,9 +2,10 @@
 
 The ids are the GitHub Models catalogue ids behind provider ``github``. They are PROVISIONAL until
 the first successful call by the owner's token confirms them (``models.github.ai`` is not
-reachable from the VM, D604); changing a pin is a row in ``docs/decisions.md``, not a code change
-elsewhere. Families come from ``core/data/model_families.yaml`` (datagen: ``gpt``; cross-check:
-``llama``; neither is the generator family ``qwen`` nor the judge family ``gemma``).
+reachable from the VM, D604); changing a pin is a decision file
+``docs/decisions/D<n>.md``, not a code change elsewhere. Families come from
+``core/data/model_families.yaml`` (datagen: ``gpt``; cross-check: ``llama``; neither is the
+generator family ``qwen`` nor the judge family ``gemma``).
 """
 
 DATAGEN_MODEL = "github/openai/gpt-4.1-mini"

@@ -32,6 +32,8 @@ class CatalogueEntry:
     digest: str | None
     options: Mapping[str, float]
     quantization: str | None = None
+    tokenizer_source: str | None = None
+    tokenizer_sha256: str | None = None
 
 
 def _load_yaml(path: Path, what: str) -> dict[str, object]:
@@ -97,6 +99,13 @@ def ollama_base_url(model_id: str, *, env: Mapping[str, str] | None = None) -> s
     return value.rstrip("/")
 
 
+def _tokenizer_pin(raw: object) -> tuple[str | None, str | None]:
+    if not isinstance(raw, dict):
+        return None, None
+    source, sha256 = raw.get("source"), raw.get("sha256")
+    return (str(source), str(sha256)) if source and sha256 else (None, None)
+
+
 @lru_cache(maxsize=8)
 def _entries(path: str, mtime_ns: int) -> dict[str, CatalogueEntry]:
     del mtime_ns  # part of the cache key only
@@ -124,6 +133,7 @@ def _entries(path: str, mtime_ns: int) -> dict[str, CatalogueEntry]:
             str(digest) if digest else None,
             {k: opts[k] for k in OPTION_KEYS},
             str(raw["quantization"]) if raw.get("quantization") else None,
+            *_tokenizer_pin(raw.get("tokenizer")),
         )
     return out
 

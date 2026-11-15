@@ -36,7 +36,13 @@ from pruefstand.pipeline.judge_mode import (
     requested_judge_mode,
     resolve_stack,
 )
-from pruefstand.pipeline.judging import JudgeSetup, checked_pool, count_up, prepare_judging
+from pruefstand.pipeline.judging import (
+    JudgeSetup,
+    checked_pool,
+    count_up,
+    exact_count_missing,
+    prepare_judging,
+)
 from pruefstand.pipeline.plan import Plan, complete_manifest, fingerprint_of_target, store_run
 from pruefstand.pipeline.select import Stratum, Tier, select_cases, validate_selection
 from pruefstand.runner.runner import Runner
@@ -116,6 +122,8 @@ async def _execute(
         results = _mark_base_hits(results, base_read=reads_base(usable=usable, trusted=trusted))
         if unchecked:
             results = count_up(results, "judge_family_unchecked")
+        if exact_count_missing(judges, plan.cfg):
+            results = count_up(results, "judge_exact_count_unavailable")
     finally:
         await adapter.aclose()
     return results, info
