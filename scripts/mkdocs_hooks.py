@@ -9,6 +9,7 @@ not exist is left alone and still fails ``mkdocs build --strict``.
 
 import posixpath
 import re
+import sys
 from pathlib import Path
 from typing import Any
 
@@ -103,3 +104,37 @@ def on_page_markdown(markdown: str, page: Any, config: Any, files: Any) -> str: 
     repo_root = Path(str(config["config_file_path"])).resolve().parent
     site_files = frozenset(str(f.src_uri) for f in files)
     return rewrite_outside_links(markdown, str(page.file.src_uri), repo_root, site_files)
+
+
+def on_pre_build(config: Any) -> None:  # noqa: ANN401
+    """Mkdocs entry point: write the generated decision log before files are collected (D1211).
+
+    ``docs/decisions-log.md`` is git-ignored; this builds it from ``docs/decisions/D<n>.md`` so
+    ``mkdocs build --strict`` works on a fresh checkout. An invalid decision directory fails the
+    build with the problems listed.
+
+    Args:
+        config: The mkdocs config (``config.config_file_path`` locates the repo root).
+
+    Raises:
+        SystemExit: when the decision files are invalid.
+    """
+    repo_root = Path(str(config["config_file_path"])).resolve().parent
+    here = str(Path(__file__).resolve().parent)
+    if here not in sys.path:
+        sys.path.insert(0, here)
+    from build_decisions_index import main  # noqa: PLC0415 - needs the sys.path entry above
+
+    docs = repo_root / "docs"
+    code = main(
+        [
+            "--dir",
+            str(docs / "decisions"),
+            "--decisions-md",
+            str(docs / "decisions.md"),
+            "--out",
+            str(docs / "decisions-log.md"),
+        ]
+    )
+    if code:
+        raise SystemExit(code)

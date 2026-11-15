@@ -8,7 +8,7 @@ between tenants. Tests use real models and a real stack (no fake LLM, no fake ta
 | --- | --- |
 | [Review](_external/review.md) | Verdict on the original spec and the planning review rounds |
 | [Spec](spec/SPEC.md) | Spec v2 (authoritative) |
-| [Decisions](decisions.md) | Binding decisions log |
+| [Decisions](decisions.md) | Binding decisions (one file each in `docs/decisions/`; generated log) |
 | [ADRs](adr/README.md) | Architecture decision records |
 | [Architecture](architecture/README.md) | Diagrams and interface contracts |
 | [Engineering](engineering/README.md) | Standards, testing, CI/CD, Docker, security, GPU cluster, AI workflow |

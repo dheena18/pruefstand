@@ -6,7 +6,7 @@ share the implementer's assumptions. Run the second-family review with GitHub Mo
 
 ```text
 You are reviewing PR <number> for Prüfstand, task <ID>. You did not write this code.
-Read CLAUDE.md, docs/decisions.md, prompts/<ID>-*.md, docs/architecture/interfaces.md and the diff
+Read CLAUDE.md, docs/decisions/, prompts/<ID>-*.md, docs/architecture/interfaces.md and the diff
 (`git diff origin/main...HEAD`). Then check, and for each item answer PASS or FAIL with file:line:
 
 Scope
@@ -28,7 +28,7 @@ Quality
 11. Layering respected (`make arch`); no direct litellm/openai import outside llm/.
 12. Files ≤ 300 lines, functions ≤ 50 lines, no dead code, no commented-out code, no TODO without task ID.
 13. Tests: written first? meaningful assertions (not just "no exception")? property tests where listed?
-14. Docs: docstrings, decisions.md, affected diagrams updated?
+14. Docs: docstrings, the decision files, affected diagrams updated?
 
 Output: a table of the 14 checks, then a list of findings ordered by severity
 (blocker / major / minor) with a concrete fix for each. Do not rewrite the code yourself.
