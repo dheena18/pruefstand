@@ -194,8 +194,31 @@ def test_a_live_process_that_is_not_our_server_is_not_killed(tmp_path: Path) -> 
         (tmp_path / "state").mkdir()
         (tmp_path / "state" / "pid").write_text(f"{victim.pid} {fields[19]} x\n", encoding="utf-8")
         assert _run(tmp_path, "status").returncode == 3
-        assert _run(tmp_path, "stop").returncode == 0
+        stop = _run(tmp_path, "stop")
+        assert (
+            stop.returncode == 2
+        )  # alive with the recorded start time: maybe a server on another port
+        assert "another VM_LLM_PORT" in stop.stderr
         assert victim.poll() is None
+        assert (tmp_path / "state" / "pid").exists()  # never orphan a running server
     finally:
         victim.kill()
         victim.wait(timeout=10)
+
+
+def test_a_start_that_times_out_while_the_launcher_still_works_kills_the_launcher(
+    tmp_path: Path,
+) -> None:
+    # stand-in for pruefstand-lock while _serve waits for the lock or hashes the model: it never
+    # becomes a server; after the timeout nothing of it may survive (a server could appear later)
+    stub = tmp_path / "slow-lock"
+    body = '#!/usr/bin/env bash\necho $$ > "$(dirname "$0")/stub.pid"\nsleep 120\n'
+    stub.write_text(body)
+    stub.chmod(0o755)
+    run = _run(tmp_path, "start", VM_LLM_LOCK_CMD=str(stub), VM_LLM_READY_S="3")
+    assert run.returncode == 1, run.stderr
+    assert "not ready after 3s" in run.stderr
+    stub_pid = int((tmp_path / "stub.pid").read_text())
+    assert not Path(f"/proc/{stub_pid}").exists()
+    assert not (tmp_path / "state" / "launcher").exists()
+    assert not (tmp_path / "state" / "pid").exists()

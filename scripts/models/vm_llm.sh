@@ -89,8 +89,47 @@ our_server() {
   echo "$pid"
 }
 
-# A PID file that does not name our live server is stale: remove it (callers hold start.lock).
-drop_stale() { if [ -f "$state/pid" ] && ! our_server > /dev/null; then rm -f "$state/pid"; fi; }
+# A PID file is stale when its process is gone: bad content, dead pid, or another start time. A live
+# process with the recorded start time is kept even when it is not ours on THIS port (a server started
+# with another VM_LLM_PORT must not be orphaned by a stop/status with the default port).
+pid_file_stale() {
+  local pid st _t
+  read -r pid st _t 2> /dev/null < "$state/pid" || return 0
+  [[ "${pid:-}" =~ ^[1-9][0-9]*$ ]] || return 0
+  is_uint "${st:-}" || return 0
+  [ "$(start_time "$pid")" != "$st" ]
+}
+
+# Callers hold start.lock.
+drop_stale() { if [ -f "$state/pid" ] && pid_file_stale; then rm -f "$state/pid"; fi; }
+
+# The launcher (pruefstand-lock -> flock -> _serve) is a session leader (setsid): its group holds the
+# whole chain while _serve waits for the lock or hashes the model. $state/launcher = "pid starttime token".
+launcher_alive() {
+  local pid st t cmd
+  read -r pid st t 2> /dev/null < "$state/launcher" || return 1
+  [[ "${pid:-}" =~ ^[1-9][0-9]*$ ]] || return 1
+  [ "${t:-}" = "$1" ] || return 1
+  [ "$(start_time "$pid")" = "$st" ] || return 1
+  cmd="$(tr '\0' ' ' < "/proc/$pid/cmdline" 2> /dev/null)" || return 1
+  [[ "$cmd" == *"vm_llm.sh _serve "* ]] || return 1
+  echo "$pid"
+}
+
+# Stop a launcher that has not become a ready server (start timed out): TERM, then KILL, its group;
+# only while its identity (pid, start time, token, cmdline) still matches.
+kill_launcher() {
+  local pid i
+  if pid="$(launcher_alive "$1")"; then
+    kill -TERM -- "-$pid" 2> /dev/null || true
+    for ((i = 0; i < 30; i++)); do
+      launcher_alive "$1" > /dev/null || break
+      sleep 1
+    done
+    if pid="$(launcher_alive "$1")"; then kill -KILL -- "-$pid" 2> /dev/null || true; fi
+  fi
+  rm -f "$state/launcher"
+}
 
 verify_model() {
   local file size sha alias path real stamp
@@ -130,7 +169,7 @@ take_start_lock() {
 }
 
 # Remove the PID file only when it carries this invocation's token.
-drop_own_pid() { local _p _s t; read -r _p _s t < "$state/pid" 2> /dev/null && [ "${t:-}" = "$1" ] && rm -f "$state/pid"; return 0; }
+drop_own_pid() { local _p _s t; read -r _p _s t 2> /dev/null < "$state/pid" && [ "${t:-}" = "$1" ] && rm -f "$state/pid"; return 0; }
 
 start() {
   local model=$1 i rc token launcher
@@ -144,15 +183,19 @@ start() {
   env -u PRUEFSTAND_LOCK_HELD GPU_LOCK_TIMEOUT_S="${VM_LLM_LOCK_WAIT_S:-5}" VM_LLM_TOKEN="$token" \
     setsid "$lock_cmd" bash "$here/vm_llm.sh" _serve "$model" >> "$state/log" 2>&1 < /dev/null 8>&- &
   launcher=$!
+  [ "$(ps -o pgid= -p "$launcher" | tr -d ' ')" = "$launcher" ] || echo "vm_llm: warning: launcher is not a group leader" >&2
+  echo "$launcher $(start_time "$launcher") $token" > "$state/launcher"
   for ((i = 0; i < ready_s; i++)); do
     if our_server > /dev/null && curl -sf -o /dev/null --max-time 2 "http://127.0.0.1:$port/health"; then
       echo "vm_llm: $model ready at http://127.0.0.1:$port/v1 (pid $(our_server), stops after ${max_min} min)"
+      rm -f "$state/launcher"
       return 0
     fi
     if ! kill -0 "$launcher" 2> /dev/null; then
       rc=0
       wait "$launcher" || rc=$?
       tail -n 5 "$state/log" >&2
+      rm -f "$state/launcher"
       drop_own_pid "$token"
       [ "$rc" -eq 75 ] && die 75 "not started: gpu.lock or a check slot is busy (gate run or check)"
       [ "$rc" -eq 2 ] && die 2 "not started: configuration or model file error (log: $state/log)"
@@ -160,7 +203,10 @@ start() {
     fi
     sleep 1
   done
-  stop_locked > /dev/null
+  stop_locked > /dev/null || true
+  kill_launcher "$token" # still waiting for the lock or hashing: it must not become a server later
+  wait "$launcher" 2> /dev/null || true
+  drop_own_pid "$token"
   die 1 "not ready after ${ready_s}s; stopped (log: $state/log)"
 }
 
@@ -168,11 +214,16 @@ start() {
 stop_locked() {
   local pid i
   if ! pid="$(our_server)"; then
+    if [ -f "$state/pid" ] && ! pid_file_stale; then
+      echo "vm_llm: pid $(cut -d' ' -f1 < "$state/pid") is a server on another VM_LLM_PORT; stop it with that port" >&2
+      return 2
+    fi
     rm -f "$state/pid"
     echo "vm_llm: not running"
     return 0
   fi
-  kill -TERM "$pid" 2> /dev/null || true # timeout(1) forwards TERM to llama-server and kills it after 30 s
+  # timeout (uutils coreutils on the VM, GNU elsewhere) forwards TERM to llama-server; --kill-after=30 KILLs it
+  kill -TERM "$pid" 2> /dev/null || true
   for ((i = 0; i < 40; i++)); do
     our_server > /dev/null || break
     sleep 1
