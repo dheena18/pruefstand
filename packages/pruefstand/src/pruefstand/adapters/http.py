@@ -113,8 +113,9 @@ class HttpTargetAdapter(TargetAdapter):
         holds (a runner may park a test label there) is never sent.
 
         Raises:
-            TargetError: ``transient=True`` for timeouts, connection errors and 5xx;
-                ``transient=False`` for 4xx, redirects, oversized or invalid responses.
+            TargetError: ``transient=True`` for connection errors (incl. connect and pool
+                timeouts) and 5xx; ``transient=False`` for read and write timeouts (D624, D1065),
+                4xx, redirects, oversized or invalid responses.
         """
         what = "POST /v1/query"
         status, data = await self._call("POST", "/v1/query", req)
