@@ -60,3 +60,14 @@ items left invalid after N retries ("exhausted"). The reserve passages of the pl
 14B (default): about 67 s per in-domain generation call, 13 of 20 first answers valid; 8B: 58 s, 11 of 20 (D1200).
 Both cost about 5.7 h of server time per 200 valid items before retries; run them in batches (`--max-calls`),
 outside the night window and never during a gate run.
+
+## Law texts: official site or the release mirror (D927, D965)
+
+On the VM, `data/download.py --only gii:<law>` fetches the pinned archives from the official site; the SHA-256 check
+against `data/sources.yaml` is mandatory either way. The release mirror (`PRUEFSTAND_GII_MIRROR`, release
+`data-pins-2026-11b`) existed for GitHub-hosted runners and is optional now that no workflow sets it (D1202). Its rules
+stay: releases are immutable (repository setting), a published release is never edited and its assets are never
+replaced; every new or refreshed pin set is published as a complete set of archives plus `SHA256SUMS.txt` under a
+**new** `data-pins-*` tag (draft, upload every asset, then publish), checked against `data/sources.yaml` on `main`, and
+the same PR points `docs/ops/secrets.md` at the new tag. Older `data-pins-*` releases stay as they were published
+(`data-pins-2026-11` holds the outdated `uwg_2004.xml.zip`).

@@ -278,6 +278,9 @@ llm-proxy (trusted, T6.2a; module infra/gate-executor/llm-proxy/llm_proxy.py; D2
   inside the container (reached as http://llm-proxy:11500 from gate-net); forwards only to
   LLM_PROXY_UPSTREAM = http://172.17.0.1:11434 over proxy-egress (D242; the one server, ADR-0018)
   allowed: POST /api/chat, POST /api/embed, GET /api/tags; only the run's catalogue generator + embedding tags
+  (GET /api/tags is answered by the proxy from that allow-list, never forwarded, D1071; request bodies are read
+  strictly: duplicate or case/NFKC-colliding keys, NaN/Infinity and top-level keys outside the route's exact
+  allow-list -> 403, D1070)
   (passed by the orchestrator). Judges run on the same server, so this allow-list IS the generator/judge
   separation (ADR-0018): every judge tag (and any other non-allowed tag) -> 403
   auth: Authorization: Bearer $PRUEFSTAND_CANDIDATE_API_KEY (sent by rag-demo: T3.4 embeddings client, T3.6
@@ -806,7 +809,10 @@ evidence_recall (1 if any retrieved chunk text contains the case's evidence_span
 faithfulness, answer_correctness, perturbation_consistency, refusal_judged
 # faithfulness: the judge sees EXACTLY the chunks the generator saw (D115): R9 X3.14 = the chunks with
 #   used_in_prompt=True in rank order; fallback when no chunk carries the flag: the first top_k chunks
-# R9 X3.9 judge input cap = the judge's context window - 1 024 tokens, counted with the judge's tokenizer;
+# R9 X3.9 judge input cap = the judge's context window - 1 024 tokens, counted with the judge's tokenizer (pre-call:
+#   conservative estimate; after the call D1010: reported < window, or in the cut band, or < 0.8 x the EXACT count of
+#   the pinned tokenizer.json, installed by scripts/models/fetch_judge_tokenizer.py; counts["judge_exact_count_unavailable"]
+#   when it is missing);
 #   truncation is logged per case (details["truncated"]=True), counted in RunManifest.counts["judge_truncated"],
 #   and the truncated case ids are listed in the report; the value is still computed on the truncated input (never
 #   not_applicable). D815 (owner decision, supersedes the earlier informational rule): candidate truncation never
