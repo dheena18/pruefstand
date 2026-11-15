@@ -186,3 +186,45 @@ def test_a_tight_or_indented_row_is_migratable(tmp_path: Path) -> None:
         ("D1301", "tight"),
         ("D1302", "indented"),
     ]
+
+
+def _two_commit_repo(tmp_path: Path) -> tuple[Path, list[str]]:
+    repo = _repo(tmp_path, PR_PAGE)
+    (repo / "other.txt").write_text("x\n", encoding="utf-8")
+    _git(repo, "add", "-A")
+    _git(repo, "commit", "-qm", "second")
+    shas = _git(repo, "rev-list", "--reverse", "main..pr").split()
+    return repo, shas
+
+
+def _fake_rebase(repo: Path, todo: str, done: str = "") -> None:
+    folder = repo / ".git" / "rebase-merge"
+    folder.mkdir()
+    (folder / "orig-head").write_text(_git(repo, "rev-parse", "pr").strip(), encoding="utf-8")
+    (folder / "interactive").write_text("", encoding="utf-8")
+    (folder / "onto").write_text(_git(repo, "rev-parse", "main").strip(), encoding="utf-8")
+    (folder / "git-rebase-todo").write_text(todo, encoding="utf-8")
+    (folder / "done").write_text(done, encoding="utf-8")
+
+
+def test_plain_rebase_with_a_commit_already_upstream_is_not_refused(tmp_path: Path) -> None:
+    repo, shas = _two_commit_repo(tmp_path)
+    _git(repo, "checkout", "-q", "main")
+    _git(repo, "cherry-pick", shas[1])  # main already has the second commit (same patch)
+    _git(repo, "checkout", "-q", "pr")
+    assert "CONFLICT" in _git(repo, "rebase", "main", ok=False)
+    res = rebase_pending(repo, "main")
+    assert "D1300" in res.written
+
+
+def test_autosquash_fixup_dash_c_lines_are_not_refused(tmp_path: Path) -> None:
+    repo, shas = _two_commit_repo(tmp_path)
+    _fake_rebase(repo, f"pick {shas[0][:7]} a\nfixup -C {shas[1][:7]} amend! a\n")
+    assert pr_side(repo) == shas[1]
+
+
+def test_exec_arguments_cannot_hide_a_dropped_commit(tmp_path: Path) -> None:
+    repo, shas = _two_commit_repo(tmp_path)
+    _fake_rebase(repo, f"pick {shas[0][:7]} a\nexec {shas[1][:2]}\nlabel {shas[1][:3]}\n")
+    with pytest.raises(PrSideError, match="interactive rebase"):
+        pr_side(repo)

@@ -55,6 +55,9 @@ def _show(repo: Path, ref: str) -> str:
     return _git(repo, "show", f"{ref}:{PAGE}").stdout
 
 
+_PICKS = ("pick", "p", "reword", "r", "edit", "e", "squash", "s", "fixup", "f", "drop", "d")
+
+
 def _edited(repo: Path, folder: Path, tip: str) -> bool:
     """True when the rebase todo of ``folder`` no longer lists every commit of the original tip."""
     if not (folder / "interactive").exists():
@@ -62,18 +65,24 @@ def _edited(repo: Path, folder: Path, tip: str) -> bool:
     onto = folder / "onto"
     if not onto.is_file():
         return True
-    base = _git(repo, "merge-base", tip, onto.read_text(encoding="utf-8").strip(), check=False)
-    expected = _git(repo, "rev-list", "--no-merges", f"{base.stdout.strip()}..{tip}").stdout.split()
+    up = onto.read_text(encoding="utf-8").strip()
+    # commits git still has to replay: patch-equivalent ones already upstream are left out
+    expected = _git(
+        repo, "rev-list", "--cherry-pick", "--right-only", "--no-merges", f"{up}...{tip}"
+    ).stdout.split()
     listed: list[str] = []
     for name in ("done", "git-rebase-todo"):
         f = folder / name
         lines = f.read_text(encoding="utf-8").splitlines() if f.is_file() else []
         for ln in lines:
             parts = ln.split()
-            if len(parts) >= 2 and not ln.startswith("#"):
-                if parts[0] in ("drop", "d"):
-                    return True
-                listed.append(parts[1])
+            if len(parts) < 2 or parts[0] not in _PICKS:
+                continue
+            if parts[0] in ("drop", "d"):
+                return True
+            args = [p for p in parts[1:] if not p.startswith("-")]  # fixup -C <sha>
+            if args:
+                listed.append(args[0])
     return any(not any(sha.startswith(p) for p in listed) for sha in expected)
 
 
