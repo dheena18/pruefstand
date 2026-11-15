@@ -13,10 +13,18 @@ from mutations.apply import (
     apply_mutation,
     check_canary_set,
     ensure_worktree,
+    main,
     revert,
 )
 from mutations.gen_readme import render
-from mutations.schema import MUTATIONS_ROOT, MutationSpec, load_all, load_index
+from mutations.schema import (
+    MUTATIONS_ROOT,
+    MutationIndex,
+    MutationSpec,
+    load_all,
+    load_index,
+    load_spec,
+)
 from pydantic import BaseModel, ValidationError
 
 from pruefstand.core.config_loader import load_config
@@ -27,7 +35,9 @@ from rag_demo.models import RagConfig
 REPO = MUTATIONS_ROOT.parents[1]
 SPECS = load_all()
 BY_ID = {spec.id: spec for spec in SPECS}
-SLICE_1 = {"M01", "M04", "M05", "M06", "M07", "M08", "M09", "M10"} | {f"N0{i}" for i in range(1, 9)}
+SLICE_1 = {"M01", "M04", "M05", "M06", "M07", "M08", "M09", "M10"} | {
+    f"N0{i}" for i in (1, 2, 3, 5, 6, 7, 8)
+}
 NIGHTLY_ONLY = {"refusal_correct"}  # interfaces §5: gated in nightly `full` only (X3.7)
 RETRIEVAL = {
     "context_recall",
@@ -40,11 +50,13 @@ def _gated_metrics() -> set[str]:
 
 
 def test_index_lists_exactly_the_folders_and_ids_are_unique() -> None:
-    entries = load_index().entries
+    index = load_index()
+    entries = index.entries
     assert len(entries) == len(set(entries))
     folders = {p.parent.name for p in MUTATIONS_ROOT.glob("*/mutation.yaml")}
-    assert set(entries) == folders
+    assert set(entries) | set(index.pending) == folders
     assert set(entries) == SLICE_1
+    assert set(index.pending) == {"N04"}  # waits for the GPU re-record (D1261)
 
 
 @pytest.mark.parametrize("spec", SPECS, ids=lambda s: s.id)
@@ -235,7 +247,7 @@ def test_no_ops_change_nothing_that_parses_differently(worktree: Path) -> None:
 
 def test_a_patch_entry_with_a_new_file_reverts_to_a_clean_tree(worktree: Path) -> None:
     head = _git(REPO, "rev-parse", "HEAD").strip()
-    apply_mutation(BY_ID["N04"], worktree, head)
+    apply_mutation(load_spec("N04"), worktree, head)
     prompt = worktree / "apps/rag-demo/src/rag_demo/prompts/answer_de_v3.txt"
     assert "Antworte auf die Frage" in prompt.read_text(encoding="utf-8")
     revert(worktree)
@@ -262,3 +274,19 @@ def test_the_readme_is_generated_from_the_yaml() -> None:
     readme = (MUTATIONS_ROOT / "README.md").read_text(encoding="utf-8")
     assert readme == render()
     assert "| Stratum | tier1 |" in readme
+
+
+def test_a_pending_entry_is_refused_by_the_cli_and_listed_in_the_readme(tmp_path: Path) -> None:
+    assert main(["apply", "N04", "--worktree", str(tmp_path / "wt")]) == 1
+    assert not (tmp_path / "wt").exists()
+    assert "- `N04`: The new prompt version" in (MUTATIONS_ROOT / "README.md").read_text("utf-8")
+
+
+def test_pending_and_entries_never_overlap() -> None:
+    sha = "0" * 40
+    with pytest.raises(ValidationError, match="overlap"):
+        MutationIndex.model_validate(
+            {"base_sha": sha, "entries": ["N04"], "pending": {"N04": "waits for a GPU re-record"}}
+        )
+    with pytest.raises(ValidationError, match="reason"):
+        MutationIndex.model_validate({"base_sha": sha, "entries": ["N01"], "pending": {"N04": "x"}})

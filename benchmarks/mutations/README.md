@@ -22,8 +22,11 @@ one entry on a fresh worktree with
 | N01 | Whitespace in rag.gpu.yaml | config | patch | pr | smoke, core, robust_pr | statistical | no | PASS | – |
 | N02 | Comment in the retriever code | code | patch | pr | smoke, core, robust_pr | statistical | no | PASS | – |
 | N03 | Re-run the identical config with production cache settings | config | overrides | pr | smoke, core, robust_pr | statistical | no | PASS | – |
-| N04 | Prompt synonym as a new prompt version | config | patch | pr | smoke, core, robust_pr | statistical | no | PASS | – |
 | N05 | Reorder keys in rag.gpu.yaml | config | patch | pr | smoke, core, robust_pr | statistical | no | PASS | – |
 | N06 | Rename an internal Python variable | code | patch | pr | smoke, core, robust_pr | statistical | no | PASS | – |
 | N07 | Bump an unrelated dependency's lower bound | code | patch | pr | smoke, core, robust_pr | statistical | no | PASS | – |
 | N08 | Change the server log level | code | patch | pr | smoke, core, robust_pr | statistical | no | PASS | – |
+
+## Pending (neither applied nor scored)
+
+- `N04`: The new prompt version breaks 20 rag-demo tests (generator budget rows, the one-field invariants of configs/bugs/gpu in test_config_gpu, the generator cassette); it waits for the bug configs to follow v3 and for the budget rows and cassette re-recorded on the GPU (owner-approved).

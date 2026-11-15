@@ -62,12 +62,17 @@ def render(root: Path = MUTATIONS_ROOT) -> str:
     Raises:
         ConfigError: an entry file is missing or invalid (see ``mutations.schema``).
     """
+    index = load_index(root)
+    pending = [f"- `{entry}`: {reason}" for entry, reason in sorted(index.pending.items())]
+    if pending:
+        pending = ["", "## Pending (neither applied nor scored)", "", *pending]
     lines = [
-        f"`base_sha`: `{load_index(root).base_sha}`",
+        f"`base_sha`: `{index.base_sha}`",
         "",
         "| " + " | ".join(COLUMNS) + " |",
         "| " + " | ".join("---" for _ in COLUMNS) + " |",
         *(_row(spec) for spec in load_all(root)),
+        *pending,
     ]
     return HEADER + "\n".join(lines) + "\n"
 

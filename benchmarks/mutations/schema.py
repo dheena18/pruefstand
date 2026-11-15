@@ -112,10 +112,25 @@ def _tier_problems(spec: MutationSpec) -> list[str]:
 
 
 class MutationIndex(_Frozen):
-    """``index.yaml``: the commit every patch applies to and the entry list."""
+    """``index.yaml``: the commit every patch applies to, the entry list and the pending entries.
+
+    A pending entry has a folder but is neither applied nor scored until the reason is resolved.
+    """
 
     base_sha: str = Field(pattern=r"^[0-9a-f]{40}$")
     entries: tuple[str, ...] = Field(min_length=1)
+    pending: dict[str, str] = Field(default_factory=dict)
+
+    @model_validator(mode="after")
+    def _check_pending(self) -> Self:
+        both = set(self.entries) & set(self.pending)
+        if both:
+            msg = f"entries and pending overlap: {sorted(both)}"
+            raise ValueError(msg)
+        if any(len(reason.strip()) < 20 for reason in self.pending.values()):
+            msg = "every pending entry needs a reason"
+            raise ValueError(msg)
+        return self
 
 
 def load_index(root: Path = MUTATIONS_ROOT) -> MutationIndex:
