@@ -10,7 +10,8 @@
 # host lock (`pruefstand-lock`, gpu.lock) AND every check slot of scripts/vm_check.sh for its whole life, so a gate job
 # or a check waits for it to stop, and it refuses to start while either is busy.
 #   start  exit 0 ready; 75 gpu.lock or a check slot busy; 2 usage/config/model file; 1 the server did not come up
-#   stop   exit 0 (also when nothing runs); waits for a start that is still running
+#   stop   exit 0 (also when nothing runs), 2 when the PID file names a live server on another VM_LLM_PORT;
+#          waits for a start that is still running (up to VM_LLM_READY_S + 90 s)
 #   status exit 0 running (prints the base URL), 3 stopped
 # The base URL for clients is printed by `start`/`status`: http://127.0.0.1:$VM_LLM_PORT/v1; the served model id
 # (alias) is the model part of the pinned id, e.g. openai_compatible_local/ministral-3-14b-instruct-2512 (D1201).
@@ -105,28 +106,32 @@ drop_stale() { if [ -f "$state/pid" ] && pid_file_stale; then rm -f "$state/pid"
 
 # The launcher (pruefstand-lock -> flock -> _serve) is a session leader (setsid): its group holds the
 # whole chain while _serve waits for the lock or hashes the model. $state/launcher = "pid starttime token".
+# Identity = pid + start time + this start's token (the command line changes along the exec chain).
 launcher_alive() {
-  local pid st t cmd
+  local pid st t
   read -r pid st t 2> /dev/null < "$state/launcher" || return 1
   [[ "${pid:-}" =~ ^[1-9][0-9]*$ ]] || return 1
   [ "${t:-}" = "$1" ] || return 1
   [ "$(start_time "$pid")" = "$st" ] || return 1
-  cmd="$(tr '\0' ' ' < "/proc/$pid/cmdline" 2> /dev/null)" || return 1
-  [[ "$cmd" == *"vm_llm.sh _serve "* ]] || return 1
   echo "$pid"
 }
 
-# Stop a launcher that has not become a ready server (start timed out): TERM, then KILL, its group;
-# only while its identity (pid, start time, token, cmdline) still matches.
+# Stop a launcher that has not become a ready server (start timed out): TERM its group (identity checked
+# once), wait until NO group member is left (kill -0 on the group, at most 30 s), then KILL the group and
+# wait at most 5 s more. Never waits unboundedly.
 kill_launcher() {
   local pid i
   if pid="$(launcher_alive "$1")"; then
     kill -TERM -- "-$pid" 2> /dev/null || true
     for ((i = 0; i < 30; i++)); do
-      launcher_alive "$1" > /dev/null || break
+      kill -0 -- "-$pid" 2> /dev/null || break
       sleep 1
     done
-    if pid="$(launcher_alive "$1")"; then kill -KILL -- "-$pid" 2> /dev/null || true; fi
+    kill -KILL -- "-$pid" 2> /dev/null || true
+    for ((i = 0; i < 5; i++)); do
+      kill -0 -- "-$pid" 2> /dev/null || break
+      sleep 1
+    done
   fi
   rm -f "$state/launcher"
 }
@@ -203,9 +208,9 @@ start() {
     fi
     sleep 1
   done
-  stop_locked > /dev/null || true
+  stop_locked > /dev/null 2>&1 || true
   kill_launcher "$token" # still waiting for the lock or hashing: it must not become a server later
-  wait "$launcher" 2> /dev/null || true
+  kill -0 "$launcher" 2> /dev/null || wait "$launcher" 2> /dev/null || true # reap only a dead child
   drop_own_pid "$token"
   die 1 "not ready after ${ready_s}s; stopped (log: $state/log)"
 }
@@ -234,7 +239,7 @@ stop_locked() {
 }
 
 stop() {
-  take_start_lock "${VM_LLM_STOP_WAIT_S:-$((ready_s + 60))}" # a start still running finishes (or fails) first
+  take_start_lock "${VM_LLM_STOP_WAIT_S:-$((ready_s + 90))}" # a start (up to ready_s + ~70 s) finishes first
   stop_locked
 }
 

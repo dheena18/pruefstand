@@ -8,6 +8,7 @@ import fcntl
 import os
 import socket
 import subprocess
+import time
 from collections.abc import Iterator
 from contextlib import contextmanager
 from pathlib import Path
@@ -222,3 +223,18 @@ def test_a_start_that_times_out_while_the_launcher_still_works_kills_the_launche
     assert not Path(f"/proc/{stub_pid}").exists()
     assert not (tmp_path / "state" / "launcher").exists()
     assert not (tmp_path / "state" / "pid").exists()
+
+
+def test_a_launcher_that_execs_into_another_program_is_still_killed_quickly(tmp_path: Path) -> None:
+    # the launcher pid changes its command line along the exec chain (pruefstand-lock -> ... ->
+    # timeout llama-server); identity is pid + start time + token, and start never waits for it
+    stub = tmp_path / "exec-lock"
+    stub.write_text('#!/usr/bin/env bash\necho $$ > "$(dirname "$0")/stub.pid"\nexec sleep 30\n')
+    stub.chmod(0o755)
+    began = time.monotonic()
+    run = _run(tmp_path, "start", VM_LLM_LOCK_CMD=str(stub), VM_LLM_READY_S="2")
+    took = time.monotonic() - began
+    assert run.returncode == 1, run.stderr
+    assert took < 15, took
+    assert "another VM_LLM_PORT" not in run.stderr
+    assert not Path(f"/proc/{int((tmp_path / 'stub.pid').read_text())}").exists()
