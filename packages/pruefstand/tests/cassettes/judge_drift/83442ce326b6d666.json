@@ -1,5 +1,5 @@
 {
-  "recorded_at": "2026-11-10T01:19:51+00:00",
+  "recorded_at": "2026-11-15T15:33:16+00:00",
   "model_id": "ollama/gemma3:12b",
   "model_version": null,
   "request": {
@@ -47,14 +47,14 @@
     }
   },
   "response": {
-    "text": "{\"reason\": \"„Peter Alfred Gorer“ entspricht nicht „Einteilung der Immunabwehr“; die Antwort beantwortet die Frage nicht.\", \"score\": 0}",
+    "text": "{\"reason\": \"„Einteilung der Immunabwehr“ trifft keine Aussage der Referenz; nichts stimmt.\", \"score\": 0}",
     "model": "ollama/gemma3:12b",
     "usage": {
       "prompt_tokens": 1345,
-      "completion_tokens": 37
+      "completion_tokens": 30
     },
     "cost_usd": 0.0,
-    "latency_ms": 3036.065310006961,
+    "latency_ms": 3601.537237998855,
     "cached": false,
     "provider": "ollama",
     "fallback": false,

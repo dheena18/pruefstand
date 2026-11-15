@@ -570,7 +570,7 @@ class RunManifest(BaseModel):    # (schema) -> run.json
     judge_models: dict[str, str]; judge_prompt_versions: dict[str, str]
     judge_serving: dict[str, str] = {}   # R9 X3.3: metric -> "<engine> <engine_version> <quantization> <digest[:12]>" of its
                                          # GATED judge (digest = Ollama manifest digest; R11 AI11-09, R12 AI12-04)
-    judge_epoch: int = 0                 # R9 X3.3: from judges/data/calibration_status.yaml (T5.4); bumped only by re-calibration
+    judge_epoch: int = 0                 # R9 X3.3: from judges/data/calibration_status.yaml (T5.4); bumped by a passing re-calibration (D163, D934) or an owner bump without a pass (D1251)
     metric_versions: dict[str, str]; seed: int; cost: CostSummary
     duration_s: float; counts: dict[str, int]
     # counts keys (R9, single owner = the runner, D9-07/D9-21): ok, error, cached, not_applicable, judge_error,
@@ -937,6 +937,8 @@ def is_drift(agreement: float, n: int, *, a0: float | None = None, threshold: in
 #   judges/anchors.py: AnchorItem (anchor_id, item_id, label_set, metric, label, hard_negative, judge_model, prompt_id,
 #     prompt_version, messages, raw_score; .request() -> LLMRequest, .stored_verdict()); anchor_file(model) ->
 #     judges/data/anchors/<slug>.jsonl (slug: "/" -> "_", ":" -> "-"); load_anchors(path) (ConfigError when invalid).
+#   T5.4d (D1250, D1251, additive): judges/drift.py majority_scores(runs) -> list[int], count_flips(stored, runs) -> (flips, comparisons),
+#     unstable_anchors(runs, min_share=0.8, max_spread=1) -> list[int]; AnchorItem gains majority_runs: int = 1 (old files still load).
 #   llm/cache_epochs.py DriftFlag gains optional changed, threshold, a0 (judge_drift.json; `epoch` = the bumped cache epoch).
 #   pipeline/judge_drift.py: run_judge_drift(model, anchors_path, backend, cache_dir, *, threshold=None, a0=None, now)
 #     -> DriftResult(status ok|drift|skipped, n, agreement, changed, threshold); synchronous, builds a cacheless client.
