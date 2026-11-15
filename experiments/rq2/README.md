@@ -41,15 +41,15 @@ seed 1234); hard-negative specificity with its Wilson lower bound.
 | faithfulness | MEMERAG (human) | 274 | 0.25 (0.14-0.37) | 0.65 | 0.23 (0.15) | 0.62 / 0.50 | **fail** |
 | faithfulness | faithfulness_constructed | 420 | 0.78 (0.72-0.84) | 0.78 | 0.65 (0.56) | (same pairs) | not gating |
 | faithfulness | legal_hard | - | pending | | | | pending |
-| answer_correctness | correctness (constructed) | 395 | 0.82 (0.76-0.87) | 0.82 | 0.97 (0.93) | 0.82 / 0.70 (n 50, T5.4b) | **fail** (discrimination) |
+| answer_correctness | correctness (constructed) | 395 | 0.82 (0.76-0.87) | 0.82 | 0.97 (0.93) | 0.82 / 0.71 (n 42, T5.4b2) | **fail** (discrimination) |
 | answer_correctness | legal_hard | - | pending | | | | pending |
 | refusal_judged | refusal | 420 | 1.00 | 1.00 | hedged FPR 0.00 | - | **pending**: reported, not a pass (near-miss set not built, D944) |
 | perturbation_consistency | consistency | 573 | 0.92 (0.88-0.94) | 0.92 | 0.78 (0.65) | - | reported |
 
 Discrimination (T5.4b, D1240; 95 % Wilson CI in `discrimination.csv`): `correctness` `swap_first_number` 0.82 (0.69-0.90),
-`negate` 0.70 (0.56-0.81, n 50 = 21 T5.4 span pairs 0.62 + 29 GermanQuAD sentence pairs 0.76,
-`discrimination_by_form.csv`). 6 of the 29 sentence pairs do not negate the answer (manual review,
-`configs/negate_review.yaml`); without them `negate` is 0.73 (0.58-0.84), sentence 0.83
+`negate` 0.71 (0.56-0.83, n 42 = 21 T5.4 span pairs 0.62 + 21 GermanQuAD sentence pairs 0.81,
+`discrimination_by_form.csv`; T5.4b2, D1300: sentence bases are single sentences and `first_clause_end` also breaks on `:` and ` und `, so the 6 invalid pairs of T5.4b are gone and the cell shrank from 50 to 42, the candidate pool is exhausted). The manual review
+(`configs/negate_review.yaml`) found no invalid pair among the 21 and 5 borderline ones, so the sensitivity table equals the gated one
 (`discrimination_sensitivity.csv`, reported only, never gated). The sentence pairs (`sentence_answers.py`) need the GermanQuAD test download for
 `make_degraded.py`.
 

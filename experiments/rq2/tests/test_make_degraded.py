@@ -45,13 +45,13 @@ def test_a_missing_pair_file_is_a_config_error(tmp_path: Path) -> None:
         load_pairs(tmp_path)
 
 
-def test_the_committed_correctness_negate_cell_has_50_pairs() -> None:
+def test_the_committed_correctness_negate_cell_has_42_pairs() -> None:
     pairs = [p for p in load_pairs() if p["label_set"] == "correctness"]
     negates = [p for p in pairs if p["edit"] == "negate"]
-    assert len(negates) == 50
+    assert len(negates) == 42
     forms = [p["form"] for p in negates]
     assert forms.count("span") == 21  # the T5.4 pairs, unchanged (D932)
-    assert forms.count("sentence") == 29  # T5.4b (D1240)
+    assert forms.count("sentence") == 21  # T5.4b2 (D1300): single-sentence bases only
     labels = {i.item_id: i.label for i in load_items(CFG.set_named("correctness"), "test")}
     for pair in negates:
         assert labels[str(pair["base_item_id"])] == 2  # test-split positives only
