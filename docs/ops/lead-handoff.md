@@ -133,3 +133,18 @@ Reserved decision ranges (2026-11-03): the lead assigned disjoint ranges per age
   the file afterwards, and branch with `if ! cmd >file 2>&1; then ...; exit 1; fi`. For the full check test the exit code of `make check-vm` itself (it `exec`s `make check`, so the status is make's own); when the check runs in the background, write `EXIT=$?` right after it into the log and gate on that line. Do not gate on `cmd | tail -1 && next`.
   (2026-11-03: `ruff | tail && git add` let two lint-failing commits through to a PR branch; CI caught them.)
 
+
+## 9. Merging (D1210)
+
+The lead merges with `scripts/merge_reviewed.sh <pr> <sha> "<reviewer verdict>"` and nothing else; the verdict is the third **argument**
+(an env prefix such as `REVIEW_VERDICT=... scripts/merge_reviewed.sh ...` does not match the allow rule `Bash(scripts/merge_reviewed.sh:*)`).
+Use it only after an approving review of exactly that head SHA. The script refuses unless its own files have the same content as `main`
+of the public origin (exit 3), the PR is open, not a draft, based on `main` and headed by `<sha>` (exit 5), and every context the live ruleset
+lists is verified on `<sha>` (exit 4): the ruleset must list at least one; `check`, `scan`, `images-gate`, `docs-gate`, `ui-check` must be
+successful in the newest `pull_request` run of `ci.yml`, `security.yml`, `build-images.yml`, `docs.yml`, `ui.yml` that belongs to this PR;
+`pruefstand/gate` is verified (success by `pruefstand-bot[bot]`) **only if the ruleset lists it**, which it does not today (owner: D5, after T6.2b),
+so today a gated PR can merge without tier 2; any other listed context is unverifiable and refused. It then squash-merges with
+`--match-head-commit` and posts one "merged by lead" comment. It refuses with exit 3 ("owner merge required") when the changes touch an
+owner-merge path (renames and deletions included; casefolded): `.github/workflows/**`, `.github/actions/**`, any `CODEOWNERS`, `.github/dependabot.yml`, `infra/gpu/pruefstand-cluster`, `infra/gpu/install-cluster-wrapper.sh`, `infra/gpu/*.sh`, `infra/vm/**`, `infra/cluster/**`, `infra/gate-executor/**`, `**/sudoers*`, `security.yml`, `.gitleaks*`, `.gitleaksignore`, `.claude/**`, `docs/ops/secrets.md`, `scripts/merge_reviewed.sh`, `scripts/merge_paths.py`, `scripts/hooks/**`. The owner merges those, including any change to the script itself.
+Never `--admin`. The refusal is advisory: without the admin bypass, `uv run gh pr merge <n> --squash` can still merge an owner-path PR once the
+checks are green (0 approvals, no code-owner review). Git's own configuration (`url.insteadOf`, `GIT_CONFIG_COUNT`) and bash's lazy reading of the script file are trusted.

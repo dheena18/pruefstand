@@ -1,0 +1,39 @@
+{
+  "recorded_at": "2026-11-10T07:08:36+00:00",
+  "model_id": "ollama/gemma3:12b",
+  "model_version": null,
+  "request": {
+    "role": "datagen",
+    "model": "ollama/gemma3:12b",
+    "messages": [
+      {
+        "role": "system",
+        "content": "Du schreibst vollständig erfundene Geschäftsdokumente für Software-Tests. Alle Organisationen, Personen und Zahlen sind frei erfunden. Du schreibst sachlich, natürlich und in korrektem Deutsch, wie in einem echten Unternehmen. Du gibst nur das Dokument aus, ohne Vorrede und ohne Erklärung."
+      },
+      {
+        "role": "user",
+        "content": "Schreibe das folgende interne Dokument.\n\nOrganisation: Versicherung Nord (ein regionaler Versicherer)\nDokumentart: Gewerbepolice\n\nRegeln:\n1. Beginne mit einer Überschrift in der Form \"# Titel\" (eine Zeile, höchstens acht Wörter).\n2. Schreibe danach zwei bis drei kurze Abschnitte, insgesamt etwa 120 bis 160 Wörter.\n3. Der folgende Satz muss GENAU EINMAL und WÖRTLICH im Text stehen, in einem eigenen Absatz, und darf nirgends sonst wiederholt oder umschrieben werden:\nDie Selbstbeteiligung in der Gewerbepolice von Tannwald Druck beträgt 902 Euro.\n4. Nenne keine weiteren Zahlen mit Einheiten (Fristen, Beträge, Prozentsätze). Jahreszahlen und Paragrafen sind erlaubt.\n5. Erfinde keine Adressen, Telefonnummern, E-Mail-Adressen und keine Aktenzeichen oder Referenznummern.\n6. Beende das Dokument mit einer eigenen letzten Zeile: [ENDE]\n"
+      }
+    ],
+    "temperature": 0.0,
+    "max_tokens": 384,
+    "seed": 7,
+    "prompt_id": "datagen.private_docs.private_doc_de",
+    "prompt_version": "v1",
+    "response_format": "text"
+  },
+  "response": {
+    "text": "# Gewerbepolice für Tannwald Druck\n\nDie vorliegende Gewerbepolice regelt die Versicherungsleistungen für das Unternehmen Tannwald Druck, ansässig in der Region Nord. Die Police umfasst die Deckung von Sachschäden, Betriebsunterbrechung und Haftpflichtansprüchen, die im Rahmen des gewerblichen Betriebs entstehen können. Die Vertragsbedingungen basieren auf den aktuellen Richtlinien der Versicherung Nord und sind für beide Parteien bindend. Eine detaillierte Auflistung der versicherten Risiken und Ausschlüsse ist der beigefügten Anlage A zu entnehmen.\n\nDie Police wurde nach einer umfassenden Risikobewertung erstellt, die die spezifischen Anforderungen und die betriebliche Struktur von Tannwald Druck berücksichtigt.  Es wurden Gespräche mit dem Betriebsleiter, Herrn Klaus Meier, geführt, um ein genaues Bild der Geschäftstätigkeit und der potenziellen Gefahrenquellen zu erhalten.  Die vereinbarte Police ist gültig ab dem ersten Tag des kommenden Jahres.\n\nDie Selbstbeteiligung in der Gewerbepolice von Tannwald Druck beträgt 902 Euro.\n\nDie jährliche Überprüfung der Police wird in der Regel im vierten Quartal des Jahres stattfinden, um sicherzustellen, dass die Deckung weiterhin den aktuellen Bedürfnissen des Unternehmens entspricht.  Änderungen in der Geschäftstätigkeit oder im Risikoprofil sind dem Versicherer unverzüglich mitzuteilen.\n\n[ENDE]",
+    "model": "ollama/gemma3:12b",
+    "usage": {
+      "prompt_tokens": 313,
+      "completion_tokens": 304
+    },
+    "cost_usd": 0.0,
+    "latency_ms": 6187.23840592429,
+    "cached": false,
+    "provider": "ollama",
+    "fallback": false,
+    "model_version": null
+  }
+}

@@ -1,0 +1,5 @@
+### system
+Beantworte die Frage des Nutzers sachlich auf Deutsch aus deinem eigenen Wissen, in höchstens drei Sätzen. Nenne die einschlägige Vorschrift mit Paragraph oder Artikel, Absatz und Gesetz (zum Beispiel § 622 Abs. 2 BGB). Wenn du die Antwort nicht kennst, antworte genau: Unbekannt.
+
+### user
+{{question}}
