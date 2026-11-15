@@ -4,7 +4,8 @@ name: live-e2e
 # live      = the 20-case smoke_live run gated against the latest successful main push run; one PR comment.
 # scenarios = the five deterministic bug-switch scenarios of T1.11 (nightly, dispatch, PRs touching rag-demo).
 # gate      = the aggregate and the required check `live-e2e / gate`. No job here sets a commit status.
-# No repository secrets: the judge token is the job's own GITHUB_TOKEN (`models: read`), the platform's read-only fork token is the boundary, forks get no `models` access (D333).
+# No repository secrets and no model token: GitHub Models is retired (2026-07-30), so tier 1 has no judge and
+# runs `judge_mode=skipped` everywhere (D1202); judged metrics are tier 2 only.
 on:
   pull_request:
   push:
@@ -18,10 +19,6 @@ on:
         type: choice
         options: [all, scenarios]
         default: all
-      probe_quota:
-        description: "T0.6 S6: measure the GitHub Models free-tier quotas (job quota-probe)"
-        type: boolean
-        default: false
 
 permissions: {}
 
@@ -127,19 +124,15 @@ jobs:
     permissions:
       contents: read
       actions: read  # download the main baseline artefact by run id
-      models: read  # GitHub Models judge through GITHUB_TOKEN (a fork PR's token is capped by the platform)
     env:
-      # Fork PRs have no `models` permission: judged metrics are skipped there (no CPU fallback judge).
       IS_FORK: ${{ github.event.pull_request.head.repo.full_name != github.repository && github.event_name == 'pull_request' }}
       PRUEFSTAND_STACK: live
     steps:
       - name: Start time
         run: echo "JOB_START=$(date +%s)" >> "$GITHUB_ENV"
       - name: Judge mode
-        run: |
-          if [ "$IS_FORK" = "true" ]; then
-            echo "PRUEFSTAND_JUDGE_MODE=skipped" >> "$GITHUB_ENV"
-          fi
+        # GitHub Models is retired and there is no CPU judge (D94-D97): tier 1 never judges (D1202)
+        run: echo "PRUEFSTAND_JUDGE_MODE=skipped" >> "$GITHUB_ENV"
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
@@ -203,7 +196,6 @@ jobs:
           TIER: ${{ github.event_name == 'schedule' && 'nightly' || 'pr' }}
           BASELINE_DIR: ${{ steps.baseline_pr.outputs.dir || steps.baseline_nightly.outputs.dir }}
           BASELINE_NOTE: ${{ steps.baseline_pr.outputs.note || steps.baseline_nightly.outputs.note }}
-          PRUEFSTAND_GH_MODELS_TOKEN: ${{ github.token }}  # only this step judges (D333)
           PRUEFSTAND_NONCE_KEY: tier1-hosted-ci-nonce  # fixed, not a secret: informational tier-1 judge (D703)
         run: |
           mkdir -p runs
@@ -316,17 +308,6 @@ jobs:
             echo "wall time: $(( $(date +%s) - JOB_START )) s (budget 20 min, cache-warm target 12 min)"
             jq -r '"judge_mode=\(.judge_mode) judged_cases=\(.judged_cases) cost=\(.cost | tojson) duration_s=\(.duration_s)"' "$RUN_DIR/run.json"
           } >> "$GITHUB_STEP_SUMMARY"
-      # T5.4 (D195, D253): nightly drift check of the tier-1 GitHub Models judge on its 50 stored anchors (cache
-      # bypassed). Until T5.4's hosted follow-up records the anchors of the tier-1 judge the command logs
-      # "skipped" and makes no call. Informational: tier-1 judged metrics never gate (W1.4).
-      - name: Judge drift (nightly, tier-1 judge)
-        # always(): the anchors do not depend on tonight's run, so a failed run still gets its drift check
-        if: always() && github.event_name == 'schedule' && env.PRUEFSTAND_JUDGE_MODE != 'skipped'
-        continue-on-error: true
-        env:
-          PRUEFSTAND_GH_MODELS_TOKEN: ${{ github.token }}  # the drift step judges too (D333)
-        run: |
-          uv run pruefstand judge-drift --judge github/openai/gpt-4.1-mini | tee -a "$GITHUB_STEP_SUMMARY"
       - name: Upload the report
         if: always() && steps.gate.outputs.run_dir != ''
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
@@ -552,34 +533,3 @@ jobs:
                  or (.["scenario-baseline"].result == "skipped" and .prepare.outputs.scenarios == "false"))
             and (.scenarios.result == "success"
                  or (.scenarios.result == "skipped" and .prepare.outputs.scenarios == "false"))' > /dev/null
-
-  # T0.6 S6 (check C9): measure the GitHub Models free quota with the workflow token. Dispatch only:
-  #   gh workflow run live-e2e.yml --ref docs/T0.6-cluster-feasibility -f probe_quota=true
-  quota-probe:
-    name: quota-probe
-    if: ${{ github.event_name == 'workflow_dispatch' && inputs.probe_quota }}
-    runs-on: ubuntu-24.04
-    timeout-minutes: 15
-    permissions:
-      contents: read
-      models: read
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          persist-credentials: false
-      - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
-        with:
-          version: "0.13.6"
-      - name: Burst probe
-        shell: bash  # pipefail: a failing probe must fail the step despite `| tee`
-        env:
-          PRUEFSTAND_GH_MODELS_TOKEN: ${{ github.token }}
-        run: |
-          uv run --no-project --with httpx==0.28.1 python scripts/models/quota_probe.py \
-            --burst --out quota-burst.jsonl | tee -a "$GITHUB_STEP_SUMMARY"
-      - name: Raw records (headers only, no secrets)
-        if: always()
-        run: |
-          echo "::group::quota-burst.jsonl"
-          cat quota-burst.jsonl
-          echo "::endgroup::"
