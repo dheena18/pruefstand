@@ -1,0 +1,26 @@
+diff --git a/apps/rag-demo/pyproject.toml b/apps/rag-demo/pyproject.toml
+index c009af1..02c0aa7 100644
+--- a/apps/rag-demo/pyproject.toml
++++ b/apps/rag-demo/pyproject.toml
+@@ -12,7 +12,7 @@ dependencies = [
+   "pydantic-settings",
+   "pyyaml",
+   "numpy",
+-  "xxhash>=4.0.2",
++  "xxhash>=4.1.0",
+   "snowballstemmer>=3.1.1",
+   # T3.4: `rag-demo index` (Typer), the per-line schema check, and the embedding model's tokenizer.json (D241).
+   "typer",
+diff --git a/uv.lock b/uv.lock
+index 40cdb30..3649b4e 100644
+--- a/uv.lock
++++ b/uv.lock
+@@ -2397,7 +2397,7 @@ requires-dist = [
+     { name = "tokenizers", specifier = ">=0.21" },
+     { name = "typer" },
+     { name = "uvicorn" },
+-    { name = "xxhash", specifier = ">=4.0.2" },
++    { name = "xxhash", specifier = ">=4.1.0" },
+ ]
+ 
+ [[package]]

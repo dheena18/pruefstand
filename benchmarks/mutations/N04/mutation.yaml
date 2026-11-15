@@ -1,0 +1,15 @@
+id: N04
+title: Prompt synonym as a new prompt version
+kind: config
+patch: patch.diff
+needs_reindex: false
+cache_invalidating: true
+tier: pr
+splits: [smoke, core, robust_pr]
+stratum: statistical
+tier1: false
+in_detection_rate: false
+expected:
+  status: PASS
+rationale: >-
+  answer_de_v3.txt says "Antworte auf die Frage" instead of "Beantworte die Frage"; a new prompt version changes the config hash (cache miss) but not the meaning. Also one of T6.3's churn-arm kinds.

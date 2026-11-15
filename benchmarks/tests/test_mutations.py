@@ -15,6 +15,7 @@ from mutations.apply import (
     ensure_worktree,
     revert,
 )
+from mutations.gen_readme import render
 from mutations.schema import MUTATIONS_ROOT, MutationSpec, load_all, load_index
 from pydantic import BaseModel, ValidationError
 
@@ -26,7 +27,7 @@ from rag_demo.models import RagConfig
 REPO = MUTATIONS_ROOT.parents[1]
 SPECS = load_all()
 BY_ID = {spec.id: spec for spec in SPECS}
-SLICE_1 = {"M01", "M04", "M05", "M06", "M07", "M08", "M09", "M10"}
+SLICE_1 = {"M01", "M04", "M05", "M06", "M07", "M08", "M09", "M10"} | {f"N0{i}" for i in range(1, 9)}
 NIGHTLY_ONLY = {"refusal_correct"}  # interfaces §5: gated in nightly `full` only (X3.7)
 RETRIEVAL = {
     "context_recall",
@@ -84,7 +85,8 @@ def test_p33_statistical_expect_fail_and_no_should_detect() -> None:
         text = path.read_text(encoding="utf-8")
         assert "should_detect" not in text
         assert "WARN or FAIL" not in text
-    assert all(s.expected.status == "FAIL" for s in SPECS if s.stratum == "statistical")
+    mutations = [s for s in SPECS if not s.is_noop]
+    assert all(s.expected.status == "FAIL" for s in mutations if s.stratum == "statistical")
     with pytest.raises(ValidationError, match=r"P3\.3"):
         MutationSpec.model_validate(
             {
@@ -209,3 +211,54 @@ def test_an_apply_on_a_worktree_that_left_the_base_is_refused(worktree: Path) ->
     with pytest.raises(MutationError, match="not at the base"):
         apply_mutation(BY_ID["M10"], worktree, head)
     assert _git(worktree, "status", "--porcelain") == ""
+
+
+PATCHED = [s for s in SPECS if s.patch is not None]
+
+
+@pytest.mark.parametrize("spec", PATCHED, ids=lambda s: s.id)
+def test_every_patch_applies_to_the_current_tree(spec: MutationSpec) -> None:
+    assert spec.patch is not None
+    _git(REPO, "apply", "--check", str(MUTATIONS_ROOT / spec.id / spec.patch))
+
+
+def test_no_ops_change_nothing_that_parses_differently(worktree: Path) -> None:
+    head = _git(REPO, "rev-parse", "HEAD").strip()
+    gpu = (REPO / GPU_CONFIG).read_text(encoding="utf-8")
+    for entry in ("N01", "N05"):
+        apply_mutation(BY_ID[entry], worktree, head)
+        changed = (worktree / GPU_CONFIG).read_text(encoding="utf-8")
+        assert changed != gpu
+        assert yaml.safe_load(changed) == yaml.safe_load(gpu)
+        revert(worktree)
+
+
+def test_a_patch_entry_with_a_new_file_reverts_to_a_clean_tree(worktree: Path) -> None:
+    head = _git(REPO, "rev-parse", "HEAD").strip()
+    apply_mutation(BY_ID["N04"], worktree, head)
+    prompt = worktree / "apps/rag-demo/src/rag_demo/prompts/answer_de_v3.txt"
+    assert "Antworte auf die Frage" in prompt.read_text(encoding="utf-8")
+    revert(worktree)
+    assert not prompt.exists()
+    assert _git(worktree, "status", "--porcelain") == ""
+
+
+def test_n03_changes_nothing(worktree: Path) -> None:
+    head = _git(REPO, "rev-parse", "HEAD").strip()
+    apply_mutation(BY_ID["N03"], worktree, head)
+    assert _git(worktree, "status", "--porcelain") == ""
+
+
+def test_no_ops_expect_pass_and_stay_out_of_the_detection_rate() -> None:
+    for spec in (s for s in SPECS if s.is_noop):
+        assert spec.expected.status == "PASS"
+        assert not spec.in_detection_rate
+        assert not spec.tier1
+    with pytest.raises(ValidationError, match="no-op expects PASS"):
+        MutationSpec.model_validate({**BY_ID["N01"].model_dump(), "expected": {"status": "FAIL"}})
+
+
+def test_the_readme_is_generated_from_the_yaml() -> None:
+    readme = (MUTATIONS_ROOT / "README.md").read_text(encoding="utf-8")
+    assert readme == render()
+    assert "| Stratum | tier1 |" in readme

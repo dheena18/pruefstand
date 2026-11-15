@@ -1,0 +1,15 @@
+id: N08
+title: Change the server log level
+kind: code
+patch: patch.diff
+needs_reindex: false
+cache_invalidating: true
+tier: pr
+splits: [smoke, core, robust_pr]
+stratum: statistical
+tier1: false
+in_detection_rate: false
+expected:
+  status: PASS
+rationale: >-
+  uvicorn runs with --log-level warning; logging is not part of the answers, so the gate must PASS after the image rebuild.
