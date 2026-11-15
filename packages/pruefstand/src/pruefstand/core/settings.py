@@ -12,6 +12,11 @@ def _default_cache_dir() -> Path:
     return Path(home).expanduser() / "cache"
 
 
+def _default_tokenizer_dir() -> Path:
+    home = os.environ.get("PRUEFSTAND_HOME") or "~/pruefstand"
+    return Path(home).expanduser() / "tokenizers"
+
+
 def _default_log_json() -> bool:
     return bool(os.environ.get("CI"))
 
@@ -28,6 +33,8 @@ class PruefstandSettings(BaseSettings):
         attack_key: ``PRUEFSTAND_ATTACK_KEY``; executor-only HMAC key of injection markers (T4.6).
         log_json: ``PRUEFSTAND_LOG_JSON``; defaults to true when ``CI`` is set.
         cache_dir: ``PRUEFSTAND_CACHE_DIR``; defaults to ``$PRUEFSTAND_HOME/cache``.
+        judge_tokenizer_dir: ``PRUEFSTAND_JUDGE_TOKENIZER_DIR``; the judge's ``tokenizer.json``
+            lives (default ``$PRUEFSTAND_HOME/tokenizers``; ``fetch_judge_tokenizer.py``).
         gpu_endpoints_file: ``PRUEFSTAND_GPU_ENDPOINTS``; the endpoint map of ``build_backend``.
         gpu_catalogue_file: ``PRUEFSTAND_GPU_CATALOGUE``; where T5.1 finds the per-model options.
         heldout_dir: ``PRUEFSTAND_HELDOUT_DIR``; held-out canary set (private executor only, T2.6).
@@ -55,6 +62,7 @@ class PruefstandSettings(BaseSettings):
     attack_key: SecretStr | None = None
     log_json: bool = Field(default_factory=_default_log_json)
     cache_dir: Path = Field(default_factory=_default_cache_dir)
+    judge_tokenizer_dir: Path = Field(default_factory=_default_tokenizer_dir)
     gpu_endpoints_file: Path = Field(
         default=Path("infra/gpu/endpoints.yaml"),
         validation_alias=AliasChoices("PRUEFSTAND_GPU_ENDPOINTS"),

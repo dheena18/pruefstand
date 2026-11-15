@@ -208,6 +208,7 @@ owning module's unit test dir (`pt/unit/<module>/`, `rd/unit/…`).
 | `answer_correctness` | `metrics.judged.correctness` | T5.2b | `test_correctness.py` | no reference → NA; raw 1 → 0.5; judge `LLMError` → error | covered |
 | `perturbation_consistency` | `metrics.judged.consistency` | T5.2b | `test_consistency.py` | base case → NA; base answer missing → NA; raw 1 → 1.0; judge error → error | covered |
 | `refusal_judged` | `metrics.judged.refusal` | T5.2b | `test_refusal.py` (judged) | refusing answer raw 1 → 1.0; judge error → error; > 5 % errors → `judge_degraded` | covered |
+| `judges.exact_tokens` (`ExactCounter`, `load_counter`, `is_cut`, `fetch_tokenizer`) | `judges.exact_tokens` | T5.2c | `test_exact_tokens.py`, `test_gemma_tokenizer.py`, `test_judge_num_ctx.py`, `test_exact_count_missing.py` | branches (a) window, (b) cut band, (c) < 0.8 x exact, none; file absent -> skipped and reported; wrong sha refused; cached prefix and short prompts never flagged; template constant 10 vs 9 measured; `num_ctx` on plain and repair calls | covered |
 | `evidence_recall` (R9 X3.2, experiment metric) | `experiments/rq1` | T7.3 | `experiments/rq1/tests/test_evidence_recall.py`, `test_analyze.py` | containment after whitespace/NBSP/hyphen normalisation → 1 (real law text with "Kündi-⏎gungsfrist" (line-break hyphenation)); span split across two chunks → 0; `evidence_span=None` → NA; aggregation per config × perturbation with cluster resampling | covered |
 
 ## judges (§6)
