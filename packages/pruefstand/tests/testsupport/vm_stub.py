@@ -20,13 +20,19 @@ class StubState:
 
     served: list[str]
     reply: str = "{}"
+    answer_model: str | None = None
     bodies: list[dict[str, Any]] = field(default_factory=list)
 
 
 @contextmanager
-def openai_stub(served: list[str], reply: str = "{}") -> Iterator[tuple[str, StubState]]:
-    """Serve ``served`` aliases on ``/v1/models``; yield (base URL ``.../v1``, state)."""
-    state = StubState(served=list(served), reply=reply)
+def openai_stub(
+    served: list[str], reply: str = "{}", answer_model: str | None = None
+) -> Iterator[tuple[str, StubState]]:
+    """Serve ``served`` aliases on ``/v1/models``; yield (base URL ``.../v1``, state).
+
+    Answers name the requested model (as llama-server does) unless ``answer_model`` is given.
+    """
+    state = StubState(served=list(served), reply=reply, answer_model=answer_model)
 
     class Handler(BaseHTTPRequestHandler):
         def _send(self, payload: dict[str, Any]) -> None:
@@ -44,7 +50,8 @@ def openai_stub(served: list[str], reply: str = "{}") -> Iterator[tuple[str, Stu
             body = json.loads(self.rfile.read(int(self.headers["Content-Length"])))
             state.bodies.append(body)
             msg = {"role": "assistant", "content": state.reply}
-            self._send({"model": body.get("model"), "choices": [{"message": msg}]})
+            model = state.answer_model or body.get("model")
+            self._send({"model": model, "choices": [{"message": msg}]})
 
         def log_message(self, *_: object) -> None:
             return

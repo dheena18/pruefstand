@@ -2,7 +2,7 @@
 
 Pass 1 (the VM CPU model, default ``PRUEFSTAND_DATAGEN_BACKEND=vm``; resumable)::
 
-    bash scripts/models/vm_llm.sh start   # prints the URL; export PRUEFSTAND_JUDGE_BASE_URL=<it>
+    bash scripts/models/vm_llm.sh start   # serves PRUEFSTAND_DATAGEN_BASE_URL (default port 18091)
     uv run python scripts/generate_qa.py --pass generate --tenant kanzlei_mueller --n 30 --seed 7
     bash scripts/models/vm_llm.sh stop
 

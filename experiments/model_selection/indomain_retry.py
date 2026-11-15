@@ -4,8 +4,8 @@ The D1200 benchmark found 35-45 % of first answers invalid (evidence span not ve
 400 characters, JSON in fences). An item is therefore asked again, at most ``retries`` times
 (default ``DEFAULT_RETRIES``), until one answer passes ``indomain_data.validate_item``. Every
 attempt is one call against ``--max-calls`` and is cached under its own key (attempt 0 = the
-passage id, so caches of earlier runs stay valid; attempt k = ``<id>#retry<k>``). Answers are
-read back in attempt order, so a rerun continues exactly where a stopped batch ended.
+passage id, so caches of earlier runs stay valid; attempt k = ``<id>#retry<k>-t<T>-s<seed>``).
+Answers are read back in attempt order, so a rerun continues exactly where a stopped batch ended.
 """
 
 from collections.abc import Callable, Sequence
@@ -18,12 +18,18 @@ DEFAULT_RETRIES = 2
 
 
 def attempt_key(passage_id: str, attempt: int) -> str:
-    """Cache key of attempt ``attempt`` (0 = the first call) of a passage.
+    """Cache key of attempt ``attempt`` (0 = the first, greedy call) of a passage.
+
+    A retry key names its sampling parameters (``indomain_gen.vm_body``), so answers cached under
+    an older key (``<id>#retry<k>``: greedy retries before D1201's review round) are never read
+    as sampled retries.
 
     >>> attempt_key("gii-bgb-622", 0), attempt_key("gii-bgb-622", 2)
-    ('gii-bgb-622', 'gii-bgb-622#retry2')
+    ('gii-bgb-622', 'gii-bgb-622#retry2-t0.7-s44')
     """
-    return passage_id if attempt == 0 else f"{passage_id}#retry{attempt}"
+    if attempt == 0:
+        return passage_id
+    return f"{passage_id}#retry{attempt}-t{gen.RETRY_TEMPERATURE}-s{42 + attempt}"
 
 
 def judge_answer(text: str, passage_text: str) -> tuple[data.Item | None, str]:

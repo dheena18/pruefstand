@@ -128,6 +128,12 @@ def pending(args: argparse.Namespace, passages: dict[str, data.Passage]) -> list
 
 def cmd_generate(args: argparse.Namespace, token: str, base_url: str | None) -> int:
     """Generate with per-item regeneration (``--retries``); every attempt counts as one call."""
+    if gen.is_vm(args.model):
+        try:  # the answer echoes the alias we send: ask /models once, before anything else
+            vm_check(args.model, base_url)
+        except gen.GenError as exc:
+            print(f"stopped: {exc}", file=sys.stderr)
+            return 1
     passages = load_passages()
     tpl = prompt_text(data.GEN_PROMPT)
     tally = retry.Tally()
@@ -139,8 +145,6 @@ def cmd_generate(args: argparse.Namespace, token: str, base_url: str | None) -> 
         gen.ask(token, args.model, data.GEN_PROMPT, key, body, base_url=base_url, attempt=attempt)
 
     plan = [passages[pid] for pid in load_plan()]
-    if gen.is_vm(args.model):
-        vm_check(args.model, base_url)  # the answer echoes the alias we send: ask /models once
     try:
         retry.run_generate(
             plan,
@@ -183,6 +187,12 @@ def cmd_calls(args: argparse.Namespace) -> int:
     if args.cmd == "generate":
         return cmd_generate(args, token, base_url)
     prompt = data.CHECK_PROMPT
+    if gen.is_vm(args.model):
+        try:
+            vm_check(args.model, base_url)
+        except gen.GenError as exc:
+            print(f"stopped: {exc}", file=sys.stderr)
+            return 1
     done = 0
     for pid, body in pending(args, load_passages())[: args.max_calls]:
         if done and args.pause_s > 0:

@@ -1,3 +1,4 @@
+import re
 from pathlib import Path
 
 import pytest
@@ -138,3 +139,14 @@ def test_an_unknown_datagen_backend_is_refused(monkeypatch: pytest.MonkeyPatch) 
     monkeypatch.setenv("PRUEFSTAND_DATAGEN_BACKEND", "openai")
     with pytest.raises(ValidationError, match="datagen_backend"):
         make()
+
+
+def test_the_datagen_url_matches_the_launcher_port_and_not_the_judge() -> None:
+    launcher = Path(__file__).resolve().parents[5] / "scripts" / "models" / "vm_llm.sh"
+    if not launcher.is_file():
+        pytest.skip("scripts/models/vm_llm.sh arrives with PR #165")
+    port = re.search(r'port="\$\{VM_LLM_PORT:-(\d+)\}"', launcher.read_text(encoding="utf-8"))
+    assert port is not None
+    settings = make()
+    assert settings.datagen_base_url == f"http://127.0.0.1:{port.group(1)}/v1"
+    assert settings.datagen_base_url != (settings.judge_base_url or "http://localhost:8080/v1")

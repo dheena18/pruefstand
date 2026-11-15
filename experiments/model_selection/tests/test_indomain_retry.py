@@ -108,3 +108,11 @@ def test_the_generation_schema_matches_the_validation_limits() -> None:
     span = gen.GEN_SCHEMA["properties"]["evidence_span"]
     assert (span["minLength"], span["maxLength"]) == (20, 400)
     assert set(gen.GEN_SCHEMA["required"]) == {"question", "evidence_span", "reference_answer"}
+
+
+def test_an_old_greedy_retry_entry_is_never_read_as_a_sampled_retry() -> None:
+    # before the review round a retry was cached as "<id>#retry1" with temperature 0
+    _store(PASSAGE.id, REPLIES[0])
+    _store(f"{PASSAGE.id}#retry1", REPLIES[-1])
+    assert retry.answers(MODEL, PASSAGE.id, 2) == [REPLIES[0]]
+    assert retry.attempt_key(PASSAGE.id, 1) == f"{PASSAGE.id}#retry1-t0.7-s43"
