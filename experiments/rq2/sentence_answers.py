@@ -6,7 +6,8 @@ lifts a positive to its GermanQuAD source sentence and negates that sentence ins
 answer is the context sentence that contains the positive span, the degraded answer is the same
 sentence with ``negate`` applied. Deterministic, no model (D1240).
 
-A sentence is used only when it is clean after removing wiki italics (``clean_span``: no other
+A sentence is used only when it is a single, complete sentence (T5.4b2: no merged or cut
+sentences) and clean after removing wiki italics (``clean_span``: no other
 markup, balanced brackets), the span starts in its first clause, the negation is not after the
 span and ``negation_ok`` holds, so the negation lands on the clause that carries the answer.
 """
@@ -16,7 +17,7 @@ from collections.abc import Sequence
 from rq2.calib_schema import CalibrationItem
 from rq2.calib_sources import QuadRow
 from rq2.construct import clean_span, negate, split_sentences
-from rq2.construct_checks import first_clause_end, negation_ok
+from rq2.construct_checks import first_clause_end, is_single_sentence, negation_ok
 
 WIKI_ITALICS = "''"
 """Wiki italics, removed from sentence and span (``Ground Zero`` instead of ``''Ground Zero''``)."""
@@ -40,7 +41,9 @@ def answer_sentence(row: QuadRow, answer: str) -> str | None:
     if not span:
         return None
     sentences = (s.replace(WIKI_ITALICS, "") for s in split_sentences(row.context))
-    return next((s for s in sentences if span in s and clean_span(s)), None)
+    return next(
+        (s for s in sentences if span in s and clean_span(s) and is_single_sentence(s)), None
+    )
 
 
 def negated_sentence(row: QuadRow, answer: str) -> tuple[str, str] | None:
@@ -57,9 +60,11 @@ def negated_sentence(row: QuadRow, answer: str) -> tuple[str, str] | None:
     span = _span(answer)
     start = sentence.find(span)
     edited = negate(sentence)
-    if start >= first_clause_end(sentence) or edited is None or edited == sentence:
+    if start >= first_clause_end(sentence, strict=True) or edited is None or edited == sentence:
         return None
-    if _first_diff(sentence, edited) > start + len(span) or not negation_ok(sentence, edited):
+    if _first_diff(sentence, edited) > start + len(span) or not negation_ok(
+        sentence, edited, strict=True
+    ):
         return None
     return sentence, edited
 

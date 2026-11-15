@@ -14,8 +14,8 @@ def test_every_reviewed_id_is_a_committed_sentence_pair() -> None:
     sentence = {str(p["pair_id"]) for p in load_pairs() if p.get("form") == "sentence"}
     listed = set(review["invalid"]) | set(review["borderline"])
     assert listed <= sentence
-    assert len(review["invalid"]) == 6
-    assert len(review["borderline"]) == 3
+    assert len(review["invalid"]) == 0  # T5.4b2: the 6 invalid pairs of T5.4b are gone (D1300)
+    assert len(review["borderline"]) == 5
     assert not set(review["invalid"]) & set(review["borderline"])
     assert invalid_negations() == frozenset(review["invalid"])
 
