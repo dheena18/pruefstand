@@ -247,7 +247,7 @@ Every step that loads, unloads or pulls models runs under the GPU lock: `pruefst
    **Server with other settings** (`$C status` shows WARN for `OLLAMA_*` env ≠ `cluster.env`): decide once,
    outside any gate run, under the lock: fix `~/start-ollama.sh`, then restart by hand on the cluster
    (`pkill -x ollama; sleep 3; setsid nohup ~/start-ollama.sh > $CLUSTER_DATA_ROOT/ollama.log 2>&1 < /dev/null &`,
-   setup log §7); record the decision in `docs/decisions.md`. The wrapper's mutating ops (`start-ollama`,
+   setup log §7); record the decision as a decision file `docs/decisions/D<n>.md`. The wrapper's mutating ops (`start-ollama`,
    `stop-ollama`, `pull`, `rm`) refuse unless you hold the GPU lock (`pruefstand-lock …`, A12-M5);
    `status` and `show` work without it. Check: `$C status`; `curl -s localhost:11434/api/tags`.
 2. **Stop**: normally not needed (unload models instead: `switch-mode.sh` or `keep_alive: 0`).

@@ -61,7 +61,7 @@
 
 ## Docs to update
 
-- [ ] `docs/decisions.md` (one line per decision)
+- [ ] `docs/decisions/D<n>.md` (one new file per decision; never append to `docs/decisions.md`, D1211)
 - [ ] <diagram / README / module docstring>
 
 ## Prompt to paste

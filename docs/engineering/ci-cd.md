@@ -438,7 +438,7 @@ PR. Demo rollback: dispatch `demo-nightly.yml` with `mode: pin` (previous demo-r
   required check must be refused; if it is not, the bypass list is emptied and outages are handled by
   temporarily disabling the ruleset in the browser, which needs Administration that the token lacks). Every bypass gets a row in
   `docs/ops/bypass-log.md` (date, PR, reason, outage evidence, follow-up nightly) in the same or the
-  next PR; a threshold change also gets a `docs/decisions.md` line.
+  next PR; a threshold change also gets a new decision file `docs/decisions/D<n>.md`.
 - Tag protection: a tag ruleset on `refs/tags/v*` (restrict creation, update, deletion; bypass = App
   `pruefstand-release`), created in T9.1a.
 - Signed commits are recommended, not required.
