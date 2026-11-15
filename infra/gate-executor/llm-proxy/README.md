@@ -6,7 +6,7 @@ The candidate's only route to the one Ollama server (T6.2a S4b; D206, D242, D252
 - `llm_proxy_policy.py`: pure rules (allow-list, bearer key, option policy, reload detection).
 - `llm_proxy_json.py`: strict JSON reading (D1070): no duplicate or case/NFKC-colliding keys, no NaN, exact
   top-level keys per route, ASCII-only output.
-- `llm_proxy.py`: bounded threaded HTTP server (30 s client timeout, 32 connections, D1072); no env proxy, no redirects (D1073); `GET /api/tags` answered from the policy (D1071); `0.0.0.0:11500` inside the container; upstream only
+- `llm_proxy.py`: bounded threaded HTTP server (30 s client timeout, 32 connections, D1072); no env proxy, no redirects (D1073); `GET /api/tags` answered from the policy (D1071); reserve `/health` slots for loopback peers only and at most 16 connections per other peer (D1078); `0.0.0.0:11500` inside the container; upstream only
   `LLM_PROXY_UPSTREAM` (default `http://172.17.0.1:11434`); `GET /health` →
   `{"model_reloads", "upstream_errors", "requests"}`; logs method and path only.
 
