@@ -107,7 +107,7 @@ recipe="NEEDS MANUAL: origin/main keeps decisions as docs/decisions/D<n>.md file
 mapfile -t unmerged < <(git diff --name-only --diff-filter=U)
 for f in "${unmerged[@]}"; do
   [ "$per_file" = 1 ] && [ "$f" = docs/decisions.md ] && lead_die 1 "$recipe"
-  stages="$(git ls-files -u -- "$f" | awk '{print $3}' | sort -u | tr '\n' ' ')"
+  stages="$(git ls-files -u -- "$f" | awk '{print $3}' | LC_ALL=C sort -u | tr '\n' ' ')"
   case "$stages" in
     *2*3*) ;;  # a content merge has our side (2) and theirs (3); the base (1) is absent for add/add
     *) lead_die 1 "NEEDS MANUAL: $f has no ours/theirs pair in the index (deleted on one side?); resolve it by hand, git add it, then rerun" ;;
@@ -124,7 +124,8 @@ done
 
 set_phase verify
 # The commit takes the index only. Unstaged edits to a file the merge touched would be checked but not committed.
-mapfile -t overlap < <(comm -12 <(git diff --cached --name-only HEAD | sort) <(git diff --name-only | sort))
+# LC_ALL=C: sort and comm must use the same byte order, or comm misses names (en_US.UTF-8 ignores punctuation).
+mapfile -t overlap < <(LC_ALL=C comm -12 <(git diff --cached --name-only HEAD | LC_ALL=C sort) <(git diff --name-only | LC_ALL=C sort))
 if [ "${#overlap[@]}" -gt 0 ]; then
   lead_die 1 "unstaged edits to files of this merge (git add them, or git checkout them, then rerun): ${overlap[*]}"
 fi

@@ -271,3 +271,20 @@ def test_pytest_args_run_and_a_timeout_is_reported_not_silent(lab: Lab) -> None:
     assert "phase=test" in (lab.wt / ".git" / "lead-resolve-merge.state").read_text(
         encoding="utf-8"
     )
+
+
+def test_unstaged_edit_is_found_under_a_collating_locale(lab: Lab) -> None:
+    """comm under en_US.UTF-8 disagrees with sort on punctuated names and missed the overlap."""
+    _decisions(lab, "| D1230 | mine |", where="wt", msg="mine")
+    for name in ("a-c.txt", "ab.txt", "a_b.txt", "a.txt"):
+        lab.write(name, "t\n", where="other")
+    lab.commit("theirs files", where="other")
+    _decisions(lab, "| D1230 | theirs |", where="other", msg="theirs")
+    env = {"LC_ALL": "en_US.UTF-8", "LANG": "en_US.UTF-8"}
+    stopped = _resolve(lab, extra_env=env)
+    assert "DUPLICATE D-number D1230" in stopped.stderr
+    (lab.wt / "a-c.txt").write_text("edited after the merge\n", encoding="utf-8")
+    refused = _resolve(lab, extra_env=env)
+    assert refused.returncode == 1
+    assert "unstaged edits to files of this merge" in refused.stderr
+    assert "a-c.txt" in refused.stderr
