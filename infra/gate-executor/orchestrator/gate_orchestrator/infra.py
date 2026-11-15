@@ -23,22 +23,22 @@ class InfraError(PruefstandError):
     """An executor infrastructure failure; the message is ``"<kind>: <detail>"`` (D245)."""
 
 
-# D1079: the only exceptions that count as infra (Ollama, tunnel, data root, proxy, health.sh).
-# Candidate failures never raise here: the runner records them as case errors (TargetError stays
-# inside the run), and any other exception is a bug that propagates.
-INFRA_EXCEPTIONS: tuple[type[BaseException], ...] = (
-    InfraError,
-    OSError,
-    subprocess.SubprocessError,
-)
+# D1079/D1080: the only exceptions that count as infra. A plain OSError does NOT (a candidate
+# artefact's FileNotFoundError or PermissionError must never be retried as infra): callers wrap the
+# OSErrors they know are infra (Ollama connection refused, tunnel down, data root gone) in an
+# InfraError with its kind. Candidate failures never raise here (the runner scores them as case
+# errors); any other exception propagates as a bug, after a final status (see run_with_retry).
+INFRA_EXCEPTIONS: tuple[type[BaseException], ...] = (InfraError, subprocess.SubprocessError)
+EXECUTOR_ERROR = "executor error: {name}; re-dispatch to retry"
 
 
 def _describe(exc: BaseException, *, repair: bool = False) -> str:
+    """The infra_error text: an InfraError's own ``<kind>: <detail>``, else kind ``executor``."""
     if isinstance(exc, InfraError):
         return str(exc)
     if repair:
-        return f"ollama_down: health.sh --repair failed ({type(exc).__name__})"
-    return f"ollama_down: {type(exc).__name__} during the run"
+        return f"executor: health.sh --repair failed ({type(exc).__name__})"
+    return f"executor: {type(exc).__name__} during the run"
 
 
 def proxy_deltas(before: Mapping[str, int], after: Mapping[str, int]) -> dict[str, int]:
@@ -100,6 +100,12 @@ def run_with_retry(
             infra_error = attempt(number)
         except INFRA_EXCEPTIONS as exc:
             infra_error = _describe(exc)
+        except Exception as exc:
+            if number == 2:  # "retrying once" is already posted: never leave it there (D1080)
+                final = EXECUTOR_ERROR.format(name=type(exc).__name__)
+                poster.post_status(sha, "error", final)
+                record_error(final)
+            raise
         if infra_error is None or infra_error.startswith(WINDOW_EXCEEDED):
             return number
         _post(poster, sha, infra_summary(infra_error, number))

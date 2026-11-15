@@ -1355,6 +1355,7 @@ Descriptions are truncated to GitHub's 140-character limit.
 | executor, `MAINTENANCE` present (T6.2a; no lock taken, D1064) | `pruefstand/gate` | `pending` | `"executor in maintenance; dispatch again later"` |
 | executor, lock wait timed out (T6.2a, D1064) | `pruefstand/gate` | `pending` | `"executor busy (GPU lock held); dispatch again"` |
 | executor, job start (T6.2a) | `pruefstand/gate` | `pending` | `"tier-2 run started"` |
+| executor, a non-infra exception during the retry after "retrying once" was posted (T6.2a, D1080) | `pruefstand/gate` | `error` | `"executor error: <ExceptionType>; re-dispatch to retry"` (never the infra wording; recorded as processed `error`) |
 | executor, preflight failure (T6.2a) | `pruefstand/gate` | `error` | `"executor unhealthy: <reason>"` (e.g. `"executor unhealthy: data root unavailable"`) |
 | nightly gate phase (T6.2b) | `pruefstand/nightly` | `success` / `failure` | `"<GateStatus>: <summary>"` (non-blocking, D91) |
 | nightly skipped (T6.2b) | `pruefstand/nightly` | `error` | `"skipped: <reason>"` (the §7 heartbeat vocabulary) |

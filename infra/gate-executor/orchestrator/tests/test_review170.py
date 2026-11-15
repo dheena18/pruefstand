@@ -52,7 +52,7 @@ def test_digest_mismatch_names_the_resident_row_not_an_earlier_placement_row() -
     [
         (
             16,
-            "endpoint:http://127.0.0.1:11434,OK,answers\n"
+            "endpoint:http://127.0.0.1:11434,FAIL,/api/tags does not answer\n"
             "data-root,FAIL,the data root is not writable by pruefstand\n",
             "data_root_unavailable: data-root the data root is not writable by pruefstand",
         ),
@@ -91,12 +91,14 @@ def test_repair_raising_is_the_second_infra_failure(poster: SpyPoster) -> None:
     assert _retry(job, poster) == 1
     assert [c[3] for c in poster.calls] == [
         "tunnel_lost: ssh exited; retrying once",
-        "ollama_down: health.sh --repair failed (TimeoutExpired); re-dispatch to retry",
+        "executor: health.sh --repair failed (TimeoutExpired); re-dispatch to retry",
     ]
     assert len(job.recorded) == 1
 
 
-@pytest.mark.parametrize("exc", [InfraError("ollama_down: no answer"), OSError("connection reset")])
+@pytest.mark.parametrize(
+    "exc", [InfraError("ollama_down: no answer"), subprocess.CalledProcessError(11, "health.sh")]
+)
 def test_second_attempt_raising_infra_is_the_second_failure(
     poster: SpyPoster, exc: Exception
 ) -> None:
@@ -164,3 +166,42 @@ def test_maintenance_is_checked_again_after_the_lock(tmp_path: Path, poster: Spy
     with gpu_lock(path, 0, sleep=lambda _s: None):
         pass
     assert LockTimeoutError is not None
+
+
+@pytest.mark.parametrize(
+    "exc", [FileNotFoundError("run.json"), PermissionError("artefact"), OSError("reset")]
+)
+def test_plain_os_errors_are_not_infra(poster: SpyPoster, exc: Exception) -> None:
+    # D1080: callers wrap the OSErrors they know are infra (Ollama refused, tunnel down)
+    with pytest.raises(type(exc)):
+        _retry(Job(exc), poster)
+    assert poster.calls == []
+
+
+def test_subprocess_error_in_the_run_is_described_by_its_own_kind(poster: SpyPoster) -> None:
+    job = Job(subprocess.TimeoutExpired("pruefstand run", 60), None)
+    assert _retry(job, poster) == 2
+    assert poster.calls[0][3] == "executor: TimeoutExpired during the run; retrying once"
+    assert "ollama_down" not in poster.calls[0][3]
+
+
+@pytest.mark.parametrize(
+    "exc", [TargetError("candidate broke", transient=False), ValueError("a bug")]
+)
+def test_non_infra_raise_after_retrying_once_posts_a_final_status(
+    poster: SpyPoster, exc: Exception
+) -> None:
+    # D1080: never leave the PR at "retrying once"; the final state is error, not infra-labelled
+    job = Job("tunnel_lost: ssh exited", exc)
+    with pytest.raises(type(exc)):
+        _retry(job, poster)
+    assert poster.calls[0][3] == "tunnel_lost: ssh exited; retrying once"
+    final = (
+        "post_status",
+        SHA,
+        "error",
+        f"executor error: {type(exc).__name__}; re-dispatch to retry",
+        "pruefstand/gate",
+    )
+    assert poster.calls[1] == final
+    assert job.recorded == [final[3]]
