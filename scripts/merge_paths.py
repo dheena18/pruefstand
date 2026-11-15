@@ -1,16 +1,17 @@
 """Owner-merge path matcher for ``scripts/merge_reviewed.sh``.
 
 A PR that touches an owner-merge path (workflows, VM/sudoers files, secrets docs, Claude
-settings, ...) must be merged by the owner, never by the lead script. The matcher is a pure
-function; the CLI reads the PR file list as JSON lines on stdin (objects with ``filename`` and
-optional ``previous_filename``, the shape of
-``gh api repos/<repo>/pulls/<n>/files --paginate --jq ".[]"``).
+settings, the merge script itself, ...) must be merged by the owner, never by the lead script.
+The matcher is a pure function. The CLI reads the changed paths of the PR on stdin, NUL
+separated (``git diff --name-only --no-renames -z <merge-base> <sha>``: a rename shows up as a
+delete plus an add, so both sides are listed, and deletions are listed too).
 
-Exit codes of the CLI: 0 no owner path touched, 3 at least one owner path touched (paths on stderr),
-64 unreadable input.
+Matching is done on the casefolded, normalised path; when unsure the answer is "owner path".
+
+Exit codes of the CLI: 0 no owner path touched, 3 at least one owner path touched (paths on
+stderr) or the list is empty or possibly too long to review, 64 unreadable input.
 """
 
-import json
 import posixpath
 import sys
 from collections.abc import Iterable
@@ -20,18 +21,25 @@ OWNER_PREFIXES: tuple[str, ...] = (
     ".github/actions",
     ".claude",
     "infra/vm",
+    "infra/cluster",
+    "infra/gate-executor",
     "infra/gpu/pruefstand-cluster",
+    "scripts/hooks",
 )
 OWNER_EXACT: frozenset[str] = frozenset(
     {
         "infra/gpu/install-cluster-wrapper.sh",
         "docs/ops/secrets.md",
         ".gitleaksignore",
+        ".github/codeowners",
+        ".github/dependabot.yml",
+        "scripts/merge_reviewed.sh",
+        "scripts/merge_paths.py",
     }
 )
 OWNER_NAME_PREFIXES: tuple[str, ...] = ("sudoers", ".gitleaks")
 OWNER_BASENAMES: frozenset[str] = frozenset({"security.yml"})
-# The pulls/files API returns at most 3000 files; a list that long may be truncated.
+# More changed files than this are not reviewed by the script (refuse, owner decides).
 MAX_FILES = 3000
 
 
@@ -53,23 +61,27 @@ def normalise(path: str) -> str:
 
 
 def is_owner_path(path: str) -> bool:
-    """Return True when ``path`` is an owner-merge path (case-sensitive).
+    """Return True when ``path`` is an owner-merge path (compared casefolded).
 
     An empty or repository-escaping path counts as owner path (refuse when unsure).
 
     >>> is_owner_path(".github/workflows/ci.yml"), is_owner_path("./.github/../.github/actions/a")
     (True, True)
-    >>> is_owner_path(".GitHub/workflows/ci.yml"), is_owner_path("docs/ops/secrets.md.bak")
-    (False, False)
+    >>> is_owner_path(".Claude/settings.json"), is_owner_path("docs/ops/secrets.md.bak")
+    (True, False)
     >>> is_owner_path("a/b/sudoers.d/50-x"), is_owner_path("x/.gitleaks.toml"), is_owner_path("..")
     (True, True, True)
+    >>> is_owner_path("infra/gpu/switch-mode.sh"), is_owner_path("infra/gpu/models.yaml")
+    (True, False)
     """
-    norm = normalise(path)
+    norm = normalise(path).casefold()
     if norm in ("", ".", "..") or norm.startswith("../"):
         return True
     if norm in OWNER_EXACT:
         return True
     if any(norm == p or norm.startswith(p + "/") for p in OWNER_PREFIXES):
+        return True
+    if norm.startswith("infra/gpu/") and norm.endswith(".sh"):
         return True
     parts = norm.split("/")
     if parts[-1] in OWNER_BASENAMES:
@@ -77,55 +89,39 @@ def is_owner_path(path: str) -> bool:
     return any(part.startswith(OWNER_NAME_PREFIXES) for part in parts)
 
 
-def owner_paths_hit(files: Iterable[tuple[str, str | None]]) -> list[str]:
-    """Return the owner paths among ``(filename, previous_filename)`` pairs.
+def owner_paths_hit(paths: Iterable[str]) -> list[str]:
+    """Return the owner paths among the changed ``paths`` (renames arrive as two paths).
 
-    A rename counts when either side is an owner path; deletions are listed like any change.
-
-    >>> owner_paths_hit([("docs/a.md", None), ("docs/b.md", "infra/vm/x.sh"), ("infra/vm/y", None)])
-    ['infra/vm/x.sh', 'infra/vm/y']
+    >>> owner_paths_hit(["docs/b.md", "infra/vm/x.sh", "infra/vm/x.sh", "docs/c.md"])
+    ['infra/vm/x.sh']
     """
     hits: list[str] = []
-    for name, previous in files:
-        for candidate in (name, previous):
-            if candidate is not None and is_owner_path(candidate) and candidate not in hits:
-                hits.append(candidate)
+    for path in paths:
+        if is_owner_path(path) and path not in hits:
+            hits.append(path)
     return hits
 
 
-def parse_lines(lines: Iterable[str]) -> list[tuple[str, str | None]]:
-    """Parse JSON-lines file records into ``(filename, previous_filename)`` pairs.
+def parse_nul(data: str) -> list[str]:
+    r"""Split NUL-separated ``data`` into paths (a trailing NUL is allowed).
 
-    Raises:
-        ValueError: a line is not a JSON object with a string ``filename``.
+    >>> parse_nul("a\0b c\0")
+    ['a', 'b c']
     """
-    out: list[tuple[str, str | None]] = []
-    for line in lines:
-        if not line.strip():
-            continue
-        obj = json.loads(line)
-        if not isinstance(obj, dict) or not isinstance(obj.get("filename"), str):
-            msg = "record without filename"
-            raise ValueError(msg)  # noqa: TRY004  # bad JSON content, not a type misuse
-        prev = obj.get("previous_filename")
-        if prev is not None and not isinstance(prev, str):
-            msg = "bad previous_filename"
-            raise ValueError(msg)
-        out.append((obj["filename"], prev))
-    return out
+    return [p for p in data.split("\0") if p]
 
 
 def main() -> int:
-    """CLI entry: read JSON lines on stdin, report owner paths on stderr, return the exit code."""
+    """CLI entry: read NUL-separated paths on stdin, report owner paths on stderr."""
     try:
-        files = parse_lines(sys.stdin)
-    except ValueError as exc:  # json.JSONDecodeError is a ValueError
+        paths = parse_nul(sys.stdin.read())
+    except (UnicodeDecodeError, OSError) as exc:
         sys.stderr.write(f"merge_paths: bad input: {exc}\n")
         return 64
-    if not files or len(files) >= MAX_FILES:
-        sys.stderr.write("merge_paths: empty or possibly truncated file list\n")
+    if not paths or len(paths) >= MAX_FILES:
+        sys.stderr.write("merge_paths: empty or too long a file list\n")
         return 3
-    hits = owner_paths_hit(files)
+    hits = owner_paths_hit(paths)
     for hit in hits:
         sys.stderr.write(f"owner path: {hit}\n")
     return 3 if hits else 0
