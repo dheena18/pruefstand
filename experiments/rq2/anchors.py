@@ -6,13 +6,14 @@ is judged at production concurrency (4) with the cache bypassed: ``--majority`` 
 whose majority verdict is stored (T5.4d, D1250; ``--majority 1`` = the first run, T5.4), then
 ``--repeats`` (>= 4) further runs that give the flip rate f against it, its Wilson upper bound and
 the judge's drift threshold (smallest c with P(Bin(50, f_upper) >= c) <= 1 %). ``--screen`` takes
-the ``anchor_flips.json`` of an earlier run and replaces its unstable anchors (modal share < 0.8,
-``judges.drift.unstable_anchors``) by seeded spares of the same stratum. Writes
+the ``anchor_flips.json`` of earlier runs, pools each anchor's runs and replaces the unstable ones
+(modal share < 0.8 or non-adjacent scores, ``judges.drift.unstable_anchors``) by seeded spares of
+the same stratum. Writes
 ``packages/pruefstand/src/pruefstand/judges/data/anchors/<model-slug>.jsonl`` and
 ``results/rq2/anchor_flips.json``.
 
     pruefstand-lock uv run python experiments/rq2/anchors.py --majority 5 --repeats 4
-    # T5.4d second pass: add --screen results/rq2/anchor_flips_screen.json
+    # T5.4d final pass: --screen results/rq2/anchor_flips_screen{,2}.json
 """
 
 import argparse
@@ -31,7 +32,7 @@ from rq2.flips import flip_summary, judge_anchor_runs
 from rq2.rq2_config import REPO, RQ2Config, load_config, load_items, set_available
 
 from pruefstand.core.models.llm import Message
-from pruefstand.judges.anchors import AnchorItem, anchor_file, load_anchors
+from pruefstand.judges.anchors import AnchorItem, anchor_file
 from pruefstand.judges.drift import majority_scores, unstable_anchors
 from pruefstand.judges.escaping import make_nonce, wrap
 from pruefstand.judges.factory import PROMPT_ROOT
@@ -109,21 +110,38 @@ def select_anchors(
     return picked
 
 
-def screened_out(screen: Path, judge: str) -> list[str]:
-    """Item ids of the unstable anchors of a screening run (T5.4d, D1250).
+def screened_out(
+    screens: Sequence[Path], sets: Mapping[str, Sequence[CalibrationItem]], seed: int
+) -> list[str]:
+    """Item ids to exclude after one or more screening runs (T5.4d, D1250, D1251).
 
-    ``screen`` is the ``anchor_flips.json`` of that run; its ``runs`` are in the order of the
-    judge's current anchor file, which the same run wrote (checked via the stored verdicts).
+    Each screen is an ``anchor_flips.json``; its ``runs`` are in the order of its ``item_ids``
+    (older files without them: the selection with that file's ``replaced`` list). The runs of
+    the same item are pooled over all screens and judged by ``unstable_anchors``; anchors a
+    screen already replaced stay excluded.
 
     Raises:
-        ValueError: The screen file and the anchor file do not belong to the same run.
+        ValueError: A screen's runs do not match its anchor list.
     """
-    summary = json.loads(screen.read_text(encoding="utf-8"))
-    rows = load_anchors(anchor_file(judge))
-    if summary.get("stored") != [r.raw_score for r in rows]:
-        msg = f"{screen.name} does not match the anchor file of {judge}"
-        raise ValueError(msg)
-    return [rows[k].item_id for k in unstable_anchors(summary["runs"])]
+    pooled: dict[str, list[int]] = {}
+    out: list[str] = []
+    for screen in screens:
+        summary = json.loads(screen.read_text(encoding="utf-8"))
+        replaced = [str(i) for i in summary.get("replaced", [])]
+        ids = summary.get("item_ids") or [
+            i.item_id for _, i in select_anchors(sets, seed, replaced)
+        ]
+        runs = summary["runs"]
+        if any(len(run) != len(ids) for run in runs):
+            msg = f"{screen.name}: runs do not match its {len(ids)} anchors"
+            raise ValueError(msg)
+        for k, item_id in enumerate(ids):
+            pooled.setdefault(item_id, []).extend(run[k] for run in runs)
+        out += [i for i in replaced if i not in out]
+    for item_id, scores in pooled.items():
+        if unstable_anchors([[s] for s in scores]) and item_id not in out:
+            out.append(item_id)
+    return out
 
 
 def render(item: CalibrationItem, registry: PromptRegistry) -> tuple[Message, ...]:
@@ -178,14 +196,17 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--family", default="gemma")
     parser.add_argument("--repeats", type=int, default=4, help="runs counted for the flip rate")
     parser.add_argument("--majority", type=int, default=5, help="runs of the stored majority")
-    parser.add_argument("--screen", type=Path, help="anchor_flips.json of a screening run")
+    parser.add_argument(
+        "--screen", type=Path, nargs="*", default=[], help="anchor_flips.json of screening runs"
+    )
     args = parser.parse_args(argv)
     if args.repeats < 4 or args.majority < 1:
         sys.stderr.write("--repeats must be >= 4 (AI13-07) and --majority >= 1\n")
         return 2
     cfg = load_config(REPO / "experiments/rq2/configs/rq2_judges.yaml")
-    replaced = screened_out(args.screen, args.judge) if args.screen else []
-    picked = select_anchors(publishable_sets(cfg), cfg.seed, replaced)
+    sets = publishable_sets(cfg)
+    replaced = screened_out(args.screen, sets, cfg.seed)
+    picked = select_anchors(sets, cfg.seed, replaced)
     draft = anchor_rows(picked, [0] * len(picked), args.judge)
     # --majority 1 = T5.4 (run 1 stored, repeats - 1 counted); k > 1 = T5.4d (k + repeats runs)
     total = args.repeats if args.majority == 1 else args.majority + args.repeats

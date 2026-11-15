@@ -1,5 +1,5 @@
 {
-  "recorded_at": "2026-11-15T07:01:53+00:00",
+  "recorded_at": "2026-11-15T15:33:11+00:00",
   "model_id": "ollama/gemma3:12b",
   "model_version": null,
   "request": {
@@ -47,14 +47,14 @@
     }
   },
   "response": {
-    "text": "{\"reason\": \"„die USA, Großbritannien“ trifft einen Teil der Referenz; „und Frankreich“ fehlt. Die Aussage ist unvollständig.\", \"score\": 1}",
+    "text": "{\"reason\": \"„die USA, Großbritannien“ trifft einen Teil der Referenz; „und Frankreich, eine Konfrontation mit diesen beiden Staaten vor dem Zweiten Golfkrieg“ fehlt. \", \"score\": 1}",
     "model": "ollama/gemma3:12b",
     "usage": {
       "prompt_tokens": 1367,
-      "completion_tokens": 37
+      "completion_tokens": 45
     },
     "cost_usd": 0.0,
-    "latency_ms": 4875.934244000746,
+    "latency_ms": 5419.007997996232,
     "cached": false,
     "provider": "ollama",
     "fallback": false,

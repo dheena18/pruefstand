@@ -937,8 +937,8 @@ def is_drift(agreement: float, n: int, *, a0: float | None = None, threshold: in
 #   judges/anchors.py: AnchorItem (anchor_id, item_id, label_set, metric, label, hard_negative, judge_model, prompt_id,
 #     prompt_version, messages, raw_score; .request() -> LLMRequest, .stored_verdict()); anchor_file(model) ->
 #     judges/data/anchors/<slug>.jsonl (slug: "/" -> "_", ":" -> "-"); load_anchors(path) (ConfigError when invalid).
-#   T5.4d (D1250, additive): judges/drift.py majority_scores(runs) -> list[int], count_flips(stored, runs) -> (flips, comparisons),
-#     unstable_anchors(runs, min_share=0.8) -> list[int]; AnchorItem gains majority_runs: int = 1 (old files still load).
+#   T5.4d (D1250, D1251, additive): judges/drift.py majority_scores(runs) -> list[int], count_flips(stored, runs) -> (flips, comparisons),
+#     unstable_anchors(runs, min_share=0.8, max_spread=1) -> list[int]; AnchorItem gains majority_runs: int = 1 (old files still load).
 #   llm/cache_epochs.py DriftFlag gains optional changed, threshold, a0 (judge_drift.json; `epoch` = the bumped cache epoch).
 #   pipeline/judge_drift.py: run_judge_drift(model, anchors_path, backend, cache_dir, *, threshold=None, a0=None, now)
 #     -> DriftResult(status ok|drift|skipped, n, agreement, changed, threshold); synchronous, builds a cacheless client.

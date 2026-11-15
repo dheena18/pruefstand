@@ -178,18 +178,24 @@ def count_flips(stored: Sequence[int], runs: Sequence[Sequence[int]]) -> tuple[i
     return flips, len(stored) * len(runs)
 
 
-def unstable_anchors(runs: Sequence[Sequence[int]], min_share: float = 0.8) -> list[int]:
-    """Indices of anchors whose most frequent score has a share below ``min_share`` (D1250).
+def unstable_anchors(
+    runs: Sequence[Sequence[int]], min_share: float = 0.8, max_spread: int = 1
+) -> list[int]:
+    """Indices of anchors unfit as drift anchors (D1250, owner rule D1251).
 
-    Such an anchor flips between scores at temperature 0 (e.g. 2, 1, 2, 1, 2, 1, 1, 1, 1);
-    the T5.4d screening replaces it. A single odd run in nine (share 8/9) is not unstable.
+    An anchor is unstable when its most frequent score has a share below ``min_share`` (it flips
+    back and forth, e.g. 2, 1, 2, 1, 2, 1, 1, 1, 1) or when its scores spread over more than
+    ``max_spread`` steps of the scale (it jumps between non-adjacent scores, e.g. 0 and 2, or takes
+    all three). A single odd run between adjacent scores (share 8/9, 1 vs 2) is kept.
 
     Raises:
         ValueError: No runs, or runs of different lengths.
 
     Examples:
-        >>> unstable_anchors([[0, 2, 2], [1, 0, 1], [1, 0, 2], [1, 0, 1], [1, 0, 2]])
-        [2]
+        Anchor 1 jumps 0 -> 2 once, anchor 2 is 2 in only 2 of 5 runs; anchor 0 stays:
+
+        >>> unstable_anchors([[1, 0, 2], [1, 0, 1], [1, 0, 2], [2, 0, 1], [1, 2, 1]])
+        [1, 2]
     """
     if not runs or len({len(run) for run in runs}) != 1:
         msg = "need at least one run and runs of equal length"
@@ -198,6 +204,7 @@ def unstable_anchors(runs: Sequence[Sequence[int]], min_share: float = 0.8) -> l
         k
         for k, column in enumerate(zip(*runs, strict=True))
         if max(Counter(column).values()) / len(column) < min_share
+        or max(column) - min(column) > max_spread
     ]
 
 

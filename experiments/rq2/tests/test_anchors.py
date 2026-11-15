@@ -101,14 +101,29 @@ def test_an_excluded_anchor_is_replaced_in_place_by_a_spare_of_its_stratum() -> 
     assert swapped == select_anchors(sets, 1234, exclude=[gone.item_id])  # seeded
 
 
-def test_the_screen_must_belong_to_the_current_anchor_file(tmp_path: Path) -> None:
-    rows = load_anchors(anchor_file("ollama/gemma3:12b"))
-    good = tmp_path / "screen.json"
-    runs = [[r.raw_score for r in rows] for _ in range(9)]
-    runs[1][4] = runs[3][4] = runs[5][4] = 1 - min(runs[0][4], 1)  # anchor 4: 6 of 9 = unstable
-    good.write_text(json.dumps({"stored": runs[0], "runs": runs}), encoding="utf-8")
-    assert screened_out(good, "ollama/gemma3:12b") == [rows[4].item_id]
+def test_screens_are_pooled_per_item_and_keep_earlier_replacements(tmp_path: Path) -> None:
+    sets = publishable_sets(CFG)
+    ids = [i.item_id for _, i in select_anchors(sets, 1234)]
+    first = [[1] * 50 for _ in range(9)]
+    first[0][0] = 0  # anchor 0: one odd run 0 vs 1 -> adjacent, kept on its own
+    first[0][2] = 2  # anchor 2: one odd run 2 vs 0 -> not adjacent
+    for k in (1, 3, 5):
+        first[k][4] = 2  # anchor 4: 3 of 9 -> share 0.67
+    for run in first:
+        run[2] = run[2] if run is first[0] else 0
+    old = tmp_path / "screen1.json"  # T5.4d pass 1 had no item_ids
+    old.write_text(json.dumps({"stored": first[0], "runs": first}), encoding="utf-8")
+    assert screened_out([old], sets, 1234) == [ids[2], ids[4]]
+    second_ids = [i.item_id for _, i in select_anchors(sets, 1234, [ids[4]])]
+    second = [[1] * 50 for _ in range(9)]
+    second[1][0] = 2  # anchor 0 again: pooled with pass 1 it takes 0, 1 and 2
+    new = tmp_path / "screen2.json"
+    new.write_text(
+        json.dumps({"runs": second, "item_ids": second_ids, "replaced": [ids[4]]}),
+        encoding="utf-8",
+    )
+    assert screened_out([old, new], sets, 1234) == [ids[4], ids[0], ids[2]]
     bad = tmp_path / "bad.json"
-    bad.write_text(json.dumps({"stored": [9] * 50, "runs": runs}), encoding="utf-8")
-    with pytest.raises(ValueError, match="does not match"):
-        screened_out(bad, "ollama/gemma3:12b")
+    bad.write_text(json.dumps({"runs": [[1]], "item_ids": ids}), encoding="utf-8")
+    with pytest.raises(ValueError, match="do not match"):
+        screened_out([bad], sets, 1234)

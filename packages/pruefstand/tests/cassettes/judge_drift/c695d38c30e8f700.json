@@ -1,5 +1,5 @@
 {
-  "recorded_at": "2026-11-15T07:01:58+00:00",
+  "recorded_at": "2026-11-15T15:33:17+00:00",
   "model_id": "ollama/gemma3:12b",
   "model_version": null,
   "request": {
@@ -47,14 +47,14 @@
     }
   },
   "response": {
-    "text": "{\"reason\": \"Die Antwort „Hamburg, da eine Ablehnung aus konfessionellen Gründen“ trifft keine Aussage der Referenz „bis weit in das 19. Jahrhundert hinein“. Die Antwort ist irrelevant.\", \"score\": 0}",
+    "text": "{\"reason\": \"„Hamburg, da eine Ablehnung aus konfessionellen Gründen“ entspricht nicht „bis weit in das 19. Jahrhundert hinein“; eine wesentliche Teilaussage fehlt.\", \"score\": 0}",
     "model": "ollama/gemma3:12b",
     "usage": {
       "prompt_tokens": 1357,
-      "completion_tokens": 51
+      "completion_tokens": 50
     },
     "cost_usd": 0.0,
-    "latency_ms": 4659.599294000145,
+    "latency_ms": 4202.111180995416,
     "cached": false,
     "provider": "ollama",
     "fallback": false,

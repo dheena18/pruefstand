@@ -1,5 +1,5 @@
 {
-  "recorded_at": "2026-11-15T07:02:22+00:00",
+  "recorded_at": "2026-11-15T15:33:39+00:00",
   "model_id": "ollama/gemma3:12b",
   "model_version": null,
   "request": {
@@ -47,14 +47,14 @@
     }
   },
   "response": {
-    "text": "{\"reason\": \"Beide Antworten nennen muslimische Gemeinden als Religion mit einem Anteil von unter 2 Prozent in der Republik Kongo.\", \"score\": 1}",
+    "text": "{\"reason\": \"Beide Antworten nennen muslimische Gemeinden.\", \"score\": 1}",
     "model": "ollama/gemma3:12b",
     "usage": {
       "prompt_tokens": 690,
-      "completion_tokens": 33
+      "completion_tokens": 19
     },
     "cost_usd": 0.0,
-    "latency_ms": 3412.417416999233,
+    "latency_ms": 2988.988105003955,
     "cached": false,
     "provider": "ollama",
     "fallback": false,

@@ -12,7 +12,7 @@ Everything runs on the VM; GPU steps under the shared lock. `OLLAMA_GPU1_URL` (j
 | --- | --- | --- | --- |
 | Degraded pairs (S3) | `uv run python experiments/rq2/make_degraded.py` | no | seconds |
 | Judge the sets (S2) | `pruefstand-lock uv run python experiments/rq2/run_judges.py --judges experiments/rq2/configs/rq2_judges.yaml --seed 1234 --split test --pairs` | yes | ~ 60 min for ~ 2 400 calls; a second run prints `new LLM calls: 0` (judge cache) |
-| Anchors + flip rate (S9, S11, T5.4d) | `pruefstand-lock uv run python experiments/rq2/anchors.py --majority 5 --repeats 4 [--screen results/rq2/anchor_flips_screen.json]` | yes | ~ 10 min |
+| Anchors + flip rate (S9, S11, T5.4d) | `pruefstand-lock uv run python experiments/rq2/anchors.py --majority 5 --repeats 4 [--screen results/rq2/anchor_flips_screen.json results/rq2/anchor_flips_screen2.json]` | yes | ~ 10 min |
 | Bias (S6) | `pruefstand-lock uv run python experiments/rq2/bias.py --judge ollama/gemma3:12b` | yes | ~ 15 min (loads the generator) |
 | Report (S4, S5, S7, S8) | `uv run python experiments/rq2/report.py` | no | ~ 1 min |
 | Re-calibration (S11) | `uv run python experiments/rq2/recalibrate.py --judge <id>` | no | after a new `run_judges.py` run |
@@ -46,11 +46,11 @@ seed 1234); hard-negative specificity with its Wilson lower bound.
 | perturbation_consistency | consistency | 573 | 0.92 (0.88-0.94) | 0.92 | 0.78 (0.65) | - | reported |
 
 Outcome: `calibration_status.yaml` `passed: false` (judged metrics informational in both tiers; the refusal judge
-stays off until its near-miss set exists), `judge_epoch` 1. Ceiling for MEMERAG (German): AC1 0.84 / Fleiss kappa 0.81
+stays off until its near-miss set exists), `judge_epoch` 1 (2 since T5.4d, D1251). Ceiling for MEMERAG (German): AC1 0.84 / Fleiss kappa 0.81
 (MEMERAG paper, Table 2). Cost: USD 0, about 1 395 GPU-s and no quota per 1 000 judgments, latency p50 4.9 s / p95
-9.6 s at 4 in flight. Drift anchors (T5.4d, D1250): stored verdict = majority of 5 runs, flips counted on 4 further runs; one unstable
-anchor (3:6 over 9 runs) replaced; 1 flip in 200 comparisons, f_upper 0.028, `drift_threshold` 6 (was 9), `a0` 1.0.
-The remaining flips still sit on 2 anchors (each odd in about 1 of 9 runs): the caveat of D945 is mitigated, not resolved.
+9.6 s at 4 in flight. Drift anchors (T5.4d, D1250, D1251): stored verdict = majority of 5 runs, flips counted on 4 further runs;
+three unstable anchors (back and forth, or non-adjacent scores) replaced after two screening passes; final fresh pass: 1 flip in
+200 comparisons, f_upper 0.028, `drift_threshold` 6 (was 9), `a0` 1.0. `judge_epoch` 2 (owner-approved bump for the new anchors).
 Bias: not measurable on this sample: the T4.5 gender/register rewrites changed none of the 50 short answers (D942).
 Judge (c) and the GitHub Models arms are not measured yet (hosted runner follow-up, D939); the agreement matrix
 therefore has one judge.

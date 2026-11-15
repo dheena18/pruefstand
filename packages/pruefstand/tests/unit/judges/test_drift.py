@@ -110,10 +110,13 @@ def test_flips_are_counted_against_the_stored_scores() -> None:
         count_flips([2, 0], [[2]])
 
 
-def test_an_anchor_that_keeps_changing_is_unstable_and_one_odd_run_is_not() -> None:
-    # the T5.4d screening run of gemma3:12b: a00 / a02 are odd in one run of 9, a04 is 3:6
+def test_an_anchor_that_keeps_changing_or_jumps_is_unstable() -> None:
+    # T5.4d screening of gemma3:12b: a04 is 3:6 between 2 and 1; a02 jumped 2 <-> 0 once
     runs = [[0, 2, 2], [1, 0, 1], [1, 0, 2], [1, 0, 1], [1, 0, 2]]
     runs += [[1, 0, 1], [1, 0, 1], [1, 0, 1], [1, 0, 1]]
-    assert unstable_anchors(runs) == [2]
+    assert unstable_anchors(runs) == [1, 2]
+    adjacent = [[2], [1], [1], [1], [1], [1], [1], [1], [1]]  # one odd run 2 vs 1: kept (D1251)
+    assert unstable_anchors(adjacent) == []
+    assert unstable_anchors([[0], [1], [1], [1], [1], [1], [1], [1], [2]]) == [0]  # 0, 1 and 2
     with pytest.raises(ValueError, match="equal length"):
         unstable_anchors([[1], [1, 2]])

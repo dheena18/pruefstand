@@ -1,5 +1,5 @@
 {
-  "recorded_at": "2026-11-15T07:01:52+00:00",
+  "recorded_at": "2026-11-15T15:33:10+00:00",
   "model_id": "ollama/gemma3:12b",
   "model_version": null,
   "request": {
@@ -47,14 +47,14 @@
     }
   },
   "response": {
-    "text": "{\"reason\": \"„2015“ weicht von der Referenz „2014“ ab.\", \"score\": 0}",
+    "text": "{\"reason\": \"„2015“ widerspricht der Referenz „2014“.\", \"score\": 0}",
     "model": "ollama/gemma3:12b",
     "usage": {
       "prompt_tokens": 1335,
-      "completion_tokens": 31
+      "completion_tokens": 29
     },
     "cost_usd": 0.0,
-    "latency_ms": 4183.049733999724,
+    "latency_ms": 4303.520560002653,
     "cached": false,
     "provider": "ollama",
     "fallback": false,
