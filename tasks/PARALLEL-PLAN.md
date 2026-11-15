@@ -17,7 +17,7 @@ A wave is executed by one lead agent with `prompts/_lead-agent.md`.
    ~/code/wt/<ID>/.env`, never committed; Y6.6).
 2. **Never two agents on one file.** A task owns the files in its prompt's "Files to create / change".
    Shared files (`Makefile`, `mk/*.mk` of other tasks, root `pyproject.toml`, `.gitignore`, `.env.example`,
-   `DATA_LICENSES.md`, `.importlinter`, package dependency lists, `docs/decisions.md`, `docs/ops/secrets.md`,
+   `DATA_LICENSES.md`, `.importlinter`, package dependency lists, `docs/ops/secrets.md`,
    `tasks/TASKS.md`, `docs/engineering/test-matrix.md`, `scripts/models/record_cassettes.sh`,
    `.github/workflows/live-e2e.yml`, `.github/workflows/ci.yml` (T0.2, T1.13, T3.7, T6.2b, T7.4, T9.1a,
    T9.2), `cli/__init__.py` + `cli/stubs.py`, `examples/live/pruefstand.yaml`,
