@@ -43,6 +43,11 @@ provenance, the task rows from before decision numbers, the pinned versions and 
   diff -u <(git show $(git merge-base $PR origin/main):docs/decisions.md | grep -vE "$F") <(grep -vE "$F" /tmp/mine.md)
   ```
 
+  The helper is for **stale PR branches only**. The layout branch itself (the one that holds the new page) resolves
+  a conflict the other way round: keep its page (`git checkout --ours docs/decisions.md`) and run
+  `--migrate-pending --decisions-md <copy of origin/main:docs/decisions.md>` (the tool rewrites that copy, so
+  re-read main's page from git for any lossless check).
+
   Without a merge conflict, plain `uv run python scripts/build_decisions_index.py --migrate-pending`
   (it stages the new files) is enough. `--check` and the guard test also reject tight, indented or
   heading/prose forms of a decision entry on this page (`|D5|x|`, `### D5 ...`, `**D5** ...`, `1. D5 ...`, `> | D5 | ...`, `| x | D5 | y |`, `D5 is ...`):
