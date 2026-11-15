@@ -14,6 +14,8 @@ GATE_CONTEXT = "pruefstand/gate"
 MAINTENANCE = "executor in maintenance; dispatch again later"
 BUSY = "executor busy (GPU lock held); dispatch again"
 RETRYING = "retrying once"
+MAX_DESCRIPTION = 140  # GitHub commit-status description limit
+INFRA_PREFIX = "executor infra error: "  # interfaces §10, added by set_check(..., infra_error=True)
 REDISPATCH = "re-dispatch to retry"
 
 
@@ -45,6 +47,9 @@ def unhealthy(reason: str) -> str:
 def infra_summary(infra_error: str, attempt: int) -> str:
     """``set_check`` summary of an infra failure: 1st → ``; retrying once``, 2nd → re-dispatch.
 
+    The infra text is shortened (``…``) so that ``"executor infra error: <summary>"`` fits GitHub's
+    140 characters with the ending intact (D1086); ``run.json`` keeps the full ``infra_error``.
+
     >>> infra_summary("proxy_upstream: 3 upstream errors", 1)
     'proxy_upstream: 3 upstream errors; retrying once'
 
@@ -54,4 +59,10 @@ def infra_summary(infra_error: str, attempt: int) -> str:
     if attempt not in (1, 2):
         msg = "attempt must be 1 or 2"
         raise ValueError(msg)
-    return f"{infra_error}; {RETRYING if attempt == 1 else REDISPATCH}"
+    ending = f"; {RETRYING if attempt == 1 else REDISPATCH}"
+    room = (
+        MAX_DESCRIPTION - len(INFRA_PREFIX) - len(ending)
+    )  # D1086: the ending is what owners act on
+    if len(infra_error) > room:
+        infra_error = infra_error[: room - 1].rstrip() + "…"
+    return f"{infra_error}{ending}"

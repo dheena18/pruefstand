@@ -14,8 +14,10 @@ and an infra error (``"<kind>: <detail>"``, D245) that ``run_with_retry`` report
   the first code of 16 11 12 14 13 15 10, so 14 hides 13/15): then ``model_reload``.
 * any other exit (1, 2, 64: the script itself failed) → ``executor``.
 
-Every probe command carries a subprocess timeout (``POST_RUN_TIMEOUT_S``) and runs in its own
-process group, killed as a whole on timeout; a timeout raises
+stderr is merged into the output (UTF-8, invalid bytes replaced), so a script-level exit names
+its last output line. Every probe command carries a subprocess timeout
+(``POST_RUN_TIMEOUT_S``) and runs in its own process group, killed as a whole on timeout; a
+timeout raises
 ``subprocess.TimeoutExpired``, which ``run_with_retry`` treats as an infra error of kind
 ``executor``. ``evaluate`` (not built yet) calls :func:`post_run_infra_error` right after the run.
 """
@@ -58,7 +60,8 @@ def subprocess_runner(
         subprocess.TimeoutExpired: the command ran longer than ``timeout_s``.
     """
     proc = subprocess.Popen(  # noqa: S603 - fixed argv from this module, never from a PR
-        list(argv), env=dict(env), stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, text=True,
+        list(argv), env=dict(env), stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+        encoding="utf-8", errors="replace",
         start_new_session=True,
     )  # fmt: skip
     try:
@@ -141,4 +144,7 @@ def post_run_infra_error(
             return f"model_reload: post-run health.sh exit {code} ({changed})"
         LOG.warning("post-run probe WARN, run result kept: %s", detail)
         return None
-    return f"{KIND_FOR_EXIT.get(code, 'executor')}: {detail}"
+    if code not in KIND_FOR_EXIT:  # the script itself failed: name its last output line (D1086)
+        last = next((ln.strip() for ln in reversed(out.splitlines()) if ln.strip()), "")
+        return f"executor: post-run health.sh exit {code}" + (f" ({last[:60]})" if last else "")
+    return f"{KIND_FOR_EXIT[code]}: {detail}"

@@ -12,9 +12,34 @@ import time
 from pathlib import Path
 
 import pytest
+from gate_orchestrator import post_run
 from gate_orchestrator.post_run import subprocess_runner
 
 ENV = {"PATH": os.environ.get("PATH", "")}
+
+
+class RecordingPopen(subprocess.Popen[str]):
+    """Popen that remembers every instance and every ``wait`` timeout (to pin the bounded drain)."""
+
+    made: list["RecordingPopen"] = []  # noqa: RUF012 - reset per test by the fixture
+    waits: list[float | None] = []  # noqa: RUF012
+
+    def __init__(self, *args: object, **kwargs: object) -> None:
+        super().__init__(*args, **kwargs)  # type: ignore[call-overload]  # Popen's overloads
+        RecordingPopen.made.append(self)
+
+    def wait(self, timeout: float | None = None) -> int:
+        RecordingPopen.waits.append(timeout)
+        return super().wait(timeout)
+
+
+@pytest.fixture(autouse=True)
+def _fast(monkeypatch: pytest.MonkeyPatch) -> None:
+    # unit tests stay well under a second per wait (CLAUDE.md section 6)
+    monkeypatch.setattr(post_run, "TERM_GRACE_S", 0.3)
+    monkeypatch.setattr(post_run, "DRAIN_S", 0.3)
+    RecordingPopen.made, RecordingPopen.waits = [], []
+    monkeypatch.setattr(subprocess, "Popen", RecordingPopen)
 
 
 def _gone(pid: int, within_s: float = 5) -> bool:
@@ -57,9 +82,23 @@ def test_a_daemon_holding_the_pipe_cannot_block_the_runner(tmp_path: Path) -> No
     try:
         with pytest.raises(subprocess.TimeoutExpired):
             subprocess_runner(("sh", "-c", script), ENV, 0.5)
-        assert time.monotonic() - started < 15  # TERM grace 2 s + bounded drain, not 30 s
+        assert time.monotonic() - started < 5  # TERM grace + bounded drain, not 30 s
+        proc = RecordingPopen.made[0]
+        assert proc.stdout is None or proc.stdout.closed  # the pipe was closed, not read forever
+        assert 0.3 in RecordingPopen.waits  # the final reap is bounded (DRAIN_S)
     finally:
         if pidfile.exists():
             pid = int(pidfile.read_text(encoding="utf-8"))
             with contextlib.suppress(ProcessLookupError):
                 os.kill(pid, signal.SIGKILL)  # the daemon this test started, by exact pid
+
+
+def test_script_failure_text_is_kept_for_the_reason() -> None:
+    code, out = subprocess_runner(("sh", "-c", "echo 'health.sh: usage' >&2; exit 64"), ENV, 5)
+    assert (code, out.strip()) == (64, "health.sh: usage")  # stderr merged into the output
+
+
+def test_output_is_decoded_as_utf8_with_replacement() -> None:
+    code, out = subprocess_runner(("sh", "-c", r"printf 'K\303\274ndigung \377\n'"), ENV, 5)
+    assert code == 0
+    assert out == "Kündigung \ufffd\n"

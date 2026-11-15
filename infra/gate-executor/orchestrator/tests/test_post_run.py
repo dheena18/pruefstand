@@ -143,3 +143,10 @@ def test_a_not_resident_row_with_exit_14_stays_a_warning() -> None:
         "resident:gemma3:12b,FAIL,not resident (health.sh --repair loads it)\n"
     )
     assert post_run_infra_error("day", HEALTH, Commands(health=(14, out)), LOCKED) is None
+
+
+def test_script_level_exit_names_the_last_output_line() -> None:
+    got = post_run_infra_error(
+        "day", HEALTH, Commands(health=(64, "usage: health.sh [--repair]\n")), LOCKED
+    )
+    assert got == "executor: post-run health.sh exit 64 (usage: health.sh [--repair])"

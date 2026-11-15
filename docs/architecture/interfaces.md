@@ -400,11 +400,16 @@ unattended operation (R11 Y5, D225-D229)
                     upstream_errors grew during the run) ->
                     RunManifest.stop_reason = "aborted" and RunManifest.infra_error = "<kind>: <detail>"
                     (str | None, §2; kind ollama_down|tunnel_lost|data_root_unavailable|proxy_upstream|model_reload|
-                    window_exceeded), commit status `error` (not `failure`), one automatic retry after
+                    executor|window_exceeded), commit status `error` (not `failure`), one automatic retry after
                     health.sh --repair. R12 (A12-M1, D274): the first failure is not recorded as processed (the
                     retry runs in the same job); after the SECOND infra failure the orchestrator writes a
                     processed.jsonl line with result "error", so it is not re-run automatically; the status text
-                    ends "re-dispatch to retry" (R13 P1.2, D288); only a new owner dispatch runs it again
+                    ends "re-dispatch to retry" (R13 P1.2, D288); only a new owner dispatch runs it again.
+                    Post-run probe (D1082/D1083, gate_orchestrator.post_run): tunnel inactive or health.sh exit
+                    11/12/13/15/16 -> infra error as above; exit 10 (free VRAM) and 14 (bin dir) only log a
+                    WARNING and keep the finished run's result, unless a resident-digest or placement FAIL row
+                    is also present (then model_reload); other exits -> kind executor. The status text keeps
+                    its ending within GitHub's 140 characters: the infra text is shortened first (D1086)
   data root         ADR-0019 (supersedes the R12 mount unit, D254): /mnt/pruefstand is a plain directory on the VM
                     disk; no mount unit, no service dependency. The preflight (health.sh exit 16) checks that it
                     exists, is writable by pruefstand and has >= 20 GB free; otherwise the job ends with
@@ -582,7 +587,8 @@ class RunManifest(BaseModel):    # (schema) -> run.json
     #   (no infra_error count: the infra failure is the field below, R11 integration D245)
     complete: bool; stop_reason: Literal["completed", "budget_exceeded", "aborted"]
     infra_error: str | None = None    # R11 D226/D245: "<kind>: <detail>" (kind ollama_down | tunnel_lost |
-                                      # data_root_unavailable (ADR-0019; was nas_unavailable) | proxy_upstream | model_reload | window_exceeded (R12 N4.3,
+                                      # data_root_unavailable (ADR-0019; was nas_unavailable) | proxy_upstream | model_reload |
+                                      # executor (D1080/D1083: health.sh or another executor subprocess failed) | window_exceeded (R12 N4.3,
                                       # D256: nightly stopped before 06:00 Berlin; no retry)); set only together with
                                       # stop_reason="aborted" (validator: infra_error set => stop_reason == "aborted")
     stack: Literal["live", "a40"]     # where it ran: live = tier 1 (GitHub-hosted CPU), a40 = tier 2 executor
