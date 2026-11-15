@@ -1,16 +1,17 @@
-"""Generate QA candidates from PUBLIC corpus chunks with the GitHub Models datagen model (T4.2).
+"""Generate QA candidates from PUBLIC corpus chunks with the pinned datagen model (T4.2, D1201).
 
-Pass 1 (network, no GPU; resumable, quota-aware)::
+Pass 1 (the VM CPU model, default ``PRUEFSTAND_DATAGEN_BACKEND=vm``; resumable)::
 
-    uv run python scripts/generate_qa.py --pass generate --tenant kanzlei_mueller --n 30 \
-        --model github/openai/gpt-4.1-mini --cross-check 0.1 --seed 7
+    bash scripts/models/vm_llm.sh start   # prints the URL; export PRUEFSTAND_JUDGE_BASE_URL=<it>
+    uv run python scripts/generate_qa.py --pass generate --tenant kanzlei_mueller --n 30 --seed 7
+    bash scripts/models/vm_llm.sh stop
 
 Pass 2 (day mode on the VM, local judge model, no datagen call)::
 
     pruefstand-lock uv run python scripts/generate_qa.py --pass validate --tenant kanzlei_mueller \
         --n 30 --seed 7
 
-The credential is ``PRUEFSTAND_GH_MODELS_TOKEN`` (Models: read, D333); it is never printed. Output
+A ``github/`` model (retired) needs ``PRUEFSTAND_GH_MODELS_TOKEN`` (D333), never printed. Output
 goes to ``datasets/_work/<run>/`` (git-ignored): ``candidates.jsonl``, ``cross_check.jsonl``,
 ``ledger.jsonl`` (the resume record), ``validation.jsonl``, ``summary.json``. Only public text is
 sampled (attack and private chunks are skipped); chunks of the in-domain dev set are excluded.

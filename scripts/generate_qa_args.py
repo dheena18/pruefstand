@@ -3,7 +3,8 @@
 import argparse
 from pathlib import Path
 
-from pruefstand.dataset.datagen_pins import CROSS_CHECK_MODEL, DATAGEN_MODEL, PROMPT_VERSIONS
+from pruefstand.core.settings import PruefstandSettings
+from pruefstand.dataset.datagen_pins import CROSS_CHECK_MODEL, PROMPT_VERSIONS, datagen_model
 
 REPO = Path(__file__).resolve().parents[1]
 DEFAULT_CORPUS = REPO / "corpus" / "slice_v1"
@@ -20,7 +21,8 @@ def build_parser(description: str) -> argparse.ArgumentParser:
     add("--tenant", required=True, help="tenant id or 'all'")
     add("--n", type=int, required=True, help="units (chunks or pairs) per tenant")
     add("--category", choices=sorted(PROMPT_VERSIONS), default="factual")
-    add("--model", default=DATAGEN_MODEL, help="github/<model> of the datagen model")
+    model = datagen_model(PruefstandSettings().datagen_backend)
+    add("--model", default=model, help="datagen model (default: PRUEFSTAND_DATAGEN_BACKEND pin)")
     add("--cross-check", type=float, default=0.0, metavar="FRACTION")
     add("--cross-check-model", default=CROSS_CHECK_MODEL)
     add("--seed", type=int, default=7)

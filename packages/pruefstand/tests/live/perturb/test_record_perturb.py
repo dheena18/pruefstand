@@ -1,7 +1,9 @@
 """Recording scenario for `make cassettes` (T4.5): REAL rewrites and equivalence checks.
 
-Needs ``PRUEFSTAND_GH_MODELS_TOKEN`` (Models: read), the pinned rewrite model
-(``PRUEFSTAND_PERTURB_REWRITE_MODEL``), the A40 judge in day mode under ``pruefstand-lock``
+Needs the pinned rewrite model (``PRUEFSTAND_PERTURB_REWRITE_MODEL``: the VM CPU model
+``openai_compatible_local/ministral-3-8b-instruct-2512`` at ``PRUEFSTAND_JUDGE_BASE_URL``, D1201,
+or a ``github/`` id plus ``PRUEFSTAND_GH_MODELS_TOKEN``), the A40 judge in day mode under
+``pruefstand-lock``
 (``PRUEFSTAND_PERTURB_JUDGE_MODEL`` + endpoint env) and ``--record-mode=rewrite``.
 Skipped otherwise.
 Never hand-write the result: the cassettes are the answers of those models.
@@ -27,8 +29,12 @@ pytestmark = [pytest.mark.live, pytest.mark.gpu, pytest.mark.network]
 def _only_when_recording(request: pytest.FixtureRequest) -> None:
     if request.config.getoption("--record-mode", default=None) != "rewrite":
         pytest.skip("recording runs only with --record-mode=rewrite (make cassettes)")
-    if not os.environ.get("PRUEFSTAND_GH_MODELS_TOKEN") or env_meta() is None:
-        pytest.skip("needs PRUEFSTAND_GH_MODELS_TOKEN and the PRUEFSTAND_PERTURB_*_MODEL variables")
+    meta = env_meta()
+    if meta is None:
+        pytest.skip("needs the PRUEFSTAND_PERTURB_{REWRITE,JUDGE}_MODEL variables")
+    github = meta.rewrite_model.startswith("github/")
+    if github and not os.environ.get("PRUEFSTAND_GH_MODELS_TOKEN"):
+        pytest.skip("a github/ rewrite model needs PRUEFSTAND_GH_MODELS_TOKEN")
 
 
 async def test_record_rewrites_and_equivalence_checks() -> None:

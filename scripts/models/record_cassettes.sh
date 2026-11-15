@@ -119,11 +119,17 @@ rag_demo_inner() {
 }
 
 dataset_stage() {
-  # T4.2 S7: records the REAL GitHub Models datagen calls used by the dataset cassette tests. Skipped
-  # unless PRUEFSTAND_GH_MODELS_TOKEN (Models: read, D333) is set; models.github.ai must be reachable
-  # (not from the VM, D604: run it on the owner's laptop or in an Actions job with models: read).
-  if [ -z "${PRUEFSTAND_GH_MODELS_TOKEN:-}" ]; then
-    echo "record_cassettes: dataset stage skipped (PRUEFSTAND_GH_MODELS_TOKEN is not set)" >&2
+  # T4.2 S7: records the REAL datagen calls used by the dataset cassette tests (D1201). Backend
+  # PRUEFSTAND_DATAGEN_BACKEND=vm (default): the VM CPU model at PRUEFSTAND_JUDGE_BASE_URL
+  # (`scripts/models/vm_llm.sh start` prints it); `github`: GitHub Models (retired) with
+  # PRUEFSTAND_GH_MODELS_TOKEN (D333). Skipped when the backend's endpoint or credential is missing.
+  if [ "${PRUEFSTAND_DATAGEN_BACKEND:-vm}" = github ]; then
+    if [ -z "${PRUEFSTAND_GH_MODELS_TOKEN:-}" ]; then
+      echo "record_cassettes: dataset stage skipped (PRUEFSTAND_GH_MODELS_TOKEN is not set)" >&2
+      return 0
+    fi
+  elif [ -z "${PRUEFSTAND_JUDGE_BASE_URL:-}" ]; then
+    echo "record_cassettes: dataset stage skipped (PRUEFSTAND_JUDGE_BASE_URL: start scripts/models/vm_llm.sh)" >&2
     return 0
   fi
   local dir=packages/pruefstand/tests/cassettes/dataset
@@ -137,15 +143,17 @@ dataset_stage() {
 }
 
 perturb_stage() {
-  # T4.5 S1; also `--perturb` (cassettes-models.yml, D900: judge = a github/<model>, there is no A40 in Actions).
-  if [ -n "${PRUEFSTAND_GH_MODELS_TOKEN:-}" ] && [ -n "${PRUEFSTAND_PERTURB_REWRITE_MODEL:-}" ] \
-    && [ -n "${PRUEFSTAND_PERTURB_JUDGE_MODEL:-}" ]; then
+  # T4.5 S1; also `--perturb`. Rewrite model: the VM CPU model (D1201) or a github/<model> (needs the
+  # token); judge: the A40 judge (ollama/<tag>) under pruefstand-lock.
+  local rewrite="${PRUEFSTAND_PERTURB_REWRITE_MODEL:-}" token_ok=1
+  case "$rewrite" in github/*) [ -n "${PRUEFSTAND_GH_MODELS_TOKEN:-}" ] || token_ok=0 ;; esac
+  if [ "$token_ok" = 1 ] && [ -n "$rewrite" ] && [ -n "${PRUEFSTAND_PERTURB_JUDGE_MODEL:-}" ]; then
     rm -rf packages/pruefstand/tests/cassettes/perturb
     uv run pytest packages/pruefstand/tests/live/perturb/test_record_perturb.py --record-mode=rewrite -q -p no:cacheprovider
     uv run pytest packages/pruefstand/tests/unit/perturb/test_cassettes.py -q -p no:cacheprovider
     git --no-pager diff --stat -- packages/pruefstand/tests/cassettes/perturb || true
   else
-    echo "record_cassettes: perturb stage skipped (needs PRUEFSTAND_GH_MODELS_TOKEN and PRUEFSTAND_PERTURB_{REWRITE,JUDGE}_MODEL)" >&2
+    echo "record_cassettes: perturb stage skipped (needs PRUEFSTAND_PERTURB_{REWRITE,JUDGE}_MODEL; a github/ rewrite model also the token)" >&2
   fi
 }
 
@@ -221,12 +229,12 @@ git --no-pager diff --stat -- apps/rag-demo/tests/cassettes packages/pruefstand/
 make --no-print-directory cassettes-target
 git --no-pager diff --stat -- packages/pruefstand/tests/cassettes/target || true
 
-# T4.2: fourth stage, the datagen cassettes (real GitHub Models calls; skipped without the token).
+# T4.2: fourth stage, the datagen cassettes (real VM-model or GitHub Models calls, D1201; skipped without them).
 dataset_stage
 
 # T4.5: fifth stage, the LLM-assisted perturbations (compound_split, register, gender, colloquial).
-# Rewrites come from the pinned GitHub Models datagen model, equivalence checks from the A40 judge in day
-# mode, so this stage needs PRUEFSTAND_GH_MODELS_TOKEN, PRUEFSTAND_PERTURB_REWRITE_MODEL (github/<model>),
+# Rewrites come from the VM CPU model (D1201; or a github/<model> plus PRUEFSTAND_GH_MODELS_TOKEN), equivalence
+# checks from the A40 judge in day mode, so this stage needs PRUEFSTAND_PERTURB_REWRITE_MODEL,
 # PRUEFSTAND_PERTURB_JUDGE_MODEL (ollama/<tag>) and the tunnel; run it as `pruefstand-lock make cassettes`
 # on the VM. Without them the stage is skipped (the unit replay test then skips as well).
 perturb_stage

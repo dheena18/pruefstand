@@ -1,6 +1,7 @@
 from pathlib import Path
 
 import pytest
+from pydantic import ValidationError
 
 from pruefstand.core.settings import PruefstandSettings
 
@@ -11,6 +12,7 @@ ENV_NAMES = (
     "HF_TOKEN",
     "PRUEFSTAND_HF_TOKEN",
     "PRUEFSTAND_JUDGE_BASE_URL",
+    "PRUEFSTAND_DATAGEN_BACKEND",
     "PRUEFSTAND_LOG_JSON",
     "PRUEFSTAND_CACHE_DIR",
     "PRUEFSTAND_HOME",
@@ -124,3 +126,15 @@ def test_empty_variables_fall_back_to_defaults(
 def test_unrelated_environment_is_ignored(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("PRUEFSTAND_SOMETHING_ELSE", "1")
     make()
+
+
+def test_datagen_backend_defaults_to_the_vm_model(monkeypatch: pytest.MonkeyPatch) -> None:
+    assert make().datagen_backend == "vm"
+    monkeypatch.setenv("PRUEFSTAND_DATAGEN_BACKEND", "github")
+    assert make().datagen_backend == "github"
+
+
+def test_an_unknown_datagen_backend_is_refused(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("PRUEFSTAND_DATAGEN_BACKEND", "openai")
+    with pytest.raises(ValidationError, match="datagen_backend"):
+        make()

@@ -1,8 +1,14 @@
-"""Model clients of ``scripts/generate_qa.py``: the datagen client and the pass-2 judge (T4.2)."""
+"""Model clients of ``scripts/generate_qa.py``: the datagen client and the pass-2 judge (T4.2).
+
+The datagen client is the VM CPU model (``PRUEFSTAND_DATAGEN_BACKEND=vm``, D1201; checked to
+be the model served at ``PRUEFSTAND_JUDGE_BASE_URL`` before any call) or GitHub Models
+(``github``, retired).
+"""
 
 import os
 from collections.abc import Callable
 
+import httpx
 from generate_qa_args import REPO
 
 from pruefstand.core.config import LLMPolicyConfig, ModelRef
@@ -13,7 +19,7 @@ from pruefstand.dataset.datagen_guard import build_datagen_client
 from pruefstand.llm.budget import Budget
 from pruefstand.llm.client import LLMClient
 from pruefstand.llm.factory import build_backend
-from pruefstand.llm.policy import LLMPolicy
+from pruefstand.llm.policy import LLMPolicy, provider_of
 from pruefstand.llm.recorder import CallRecorder
 from pruefstand.store.canary_source import load_canary_registry
 from pruefstand.store.kv import DiskKVCache
@@ -32,11 +38,39 @@ def _canaries() -> CanaryRegistry:
         raise ConfigError(msg) from exc
 
 
-def default_client(ref: ModelRef, max_requests: int | None, recorder: CallRecorder) -> LLMClient:
-    """The datagen client: GitHub Models, cached on disk, public-text datagen policy."""
-    if not os.environ.get(TOKEN_ENV):
-        msg = f"{TOKEN_ENV} is not set (a GitHub token with Models: read, D333)"
+def check_vm_served(model_id: str, base_url: str | None, timeout_s: float = 10.0) -> None:
+    """Refuse unless the server at ``base_url`` serves ``model_id`` (alias = the part after ``/``).
+
+    Guards against sending datagen to whatever else listens there (e.g. the tier-1 llama.cpp).
+
+    Raises:
+        ConfigError: No URL, no answer, or another model is served.
+    """
+    start = "start it with scripts/models/vm_llm.sh start and export the URL it prints"
+    if not base_url:
+        msg = f"PRUEFSTAND_JUDGE_BASE_URL is not set for the VM datagen model; {start}"
         raise ConfigError(msg)
+    alias = model_id.split("/", 1)[1]
+    try:
+        resp = httpx.get(f"{base_url.rstrip('/')}/models", timeout=timeout_s)
+        resp.raise_for_status()
+        served = [str(m["id"]) for m in resp.json()["data"]]
+    except (httpx.HTTPError, ValueError, KeyError, TypeError) as exc:
+        msg = f"the VM datagen model at {base_url} does not answer ({type(exc).__name__}); {start}"
+        raise ConfigError(msg) from exc
+    if alias not in served:
+        msg = f"{base_url} serves {served}, not {alias} (D1201)"
+        raise ConfigError(msg)
+
+
+def default_client(ref: ModelRef, max_requests: int | None, recorder: CallRecorder) -> LLMClient:
+    """The datagen client: VM model or GitHub Models, cached on disk, public-text datagen policy."""
+    if provider_of(ref.id) == "github":
+        if not os.environ.get(TOKEN_ENV):
+            msg = f"{TOKEN_ENV} is not set (a GitHub token with Models: read, D333)"
+            raise ConfigError(msg)
+    else:
+        check_vm_served(ref.id, PruefstandSettings().judge_base_url)
     cache = DiskKVCache(PruefstandSettings().cache_dir, "llm")
     return build_datagen_client(
         ref, cache=cache, max_requests=max_requests, recorder=recorder, canaries=_canaries()
