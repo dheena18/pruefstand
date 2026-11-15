@@ -14,9 +14,9 @@ the pinned llama.cpp `llama-server`, started by `scripts/models/vm_llm.sh` as th
 ## Start, use, stop
 
 ```bash
-bash scripts/models/vm_llm.sh start          # 14b (default) or: start 8b; prints the URL
-export PRUEFSTAND_JUDGE_BASE_URL=http://127.0.0.1:18091/v1   # the URL it printed
-export PRUEFSTAND_DATAGEN_BACKEND=vm         # the default; `github` only for old GitHub Models ledgers
+bash scripts/models/vm_llm.sh start          # 14b (default) or: start 8b
+# clients use PRUEFSTAND_DATAGEN_BASE_URL (default http://127.0.0.1:18091/v1, the launcher's port), never the judge URL
+export PRUEFSTAND_DATAGEN_BACKEND=vm         # the default; `github` is retired (2026-07-30) and refused without a token
 # ... the commands above ...
 bash scripts/models/vm_llm.sh stop           # always, also after a failure
 ```
@@ -28,17 +28,21 @@ D850), 16 threads pinned to CPUs 0-19 (`VM_LLM_THREADS` at most 80 = half the vC
 while a gate run or a check runs, and a gate job or a check waits until it is stopped. So stop it as soon as the
 batch is done.
 
-Every client checks that the server at `PRUEFSTAND_JUDGE_BASE_URL` serves the pinned alias before it sends anything
-(`generate_qa_clients.check_vm_served`, `indomain_gen.call_vm`), so a batch never lands on the tier-1 llama.cpp
-model by mistake.
+Every client asks the server's `/v1/models` once, before it sends anything, whether it serves the pinned alias
+(`pruefstand.dataset.vm_datagen.check_vm_served`, used by `generate_qa`, the recording tests and `indomain_cli
+generate`); the alias in an answer proves nothing, because llama-server echoes the requested name. A batch therefore
+never lands on the tier-1 llama.cpp model, and nothing is cached under the pin from another model. The VM client
+sends one request at a time (one slot), with a 900 s timeout and no transport retries (a resend would bypass the
+request budget).
 
 ## Invalid answers: constrained JSON and regeneration (D1201)
 
 The benchmark (D1200) found 35-45 % of first in-domain answers invalid: JSON wrapped in code fences, evidence spans
 over 400 characters or not copied verbatim. `indomain_gen` therefore asks the VM model with `response_format`
 json_schema (`GEN_SCHEMA`: the three fields, span 20..400 characters; fenced answers are still parsed), and
-`indomain_cli generate --retries N` (default 2) asks an invalid item again up to N more times. Every attempt is one
-call against `--max-calls` and is cached as `<passage id>#retry<k>`; the summary line reports calls, retries and
+`indomain_cli generate --retries N` (default 2) asks an invalid item again up to N more times; the first attempt
+is greedy (temperature 0, seed 42), a retry samples at temperature 0.7 with seed 42 + k (a greedy retry returns the
+same answer, seen live). Every attempt is one call against `--max-calls` and is cached as `<passage id>#retry<k>`; the summary line reports calls, retries and
 items left invalid after N retries ("exhausted"). The reserve passages of the plan (40) replace exhausted items in
 `assemble`.
 

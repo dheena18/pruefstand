@@ -33,7 +33,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 import numpy as np
-from generate_qa_args import DEFAULT_CATALOGUE, build_parser
+from generate_qa_args import DEFAULT_CATALOGUE, build_parser, effective_concurrency
 from generate_qa_clients import ClientFactory, JudgeFactory, default_client, default_judge
 from generate_qa_ledger import (
     CANDIDATES,
@@ -234,8 +234,7 @@ async def _run(args: argparse.Namespace, make: ClientFactory, make_judge: JudgeF
     check_datagen_model(args.model)
     if args.cross_check > 0:
         check_second_model(args.cross_check_model, args.model)
-    if args.max_requests is not None:
-        args.concurrency = 1  # the cap is exact only when requests are sent one at a time
+    args.concurrency = effective_concurrency(args.concurrency, args.max_requests, args.model)
     job = Job(args, _run_dir(args), load_chunks(args.corpus_dir), make, GenStats(), CallRecorder())
     stopped = False
     if args.phase in {"generate", "both"}:

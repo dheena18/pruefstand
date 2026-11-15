@@ -1,7 +1,7 @@
 """Real datagen calls (T4.2, D1201): three real chunks give three valid candidates.
 
 The model is the pin of ``PRUEFSTAND_DATAGEN_BACKEND``: ``vm`` (default) calls the VM CPU model at
-``PRUEFSTAND_JUDGE_BASE_URL`` (``scripts/models/vm_llm.sh start``), ``github`` GitHub Models.
+``PRUEFSTAND_DATAGEN_BASE_URL`` (``scripts/models/vm_llm.sh start``), ``github`` GitHub Models.
 
 ``make cassettes`` runs this file with ``PRUEFSTAND_RECORD_DATASET=1``; the real answers are then
 written to ``tests/cassettes/dataset`` through ``CassetteRecorder`` (never by hand).
@@ -19,11 +19,13 @@ from testsupport.qa_support import (
 )
 
 from pruefstand.core.config import ModelRef
+from pruefstand.core.errors import ConfigError
 from pruefstand.core.protocols import LLMBackend
 from pruefstand.core.settings import PruefstandSettings
 from pruefstand.dataset.datagen_guard import datagen_policy
 from pruefstand.dataset.datagen_pins import datagen_model
 from pruefstand.dataset.generate import GenStats, generate_qa
+from pruefstand.dataset.vm_datagen import build_vm_backend, check_vm_served
 from pruefstand.llm.backends.litellm import GITHUB_MODELS_URL, LiteLLMBackend
 from pruefstand.llm.budget import Budget
 from pruefstand.llm.cassettes import CassetteRecorder
@@ -46,12 +48,20 @@ def _backend() -> LLMBackend:
             api_key_env="PRUEFSTAND_GH_MODELS_TOKEN",
             timeout_s=60,
         )
-    return LiteLLMBackend(MODEL, api_base=SETTINGS.judge_base_url, api_key_env=None, timeout_s=600)
+    return build_vm_backend(ModelRef(id=MODEL, family=family_of(MODEL)), SETTINGS.datagen_base_url)
+
+
+def _vm_up() -> bool:
+    try:
+        check_vm_served(MODEL, SETTINGS.datagen_base_url, timeout_s=2.0)
+    except ConfigError:
+        return False
+    return True
 
 
 @pytest.mark.skipif(
-    not (os.environ.get("PRUEFSTAND_GH_MODELS_TOKEN") if GITHUB else SETTINGS.judge_base_url),
-    reason="needs PRUEFSTAND_GH_MODELS_TOKEN (github) or PRUEFSTAND_JUDGE_BASE_URL (VM model)",
+    not (os.environ.get("PRUEFSTAND_GH_MODELS_TOKEN") if GITHUB else _vm_up()),
+    reason="needs PRUEFSTAND_GH_MODELS_TOKEN (github) or the VM model serving its pin (vm_llm.sh)",
 )
 async def test_three_real_chunks_give_three_valid_candidates() -> None:
     ModelRef(id=MODEL, family=family_of(MODEL))

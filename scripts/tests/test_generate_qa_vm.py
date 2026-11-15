@@ -1,10 +1,10 @@
-"""generate_qa on the VM datagen backend (D1201): default pin and the served-model check."""
+"""generate_qa on the VM datagen backend (D1201): default pin, URL, concurrency, retired GitHub."""
 
 import socket
 
 import pytest
-from generate_qa_args import build_parser
-from generate_qa_clients import check_vm_served, default_client
+from generate_qa_args import build_parser, effective_concurrency
+from generate_qa_clients import default_client
 
 from pruefstand.core.config import ModelRef
 from pruefstand.core.errors import ConfigError
@@ -32,22 +32,22 @@ def test_the_default_model_follows_the_backend_switch(monkeypatch: pytest.Monkey
     assert _model(monkeypatch, "github") == DATAGEN_MODEL
 
 
-def test_no_url_is_refused_with_the_start_command() -> None:
-    with pytest.raises(ConfigError, match=r"vm_llm\.sh start"):
-        check_vm_served(VM_DATAGEN_MODEL, None)
-
-
-def test_a_server_that_does_not_answer_is_refused() -> None:
-    url = f"http://127.0.0.1:{_closed_port()}/v1"
-    with pytest.raises(ConfigError, match="does not answer"):
-        check_vm_served(VM_DATAGEN_MODEL, url, timeout_s=2.0)
+def test_the_vm_model_is_asked_one_request_at_a_time() -> None:
+    assert effective_concurrency(4, None, VM_DATAGEN_MODEL) == 1
+    assert effective_concurrency(4, None, DATAGEN_MODEL) == 4
 
 
 def test_the_vm_client_needs_no_github_token_but_a_served_model(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.delenv("PRUEFSTAND_GH_MODELS_TOKEN", raising=False)
-    monkeypatch.setenv("PRUEFSTAND_JUDGE_BASE_URL", f"http://127.0.0.1:{_closed_port()}/v1")
+    monkeypatch.setenv("PRUEFSTAND_DATAGEN_BASE_URL", f"http://127.0.0.1:{_closed_port()}/v1")
     ref = ModelRef(id=VM_DATAGEN_MODEL, family="mistral")
     with pytest.raises(ConfigError, match="does not answer"):
         default_client(ref, 1, CallRecorder())
+
+
+def test_a_github_model_says_github_models_is_retired(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv("PRUEFSTAND_GH_MODELS_TOKEN", raising=False)
+    with pytest.raises(ConfigError, match=r"GitHub Models is retired \(2026-07-30"):
+        default_client(ModelRef(id=DATAGEN_MODEL, family="gpt"), 1, CallRecorder())

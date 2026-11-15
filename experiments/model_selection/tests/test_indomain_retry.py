@@ -1,8 +1,9 @@
-"""Per-item regeneration of the in-domain dev set (D1201) on two REAL answers for § 9 EntgFG.
+"""Per-item regeneration of the in-domain dev set (D1201) on REAL exchanges of ONE model.
 
-``fixtures/indomain_retry_entgfg9.json`` holds the passage (official text, public domain) and the
-real replies of the two VM models from the D1200 benchmark: the 8B reply quotes an evidence span
-over 400 characters (invalid), the 14B reply is valid. The cache is a temporary directory.
+``fixtures/indomain_retry_14b.json`` was written by ``model_selection.record_retry`` against the
+running VM model (Ministral 3 14B, llama-server; request bodies, raw responses with timings,
+latency and server build inside): for one public law passage the greedy first answer is invalid
+and a sampled retry is valid. Never edited by hand. The answer cache is a temporary directory.
 """
 
 import json
@@ -13,12 +14,13 @@ from model_selection import indomain_data as data
 from model_selection import indomain_gen as gen
 from model_selection import indomain_retry as retry
 
-FIXTURE = Path(__file__).parent / "fixtures" / "indomain_retry_entgfg9.json"
+FIXTURE = Path(__file__).parent / "fixtures" / "indomain_retry_14b.json"
 DOC = json.loads(FIXTURE.read_text(encoding="utf-8"))
-PASSAGE = data.Passage(**DOC["passage"])
-INVALID = DOC["replies"]["ministral-3-8b-instruct-2512"]
-VALID = DOC["replies"]["ministral-3-14b-instruct-2512"]
-MODEL = "openai_compatible_local/ministral-3-14b-instruct-2512"
+ITEM = DOC["items"][0]
+PASSAGE = data.Passage(**ITEM["passage"])
+REPLIES = [a["response"]["choices"][0]["message"]["content"] for a in ITEM["attempts"]]
+VERDICTS = [a["verdict"] for a in ITEM["attempts"]]
+MODEL = DOC["model"]
 
 
 @pytest.fixture(autouse=True)
@@ -32,12 +34,14 @@ def _store(key: str, text: str) -> None:
     gen.cache_path(MODEL, data.GEN_PROMPT, key).write_text(json.dumps(rec), encoding="utf-8")
 
 
-def _run(replies: list[str], *, retries: int, max_calls: int) -> tuple[retry.Tally, list[str]]:
-    keys: list[str] = []
+def _run(*, retries: int, max_calls: int) -> tuple[retry.Tally, list[tuple[str, int]]]:
+    """``call`` replays the recorded answer of the requested attempt (never invents one)."""
+    made: list[tuple[str, int]] = []
 
-    def call(key: str, _p: data.Passage) -> None:
-        keys.append(key)
-        _store(key, replies[len(keys) - 1])
+    def call(key: str, attempt: int, _p: data.Passage) -> None:
+        assert key == retry.attempt_key(PASSAGE.id, attempt)
+        made.append((key, attempt))
+        _store(key, REPLIES[attempt])
 
     tally = retry.run_generate(
         [PASSAGE],
@@ -47,53 +51,56 @@ def _run(replies: list[str], *, retries: int, max_calls: int) -> tuple[retry.Tal
         max_calls=max_calls,
         tally=retry.Tally(),
     )
-    return tally, keys
+    return tally, made
 
 
-def test_the_two_real_answers_are_judged_as_recorded() -> None:
-    assert retry.judge_answer(INVALID, PASSAGE.text) == (None, "span_length")
-    item, reason = retry.judge_answer(VALID, PASSAGE.text)
-    assert item is not None
-    assert reason == ""
+def test_the_fixture_is_a_real_recording_of_one_model() -> None:
+    assert DOC["source"].startswith("real exchanges recorded by record_retry.py")
+    assert MODEL == "openai_compatible_local/ministral-3-14b-instruct-2512"
+    assert DOC["server"]["model_file"] == "Ministral-3-14B-Instruct-2512-Q4_K_M.gguf"
+    first, *rest = ITEM["attempts"]
+    assert (first["request"]["temperature"], first["request"]["seed"]) == (0.0, 42)
+    for k, a in enumerate(rest, start=1):
+        assert (a["request"]["temperature"], a["request"]["seed"]) == (
+            gen.RETRY_TEMPERATURE,
+            42 + k,
+        )
+    assert {a["response"]["model"] for a in ITEM["attempts"]} == {"ministral-3-14b-instruct-2512"}
 
 
-def test_an_invalid_first_answer_is_asked_again_and_the_valid_one_is_used() -> None:
-    tally, keys = _run([INVALID, VALID], retries=2, max_calls=10)
-    assert keys == ["gii-entgfg-9", "gii-entgfg-9#retry1"]
-    assert (tally.calls, tally.retries, tally.exhausted) == (2, 1, 0)
-    item, _ = retry.first_valid(retry.answers(MODEL, PASSAGE.id, 2), PASSAGE.text)
+def test_the_recorded_answers_are_judged_as_recorded() -> None:
+    assert [retry.judge_answer(t, PASSAGE.text)[1] or "valid" for t in REPLIES] == VERDICTS
+    assert VERDICTS[0] != "valid"
+    assert VERDICTS[-1] == "valid"
+
+
+def test_an_invalid_first_answer_is_asked_again_until_valid() -> None:
+    tally, made = _run(retries=len(REPLIES), max_calls=10)
+    assert [a for _, a in made] == list(range(len(REPLIES)))
+    assert (tally.calls, tally.retries, tally.exhausted) == (len(REPLIES), len(REPLIES) - 1, 0)
+    item, _ = retry.first_valid(retry.answers(MODEL, PASSAGE.id, len(REPLIES)), PASSAGE.text)
     assert item is not None
     assert item["evidence_span"] in PASSAGE.text
 
 
-def test_regeneration_stops_after_n_retries_and_counts_every_call() -> None:
-    tally, keys = _run([INVALID] * 5, retries=2, max_calls=10)
-    assert keys == ["gii-entgfg-9", "gii-entgfg-9#retry1", "gii-entgfg-9#retry2"]
-    assert (tally.calls, tally.retries, tally.exhausted) == (3, 2, 1)
-    assert retry.first_valid(retry.answers(MODEL, PASSAGE.id, 2), PASSAGE.text) == (
-        None,
-        "span_length",
-    )
+def test_zero_retries_is_one_call_and_counts_the_item_exhausted() -> None:
+    tally, made = _run(retries=0, max_calls=1)  # the last attempt uses the last call of the budget
+    assert made == [(PASSAGE.id, 0)]
+    assert (tally.calls, tally.exhausted) == (1, 1)
 
 
-def test_the_call_budget_stops_a_retry_and_a_rerun_continues_there() -> None:
-    tally, keys = _run([INVALID], retries=2, max_calls=1)
-    assert (tally.calls, keys) == (1, ["gii-entgfg-9"])
-    tally, keys = _run([VALID], retries=2, max_calls=5)
-    assert keys == ["gii-entgfg-9#retry1"]
-    assert (tally.calls, tally.retries) == (1, 1)
-
-
-def test_zero_retries_keeps_the_old_one_call_rule() -> None:
-    tally, keys = _run([INVALID, VALID], retries=0, max_calls=10)
-    assert keys == ["gii-entgfg-9"]
-    assert tally.exhausted == 1
+def test_the_budget_stops_mid_item_and_a_rerun_continues_at_the_next_attempt() -> None:
+    tally, made = _run(retries=len(REPLIES), max_calls=1)
+    assert (tally.calls, tally.exhausted, made) == (1, 0, [(PASSAGE.id, 0)])
+    tally, made = _run(retries=len(REPLIES), max_calls=10)
+    assert made[0] == (retry.attempt_key(PASSAGE.id, 1), 1)
+    assert tally.retries == tally.calls
 
 
 def test_a_valid_cached_answer_makes_no_call() -> None:
-    _store("gii-entgfg-9", VALID)
-    tally, keys = _run([], retries=2, max_calls=10)
-    assert keys == []
+    _store(retry.attempt_key(PASSAGE.id, 0), REPLIES[-1])
+    tally, made = _run(retries=2, max_calls=10)
+    assert made == []
     assert tally.calls == 0
 
 

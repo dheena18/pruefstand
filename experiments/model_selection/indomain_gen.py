@@ -1,13 +1,13 @@
 """Datagen clients with a resumable disk cache (T3.1b S4, ADR-0019, D1201).
 
 Two backends: the VM CPU model (ids ``openai_compatible_local/<alias>``, the default since D1201;
-``scripts/models/vm_llm.sh start``, URL in ``PRUEFSTAND_JUDGE_BASE_URL``, no credential; every
-answer must name the served alias) and GitHub Models (bare catalogue ids, retired 2026-07-30).
-The GitHub credential is ``PRUEFSTAND_GH_MODELS_TOKEN`` (Models: read; never ``GITHUB_TOKEN``),
-read from the environment or from ``--env-file`` (only that one variable), never printed or
-stored. Every model answer is cached under ``data/raw/indomain_dev_cache`` (git-ignored), so a
-run is resumable across days; a 429 raises ``QuotaStop``. Used by ``indomain_cli.py`` (public
-law text only).
+``scripts/models/vm_llm.sh start``, URL ``PRUEFSTAND_DATAGEN_BASE_URL``, no credential; the served
+alias is checked once per run by ``indomain_cli.vm_check``) and GitHub Models (bare catalogue ids,
+retired 2026-07-30). The GitHub credential is ``PRUEFSTAND_GH_MODELS_TOKEN`` (Models: read; never
+``GITHUB_TOKEN``), read from the environment or from ``--env-file`` (only that one variable),
+never printed or stored. Every model answer is cached under ``data/raw/indomain_dev_cache``
+(git-ignored), so a run is resumable across days; a 429 raises ``QuotaStop``. Used by
+``indomain_cli.py`` (public law text only).
 """
 
 import hashlib
@@ -24,6 +24,7 @@ CACHE = data.REPO / "data" / "raw" / "indomain_dev_cache"
 ENDPOINT = "https://models.github.ai/inference/chat/completions"
 TOKEN_VAR = "PRUEFSTAND_GH_MODELS_TOKEN"  # noqa: S105  # reason: the variable NAME, not a secret
 VM_PREFIX = "openai_compatible_local/"
+RETRY_TEMPERATURE = 0.7  # retries must differ from the greedy first answer (D1201)
 # The answer shape of indomain_gen_v1 as a llama-server json_schema grammar (D1201): no code fences,
 # and the evidence span within the 20..400 characters that indomain_data.validate_item accepts.
 GEN_SCHEMA: dict[str, Any] = {
@@ -129,17 +130,27 @@ def is_vm(model: str) -> bool:
     return model.startswith(VM_PREFIX)
 
 
-def vm_body(model: str, content: str, schema: dict[str, Any] | None) -> dict[str, Any]:
+def vm_body(
+    model: str, content: str, schema: dict[str, Any] | None, attempt: int = 0
+) -> dict[str, Any]:
     """The ``/chat/completions`` body for the VM model; ``schema`` = constrained JSON output.
 
+    Attempt 0 is greedy (temperature 0, seed 42). A retry at temperature 0 would return the
+    same answer (seen live, 2026-11-15), so attempt k > 0 samples at ``RETRY_TEMPERATURE`` with
+    seed 42 + k: different, still reproducible.
+
     >>> b = vm_body(VM_PREFIX + "ministral-3-14b-instruct-2512", "Frage?", GEN_SCHEMA)
-    >>> b["model"], b["response_format"]["type"], b["temperature"]
-    ('ministral-3-14b-instruct-2512', 'json_schema', 0)
+    >>> b["model"], b["response_format"]["type"], b["temperature"], b["seed"]
+    ('ministral-3-14b-instruct-2512', 'json_schema', 0.0, 42)
+    >>> r = vm_body(VM_PREFIX + "x", "Frage?", None, attempt=2)
+    >>> r["temperature"], r["seed"], "response_format" in r
+    (0.7, 44, False)
     """
     body: dict[str, Any] = {
         "model": model.removeprefix(VM_PREFIX),
         "messages": [{"role": "user", "content": content}],
-        "temperature": 0,
+        "temperature": 0.0 if attempt == 0 else RETRY_TEMPERATURE,
+        "seed": 42 + attempt,
         "max_tokens": 700,
     }
     if schema is not None:
@@ -154,19 +165,21 @@ def call_vm(
     model: str,
     content: str,
     base_url: str | None,
+    *,
     timeout_s: float = 900.0,
     schema: dict[str, Any] | None = None,
+    attempt: int = 0,
 ) -> str:
-    """One chat call to the VM model (temperature 0); the answer must name the served alias.
+    """One chat call to the VM model (``vm_body``); the answer must name the served alias.
 
     ``schema`` constrains the output (llama-server ``response_format`` json_schema); fenced
     answers are still parsed (``parse_json_object``) in case a build ignores it.
     Raises ``GenError`` when no URL is set, the call fails, or another model answered.
     """
     if not base_url:
-        msg = "set PRUEFSTAND_JUDGE_BASE_URL to the URL printed by scripts/models/vm_llm.sh start"
+        msg = "no PRUEFSTAND_DATAGEN_BASE_URL: start the model with scripts/models/vm_llm.sh start"
         raise GenError(msg)
-    body = vm_body(model, content, schema)
+    body = vm_body(model, content, schema, attempt)
     alias = body["model"]
     try:
         resp = httpx.post(f"{base_url.rstrip('/')}/chat/completions", json=body, timeout=timeout_s)
@@ -202,13 +215,14 @@ def ask(
     content: str,
     *,
     base_url: str | None = None,
+    attempt: int = 0,
 ) -> str:
     """One new call (VM model or GitHub Models); the raw answer is stored (no secrets) first."""
     rejected = ""
     try:
         if is_vm(model):
             schema = GEN_SCHEMA if prompt == data.GEN_PROMPT else None
-            text = call_vm(model, content, base_url, schema=schema)
+            text = call_vm(model, content, base_url, schema=schema, attempt=attempt)
         else:
             text = call_model(token, model, content)
     except RejectedError as exc:  # recorded: not asked again

@@ -79,7 +79,7 @@ class Tally:
 def run_generate(
     plan: Sequence[data.Passage],
     cached: Callable[[str], list[str]],
-    call: Callable[[str, data.Passage], None],
+    call: Callable[[str, int, data.Passage], None],
     *,
     retries: int,
     max_calls: int,
@@ -87,21 +87,21 @@ def run_generate(
 ) -> Tally:
     """Ask each planned passage until an answer is valid, ``retries`` are used or the budget ends.
 
-    ``cached(passage_id)`` returns the answers so far (``answers``); ``call(key, passage)`` makes
-    and caches one call. ``tally`` is updated in place, so a quota stop inside ``call`` still
-    leaves the counts of the calls made.
+    ``cached(passage_id)`` returns the answers so far (``answers``); ``call(key, attempt,
+    passage)`` makes and caches one call (a retry samples, ``indomain_gen.vm_body``).
+    ``tally`` is updated in place, so a quota stop inside ``call`` still leaves the counts of
+    the calls made.
     """
     for p in plan:
-        while tally.calls < max_calls:
-            attempt = next_attempt(cached(p.id), p.text, retries)
-            if attempt is None:
-                break
-            call(attempt_key(p.id, attempt), p)
+        attempt = next_attempt(cached(p.id), p.text, retries)
+        while attempt is not None and tally.calls < max_calls:
+            call(attempt_key(p.id, attempt), attempt, p)
             tally.calls += 1
             tally.retries += attempt > 0
-        else:
-            return tally
+            attempt = next_attempt(cached(p.id), p.text, retries)
         texts = cached(p.id)
         if first_valid(texts, p.text)[0] is None and len(texts) > retries:
             tally.exhausted += 1
+        if attempt is not None:  # the budget ended before this item was settled
+            return tally
     return tally

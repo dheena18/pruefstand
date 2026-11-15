@@ -13,6 +13,23 @@ DEFAULT_EXCLUDE = REPO / "experiments" / "model_selection" / "indomain_dev_sourc
 DEFAULT_CATALOGUE = REPO / "infra" / "gpu" / "models.yaml"
 
 
+def effective_concurrency(concurrency: int, max_requests: int | None, model: str) -> int:
+    """Requests in flight: 1 with a request cap (exact counting) or on the one-slot VM model.
+
+    Queued requests on the VM server would wait past their timeout and be resent (D1201).
+
+    >>> effective_concurrency(4, None, "openai_compatible_local/ministral-3-14b-instruct-2512")
+    1
+    >>> effective_concurrency(4, None, "github/openai/gpt-4.1-mini")
+    4
+    >>> effective_concurrency(4, 9, "github/openai/gpt-4.1-mini")
+    1
+    """
+    if max_requests is not None or model.startswith("openai_compatible_local/"):
+        return 1
+    return concurrency
+
+
 def build_parser(description: str) -> argparse.ArgumentParser:
     """Return the argument parser of the script (``description`` is the first docstring line)."""
     parser = argparse.ArgumentParser(description=description)

@@ -32,8 +32,9 @@ class PruefstandSettings(BaseSettings):
         github_token: ``GITHUB_TOKEN``; PR publishing only, never model calls (D333).
         gh_models_token: ``PRUEFSTAND_GH_MODELS_TOKEN``; the only GitHub Models credential (D333).
         hf_token: ``HF_TOKEN``, else the alias ``PRUEFSTAND_HF_TOKEN``.
-        judge_base_url: ``PRUEFSTAND_JUDGE_BASE_URL``; OpenAI-compatible local judge endpoint
-            (also the VM datagen model's ``http://127.0.0.1:<port>/v1``, D1201).
+        judge_base_url: ``PRUEFSTAND_JUDGE_BASE_URL``; OpenAI-compatible local judge endpoint.
+        datagen_base_url: ``PRUEFSTAND_DATAGEN_BASE_URL``; the VM datagen model (default
+            ``http://127.0.0.1:18091/v1``, the port of ``vm_llm.sh``); never the judge URL, D1201.
         datagen_backend: ``PRUEFSTAND_DATAGEN_BACKEND``; ``vm`` (default; the on-demand CPU
             model of ``scripts/models/vm_llm.sh``) or ``github`` (GitHub Models, retired), D1201.
         nonce_key: ``PRUEFSTAND_NONCE_KEY``; HMAC key of the judge-prompt nonces (T5.2a).
@@ -66,6 +67,7 @@ class PruefstandSettings(BaseSettings):
     )
     judge_base_url: str | None = None
     datagen_backend: DatagenBackend = "vm"
+    datagen_base_url: str = "http://127.0.0.1:18091/v1"
     nonce_key: SecretStr | None = None
     attack_key: SecretStr | None = None
     log_json: bool = Field(default_factory=_default_log_json)

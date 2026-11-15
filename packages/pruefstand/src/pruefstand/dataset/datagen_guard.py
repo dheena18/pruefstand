@@ -13,16 +13,18 @@ from pruefstand.core.config import LLMPolicyConfig, ModelRef
 from pruefstand.core.errors import ConfigError
 from pruefstand.core.models.attacks import CanaryRegistry
 from pruefstand.core.protocols import KVCache
+from pruefstand.core.settings import PruefstandSettings
 from pruefstand.dataset.datagen_pins import VM_DATAGEN_MODELS
+from pruefstand.dataset.vm_datagen import VM_PROVIDER, build_vm_backend
 from pruefstand.llm.budget import Budget
 from pruefstand.llm.client import LLMClient
 from pruefstand.llm.factory import build_backend
 from pruefstand.llm.families import family_of
 from pruefstand.llm.policy import LLMPolicy, provider_of
 from pruefstand.llm.recorder import CallRecorder
+from pruefstand.llm.retry import RetryPolicy
 
 DATAGEN_PROVIDER = "github"
-VM_PROVIDER = "openai_compatible_local"
 FORBIDDEN_FAMILIES = frozenset({"qwen", "gemma"})
 
 
@@ -103,8 +105,9 @@ def build_datagen_client(
 ) -> LLMClient:
     """Build the client for one datagen model (VM or GitHub Models): policy, request cap, USD 0.
 
-    The VM model is reached at ``PRUEFSTAND_JUDGE_BASE_URL`` (``build_backend``); the caller
-    checks first that the server there serves that model (``scripts/generate_qa_clients.py``).
+    The VM model is reached at ``PRUEFSTAND_DATAGEN_BASE_URL`` after ``check_vm_served``, with
+    a 900 s timeout and NO transport retries: the one-slot CPU server would otherwise get
+    resends that the request budget never sees (D1201).
 
     Args:
         ref: The model (checked with ``check_datagen_model``).
@@ -121,4 +124,8 @@ def build_datagen_client(
     config = LLMPolicyConfig(allowed_providers=(provider,))
     budget = Budget(max_usd=0.0, max_tokens=None, max_requests=max_requests)
     policy = datagen_policy(canaries, provider)
+    if provider == VM_PROVIDER:
+        backend = build_vm_backend(ref, PruefstandSettings().datagen_base_url)
+        retry = RetryPolicy(max_retries=0)
+        return LLMClient(backend, cache, budget, recorder, policy, retry=retry)
     return LLMClient(build_backend(ref, policy=config), cache, budget, recorder, policy)

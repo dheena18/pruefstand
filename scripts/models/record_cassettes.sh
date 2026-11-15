@@ -120,17 +120,14 @@ rag_demo_inner() {
 
 dataset_stage() {
   # T4.2 S7: records the REAL datagen calls used by the dataset cassette tests (D1201). Backend
-  # PRUEFSTAND_DATAGEN_BACKEND=vm (default): the VM CPU model at PRUEFSTAND_JUDGE_BASE_URL
-  # (`scripts/models/vm_llm.sh start` prints it); `github`: GitHub Models (retired) with
-  # PRUEFSTAND_GH_MODELS_TOKEN (D333). Skipped when the backend's endpoint or credential is missing.
+  # PRUEFSTAND_DATAGEN_BACKEND=vm (default): the VM CPU model at PRUEFSTAND_DATAGEN_BASE_URL
+  # (`scripts/models/vm_llm.sh start`; the live test skips when it does not serve the pin); `github`:
+  # GitHub Models (retired 2026-07-30) with PRUEFSTAND_GH_MODELS_TOKEN (D333).
   if [ "${PRUEFSTAND_DATAGEN_BACKEND:-vm}" = github ]; then
     if [ -z "${PRUEFSTAND_GH_MODELS_TOKEN:-}" ]; then
       echo "record_cassettes: dataset stage skipped (PRUEFSTAND_GH_MODELS_TOKEN is not set)" >&2
       return 0
     fi
-  elif [ -z "${PRUEFSTAND_JUDGE_BASE_URL:-}" ]; then
-    echo "record_cassettes: dataset stage skipped (PRUEFSTAND_JUDGE_BASE_URL: start scripts/models/vm_llm.sh)" >&2
-    return 0
   fi
   local dir=packages/pruefstand/tests/cassettes/dataset
   rm -f "$dir"/*.json "$dir"/support/*.json

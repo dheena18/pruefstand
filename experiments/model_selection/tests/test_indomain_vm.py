@@ -10,6 +10,7 @@ from pathlib import Path
 import pytest
 from model_selection import indomain_cli as cli
 from model_selection import indomain_gen as gen
+from testsupport.vm_stub import openai_stub
 
 from pruefstand.dataset.datagen_pins import VM_DATAGEN_MODEL
 
@@ -52,3 +53,29 @@ def test_a_failed_vm_call_caches_nothing(monkeypatch: pytest.MonkeyPatch, tmp_pa
     with pytest.raises(gen.GenError):
         gen.ask("", cli.VM_GEN_MODEL, "indomain_gen_v1", "gii-bgb-622", "Frage?", base_url=url)
     assert list(tmp_path.iterdir()) == []
+
+
+def test_generate_refuses_a_server_that_serves_another_model() -> None:
+    with (
+        openai_stub(["qwen2.5-0.5b-instruct"]) as (url, state),
+        pytest.raises(gen.GenError, match="not ministral-3-14b-instruct-2512"),
+    ):
+        cli.vm_check(cli.VM_GEN_MODEL, url)
+    assert state.bodies == []  # nothing was generated (and nothing cached under the pin)
+
+
+def test_the_generation_call_sends_the_json_schema_and_retries_sample(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    monkeypatch.setattr(gen, "CACHE", tmp_path)
+    with openai_stub(["ministral-3-14b-instruct-2512"]) as (url, state):
+        gen.ask("", cli.VM_GEN_MODEL, "indomain_gen_v1", "gii-bgb-622", "Frage?", base_url=url)
+        gen.ask("", cli.VM_GEN_MODEL, "indomain_gen_v1", "gii-bgb-622#retry1", "Frage?",
+                base_url=url, attempt=1)  # fmt: skip
+        gen.ask("", cli.VM_GEN_MODEL, "indomain_check_v1", "gii-bgb-622", "Prüfe?", base_url=url)
+    first, retry1, check = state.bodies
+    assert first["response_format"]["json_schema"]["schema"] == gen.GEN_SCHEMA
+    assert (first["temperature"], first["seed"]) == (0.0, 42)
+    assert (retry1["temperature"], retry1["seed"]) == (gen.RETRY_TEMPERATURE, 43)
+    assert retry1["response_format"]["type"] == "json_schema"
+    assert "response_format" not in check

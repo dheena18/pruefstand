@@ -6,7 +6,7 @@ generator is the pin of ``PRUEFSTAND_DATAGEN_BACKEND`` (``vm``, default: the VM 
 ``github``: GitHub Models, retired); the checker must be another family (``--model``). Every
 answer is cached, so any step can be rerun and a quota stop (exit code 3) is resumed later.
 
-    bash scripts/models/vm_llm.sh start   # export PRUEFSTAND_JUDGE_BASE_URL=<the URL it prints>
+    bash scripts/models/vm_llm.sh start   # serves PRUEFSTAND_DATAGEN_BASE_URL (default port 18091)
     python -m model_selection.indomain_cli plan
     python -m model_selection.indomain_cli generate --max-calls 120 --retries 2
     python -m model_selection.indomain_cli check          # second family, first 30 items
@@ -31,6 +31,13 @@ RAW_GII = data.REPO / "data" / "raw" / "gii"
 SOURCES_YAML = data.REPO / "data" / "sources.yaml"
 GITHUB_GEN_MODEL, CHECK_MODEL = "openai/gpt-4.1-mini", "meta/Llama-3.3-70B-Instruct"
 VM_GEN_MODEL = "openai_compatible_local/ministral-3-14b-instruct-2512"  # datagen_pins, D1201
+
+
+def datagen_base_url() -> str:
+    """``PRUEFSTAND_DATAGEN_BASE_URL`` (default ``http://127.0.0.1:18091/v1``), not the judge."""
+    from pruefstand.core.settings import PruefstandSettings  # noqa: PLC0415  # reason: lazy
+
+    return PruefstandSettings().datagen_base_url
 
 
 def default_gen_model() -> str:
@@ -125,13 +132,15 @@ def cmd_generate(args: argparse.Namespace, token: str, base_url: str | None) -> 
     tpl = prompt_text(data.GEN_PROMPT)
     tally = retry.Tally()
 
-    def call(key: str, p: data.Passage) -> None:
+    def call(key: str, attempt: int, p: data.Passage) -> None:
         if tally.calls and args.pause_s > 0:
             time.sleep(args.pause_s)  # free tier: 15 requests per minute
         body = tpl.format(passage=p.text, law=p.citation, title=p.title)
-        gen.ask(token, args.model, data.GEN_PROMPT, key, body, base_url=base_url)
+        gen.ask(token, args.model, data.GEN_PROMPT, key, body, base_url=base_url, attempt=attempt)
 
     plan = [passages[pid] for pid in load_plan()]
+    if gen.is_vm(args.model):
+        vm_check(args.model, base_url)  # the answer echoes the alias we send: ask /models once
     try:
         retry.run_generate(
             plan,
@@ -144,8 +153,22 @@ def cmd_generate(args: argparse.Namespace, token: str, base_url: str | None) -> 
     except gen.QuotaStop as stop:
         print(f"{stop}; {tally.line()}, run again later")
         return EXIT_QUOTA
+    except gen.GenError as exc:
+        print(f"stopped: {exc}; {tally.line()}", file=sys.stderr)
+        return 1
     print(tally.line())
     return 0
+
+
+def vm_check(model: str, base_url: str | None) -> None:
+    """``GenError`` unless the server at ``base_url`` serves the alias of ``model`` (D1201)."""
+    from pruefstand.core.errors import ConfigError  # noqa: PLC0415  # reason: lazy, like settings
+    from pruefstand.dataset.vm_datagen import check_vm_served  # noqa: PLC0415
+
+    try:
+        check_vm_served(model, base_url or "")
+    except ConfigError as exc:
+        raise gen.GenError(str(exc)) from exc
 
 
 def cmd_calls(args: argparse.Namespace) -> int:
@@ -153,8 +176,10 @@ def cmd_calls(args: argparse.Namespace) -> int:
     if args.cmd == "check" and data.family_of(args.model) == data.family_of(args.gen_model):
         print("the checker must be another provider family than the generator", file=sys.stderr)
         return EXIT_USAGE
+    if not gen.is_vm(args.model):
+        print("note: GitHub Models is retired (2026-07-30, D1202)", file=sys.stderr)
     token = "" if gen.is_vm(args.model) else gen.read_token(os.environ, args.env_file)
-    base_url = os.environ.get("PRUEFSTAND_JUDGE_BASE_URL")
+    base_url = datagen_base_url()
     if args.cmd == "generate":
         return cmd_generate(args, token, base_url)
     prompt = data.CHECK_PROMPT
