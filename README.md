@@ -13,7 +13,7 @@ Status: **in progress** (Phase 0, repository scaffold). The documentation lives 
 | [docs/architecture/](docs/architecture/README.md) | Diagrams and interface contracts |
 | [docs/engineering/](docs/engineering/README.md) | Standards, testing, CI/CD, Docker, security, GPU cluster, AI workflow |
 | [docs/adr/](docs/adr/README.md) | Architecture decision records |
-| [docs/decisions.md](docs/decisions.md) | Binding decisions log |
+| [docs/decisions.md](docs/decisions.md) | Binding decisions: rules; one file per decision in `docs/decisions/` |
 | [tasks/TASKS.md](tasks/TASKS.md), [prompts/](prompts/README.md) | Tasks and one prompt per task |
 | [REVIEW.md](REVIEW.md) | Verdict on the original spec and the planning review rounds |
 
