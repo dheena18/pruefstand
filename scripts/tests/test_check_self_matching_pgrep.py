@@ -3,7 +3,8 @@
 from pathlib import Path
 
 import pytest
-from check_self_matching_pgrep import file_findings, main, offends, scan_text
+from check_self_matching_pgrep import file_findings, main
+from pgrep_tokens import offends, scan_text
 
 BAD = [
     "pkill -f worker",
