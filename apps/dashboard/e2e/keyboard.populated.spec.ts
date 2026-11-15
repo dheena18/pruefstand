@@ -23,12 +23,18 @@ test("the theme toggle works with Enter and Space", async ({ page }) => {
     .locator("header button[aria-label^='Design']:visible, header button[title]:visible")
     .first();
   const html = page.locator("html");
+  const stored = () => page.evaluate(() => window.localStorage.getItem("pruefstand.theme"));
+  await expect(html).toHaveAttribute("data-theme", "system");
   await toggle.focus();
-  await page.keyboard.press("Enter");
-  const first = await html.getAttribute("data-theme");
-  await page.keyboard.press("Space");
-  const second = await html.getAttribute("data-theme");
-  expect(second).not.toBe(first);
+  await page.keyboard.press("Enter"); // system -> light
+  await expect(html).toHaveAttribute("data-theme", "light");
+  expect(await stored()).toBe("light");
+  await page.keyboard.press("Space"); // light -> dark
+  await expect(html).toHaveAttribute("data-theme", "dark");
+  expect(await stored()).toBe("dark");
+  await expect(toggle).toHaveAttribute("aria-label", "Design: dunkel");
+  await page.reload(); // the choice is applied before first paint by theme-init.js
+  await expect(html).toHaveAttribute("data-theme", "dark");
 });
 
 test("visible links and buttons are at least 24 x 24 px or inline text (WCAG 2.5.8)", async ({
