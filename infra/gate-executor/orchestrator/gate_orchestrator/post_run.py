@@ -9,15 +9,20 @@ and an infra error (``"<kind>: <detail>"``, D245) that ``run_with_retry`` report
   the GPU) → ``model_reload``; 16 → ``data_root_unavailable``. Limit: with the tunnel unit active,
   an exit 11 is always ``ollama_down`` (the probe cannot tell a dead forward from a dead server).
 * exit 10 (free VRAM below the minimum, e.g. another cluster user) and 14 (cluster bin dir differs
-  from the checkout) do not touch a finished run: logged as WARN, the run's result stands.
+  from the checkout) do not touch a finished run: logged as WARN, the run's result stands, unless a
+  ``resident:`` digest-differs or ``placement:`` FAIL row is also present (``health.sh`` exits with
+  the first code of 16 11 12 14 13 15 10, so 14 hides 13/15): then ``model_reload``.
 * any other exit (1, 2, 64: the script itself failed) → ``executor``.
 
-Every probe command carries a subprocess timeout (``POST_RUN_TIMEOUT_S``); a timeout raises
+Every probe command carries a subprocess timeout (``POST_RUN_TIMEOUT_S``) and runs in its own
+process group, killed as a whole on timeout; a timeout raises
 ``subprocess.TimeoutExpired``, which ``run_with_retry`` treats as an infra error of kind
 ``executor``. ``evaluate`` (not built yet) calls :func:`post_run_infra_error` right after the run.
 """
 
 import logging
+import os
+import signal
 import subprocess
 from collections.abc import Callable, Mapping, Sequence
 from pathlib import Path
@@ -41,15 +46,37 @@ LOG = logging.getLogger("gate_orchestrator.post_run")
 def subprocess_runner(
     argv: Sequence[str], env: Mapping[str, str], timeout_s: float
 ) -> tuple[int, str]:
-    """Run ``argv`` with ``env`` and a timeout; return ``(exit code, stdout)``.
+    """Run ``argv`` in its own process group with a timeout; return ``(exit code, stdout)``.
+
+    On timeout the whole group is killed (``killpg``: ``bash`` and its children such as ``ssh``,
+    ``curl``, ``gpu_health.py``), never anything outside it.
 
     Raises:
         subprocess.TimeoutExpired: the command ran longer than ``timeout_s``.
     """
-    done = subprocess.run(  # noqa: S603 - fixed argv from this module, never from a PR
-        list(argv), env=dict(env), capture_output=True, text=True, timeout=timeout_s, check=False
-    )
-    return done.returncode, done.stdout
+    proc = subprocess.Popen(  # noqa: S603 - fixed argv from this module, never from a PR
+        list(argv), env=dict(env), stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, text=True,
+        start_new_session=True,
+    )  # fmt: skip
+    try:
+        out, _ = proc.communicate(timeout=timeout_s)
+    except subprocess.TimeoutExpired:
+        os.killpg(proc.pid, signal.SIGKILL)  # its own session: pgid == pid
+        proc.communicate()
+        raise
+    return proc.returncode, out
+
+
+def _model_change_row(csv: str) -> str:
+    """``"<check> <detail>"`` of a resident-digest or placement FAIL row, else ``""``."""
+    for line in csv.splitlines():
+        parts = line.split(",", 2)
+        if len(parts) != 3 or parts[1] != "FAIL":
+            continue
+        digest = parts[0].startswith("resident:") and "differs from the catalogue" in parts[2]
+        if digest or parts[0].startswith("placement:"):
+            return f"{parts[0]} {parts[2]}"
+    return ""
 
 
 def post_run_infra_error(
@@ -86,6 +113,9 @@ def post_run_infra_error(
     row = fail_row(out, code)
     detail = f"post-run health.sh exit {code}" + (f" ({row})" if row else "")
     if code in WARN_ONLY_EXITS:
+        changed = _model_change_row(out)  # health.sh reports only the first code: 14 hides 13/15
+        if changed:
+            return f"model_reload: post-run health.sh exit {code} ({changed})"
         LOG.warning("post-run probe WARN, run result kept: %s", detail)
         return None
     return f"{KIND_FOR_EXIT.get(code, 'executor')}: {detail}"

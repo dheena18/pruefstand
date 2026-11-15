@@ -3,7 +3,9 @@
 Row formats are the real ones of ``infra/gpu/health.sh`` / ``gpu_health.py``.
 """
 
+import os
 import subprocess
+import time
 from collections.abc import Mapping, Sequence
 from pathlib import Path
 
@@ -109,3 +111,44 @@ def test_subprocess_runner_enforces_the_timeout() -> None:
     with pytest.raises(subprocess.TimeoutExpired):
         subprocess_runner(("sleep", "5"), {}, 0.2)
     assert subprocess_runner(("sh", "-c", "echo row; exit 3"), {}, 5) == (3, "row\n")
+
+
+@pytest.mark.parametrize(
+    ("row", "check"),
+    [
+        (
+            "resident:gemma3:12b,FAIL,digest 0123456789ab differs from the catalogue",
+            "resident:gemma3:12b",
+        ),
+        (
+            "placement:gemma3:12b,FAIL,size_vram 100 < size 200: not fully on the GPU",
+            "placement:gemma3:12b",
+        ),
+    ],
+)
+def test_exit_14_does_not_mask_a_model_change_during_the_run(row: str, check: str) -> None:
+    # health.sh returns the first code of 16 11 12 14 13 15 10, so a stale bin dir (14) hides 13/15
+    out = (
+        "bin-dir,FAIL,cluster scripts differ from this checkout; run deploy-cluster-bin.sh\n"
+        + row
+        + "\n"
+    )
+    got = post_run_infra_error("day", HEALTH, Commands(health=(14, out)), LOCKED)
+    assert got is not None
+    assert got.startswith(f"model_reload: post-run health.sh exit 14 ({check} ")
+
+
+def test_timeout_kills_the_whole_process_group(tmp_path: Path) -> None:
+    pidfile = tmp_path / "grandchild.pid"
+    script = f"sleep 30 & echo $! > {pidfile}; wait"
+    with pytest.raises(subprocess.TimeoutExpired):
+        subprocess_runner(("sh", "-c", script), {"PATH": os.environ.get("PATH", "")}, 0.5)
+    pid = int(pidfile.read_text(encoding="utf-8"))
+    deadline = time.monotonic() + 5
+    while time.monotonic() < deadline:
+        try:
+            os.kill(pid, 0)
+        except ProcessLookupError:
+            return
+        time.sleep(0.05)
+    pytest.fail(f"grandchild {pid} survived the timeout")
