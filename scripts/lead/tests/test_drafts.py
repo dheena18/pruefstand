@@ -100,9 +100,39 @@ def test_a_footer_added_by_a_commit_hook_is_caught_before_the_push(lab: Lab) -> 
     msg, body = _ready(lab)
     rc, _, err = _push(lab, msg, body, "--add", "new.py")
     assert rc == 2
-    assert "committed message" in err
+    assert "commit message" in err
     assert not lab.origin_has(BRANCH)
     assert lab.gh_log() == ""
+
+
+def test_a_second_run_after_a_footer_refusal_never_pushes_the_commit(lab: Lab) -> None:
+    hook = lab.wt / ".git" / "hooks" / "commit-msg"
+    hook.write_text(
+        '#!/bin/sh\nprintf "\\nClaude-Session: injected\\n" >> "$1"\n', encoding="utf-8"
+    )
+    hook.chmod(0o755)
+    msg, body = _ready(lab)
+    assert _push(lab, msg, body, "--add", "new.py")[0] == 2
+    assert (
+        git(lab.wt, "log", "-1", "--format=%B").count("Claude-Session") == 1
+    )  # the commit exists locally
+    again = lab.run("draft_update.sh", str(lab.wt), BRANCH, str(msg))  # nothing is staged any more
+    assert again.returncode == 2
+    assert "commit message" in again.stderr
+    assert not lab.origin_has(BRANCH)
+    assert not any(ln.startswith("push") for ln in lab.git_log().splitlines())
+
+
+def test_a_refusal_leaves_the_index_untouched(lab: Lab) -> None:
+    lab.write("a.py", "X = 7\n")  # a tracked change that would be staged
+    msg, body = _ready(lab, "sub/deploy.pem")
+    rc, _, err = _push(lab, msg, body, "--add", "sub/deploy.pem")
+    assert rc == 2
+    assert "looks like a secret" in err
+    assert git(lab.wt, "diff", "--cached", "--name-only") == ""
+    lab.write("stray.txt", "x\n")
+    assert _push(lab, msg, body)[0] == 2
+    assert git(lab.wt, "diff", "--cached", "--name-only") == ""
 
 
 def test_ruff_failures_stop_before_commit(lab: Lab) -> None:

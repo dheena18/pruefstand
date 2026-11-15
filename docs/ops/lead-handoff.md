@@ -154,9 +154,9 @@ checks are green (0 approvals, no code-owner review). Git's own configuration (`
 `scripts/lead/` holds the helpers (nothing lives only in `/tmp` or `~/.local/lead-bin` any more); the folder is an owner-merge path because the wrappers run `origin/main`'s copy with the lead's rights.
 `draft_push.sh [--dry-run] [--add <path>]... <worktree> <branch> <title> <msg-file> <body-file>` (ruff check + format check, commit, plain push of exactly that branch, DRAFT PR against `main`),
 `draft_update.sh [--dry-run] [--add <path>]... <worktree> <branch> <msg-file>` and `resolve_merge.sh [--dry-run] <worktree> <branch> [pytest args...]`. Staging: tracked changes plus the
-`--add` paths; other untracked files, files over 1 MB and secret-looking names (`.env`, `*.pem`, `id_*`, ...) are refused. A message, body, title or committed message with a `Claude-Session:` line or a
-"Generated with/by Claude Code" footer is refused (exit 2). `resolve_merge.sh` merges `origin/main` (a merge already in progress must be of `origin/main`), keeps both sides in `docs/decisions.md` and the other
-append-only files, stops on other conflicts (every conflict under `docs/decisions/**` included), duplicate D-numbers and leftover markers; progress is in `<git-dir>/lead-resolve-merge.state` and a rerun resumes;
+`--add` paths; other untracked files, files over 1 MB and secret-looking names (`.env`, `*.pem`, `id_*`, ...) are refused. A message, body, title or any commit message of the branch (`origin/main..HEAD`, checked before every push, also when nothing is staged) with a `Claude-Session:` line or a
+"Generated with/by Claude Code" footer is refused (exit 2); a refusal never leaves files staged. `resolve_merge.sh` merges `origin/main` (a merge already in progress must be of `origin/main`), keeps both sides in `docs/decisions.md` (ONLY before PR #160 is on main: once `docs/decisions/` exists on `origin/main` it stops with `NEEDS MANUAL`
+and the recipe `uv run python scripts/build_decisions_index.py --rebase-pending`) and the other append-only files, stops on other conflicts (every conflict under `docs/decisions/**` included), duplicate D-numbers and leftover markers; progress is in `<git-dir>/lead-resolve-merge.state` and a rerun resumes;
 pytest runs in its own process group bounded by `LEAD_TEST_TIMEOUT` and dies with the script (after a SIGKILL of the script an orphaned pytest holds the lock until it ends or you kill the group named
 `child_pgid` in the state file); `--dry-run` uses the local `origin/main` and does not fetch. They work from any cwd.
 

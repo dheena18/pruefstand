@@ -99,20 +99,37 @@ else
 fi
 
 set_phase resolve
+# Once origin/main has the per-decision layout (docs/decisions/D<n>.md, PR #160), the old table page is no longer
+# append-only: a conflict on it, or a `| D<n> |` row this branch adds to it, needs the migration helper.
+per_file=0
+[ -n "$(git ls-tree --name-only origin/main docs/decisions/ | head -n 1)" ] && per_file=1
+recipe="NEEDS MANUAL: origin/main keeps decisions as docs/decisions/D<n>.md files. Move this branch's rows with 'uv run python scripts/build_decisions_index.py --rebase-pending' (recipe in docs/decisions.md on main), git add the result, then rerun"
 mapfile -t unmerged < <(git diff --name-only --diff-filter=U)
-if [ "${#unmerged[@]}" -gt 0 ]; then
-  for f in "${unmerged[@]}"; do git checkout --conflict=merge -- "$f" 2>/dev/null || true; done  # redo a half-resolved file
-  "${UNION[@]}" resolve "${unmerged[@]}" || lead_die 1 "NEEDS MANUAL: resolve the files above by hand (git add them), then rerun"
-  git add -- "${unmerged[@]}"
-fi
+for f in "${unmerged[@]}"; do
+  [ "$per_file" = 1 ] && [ "$f" = docs/decisions.md ] && lead_die 1 "$recipe"
+  if grep -q '^<<<<<<< ' "$f" 2>/dev/null; then
+    "${UNION[@]}" resolve "$f" || lead_die 1 "NEEDS MANUAL: resolve the files above by hand (git add them), then rerun"
+  else  # an append-only file without markers is a finished resolution (written atomically by an earlier run)
+    { [ -e "$f" ] && "${UNION[@]}" allowed "$f"; } || lead_die 1 "NEEDS MANUAL: $f is unmerged without conflict markers (deleted on one side, binary?); resolve it and git add it, then rerun"
+  fi
+  git add -- "$f"
+done
 [ -z "$(git diff --name-only --diff-filter=U)" ] || lead_die 1 "unmerged files remain; resolve them by hand and rerun"
 
 set_phase verify
-git add -u
+# The commit takes the index only. Unstaged edits to a file the merge touched would be checked but not committed.
+mapfile -t overlap < <(comm -12 <(git diff --cached --name-only HEAD | sort) <(git diff --name-only | sort))
+if [ "${#overlap[@]}" -gt 0 ]; then
+  lead_die 1 "unstaged edits to files of this merge (git add them, or git checkout them, then rerun): ${overlap[*]}"
+fi
 if git diff --cached HEAD -U0 --no-color | grep -Eq '^\+(<<<<<<<|>>>>>>>)( |$)'; then
   echo MARKERS_LEFT
   git diff --cached HEAD -U0 --no-color | grep -E '^(\+\+\+ |\+(<<<<<<<|>>>>>>>)( |$))' | head -10
   exit 1
+fi
+if [ "$per_file" = 1 ] && [ -f docs/decisions.md ] \
+  && git diff --cached origin/main -- docs/decisions.md | grep -Eq '^\+\| D[0-9]+ \|'; then
+  lead_die 1 "$recipe"
 fi
 [ ! -f docs/decisions.md ] || "${UNION[@]}" dupes origin/main docs/decisions.md || exit 1
 
@@ -135,6 +152,7 @@ if [ "$#" -gt 0 ]; then
 fi
 
 set_phase push
+check_branch_messages
 out="$(mktemp)"
 if ! git push -q origin "refs/heads/$branch:refs/heads/$branch" >"$out" 2>&1; then tail -3 "$out"; rm -f "$out"; echo PUSH_FAIL; exit 1; fi
 rm -f "$out"

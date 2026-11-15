@@ -20,9 +20,7 @@ cd "$wt" || lead_die 1 "cannot cd to $wt"
 require_branch "$branch"
 check_ruff
 if [ "$dry" = 1 ]; then
-  idx="$(mktemp)"; cp "$(git rev-parse --git-path index)" "$idx" 2>/dev/null || true
-  (export GIT_INDEX_FILE="$idx"; stage_changes) || { rm -f "$idx"; exit 2; }
-  rm -f "$idx"
+  check_staging || exit $?
   echo "DRY-RUN: checks passed; would commit, push $branch and open a draft PR"; exit 0
 fi
 commit_all "$msgfile"

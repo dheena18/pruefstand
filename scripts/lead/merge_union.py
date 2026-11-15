@@ -171,12 +171,26 @@ def _cmd_resolve(files: Sequence[str]) -> int:
     return 0
 
 
+def file_ids(directory: Path) -> set[int]:
+    """Return the numbers of the per-decision files ``D<n>.md`` in ``directory``."""
+    return {
+        int(m.group(1))
+        for p in directory.glob("D*.md")
+        if (m := re.fullmatch(r"D(\d+)\.md", p.name))
+    }
+
+
 def _cmd_dupes(ref: str, files: Sequence[str]) -> int:
     bad = 0
     for path in files:
         merged = Path(path).read_text(encoding="utf-8")
         for number in excess_duplicates(merged, _git_show(ref, path)):
             sys.stderr.write(f"DUPLICATE D-number D{number} in {path}: renumber one of the rows\n")
+            bad = 1
+        per_file = Path(path).with_suffix("")  # docs/decisions.md -> docs/decisions/
+        for number in sorted(set(decision_counts(merged)) & file_ids(per_file)):
+            where = f"a row in {path} and the file {per_file}/D{number}.md"
+            sys.stderr.write(f"DUPLICATE D-number D{number}: {where}\n")
             bad = 1
     return bad
 

@@ -70,7 +70,7 @@ _secret_name() {  # basename -> 0 when it looks like a secret
   return 1
 }
 
-stage_changes() {  # tracked changes + explicit --add paths (ADD_PATHS); refuse leftovers and risky files
+_stage_and_check() {  # stage into the CURRENT index, then refuse leftovers and risky files (exit 2)
   local f size bad=()
   git add -u
   if [ "${#ADD_PATHS[@]}" -gt 0 ]; then git add -- "${ADD_PATHS[@]}" || lead_die 2 "cannot add: ${ADD_PATHS[*]}"; fi
@@ -92,11 +92,37 @@ stage_changes() {  # tracked changes + explicit --add paths (ADD_PATHS); refuse 
   fi
 }
 
-commit_all() {  # <msgfile>: stage, commit, re-check the committed message before anything is pushed
+check_staging() {  # the checks of _stage_and_check on a COPY of the index: the real index is never touched
+  local idx rc
+  idx="$(mktemp)" || lead_die 1 "mktemp failed"
+  cp "$(git rev-parse --git-path index)" "$idx" 2>/dev/null || rm -f "$idx"
+  (export GIT_INDEX_FILE="$idx"; _stage_and_check)
+  rc=$?
+  rm -f "$idx"
+  return "$rc"
+}
+
+stage_changes() {  # tracked changes + explicit --add paths; a refusal leaves the index as it was
+  check_staging || exit 2
+  git add -u
+  if [ "${#ADD_PATHS[@]}" -gt 0 ]; then git add -- "${ADD_PATHS[@]}"; fi
+}
+
+check_branch_messages() {  # every message of the branch's own commits, before any push (also when nothing is staged)
+  local range="HEAD"
+  git rev-parse -q --verify origin/main >/dev/null && range="origin/main..HEAD"
+  forbid_stdin "a commit message in $range (nothing was pushed; fix it with git commit --amend or an interactive rebase)" \
+    < <(git log --first-parent --format=%B "$range")
+}
+
+commit_all() {  # <msgfile>: stage, commit, re-check the messages before anything is pushed
   stage_changes
-  if git diff --cached --quiet; then echo "nothing staged (already committed?)"; return 0; fi
-  git commit -q -F "$1" || { echo COMMIT_FAIL; exit 1; }
-  forbid_stdin "the committed message (nothing was pushed; fix it with git commit --amend)" < <(git log -1 --format=%B)
+  if git diff --cached --quiet; then
+    echo "nothing staged (already committed?)"
+  else
+    git commit -q -F "$1" || { echo COMMIT_FAIL; exit 1; }
+  fi
+  check_branch_messages
 }
 
 push_branch() {  # plain push of exactly this branch, never forced

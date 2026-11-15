@@ -99,3 +99,20 @@ def test_cli_dupes_resolve_and_atomic_write(tmp_path: Path) -> None:
     assert not list((repo / "docs").glob("*.lead-tmp"))
     assert _run(repo, "resolve", "docs/decisions.md").returncode == 1  # no markers any more
     assert _run(repo, "docs").returncode == 2
+
+
+def test_a_row_whose_id_exists_as_a_decision_file_is_a_duplicate(tmp_path: Path) -> None:
+    repo = tmp_path / "r"
+    (repo / "docs" / "decisions").mkdir(parents=True)
+    git(repo, "init", "-q", "-b", "main")
+    (repo / "docs" / "decisions.md").write_text("# page\n", encoding="utf-8")
+    (repo / "docs" / "decisions" / "D1.md").write_text("---\nid: D1\n---\n", encoding="utf-8")
+    git(repo, "add", "-A")
+    git(repo, "commit", "-q", "-m", "x")
+    assert _run(repo, "dupes", "HEAD", "docs/decisions.md").returncode == 0
+    (repo / "docs" / "decisions.md").write_text(
+        "# page\n| D1 | old row |\n| D5 | fine |\n", encoding="utf-8"
+    )
+    run = _run(repo, "dupes", "HEAD", "docs/decisions.md")
+    assert run.returncode == 1
+    assert "a row in docs/decisions.md and the file docs/decisions/D1.md" in run.stderr
