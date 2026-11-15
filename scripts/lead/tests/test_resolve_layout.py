@@ -52,3 +52,16 @@ def test_rows_added_to_the_page_are_refused_even_when_the_merge_is_clean(lab: La
     assert res.returncode == 1
     assert "--rebase-pending" in res.stderr
     assert not lab.origin_has(BRANCH)
+
+
+def test_tight_and_indented_row_forms_are_detected_too(lab: Lab) -> None:
+    _per_file_main(lab)
+    git(lab.wt, "pull", "-q", "origin", "main")
+    path = lab.wt / "docs" / "decisions.md"
+    path.write_text(path.read_text(encoding="utf-8") + "|D1230|x|\n", encoding="utf-8")
+    lab.commit("tight row")
+    lab.write("later.txt", "x\n", where="other")
+    lab.commit("later", where="other")
+    res = _resolve(lab)
+    assert res.returncode == 1
+    assert "--rebase-pending" in res.stderr

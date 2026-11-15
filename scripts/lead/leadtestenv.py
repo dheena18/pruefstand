@@ -41,6 +41,7 @@ SEED = {
     "docs/decisions.md": "# Decisions\n\n| D1 | one |\n| D2 | two |\n",
     "a.py": "X = 1\n",
     "other.txt": "base\n",
+    "tasks/TASKS.md": "# Tasks\n\n- t0\n",
 }
 
 

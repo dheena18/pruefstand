@@ -108,11 +108,9 @@ stage_changes() {  # tracked changes + explicit --add paths; a refusal leaves th
   if [ "${#ADD_PATHS[@]}" -gt 0 ]; then git add -- "${ADD_PATHS[@]}"; fi
 }
 
-check_branch_messages() {  # every message of the branch's own commits, before any push (also when nothing is staged)
-  local range="HEAD"
-  git rev-parse -q --verify origin/main >/dev/null && range="origin/main..HEAD"
-  forbid_stdin "a commit message in $range (nothing was pushed; fix it with git commit --amend or an interactive rebase)" \
-    < <(git log --first-parent --format=%B "$range")
+check_branch_messages() {  # the messages of exactly the commits a push would send (not yet on any origin ref)
+  forbid_stdin "a commit message that is not on origin yet (nothing was pushed; fix it with git commit --amend or an interactive rebase)" \
+    < <(git log --format=%B HEAD --not --remotes=origin)
 }
 
 commit_all() {  # <msgfile>: stage, commit, re-check the messages before anything is pushed

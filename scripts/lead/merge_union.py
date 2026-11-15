@@ -32,7 +32,7 @@ APPEND_ONLY: frozenset[str] = frozenset(
         ".gitleaks.toml",
     }
 )
-ROW = re.compile(r"^\| D(\d+) \|")
+ROW = re.compile(r"^\s*\|\s*D(\d+)\s*\|")
 LAST = 10**9
 
 
@@ -180,6 +180,44 @@ def file_ids(directory: Path) -> set[int]:
     }
 
 
+def _stage(number: int, path: str) -> list[str] | None:
+    """Return the lines of index stage number (2 ours, 3 theirs) of path; None if absent."""
+    res = subprocess.run(  # noqa: S603  # fixed argv
+        ["git", "show", f":{number}:{path}"],  # noqa: S607  # git from PATH
+        capture_output=True,
+        text=True,
+        check=False,
+        timeout=60,
+    )
+    return res.stdout.split("\n") if res.returncode == 0 else None
+
+
+def missing_lines(stage: Sequence[str], working: set[str]) -> list[str]:
+    """Return the non-empty lines of ``stage`` that the working file lacks.
+
+    >>> missing_lines(["a", "", "b"], {"a"})
+    ['b']
+    """
+    return [ln for ln in stage if ln.strip() and ln not in working]
+
+
+def _cmd_covered(path: str) -> int:
+    """Exit 1 unless both stages exist and every non-empty line of each is in the working file."""
+    working = set(Path(path).read_text(encoding="utf-8").split("\n"))
+    bad = 0
+    for number, side in ((2, "ours"), (3, "theirs")):
+        stage = _stage(number, path)
+        if stage is None:
+            sys.stderr.write(
+                f"NEEDS MANUAL: {path}: no {side} side in the index (deleted on one side?)\n"
+            )
+            return 1
+        for line in missing_lines(stage, working)[:3]:
+            sys.stderr.write(f"NEEDS MANUAL: {path}: a line of {side} is missing: {line[:80]}\n")
+            bad = 1
+    return bad
+
+
 def _cmd_dupes(ref: str, files: Sequence[str]) -> int:
     bad = 0
     for path in files:
@@ -202,9 +240,13 @@ def main(argv: Sequence[str] | None = None) -> int:
         return _cmd_allowed(args[1:])
     if len(args) >= 2 and args[0] == "resolve":
         return _cmd_resolve(args[1:])
+    if len(args) == 2 and args[0] == "covered":
+        return _cmd_covered(args[1])
     if len(args) >= 3 and args[0] == "dupes":
         return _cmd_dupes(args[1], args[2:])
-    sys.stderr.write("usage: merge_union.py allowed|resolve FILE... | dupes REF FILE...\n")
+    sys.stderr.write(
+        "usage: merge_union.py allowed|resolve FILE... | covered FILE | dupes REF FILE...\n"
+    )
     return 2
 
 

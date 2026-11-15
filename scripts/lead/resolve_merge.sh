@@ -107,10 +107,16 @@ recipe="NEEDS MANUAL: origin/main keeps decisions as docs/decisions/D<n>.md file
 mapfile -t unmerged < <(git diff --name-only --diff-filter=U)
 for f in "${unmerged[@]}"; do
   [ "$per_file" = 1 ] && [ "$f" = docs/decisions.md ] && lead_die 1 "$recipe"
+  stages="$(git ls-files -u -- "$f" | awk '{print $3}' | sort -u | tr '\n' ' ')"
+  case "$stages" in
+    *2*3*) ;;  # a content merge has our side (2) and theirs (3); the base (1) is absent for add/add
+    *) lead_die 1 "NEEDS MANUAL: $f has no ours/theirs pair in the index (deleted on one side?); resolve it by hand, git add it, then rerun" ;;
+  esac
   if grep -q '^<<<<<<< ' "$f" 2>/dev/null; then
     "${UNION[@]}" resolve "$f" || lead_die 1 "NEEDS MANUAL: resolve the files above by hand (git add them), then rerun"
-  else  # an append-only file without markers is a finished resolution (written atomically by an earlier run)
-    { [ -e "$f" ] && "${UNION[@]}" allowed "$f"; } || lead_die 1 "NEEDS MANUAL: $f is unmerged without conflict markers (deleted on one side, binary?); resolve it and git add it, then rerun"
+  else  # a finished resolution by an earlier run: accepted only if it still holds every line of both sides
+    { [ -e "$f" ] && "${UNION[@]}" allowed "$f" && "${UNION[@]}" covered "$f"; } \
+      || lead_die 1 "NEEDS MANUAL: $f is unmerged without conflict markers and does not contain both sides; resolve it, git add it, then rerun"
   fi
   git add -- "$f"
 done
@@ -128,7 +134,7 @@ if git diff --cached HEAD -U0 --no-color | grep -Eq '^\+(<<<<<<<|>>>>>>>)( |$)';
   exit 1
 fi
 if [ "$per_file" = 1 ] && [ -f docs/decisions.md ] \
-  && git diff --cached origin/main -- docs/decisions.md | grep -Eq '^\+\| D[0-9]+ \|'; then
+  && git diff --cached origin/main -- docs/decisions.md | grep -Eq '^\+[[:space:]]*\|[[:space:]]*D[0-9]+[[:space:]]*\|'; then
   lead_die 1 "$recipe"
 fi
 [ ! -f docs/decisions.md ] || "${UNION[@]}" dupes origin/main docs/decisions.md || exit 1
