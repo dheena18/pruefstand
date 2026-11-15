@@ -2,8 +2,8 @@
 
 Shape (T5.4, D930)::
 
-    epoch: 1                  # judge_epoch, part of eval_fingerprint; only a passing
-    re-calibration bumps it
+    epoch: 1                  # judge_epoch, part of eval_fingerprint; bumped by a passing
+    re-calibration (D163, D934) or an owner-approved bump without a pass (D1251)
     passed: false             # false: no judge passed, judged metrics are informational
     refusal_judged: {passed: true}   # the refusal judge may decide ambiguous answers
     judges:                   # per pinned judge (optional; T5.4 S11)

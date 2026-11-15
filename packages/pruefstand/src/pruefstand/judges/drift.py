@@ -2,10 +2,13 @@
 
 The nightly re-judges the 50 stored anchors of a pinned judge with the cache bypassed;
 ``anchor_agreement`` compares the raw scores, ``is_drift`` applies the rule. ``drift_threshold``
-derives a judge's own threshold from its measured flip rate (AI13-07).
+derives a judge's own threshold from its measured flip rate (AI13-07). Since T5.4d the stored
+verdict of an anchor is the majority of several runs (``majority_scores``) and the flip rate is
+counted on further runs against it (``count_flips``, D1250).
 """
 
 import math
+from collections import Counter
 from collections.abc import Sequence
 
 from scipy import stats
@@ -125,6 +128,84 @@ def flip_rate(flips: int, comparisons: int) -> tuple[float, float]:
     """
     _, high = wilson_interval(flips, comparisons)
     return flips / comparisons, high
+
+
+def majority_scores(runs: Sequence[Sequence[int]]) -> list[int]:
+    """Per anchor, the most frequent raw score over ``runs`` (T5.4d, D1250).
+
+    A tie goes to the tied score that occurs in the earliest run, so the result is deterministic.
+
+    Args:
+        runs: One list of raw scores per run, every run in anchor order.
+
+    Returns:
+        The majority score per anchor.
+
+    Raises:
+        ValueError: No runs, or runs of different lengths.
+
+    Examples:
+        Anchor 2 is 1 in three of five runs; anchor 3 ties 2:2 (0 then 2 in run order), so 0:
+
+        >>> majority_scores([[2, 0, 1, 0], [2, 0, 1, 2], [2, 0, 0, 2], [2, 1, 1, 0], [2, 0, 0, 1]])
+        [2, 0, 1, 0]
+    """
+    if not runs or len({len(run) for run in runs}) != 1:
+        msg = "need at least one run and runs of equal length"
+        raise ValueError(msg)
+    out: list[int] = []
+    for column in zip(*runs, strict=True):
+        counts = Counter(column)
+        top = max(counts.values())
+        out.append(next(score for score in column if counts[score] == top))
+    return out
+
+
+def count_flips(stored: Sequence[int], runs: Sequence[Sequence[int]]) -> tuple[int, int]:
+    """Flips against the stored scores: ``(differing judgings, comparisons)`` over ``runs``.
+
+    Raises:
+        ValueError: A run's length differs from ``stored``.
+
+    Examples:
+        >>> count_flips([2, 0, 1], [[2, 0, 1], [2, 1, 1], [0, 1, 1]])
+        (3, 9)
+    """
+    if any(len(run) != len(stored) for run in runs):
+        msg = "every run needs one score per stored anchor"
+        raise ValueError(msg)
+    flips = sum(1 for run in runs for a, b in zip(stored, run, strict=True) if a != b)
+    return flips, len(stored) * len(runs)
+
+
+def unstable_anchors(
+    runs: Sequence[Sequence[int]], min_share: float = 0.8, max_spread: int = 1
+) -> list[int]:
+    """Indices of anchors unfit as drift anchors (D1250, owner rule D1251).
+
+    An anchor is unstable when its most frequent score has a share below ``min_share`` (it flips
+    back and forth, e.g. 2, 1, 2, 1, 2, 1, 1, 1, 1) or when its scores spread over more than
+    ``max_spread`` steps of the scale (it jumps between non-adjacent scores, e.g. 0 and 2, or takes
+    all three). A single odd run between adjacent scores (share 8/9, 1 vs 2) is kept.
+
+    Raises:
+        ValueError: No runs, or runs of different lengths.
+
+    Examples:
+        Anchor 1 jumps 0 -> 2 once, anchor 2 is 2 in only 2 of 5 runs; anchor 0 stays:
+
+        >>> unstable_anchors([[1, 0, 2], [1, 0, 1], [1, 0, 2], [2, 0, 1], [1, 2, 1]])
+        [1, 2]
+    """
+    if not runs or len({len(run) for run in runs}) != 1:
+        msg = "need at least one run and runs of equal length"
+        raise ValueError(msg)
+    return [
+        k
+        for k, column in enumerate(zip(*runs, strict=True))
+        if max(Counter(column).values()) / len(column) < min_share
+        or max(column) - min(column) > max_spread
+    ]
 
 
 def drift_threshold(f_upper: float, n: int = 50, alpha: float = MAX_FALSE_DRIFT) -> int:

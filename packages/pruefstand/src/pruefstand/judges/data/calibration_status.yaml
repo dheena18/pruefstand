@@ -1,8 +1,8 @@
 # Written by experiments/rq2/report.py (T5.4). Read by pruefstand.judges.status and
-# pipeline.fingerprints (epoch = judge_epoch, part of eval_fingerprint). Only a passing
-# re-calibration (experiments/rq2/recalibrate.py) bumps epoch. passed: false = judged
-# metrics informational in both tiers (W3.8).
-epoch: 1
+# pipeline.fingerprints (epoch = judge_epoch, part of eval_fingerprint). epoch is bumped
+# by a passing re-calibration or an owner-approved anchor change (recalibrate.py, D1251).
+# passed: false = judged metrics informational in both tiers (W3.8).
+epoch: 2
 passed: false
 status: failed
 refusal_judged:
@@ -62,8 +62,8 @@ judges:
         status: failed
         passed: false
         reasons:
-        - discrimination negate 0.619 < 0.9
+        - discrimination negate 0.700 < 0.9
         - discrimination swap_first_number 0.820 < 0.9
-    drift_threshold: 9
-    a0: 0.96
-    flip_rate_upper: 0.06655389051214453
+    drift_threshold: 6
+    a0: 1.0
+    flip_rate_upper: 0.02777370439789293

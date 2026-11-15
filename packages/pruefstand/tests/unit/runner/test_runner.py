@@ -11,6 +11,7 @@ from testsupport.runner_support import (
     echo_answer,
     index_of,
     make_runner,
+    new_adapter,
     numbered,
     run_cases,
     values_of,
@@ -100,7 +101,7 @@ async def test_non_transient_error_is_not_retried_and_metrics_are_error(
     assert results.manifest.complete is True
 
 
-async def test_timeout_on_every_call_is_an_error_after_two_attempts(
+async def test_a_timeout_is_an_error_after_one_attempt(
     router: respx.MockRouter, adapter: HttpTargetAdapter
 ) -> None:
     started: list[int] = []
@@ -113,8 +114,8 @@ async def test_timeout_on_every_call_is_an_error_after_two_attempts(
     router.post("/v1/query").mock(side_effect=hang)
     runner = make_runner(adapter, timeout_s=0.05, max_retries=1)
     results = await run_cases(runner, [make_case(0)])
-    assert len(started) == 2
-    assert results.records[0].attempt == 2
+    assert len(started) == 1  # D624: a read timeout is not retried
+    assert results.records[0].attempt == 1
     assert results.records[0].error is not None
     assert values_of(results, 0)["error_rate"].value == 1.0
 
@@ -234,3 +235,50 @@ def test_a_response_that_cannot_be_encoded_becomes_a_target_error() -> None:
     assert out.attempts == 2
     good = Attempts(TargetResponse(answer="Kündigung"), None, 1)
     assert _require_valid_unicode(good) is good
+
+
+async def test_adapter_timeout_before_the_runner_timeout_is_not_retried(
+    router: respx.MockRouter,
+) -> None:
+    # the real tier-2 path (D1065): target.timeout_s fires in the adapter before runner.timeout_s
+    started: list[int] = []
+
+    async def hang(request: httpx.Request) -> httpx.Response:
+        started.append(1)
+        await asyncio.sleep(5)
+        return httpx.Response(200, json=load_openapi_example("query_ok.json"))
+
+    router.post("/v1/query").mock(side_effect=hang)
+    adapter = new_adapter(timeout_s=0.05)
+    try:
+        runner = make_runner(adapter, timeout_s=3, max_retries=3)
+        results = await run_cases(runner, [make_case(0)])
+    finally:
+        await adapter.aclose()
+    assert len(started) == 1
+    assert results.records[0].attempt == 1
+    assert results.records[0].error is not None
+    assert "timed out" in results.records[0].error
+
+
+async def test_timeouts_are_counted_on_their_own(router: respx.MockRouter) -> None:
+    # D1082: a timeout stays a candidate error (error_rate) and is also counted as "timeout"
+    calls = 0
+
+    async def answer(request: httpx.Request) -> httpx.Response:
+        nonlocal calls
+        calls += 1
+        if calls == 1:
+            await asyncio.sleep(5)
+        return httpx.Response(400, json={"detail": "bad"})
+
+    router.post("/v1/query").mock(side_effect=answer)
+    adapter = new_adapter(timeout_s=0.05)
+    try:
+        runner = make_runner(adapter, timeout_s=3, max_retries=0, concurrency=1)
+        results = await run_cases(runner, make_cases(2))
+    finally:
+        await adapter.aclose()
+    counts = results.manifest.counts
+    assert counts["error"] == 2
+    assert counts["timeout"] == 1
