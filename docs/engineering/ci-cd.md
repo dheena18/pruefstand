@@ -515,4 +515,4 @@ Dependabot (weekly, grouped): `uv` (minor + patch grouped), `npm` (pnpm), `githu
 `docker.md` §2 says "updated by hand per release" for those files).
 Every update PR goes through tiers 0 and 1. `uv.lock` and `infra/docker/**` are gated paths, so a
 dependency bump of the system under test also needs an owner dispatch of tier 2. Major bumps are one PR per
-dependency, with a line in `docs/decisions.md`.
+dependency, with a decision file `docs/decisions/D<n>.md`.

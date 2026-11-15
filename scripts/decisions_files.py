@@ -21,6 +21,7 @@ File format (all values are JSON strings, so the front matter is valid YAML and 
 """
 
 import json
+import posixpath
 import re
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -33,8 +34,48 @@ _CELL_SPLIT = re.compile(r"(?<!\\) \| ")
 ROW_START = re.compile(r"^\| (D[0-9]+) \| ")
 
 
+_LINK = re.compile(r"(\]\()([^)\s#]+)(#[^)\s]*)?(\))")
+_SCHEME = re.compile(r"^([a-z][a-z0-9+.-]*:|/)", re.IGNORECASE)
+
+
+def _relink(text: str, prefix: str) -> str:
+    def fix(m: re.Match[str]) -> str:
+        target = m.group(2)
+        if _SCHEME.match(target):
+            return m.group(0)
+        moved = posixpath.normpath(posixpath.join(prefix, target))
+        return f"{m.group(1)}{moved}{m.group(3) or ''}{m.group(4)}"
+
+    return _LINK.sub(fix, text)
+
+
+def to_file_links(text: str) -> str:
+    """Re-base relative Markdown links from ``docs/`` to ``docs/decisions/`` (file location).
+
+    >>> to_file_links("[a](adr/1.md#x) [b](https://e.org/a) [c](../tasks/T.md)")
+    '[a](../adr/1.md#x) [b](https://e.org/a) [c](../../tasks/T.md)'
+    """
+    return _relink(text, "..")
+
+
+def to_doc_links(text: str) -> str:
+    """Inverse of :func:`to_file_links` (the generated log lives in ``docs/``).
+
+    >>> to_doc_links("[a](../adr/1.md#x) [c](../../tasks/T.md)")
+    '[a](adr/1.md#x) [c](../tasks/T.md)'
+    """
+    return _relink(text, "decisions")
+
+
 class DecisionError(ValueError):
     """A decision file or row is malformed."""
+
+
+class ConflictMarkerError(DecisionError):
+    """A file still holds git merge conflict markers; resolve the merge first."""
+
+
+CONFLICT_RE = re.compile(r"(?m)^(<{7}( .*)?|={7}|>{7}( .*)?)$")
 
 
 @dataclass(frozen=True)
@@ -118,6 +159,9 @@ def parse_file(text: str, source: str = "<text>") -> Decision:
         DecisionError: on a missing front matter, a bad line, a missing ``id``/``section`` or an
             empty body.
     """
+    if CONFLICT_RE.search(text):
+        msg = f"{source}: contains git conflict markers"
+        raise ConflictMarkerError(msg)
     lines = text.split("\n")
     if not lines or lines[0] != FRONT_FENCE:
         msg = f"{source}: must start with a '---' front matter"
@@ -224,13 +268,11 @@ def render_log(decisions: list[Decision]) -> str:
         decisions: Any order; sorted here by number.
 
     Returns:
-        A Markdown page with one table: ``# | Decision | Supersedes | ADR | Source`` plus the
-        generic ``col<n>`` columns that occur. Same input, same output.
+        A Markdown page with one table ``# | Decision | Supersedes | ADR | Source | Extra``
+        (``Extra`` = the unnamed ``col<n>`` columns). Same input, same output.
     """
     ordered = sorted(decisions, key=lambda d: d.number)
-    extra_keys = sorted({k for d in ordered for k, _ in d.extras if k not in ("supersedes", "adr")})
-    cols = ["supersedes", "adr", *extra_keys]
-    head = ["#", "Decision", "Supersedes", "ADR", *extra_keys, "Source"]
+    head = ["#", "Decision", "Supersedes", "ADR", "Source", "Extra"]
     lines = [
         "# Decision log (generated)",
         "",
@@ -242,6 +284,16 @@ def render_log(decisions: list[Decision]) -> str:
     ]
     for d in ordered:
         extra = dict(d.extras)
-        cells = [d.id, d.text, *[extra.get(k, "") for k in cols], d.section]
+        rest = "; ".join(
+            f"{k}: {to_doc_links(v)}" for k, v in d.extras if k not in ("supersedes", "adr")
+        )
+        cells = [
+            d.id,
+            to_doc_links(d.text),
+            to_doc_links(extra.get("supersedes", "")),
+            to_doc_links(extra.get("adr", "")),
+            d.section,
+            rest.replace("|", "\\|"),
+        ]
         lines.append(join_row(cells))
     return "\n".join(lines) + "\n"

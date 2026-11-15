@@ -8,17 +8,33 @@ provenance, the task rows from before decision numbers, the pinned versions and 
 - **Add a decision:** create `docs/decisions/D<n>.md` with the next free number inside your reserved range
   (see below). Never edit this page for a decision row, never append a `| D<n> |` row here (the guard
   `scripts/tests/test_decisions_unique.py` fails). Format: a front matter (`id`, `section`, optional
-  `supersedes`, `adr`) and the decision text; copy any existing file, e.g. [D1211](decisions/D1211.md).
+  `supersedes`, `adr`) and the decision text; copy any existing file, e.g. `docs/decisions/D1211.md`.
   Decisions are append-only: to change one, add a new file that says which it supersedes (`supersedes`)
   and link the ADR. The `id` must equal the file name; an id exists once.
 - **Read all of them:** `uv run python scripts/build_decisions_index.py --stdout` prints the whole log
   sorted by number (paste it at the start of a session); `make docs` builds it as the page
-  [Decision log](decisions-log.md) (generated, git-ignored, never committed, so it cannot conflict).
+  `decisions-log.md` (generated, git-ignored, never committed, so it cannot conflict).
 - **Check:** `uv run python scripts/build_decisions_index.py --check` (also run by `make docs` and the
   test `scripts/tests/test_decisions_unique.py`).
-- **A branch that still appends a row to the old table:** after merging `main`, run
-  `uv run python scripts/build_decisions_index.py --migrate-pending` (idempotent): it moves every
-  `| D<n> | ... |` row of this page into `docs/decisions/D<n>.md`.
+- **A branch that still appends a row to the old table** (cut before D1211): after merging or rebasing on
+  `main`, do **either** the one-step helper (run it on the PR branch before the merge, or during the conflicted merge) **or** the four steps by hand. Both refuse (exit 2, nothing
+  written) when `docs/decisions.md` or a decision file holds git conflict markers: resolve the merge first.
+
+  ```text
+  uv run python scripts/build_decisions_index.py --rebase-pending      # one step: steps 1-3 below + step 4's diff
+
+  git show HEAD:docs/decisions.md > /tmp/mine.md                       # 1. the PR's own copy of the old page
+  git checkout origin/main -- docs/decisions.md                        # 2. main's new short page
+  uv run python scripts/build_decisions_index.py --migrate-pending \
+      --decisions-md /tmp/mine.md                                      # 3. its D<n> rows become files (idempotent)
+  git diff --no-index <(git show origin/main:docs/decisions.md) /tmp/mine.md   # 4. other edits (pinned
+                                                                       #    versions, prose): re-apply by hand
+  ```
+
+  `--rebase-pending` prints the PR's non-row edits of the old page as a diff (step 4); it cannot carry
+  them over itself. Rows whose file already exists with the same text are skipped; an id clash with
+  different text or a duplicate id is refused. Without a merge conflict, plain
+  `uv run python scripts/build_decisions_index.py --migrate-pending` is enough.
 
 Reserved decision ranges (2026-11-03): disjoint ranges per agent avoid merge collisions, so gaps are intentional and rows are not renumbered: D520 T5.1, D540 T6.4, D560 wrapper PR, D580 checkpoint, D600 T3.1b prep, D620 T3.6, D900-D909 cassettes-models.yml.
 

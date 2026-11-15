@@ -80,7 +80,7 @@ PHASE 3 — Review and merge (in the wave's merge order)
    review: `gh models run <model> < review-input.md` (review-input = _review.md checklist + diff).
 12. Send blocker/major findings back to the implementing sub-agent; repeat review until no blocker/major
    is open. Minor findings: fixed or answered in the PR.
-13. Before each merge: rebase on main (a branch cut before D1211 that still appends a row to `docs/decisions.md`: run
+13. Before each merge: rebase on main (a branch cut before D1211 that still appends a row to `docs/decisions/`: run
    `uv run python scripts/build_decisions_index.py --migrate-pending`, commit the new files), CI green (all required checks, incl. `pruefstand/gate` once it
    exists). If the PR touches a gated path, ask me to dispatch tier 2 (private repo → Actions →
    `gate-executor.yml` → Run workflow → `pr = <N>`, from my browser or the GitHub mobile app); you cannot

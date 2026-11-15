@@ -1216,7 +1216,7 @@ judged rows above in PR runs:
 So with the fallback a PR detects judged drops of about 2δ (instead of 1.4δ); smaller judged drops
 are left to the nightly block (≈ 1.25–1.3δ per night; every case of `full` judged within 3 completed
 nightlies) and the release anchor. T6.3 recomputes these rows with the measured σ_d; switching the fallback on is
-an owner decision with a `docs/decisions.md` line.
+an owner decision with a a new decision file `docs/decisions/D<n>.md` with the line.
 
 **Nightly MDE notes (round 11 Y4.3, round 12 AI12-05, round 13 P3.1).** The nightly rows assume the §6.2
 rotation and the **fixed `full` quota** (§3.4): refusal stratum ≈ 150 + 3 blocks × (300 unperturbed answerable
@@ -1233,7 +1233,7 @@ So `core` detects drops of about 1.4δ on its answerable metrics (incl. `false_r
 overall slice; tenant slices catch only about 2.5δ; `perturbed_all` about 2–3δ; `refusal_correct` is
 gated with δ = 0.10 in nightly `full` only (D142), where a drop of ≈ 1.25δ is detected. The comment's
 MDE column shows these per run. T6.3 reports the MDEs with the measured σ_d; raising a quota or a δ
-is an owner decision recorded in `docs/decisions.md`, never a silent change.
+is an owner decision recorded as a decision file `docs/decisions/D<n>.md`, never a silent change.
 `pruefstand power --sigma --n --delta --m` takes per-metric n and prints this table.
 
 **Simulation tests** (`tests/simulation/`, fixed seeds): σ_d ∈ {0.15, 0.25, 0.40}, n ∈ {30, 50, 300},

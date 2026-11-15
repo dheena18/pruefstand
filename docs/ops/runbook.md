@@ -226,7 +226,7 @@ runner.
    **Bypass drill (once after T0.5/T0.7, and after every token or ruleset change):** open a throwaway PR whose
    required check fails, then on the VM run `gh pr merge <N> --admin --squash`. It **must be refused**. If it is
    not, empty the ruleset's bypass list in the browser and handle outages by temporarily disabling the ruleset
-   (needs Administration, which the token lacks); record the result in `docs/decisions.md`.
+   (needs Administration, which the token lacks); record the result as a decision file `docs/decisions/D<n>.md`.
 
 ## 2a. Cluster and Ollama operations (T3.1a scripts; all started from the VM)
 
@@ -281,7 +281,7 @@ Every step that loads, unloads or pulls models runs under the GPU lock: `pruefst
 8. **Shared-cluster checks** (accepted risk `security.md` C14): `$C status` shows other processes on
    our cards; a resident digest that is not in the catalogue fails the preflight. Ask the cluster admins
    once whether per-user network namespaces or a loopback firewall exist and record the answer in
-   `docs/decisions.md`.
+   a decision file `docs/decisions/D<n>.md`.
 
 ## 3. Gated PR shows "no baseline for <fp>"
 

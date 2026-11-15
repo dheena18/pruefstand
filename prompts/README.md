@@ -23,7 +23,7 @@ update, and a **Prompt to paste** block at the end.
 
 UI prompts (T1.9, T6.4, T8.1–T8.5, T9.2) cite their sections of `docs/design/ui-spec.md`, the UI source of
 truth (D134). Binding round-8 decisions are D94–D145 and binding round-9 decisions D146–D195 in
-`docs/decisions.md` (source: `docs/planning/reviews/round9-resolution.md`), binding round-10 decisions D196–D210
+`docs/decisions/` (source: `docs/planning/reviews/round9-resolution.md`), binding round-10 decisions D196–D210
 (source: `docs/planning/reviews/round10-resolution.md`: Ollama-only cluster, TrueNAS VM as dev + executor host),
 binding round-11 decisions D211–D241 (source: `docs/planning/reviews/round11-resolution.md` Y1–Y7: one VM service
 user `pruefstand`, `/var/lib/pruefstand/gpu.lock` + `pruefstand-lock`, rootful Docker, dev ports `PORT_OFFSET=10000`,

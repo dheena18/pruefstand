@@ -5,6 +5,7 @@ one file per decision, ``docs/decisions/D<n>.md``; the same guarantees hold on t
 """
 
 import collections
+import re
 from pathlib import Path
 
 from build_decisions_index import build_log, check
@@ -49,3 +50,12 @@ def test_the_generated_log_is_deterministic_and_sorted() -> None:
     numbers = [int(line.split(" ")[1][1:]) for line in first.split("\n") if line.startswith("| D")]
     assert numbers == sorted(numbers)
     assert len(numbers) == len(set(numbers))
+
+
+def test_the_hand_written_page_does_not_grow_decision_entries() -> None:
+    """New decisions are files. The page keeps its 63 dated pre-number rows and no D-number
+    entries (rows, headings, list items); pinned versions may still change."""
+    text = OLD.read_text(encoding="utf-8")
+    assert len(re.findall(r"(?m)^\| 20\d\d-\d\d-\d\d \|", text)) == 63
+    assert not re.findall(r"(?m)^(#+ +|[-*] +\*{0,2}|\| *)D\d+\b[^|]*?(:|\*\*| \|)", text)
+    assert not re.findall(r"(?m)^(<{7}|={7}|>{7})", text)

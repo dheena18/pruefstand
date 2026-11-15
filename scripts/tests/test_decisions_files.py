@@ -8,6 +8,7 @@ from pathlib import Path
 import pytest
 from build_decisions_index import build_log, check, main
 from decisions_files import (
+    ConflictMarkerError,
     Decision,
     DecisionError,
     join_row,
@@ -18,6 +19,7 @@ from decisions_files import (
     validate,
 )
 from decisions_migrate import find_rows, migrate, roundtrip_problems, row_line
+from decisions_rebase import rebase_pending
 
 OLD = """# Log
 
@@ -80,7 +82,7 @@ def test_rows_with_pipes_and_cell_counts() -> None:
     assert dict(rows["D1"].extras) == {"supersedes": "D0", "adr": "[0001](adr/0001.md)"}
     assert rows["D3"].text == "Pipe \\| escaped, umlaut Kündigung."
     assert rows["D2"].extras == (("supersedes", ""), ("adr", ""))
-    assert rows["D1000"].section == "Task decisions (appended)"
+    assert rows["D1000"].section == "Task decisions (appended by tasks)"
     assert rows["D1000"].extras == ()
     assert rows["D1001"].extras == (("col3", "D1000"),)
     assert split_row(join_row(["D1", "a", ""])) == ["D1", "a", ""]
@@ -106,7 +108,7 @@ def test_pending_row_with_same_content_is_idempotent_and_clash_is_refused(tmp_pa
     again.write_text(
         "| D1000 | [T9] appended below the other table, two cells. |\n", encoding="utf-8"
     )
-    assert migrate(again, out) == ["D1000"]
+    assert migrate(again, out) == []
     assert again.read_text(encoding="utf-8").strip() == ""
     clash = tmp_path / "clash.md"
     clash.write_text("| D1000 | A different decision with the same number. |\n", encoding="utf-8")
@@ -165,7 +167,7 @@ def test_log_is_sorted_numerically_and_deterministic() -> None:
     assert log == render_log(list(reversed(ds)))
     ids = re.findall(r"^\| (D\d+) \|", log, re.M)
     assert ids == ["D1", "D2", "D10"]
-    assert "| # | Decision | Supersedes | ADR | col3 | Source |" in log
+    assert "| # | Decision | Supersedes | ADR | Source | Extra |" in log
 
 
 def test_cli_check_and_migrate(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
@@ -191,3 +193,71 @@ def test_script_runs_as_a_program(tmp_path: Path) -> None:
         [sys.executable, str(script), "--check"], capture_output=True, text=True, check=False
     )
     assert done.returncode == 0, done.stderr
+
+
+MARKERS = "<<<<<<< HEAD\n| D5 | mine |\n=======\n| D6 | theirs |\n>>>>>>> origin/main\n"
+
+
+def test_conflict_markers_are_refused_with_exit_2_and_nothing_is_written(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    md = tmp_path / "decisions.md"
+    md.write_text(MARKERS, encoding="utf-8")
+    out = tmp_path / "decisions"
+    with pytest.raises(ConflictMarkerError):
+        migrate(md, out)
+    assert not out.exists()
+    assert main(["--dir", str(out), "--decisions-md", str(md), "--migrate-pending"]) == 2
+    assert "conflict markers" in capsys.readouterr().err
+    assert md.read_text(encoding="utf-8") == MARKERS
+
+
+def test_conflict_markers_in_a_decision_file_fail_the_check(tmp_path: Path) -> None:
+    out = tmp_path / "decisions"
+    _write(out, "D1.md", Decision("D1", "", "fine"))
+    bad = render_file(Decision("D2", "", "x")) + "=======\nrest\n"
+    (out / "D2.md").write_text(bad, encoding="utf-8")
+    assert any("conflict markers" in p for p in validate(out))
+    md = tmp_path / "decisions.md"
+    md.write_text(MARKERS, encoding="utf-8")
+    assert any("conflict markers" in p for p in check(out, md))
+
+
+def _git(repo: Path, *args: str) -> str:
+    env = ["-c", "user.name=t", "-c", "user.email=t@example.org", "-c", "commit.gpgsign=false"]
+    cmd = ["git", "-C", str(repo), *env, *args]
+    done = subprocess.run(cmd, capture_output=True, text=True, check=True)  # noqa: S603
+    return done.stdout
+
+
+def test_rebase_pending_carries_rows_and_reports_other_edits(tmp_path: Path) -> None:
+    repo = tmp_path / "repo"
+    (repo / "docs").mkdir(parents=True)
+    _git(repo, "init", "-q", "-b", "main")
+    old = "# Log\n\n| # | Decision | ADR |\n| --- | --- | --- |\n| D1 | one | - |\n\nPinned: a\n"
+    (repo / "docs" / "decisions.md").write_text(old, encoding="utf-8")
+    _git(repo, "add", "-A")
+    _git(repo, "commit", "-q", "-m", "base")
+    _git(repo, "checkout", "-q", "-b", "pr")
+    mine = old.replace("Pinned: a", "Pinned: b") + "| D2 | two | - |\n"
+    (repo / "docs" / "decisions.md").write_text(mine, encoding="utf-8")
+    _git(repo, "commit", "-qam", "pr")
+    _git(repo, "checkout", "-q", "main")
+    (repo / "docs" / "decisions").mkdir()
+    (repo / "docs" / "decisions" / "D1.md").write_text(
+        render_file(Decision("D1", "S", "one", (("adr", "-"),))), encoding="utf-8"
+    )
+    (repo / "docs" / "decisions.md").write_text("# Decisions\n\nPinned: a\n", encoding="utf-8")
+    _git(repo, "add", "-A")
+    _git(repo, "commit", "-q", "-m", "new layout")
+    _git(repo, "checkout", "-q", "pr")
+    written, diff = rebase_pending(repo, "main")
+    assert "D2" in written
+    assert (repo / "docs" / "decisions.md").read_text(encoding="utf-8").startswith("# Decisions")
+    assert (
+        parse_file((repo / "docs" / "decisions" / "D2.md").read_text(encoding="utf-8")).text
+        == "two"
+    )
+    assert "-Pinned: a" in diff
+    assert "+Pinned: b" in diff
+    assert rebase_pending(repo, "main")[0] == []  # idempotent: the page is main's now

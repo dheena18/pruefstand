@@ -16,7 +16,7 @@ that the result stays consistent. The step-by-step playbook for one task is `pro
 
 ## 2. Session rules
 
-1. One task ID per session and branch. The session reads `CLAUDE.md` (auto-loaded), `docs/decisions.md` and the task prompt before anything else.
+1. One task ID per session and branch. The session reads `CLAUDE.md` (auto-loaded), `docs/decisions/` and the task prompt before anything else.
 2. The session posts its plan first: files, interfaces, tests.
 3. Tests come first; the session shows them failing before implementing.
 4. Context hygiene: paste the prompt, not the whole spec. The prompt lists the sections to read. If the context gets long or the session loops, restart with `CLAUDE.md` + decisions + prompt + a 5-line status.

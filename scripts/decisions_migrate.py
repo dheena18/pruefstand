@@ -13,16 +13,20 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from decisions_files import (
+    CONFLICT_RE,
     ROW_START,
+    ConflictMarkerError,
     Decision,
     DecisionError,
     join_row,
     parse_file,
     render_file,
     split_row,
+    to_doc_links,
+    to_file_links,
 )
 
-APPENDED_SECTION = "Task decisions (appended)"
+APPENDED_SECTION = "Task decisions (appended by tasks)"
 
 
 @dataclass(frozen=True)
@@ -103,6 +107,20 @@ def row_line(d: Decision) -> str:
     return join_row([d.id, d.text, *[v for _, v in d.extras]])
 
 
+def as_file(d: Decision) -> Decision:
+    """The decision as stored in a file: links re-based to ``docs/decisions/``."""
+    return Decision(
+        d.id, d.section, to_file_links(d.text), tuple((k, to_file_links(v)) for k, v in d.extras)
+    )
+
+
+def as_doc(d: Decision) -> Decision:
+    """Inverse of :func:`as_file`: links relative to ``docs/`` again (the old row)."""
+    return Decision(
+        d.id, d.section, to_doc_links(d.text), tuple((k, to_doc_links(v)) for k, v in d.extras)
+    )
+
+
 def migrate(decisions_md: Path, out_dir: Path) -> list[str]:
     """Move all decision rows of ``decisions_md`` into files of ``out_dir``.
 
@@ -111,14 +129,19 @@ def migrate(decisions_md: Path, out_dir: Path) -> list[str]:
         out_dir: ``docs/decisions``; created when missing.
 
     Returns:
-        The moved ids in file order (empty when nothing was pending).
+        The ids of the files newly written, in file order (rows whose identical file already
+        exists are removed from ``decisions_md`` but not listed).
 
     Raises:
+        ConflictMarkerError: when ``decisions_md`` holds git conflict markers (nothing written).
         DecisionError: on a duplicate id among the rows, or when a file of that id exists with
             different content. Nothing is written in that case.
     """
     text = decisions_md.read_text(encoding="utf-8")
-    rows = find_rows(text)
+    if CONFLICT_RE.search(text):
+        msg = f"{decisions_md.name} contains git conflict markers; resolve the merge first"
+        raise ConflictMarkerError(msg)
+    rows = [ParsedRow(r.line_no, as_file(r.decision)) for r in find_rows(text)]
     counts = collections.Counter(r.decision.id for r in rows)
     dups = sorted(i for i, n in counts.items() if n > 1)
     if dups:
@@ -142,7 +165,7 @@ def migrate(decisions_md: Path, out_dir: Path) -> list[str]:
     kept = [ln for i, ln in enumerate(text.split("\n")) if i not in drop]
     if drop:
         decisions_md.write_text("\n".join(kept), encoding="utf-8")
-    return [r.decision.id for r in rows]
+    return [path.stem for path, _ in writes]
 
 
 def roundtrip_problems(original_text: str, out_dir: Path) -> list[str]:
@@ -156,7 +179,7 @@ def roundtrip_problems(original_text: str, out_dir: Path) -> list[str]:
         Differences as text; empty when the multiset of ``(id, text, extra columns)`` and of the
         rebuilt row lines are both identical.
     """
-    before = [r.decision for r in find_rows(original_text)]
+    before = [as_file(r.decision) for r in find_rows(original_text)]
     after = [
         parse_file(p.read_text(encoding="utf-8"), p.name) for p in sorted(out_dir.glob("D*.md"))
     ]
@@ -165,7 +188,7 @@ def roundtrip_problems(original_text: str, out_dir: Path) -> list[str]:
     if collections.Counter(map(key, before)) != collections.Counter(map(key, after)):
         out.append("multiset of (id, text, extras) differs")
     lines_before = collections.Counter(r for r in original_text.split("\n") if ROW_START.match(r))
-    lines_after = collections.Counter(row_line(d) for d in after)
+    lines_after = collections.Counter(row_line(as_doc(d)) for d in after)
     if lines_before != lines_after:
         out.append("rebuilt row lines differ from the original lines")
     return out

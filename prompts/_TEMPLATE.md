@@ -13,7 +13,7 @@
 ## Read first (in this order)
 
 1. `CLAUDE.md` (auto-loaded) — ground rules
-2. `docs/decisions.md`
+2. `docs/decisions/`
 3. `docs/spec/SPEC.md` §<sections>
 4. `docs/architecture/interfaces.md` §<sections>
 5. `docs/adr/<relevant ADRs>`
@@ -68,7 +68,7 @@
 
 ```text
 You are a senior engineer on Prüfstand. Task <ID>: <title>.
-Read, in order: CLAUDE.md, docs/decisions.md, prompts/<this file>, and the sections it lists.
+Read, in order: CLAUDE.md, docs/decisions/, prompts/<this file>, and the sections it lists.
 1. Post a plan: files, interfaces, tests. Wait for my "go" only if an interface in
    docs/architecture/interfaces.md must change; otherwise continue.
 2. Write the failing tests from "Tests to write first", run them, show they fail.
