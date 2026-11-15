@@ -167,7 +167,7 @@ GPU_SETTINGS = Settings(
 def test_gpu_info_serving_comes_from_the_catalogue_and_env(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    monkeypatch.setenv("OLLAMA_GPU0_URL", "http://127.0.0.1:11434")
+    monkeypatch.setenv("LLM_PROXY_URL", "http://127.0.0.1:11434")
     monkeypatch.setenv("RERANK_URL", "http://rerank-cpu:8201")
     cfg = load_config(CONFIGS / "rag.gpu.yaml", catalogue_path=GPU_SETTINGS.rag_model_catalogue)
     client = TestClient(create_app(cfg, settings=GPU_SETTINGS))

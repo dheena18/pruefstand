@@ -1,6 +1,7 @@
 """Tier-2 profile of rag-demo: catalogue-validated config, endpoint rules, Ollama request (T3.2)."""
 
 import json
+from pathlib import Path
 from typing import Any
 
 import httpx
@@ -76,7 +77,8 @@ def test_gpu_profile_loads_with_the_endpoint_variables_unset(
 ) -> None:
     for name in ("OLLAMA_GPU0_URL", "LLM_PROXY_URL", "RERANK_URL"):
         monkeypatch.delenv(name, raising=False)
-    assert load_config(GPU, catalogue_path=CATALOGUE).generator.endpoint_env == "OLLAMA_GPU0_URL"
+    cfg = load_config(GPU, catalogue_path=CATALOGUE)
+    assert cfg.generator.endpoint_env == cfg.embed.endpoint_env == "LLM_PROXY_URL"
 
 
 def test_catalogue_path_comes_from_the_environment(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -196,9 +198,9 @@ def test_base_url_and_endpoint_env_are_exclusive() -> None:
 def test_missing_endpoint_variable_is_a_startup_error_naming_it(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    monkeypatch.delenv("OLLAMA_GPU0_URL", raising=False)
+    monkeypatch.delenv("LLM_PROXY_URL", raising=False)
     cfg = load_config(GPU, catalogue_path=CATALOGUE)
-    with pytest.raises(ConfigError, match="OLLAMA_GPU0_URL"):
+    with pytest.raises(ConfigError, match="LLM_PROXY_URL"):
         create_app(cfg, settings=Settings(rag_model_catalogue=CATALOGUE))
 
 
@@ -206,7 +208,7 @@ def test_missing_endpoint_variable_is_a_startup_error_naming_it(
 def test_env_provided_endpoint_is_checked_at_startup(
     monkeypatch: pytest.MonkeyPatch, url: str
 ) -> None:
-    monkeypatch.setenv("OLLAMA_GPU0_URL", url)
+    monkeypatch.setenv("LLM_PROXY_URL", url)
     cfg = load_config(GPU, catalogue_path=CATALOGUE)
     with pytest.raises(ConfigError, match=r"W3\.15|D219"):
         create_app(cfg, settings=Settings(rag_model_catalogue=CATALOGUE))
@@ -295,3 +297,15 @@ def test_a_gpu_config_must_set_reranker_explicitly() -> None:
     del data["reranker"]
     with pytest.raises(ValidationError, match="reranker"):
         _parse(data)
+
+
+@pytest.mark.parametrize(
+    "path", [GPU, *sorted((CONFIGS / "bugs" / "gpu").glob("*.yaml"))], ids=lambda p: p.name
+)
+def test_every_tier2_profile_reaches_models_only_through_llm_proxy(path: Path) -> None:
+    # D1081 (closes the D1068 open point): the candidate gets LLM_PROXY_URL, never OLLAMA_GPU*_URL
+    text = path.read_text(encoding="utf-8")
+    assert "OLLAMA_GPU" not in text
+    cfg = load_config(path, catalogue_path=CATALOGUE)
+    assert cfg.generator.endpoint_env == "LLM_PROXY_URL"
+    assert cfg.embed.endpoint_env == "LLM_PROXY_URL"
