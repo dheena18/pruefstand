@@ -119,7 +119,10 @@ def test_overflowing_numbers_are_rejected(number: str) -> None:
     assert _rejected("/api/chat", raw)
 
 
-@pytest.mark.parametrize("think", ["true", '"high"', '"low"', "1", "null", "{}", "false"])
+@pytest.mark.parametrize(
+    "think",
+    ["true", '"high"', '"medium"', '"low"', "1", "null", "{}", '{"a": 1}', "[true]", "false"],
+)
 def test_chat_think_is_forced_off(think: str) -> None:
     # D1076: thinking is always off on the gate, whatever the candidate config says (CLAUDE.md §5)
     verdict = _post("/api/chat", f'{{"model": "{GEN}", "messages": [], "think": {think}}}')
@@ -138,3 +141,22 @@ def test_absent_think_becomes_false_and_embed_is_unchanged() -> None:
     assert embed.body is not None
     assert "think" not in json.loads(embed.body)
     assert _rejected("/api/embed", f'{{"model": "{EMB}", "input": "x", "think": false}}')
+
+
+def test_think_inside_options_is_dropped() -> None:
+    verdict = _post(
+        "/api/chat", f'{{"model": "{GEN}", "messages": [], "options": {{"think": true}}}}'
+    )
+    assert isinstance(verdict, Forward)
+    assert verdict.body is not None
+    body = json.loads(verdict.body)
+    assert "think" not in body["options"]
+    assert body["think"] is False
+
+
+@pytest.mark.parametrize("variant", ["Think", "THINK", "thin\u212a"])
+def test_think_case_and_fold_variants_are_rejected(variant: str) -> None:
+    both = json.dumps({"model": GEN, "messages": [], "think": False, variant: True})
+    alone = json.dumps({"model": GEN, "messages": [], variant: True})
+    assert _rejected("/api/chat", both)
+    assert _rejected("/api/chat", alone)
