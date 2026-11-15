@@ -12,7 +12,7 @@ port="${4:-4177}"
 
 case "$base" in
   /?*) ;;
-  *) echo "serve_under_base: base must look like /name, got " >&2; exit 2 ;;
+  *) echo "serve_under_base: base must look like /name, got '$base'" >&2; exit 2 ;;
 esac
 [ -f "$site/404.html" ] || { echo "serve_under_base: $site/404.html missing (build the set first)" >&2; exit 1; }
 
@@ -21,7 +21,7 @@ rm -rf "$tmp"
 mkdir -p "$tmp$base"
 cp -a "$site/." "$tmp$base/"
 cp "$site/404.html" "$tmp/404.html"
-printf {cleanUrls: false, trailingSlash: true}n > "$tmp/serve.json"
+printf '{"cleanUrls": false, "trailingSlash": true}\n' > "$tmp/serve.json"
 
 if [ "${SERVE_PREPARE_ONLY:-0}" = "1" ]; then
   echo "serve_under_base: prepared $tmp"
