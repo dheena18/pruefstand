@@ -616,7 +616,7 @@ target:
   type: http                      # http (target API v1)
   url: http://localhost:8000
   auth_env: null                  # name of env var holding a bearer token, never the token
-  timeout_s: 60
+  timeout_s: 360                  # tier 2 (D624/D1065); tier-1 configs use 180 (D1082)
 dataset: hf://<HF_USER>/pruefstand-de@v1
 splits: [smoke, core, robust_pr]
 generator_family: qwen            # family plan §6.3; judge family must differ
@@ -652,7 +652,7 @@ budget:
   max_tokens_per_run: 3000000
 runner:
   concurrency: 8
-  timeout_s: 60
+  timeout_s: 360                  # timeouts are never retried (D1065)
   max_retries: 3
   backoff_s: 1.0
 baseline_store:

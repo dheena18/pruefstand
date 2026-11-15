@@ -56,6 +56,12 @@ def may_support(answer: str, passage: str) -> bool:
     )
 
 
+def first_clause_end(text: str) -> int:
+    """Return the index of the first comma, bracket, semicolon or dash (else ``len(text)``)."""
+    breaks = [text.find(b) for b in _CLAUSE_BREAKS if b in text]
+    return min(breaks, default=len(text))
+
+
 def edit_in_first_clause(original: str, edited: str) -> bool:
     """True iff the edit starts in the first clause of ``original``.
 
@@ -66,8 +72,7 @@ def edit_in_first_clause(original: str, edited: str) -> bool:
         (i for i, (a, b) in enumerate(zip(original, edited, strict=False)) if a != b),
         min(len(original), len(edited)),
     )
-    breaks = [original.find(b) for b in _CLAUSE_BREAKS if b in original]
-    return first_diff < min(breaks, default=len(original))
+    return first_diff < first_clause_end(original)
 
 
 def negation_ok(original: str, edited: str) -> bool:

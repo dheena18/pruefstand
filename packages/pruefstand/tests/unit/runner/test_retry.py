@@ -69,15 +69,19 @@ async def test_non_transient_error_is_not_retried() -> None:
     assert sleeper.delays == []
 
 
-async def test_timeout_every_call_gives_max_retries_plus_one_attempts() -> None:
+async def test_a_timeout_is_not_retried() -> None:
+    # D624: the A40 generator serialises requests; retrying a read timeout only adds queue load
+    sleeper = Sleeper()
+
     async def call() -> str:
         await asyncio.sleep(10)
         return "late"
 
     result = await call_with_retry(
-        call, timeout_s=0.01, max_retries=1, backoff_s=0.0, rng=rng(), sleep=Sleeper()
+        call, timeout_s=0.01, max_retries=3, backoff_s=0.0, rng=rng(), sleep=sleeper
     )
-    assert result.attempts == 2
+    assert result.attempts == 1
+    assert sleeper.delays == []
     assert result.value is None
     assert result.error is not None
     assert "timeout" in result.error.lower()

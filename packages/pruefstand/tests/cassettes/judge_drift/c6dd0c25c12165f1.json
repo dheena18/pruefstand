@@ -1,5 +1,5 @@
 {
-  "recorded_at": "2026-11-10T01:20:03+00:00",
+  "recorded_at": "2026-11-15T15:33:27+00:00",
   "model_id": "ollama/gemma3:12b",
   "model_version": null,
   "request": {
@@ -47,14 +47,14 @@
     }
   },
   "response": {
-    "text": "{\"reason\": \"„Thoughts on the case of the present discontent“ von 1770, mehrere Schriften gegen die Steuer- und Kolonialpolitik, sein wichtigstes Werk: „Reflections on the Revolution in France“ von 1790 und weitere Schriften gegen die Politik des Generalgouverneurs in Indien stimmen mit der Referenz überein; nichts fehlt.\", \"score\": 2}",
+    "text": "{\"reason\": \"„Thoughts on the case of the present discontent“ von 1770, mehrere Schriften gegen die Steuer- und Kolonialpolitik der britischen Regierung in Amerika, sein wichtigstes Werk: „Reflections on the Revolution in France“, „Betrachtungen über die Revolution in Frankreich“ von 1790 und weitere Schriften richten sich gegen die Politik des Generalgouverneurs in Indien entsprechen der Referenz; nichts fehlt.\", \"score\": 2}",
     "model": "ollama/gemma3:12b",
     "usage": {
       "prompt_tokens": 1550,
-      "completion_tokens": 86
+      "completion_tokens": 100
     },
     "cost_usd": 0.0,
-    "latency_ms": 7841.201085946523,
+    "latency_ms": 7004.004710994195,
     "cached": false,
     "provider": "ollama",
     "fallback": false,

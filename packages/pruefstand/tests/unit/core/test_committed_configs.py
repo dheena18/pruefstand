@@ -35,11 +35,13 @@ def is_gate_config(path: Path) -> bool:
 def tier2_runner_ok(cfg: PruefstandConfig) -> bool:
     """D624: the A40 generator serialises requests, so a request can queue for minutes.
 
-    The runner must outwait the read timeout of rag-demo (``timeout_s`` > 300) or send at most
+    The runner must outwait the read timeout of rag-demo (``target.timeout_s`` and
+    ``runner.timeout_s`` both > 300, D1065) or send at most
     four requests at once; otherwise the runner gives up first. rag-demo cancels the upstream call
     when the runner disconnects (T3.6a); not retrying a read timeout is the runner's part (T6.2a).
     """
-    return cfg.runner.timeout_s > QUEUE_WAIT_S or cfg.runner.concurrency <= 4
+    deadline = min(cfg.target.timeout_s, cfg.runner.timeout_s)  # the adapter's own deadline counts
+    return deadline > QUEUE_WAIT_S or cfg.runner.concurrency <= 4
 
 
 def violations(root: Path) -> list[str]:
@@ -60,7 +62,7 @@ def violations(root: Path) -> list[str]:
             problems.append(f"{rel}: tier-1 config must not set llm.fallback_judge (D97)")
         if Split.CORE in cfg.splits and not tier2_runner_ok(cfg):
             problems.append(
-                f"{rel}: tier-2 runner needs timeout_s > {QUEUE_WAIT_S} or concurrency <= 4 (D624)"
+                f"{rel}: tier-2 needs target+runner timeout_s > {QUEUE_WAIT_S} or concurrency <= 4"
             )
     return problems
 
@@ -146,8 +148,10 @@ def test_each_committed_gate_config_loads(path: Path) -> None:
         assert load_config(path).gate.min_clusters >= MIN_CLUSTERS
 
 
-def _tier2(tmp_path: Path, runner: str) -> Path:
+def _tier2(tmp_path: Path, runner: str, target_timeout_s: int = 360) -> Path:
     text = (ROOT / "examples" / "live" / "pruefstand.yaml").read_text(encoding="utf-8")
+    assert "\n  timeout_s: 180\n" in text  # the first one is the target's
+    text = text.replace("\n  timeout_s: 180\n", f"\n  timeout_s: {target_timeout_s}\n", 1)
     text = text.replace("splits: [smoke_live]", "splits: [smoke, core]")
     assert "splits: [smoke, core]" in text
     start, end = text.index("\nrunner:"), text.index("\nbaseline_store:")
@@ -158,24 +162,41 @@ def _tier2(tmp_path: Path, runner: str) -> Path:
 
 
 @pytest.mark.parametrize(
-    ("runner", "ok"),
+    ("runner", "target_timeout_s", "ok"),
     [
-        ("{concurrency: 8, timeout_s: 60, max_retries: 3}", False),
-        ("{concurrency: 8, timeout_s: 300, max_retries: 3}", False),
-        ("{concurrency: 8, timeout_s: 330, max_retries: 0}", True),
-        ("{concurrency: 4, timeout_s: 60, max_retries: 0}", True),
+        ("{concurrency: 8, timeout_s: 60, max_retries: 3}", 360, False),
+        ("{concurrency: 8, timeout_s: 300, max_retries: 3}", 360, False),
+        ("{concurrency: 8, timeout_s: 330, max_retries: 0}", 360, True),
+        ("{concurrency: 8, timeout_s: 360, max_retries: 0}", 60, False),  # adapter deadline wins
+        ("{concurrency: 4, timeout_s: 60, max_retries: 0}", 60, True),
     ],
 )
 def test_tier2_runner_must_outwait_the_generator_queue(
-    tmp_path: Path, runner: str, *, ok: bool
+    tmp_path: Path, runner: str, target_timeout_s: int, *, ok: bool
 ) -> None:
-    _tier2(tmp_path, runner)
+    _tier2(tmp_path, runner, target_timeout_s)
     assert (violations(tmp_path) == []) is ok
 
 
-@pytest.mark.xfail(strict=True, reason="T6.2a, D624: root template runs core with 8 x 60 s")
 def test_root_pruefstand_yaml_follows_the_tier2_runner_rule() -> None:
     """The executor runs main's root ``pruefstand.yaml`` (core split); T6.2a must fix its runner."""
     cfg = load_config(ROOT / "pruefstand.yaml")
     assert Split.CORE in cfg.splits
-    assert tier2_runner_ok(cfg), "runner timeout_s 60 and concurrency 8 would time out first"
+    assert tier2_runner_ok(cfg), "runner/target timeout_s 60 and concurrency 8 would time out first"
+    assert cfg.target.timeout_s > QUEUE_WAIT_S  # the adapter's own deadline (adapters/http.py)
+
+
+@pytest.mark.parametrize(
+    "path", sorted((ROOT / "examples" / "live").glob("*.yaml")), ids=lambda p: p.name
+)
+def test_tier1_configs_wait_180_s_for_a_slow_cpu_call(path: Path) -> None:
+    # D1082: tier 1 never retries a timeout, so one CPU latency spike must not hit a 60 s limit
+    cfg = load_config(path)
+    assert cfg.target.timeout_s == cfg.runner.timeout_s == 180
+    assert cfg.runner.max_consecutive_timeouts == 3  # D1084: a hung target ends in about 10 min
+
+
+def test_root_tier2_config_stops_only_after_two_waves_of_timeouts() -> None:
+    # D1084: 2 x concurrency, so one transient stall of a single wave does not abort the run
+    cfg = load_config(ROOT / "pruefstand.yaml")
+    assert cfg.runner.max_consecutive_timeouts == 2 * cfg.runner.concurrency
