@@ -1,6 +1,7 @@
 """T5.4 S3: degraded pairs are deterministic, really changed, and built from top-label answers
 only."""
 
+import re
 from pathlib import Path
 
 import pytest
@@ -42,3 +43,21 @@ def test_the_pair_files_are_split_by_licence() -> None:
 def test_a_missing_pair_file_is_a_config_error(tmp_path: Path) -> None:
     with pytest.raises(ConfigError, match="missing"):
         load_pairs(tmp_path)
+
+
+def test_the_committed_correctness_negate_cell_has_50_pairs() -> None:
+    pairs = [p for p in load_pairs() if p["label_set"] == "correctness"]
+    negates = [p for p in pairs if p["edit"] == "negate"]
+    assert len(negates) == 50
+    forms = [p["form"] for p in negates]
+    assert forms.count("span") == 21  # the T5.4 pairs, unchanged (D932)
+    assert forms.count("sentence") == 29  # T5.4b (D1240)
+    labels = {i.item_id: i.label for i in load_items(CFG.set_named("correctness"), "test")}
+    for pair in negates:
+        assert labels[str(pair["base_item_id"])] == 2  # test-split positives only
+        base, worse = pair["inputs"], pair["degraded"]
+        assert isinstance(base, dict)
+        assert isinstance(worse, dict)
+        assert base["referenz"] == worse["referenz"]
+        assert base["antwort"] != worse["antwort"]
+        assert re.search(r"nicht|[Kk]ein", worse["antwort"] + " " + base["antwort"])

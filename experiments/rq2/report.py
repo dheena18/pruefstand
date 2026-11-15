@@ -2,7 +2,7 @@
 
 ``uv run python experiments/rq2/report.py`` reads the ``test`` verdicts of every judge
 (``<out_dir>/verdicts_<slug>_test.parquet``), the pairs, bias and anchor results and writes
-``results/rq2/{calibration,agreement_matrix,bias,discrimination}.csv``,
+``results/rq2/{calibration,agreement_matrix,bias,discrimination,discrimination_by_form}.csv``,
 ``results/rq2/cost_vs_kappa.png``,
 ``results/_inputs/rq2/verdicts.parquet`` (no text, no MEMERAG) and the status file. MEMERAG
 verdicts go
@@ -227,7 +227,7 @@ def evaluate_judge(judge: str) -> bool:
     return bool(doc["passed"]) and judge in doc["judges"]  # type: ignore[operator]  # mapping from the builder
 
 
-def _discrimination(cfg: RQ2Config) -> pl.DataFrame:
+def _discrimination(cfg: RQ2Config, by: tuple[str, ...] = ()) -> pl.DataFrame:
     paths = [
         p for j in cfg.judges if (p := REPO / cfg.out_dir / f"pairs_{slug(j.id)}.parquet").is_file()
     ]
@@ -238,13 +238,16 @@ def _discrimination(cfg: RQ2Config) -> pl.DataFrame:
                 "label_set": pl.String,
                 "metric": pl.String,
                 "edit": pl.String,
+                **dict.fromkeys(by, pl.String),
                 "n": pl.UInt32,
                 "discrimination": pl.Float64,
+                "discrimination_ci_low": pl.Float64,
+                "discrimination_ci_high": pl.Float64,
                 "base_top_share": pl.Float64,
             }
         )
     return discrimination_table(
-        pl.concat([pl.read_parquet(p) for p in paths], how="diagonal_relaxed")
+        pl.concat([pl.read_parquet(p) for p in paths], how="diagonal_relaxed"), by
     )
 
 
@@ -257,6 +260,7 @@ def main() -> int:
     RESULTS.mkdir(parents=True, exist_ok=True)
     table.sort(["judge", "metric", "label_set", "stratum"]).write_csv(RESULTS / "calibration.csv")
     disc.write_csv(RESULTS / "discrimination.csv")
+    _discrimination(cfg, ("form",)).write_csv(RESULTS / "discrimination_by_form.csv")  # T5.4b
     agreement_matrix(verdicts).write_csv(RESULTS / "agreement_matrix.csv")
     from rq2.bias_report import bias_table  # noqa: PLC0415
 

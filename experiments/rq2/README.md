@@ -40,10 +40,15 @@ seed 1234); hard-negative specificity with its Wilson lower bound.
 | faithfulness | MEMERAG (human) | 274 | 0.25 (0.14-0.37) | 0.65 | 0.23 (0.15) | 0.62 / 0.50 | **fail** |
 | faithfulness | faithfulness_constructed | 420 | 0.78 (0.72-0.84) | 0.78 | 0.65 (0.56) | (same pairs) | not gating |
 | faithfulness | legal_hard | - | pending | | | | pending |
-| answer_correctness | correctness (constructed) | 395 | 0.82 (0.76-0.87) | 0.82 | 0.97 (0.93) | 0.82 / 0.62 (n 21) | **fail** (discrimination) |
+| answer_correctness | correctness (constructed) | 395 | 0.82 (0.76-0.87) | 0.82 | 0.97 (0.93) | 0.82 / 0.70 (n 50, T5.4b) | **fail** (discrimination) |
 | answer_correctness | legal_hard | - | pending | | | | pending |
 | refusal_judged | refusal | 420 | 1.00 | 1.00 | hedged FPR 0.00 | - | **pending**: reported, not a pass (near-miss set not built, D944) |
 | perturbation_consistency | consistency | 573 | 0.92 (0.88-0.94) | 0.92 | 0.78 (0.65) | - | reported |
+
+Discrimination (T5.4b, D1240; 95 % Wilson CI in `discrimination.csv`): `correctness` `swap_first_number` 0.82 (0.69-0.90),
+`negate` 0.70 (0.56-0.81, n 50 = 21 T5.4 span pairs 0.62 + 29 GermanQuAD sentence pairs 0.76,
+`discrimination_by_form.csv`). The sentence pairs (`sentence_answers.py`) need the GermanQuAD test download for
+`make_degraded.py`.
 
 Outcome: `calibration_status.yaml` `passed: false` (judged metrics informational in both tiers; the refusal judge
 stays off until its near-miss set exists), `judge_epoch` 1. Ceiling for MEMERAG (German): AC1 0.84 / Fleiss kappa 0.81
