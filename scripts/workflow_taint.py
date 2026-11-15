@@ -68,7 +68,7 @@ def _source(expression: str, ctx: Context, tainted_env: set[str]) -> bool:
     if _OUTPUT_REF.search(expression) or (ctx.inputs and _INPUT_REF.search(expression)):
         return True
     return any(
-        name in (tainted_env if kind == "env" else ctx.matrix)
+        name in tainted_env if kind == "env" else (name in ctx.matrix or "*" in ctx.matrix)
         for kind, name in _CONTEXT_REF.findall(expression)
     )
 
@@ -95,7 +95,9 @@ def matrix_taint(matrix: object, ctx: Context) -> set[str]:
         return set()
     flat: dict[str, object] = {}
     for key, value in matrix.items():
-        if key in ("include", "exclude") and isinstance(value, list):
+        if key in ("include", "exclude") and isinstance(value, str):
+            flat[f"*#{len(flat)}"] = value  # a dynamic include/exclude can add any key
+        elif key in ("include", "exclude") and isinstance(value, list):
             for entry in value:
                 for name, item in entry.items() if isinstance(entry, dict) else ():
                     flat[f"{name}#{len(flat)}"] = item
@@ -129,7 +131,7 @@ def _code(s: _Step, code: str, label: str) -> None:
             s.add(f"{match.group(0)} interpolated in {label} (injection; pass it through env:)")
         if label != "with" and s.ctx.inputs and _INPUT_REF.search(expression):
             s.add(f"an action input is interpolated in {label} (pass it through env:)")
-        if label == "with" and UNTRUSTED.search(expression):
+        if UNTRUSTED.search(expression):  # every label: run, script, shell, working-directory, with
             s.add("untrusted value interpolated in run/with input (injection)")
 
 

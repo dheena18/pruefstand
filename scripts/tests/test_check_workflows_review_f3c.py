@@ -169,3 +169,35 @@ def test_an_actions_dir_without_any_action_fails(tmp_path: Path) -> None:
 def test_the_real_workflows_still_pass() -> None:
     gh = Path(__file__).resolve().parents[2] / ".github"
     assert main([str(gh / "workflows"), "--actions", str(gh / "actions")]) == 0
+
+
+# --- final check @b671a76: dynamic matrix, untrusted contexts in shell / working-directory ------
+
+DYNAMIC = "${{ fromJSON(needs.a.outputs.m) }}"
+
+
+@pytest.mark.parametrize("part", ["include", "exclude"])
+def test_a_dynamic_include_or_exclude_taints_every_matrix_key(part: str) -> None:
+    strategy = {"matrix": {"os": ["a"], part: DYNAMIC}}
+    found = _one({"run": 'echo "${{ matrix.foo }}"'}, strategy=strategy)
+    assert any("matrix.foo" in f for f in found), found
+
+
+def test_a_dynamic_matrix_taints_env_set_from_it() -> None:
+    strategy = {"matrix": DYNAMIC}
+    via_expr = _one(
+        {"run": 'echo "${{ env.X }}"', "env": {"X": "${{ matrix.foo }}"}}, strategy=strategy
+    )
+    via_file = _one(
+        {"run": 'echo "X=$X" >> "$GITHUB_ENV"', "env": {"X": "${{ matrix.foo }}"}},
+        strategy=strategy,
+    )
+    assert any("env.x" in f for f in via_expr), via_expr
+    assert any("GITHUB_ENV/GITHUB_PATH" in f for f in via_file), via_file
+
+
+@pytest.mark.parametrize("key", ["shell", "working-directory"])
+@pytest.mark.parametrize("expr", ["${{ github.head_ref }}", "${{ github.base_ref }}"])
+def test_an_untrusted_context_in_shell_or_working_directory_is_refused(key: str, expr: str) -> None:
+    found = _one({"run": "true", key: f"x{expr}"})
+    assert any("untrusted value" in f for f in found), found
