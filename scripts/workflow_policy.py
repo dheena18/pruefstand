@@ -120,11 +120,22 @@ DANGEROUS_TRIGGERS: dict[tuple[str, str], str] = {
 }
 
 # ``github.event.*`` values that may be interpolated into run: / with: (numbers, SHAs, ids and the
-# repository name); everything else, also ``toJSON(github.event...)``, is refused.
+# repository names: GitHub allows only [A-Za-z0-9._-] in owner/repo, so no shell syntax);
+# everything else, also ``toJSON(github.event...)``, is refused.
 EVENT_VALUES = re.compile(
     r"github\.event\.("
     r"number|(pull_request|issue)\.number"
     r"|pull_request\.(head|base)\.sha|workflow_run\.(id|head_sha)"
-    r"|repository\.full_name|after|before"
+    r"|repository\.full_name|pull_request\.(head|base)\.repo\.full_name|after|before"
     r")"
 )
+
+# (file, job, step id) -> reason: steps whose run block writes $GITHUB_ENV / $GITHUB_PATH next to an
+# env var from a step output (reviewed by hand; the taint rule cannot prove such a value safe).
+ENV_FILE_STEPS: dict[tuple[str, str, str], str] = {
+    (
+        "cassettes-models.yml",
+        "record",
+        "header",
+    ): "MATCHED is actions/cache's matched key, built by this job; PR #167 deletes the workflow",
+}

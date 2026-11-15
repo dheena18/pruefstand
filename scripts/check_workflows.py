@@ -274,6 +274,9 @@ def main(argv: Sequence[str] | None = None) -> int:
             sys.stderr.write(f"error: {args.actions} is not a directory\n")
             return 2
         n_actions, more = check_actions(args.actions)
+        if n_actions == 0:
+            sys.stderr.write(f"error: no composite actions (*/action.yml) in {args.actions}\n")
+            return 2
         count, findings = count + n_actions, findings + more
     if findings:
         sys.stdout.write("\n".join(findings) + "\n")
