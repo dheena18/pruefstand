@@ -152,15 +152,36 @@ def _apply_overrides(spec: MutationSpec, worktree: Path) -> None:
         path.write_text(text, encoding="utf-8")
 
 
+def check_pristine(worktree: Path, ref: str) -> None:
+    """Refuse a worktree whose HEAD is not ``ref`` or that has any change (tracked or untracked).
+
+    Raises:
+        MutationError: HEAD differs from ``ref``, or ``git status --porcelain`` is not empty.
+    """
+    base = _git("rev-parse", "--verify", f"{ref}^{{commit}}", cwd=worktree).strip()
+    head = _git("rev-parse", "HEAD", cwd=worktree).strip()
+    if head != base:
+        msg = f"{worktree} is at {head[:12]}, not at the base {base[:12]}: use a fresh worktree"
+        raise MutationError(msg)
+    if _git("status", "--porcelain", "--untracked-files=all", cwd=worktree).strip():
+        msg = f"{worktree} is not clean (a mutation is applied?): run revert first"
+        raise MutationError(msg)
+
+
 def apply_mutation(
     spec: MutationSpec, worktree: Path, ref: str, root: Path = MUTATIONS_ROOT
 ) -> None:
     """Apply ``spec`` to ``worktree`` (created at ``ref`` when missing).
 
+    An existing worktree must still be at ``ref`` and clean, so mutations never stack and never
+    run on another base; ``revert`` cleans it, a moved HEAD needs a fresh worktree.
+
     Raises:
-        MutationError: the worktree was not created by this tool, or ``git apply`` fails.
+        MutationError: the worktree was not created by this tool, is not at ``ref``, is not clean,
+            or ``git apply`` fails.
     """
     ensure_worktree(worktree, ref)
+    check_pristine(worktree, ref)
     if spec.patch is not None:
         _git("apply", str((root / spec.id / spec.patch).resolve()), cwd=worktree)
     else:

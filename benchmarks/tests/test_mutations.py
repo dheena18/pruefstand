@@ -185,3 +185,27 @@ def test_refuses_a_checkout_it_did_not_create(tmp_path: Path) -> None:
         revert(REPO)
     with pytest.raises(MutationError, match=r"not created by apply\.py"):
         ensure_worktree(tmp_path, "HEAD")
+
+
+def test_a_second_apply_on_a_mutated_worktree_is_refused(worktree: Path) -> None:
+    # Review of #182: M08 then M05 on the same worktree stacked both mutations.
+    head = _git(REPO, "rev-parse", "HEAD").strip()
+    apply_mutation(BY_ID["M08"], worktree, head)
+    with pytest.raises(MutationError, match="not clean"):
+        apply_mutation(BY_ID["M05"], worktree, head)
+    assert "answer_no_citations" not in (worktree / GPU_CONFIG).read_text(encoding="utf-8")
+    revert(worktree)
+    apply_mutation(BY_ID["M05"], worktree, head)  # clean again: allowed
+    assert "post_topk" not in (worktree / GPU_CONFIG).read_text(encoding="utf-8")
+
+
+def test_an_apply_on_a_worktree_that_left_the_base_is_refused(worktree: Path) -> None:
+    # Review of #182: after HEAD moved, an apply ran on the wrong base.
+    head = _git(REPO, "rev-parse", "HEAD").strip()
+    apply_mutation(BY_ID["M10"], worktree, head)
+    revert(worktree)
+    _git(worktree, "-c", "user.name=t", "-c", "user.email=t@example.invalid",
+         "commit", "--quiet", "--allow-empty", "--no-verify", "-m", "moved")  # fmt: skip
+    with pytest.raises(MutationError, match="not at the base"):
+        apply_mutation(BY_ID["M10"], worktree, head)
+    assert _git(worktree, "status", "--porcelain") == ""
