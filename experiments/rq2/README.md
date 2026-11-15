@@ -50,6 +50,7 @@ stays off until its near-miss set exists), `judge_epoch` 1. Ceiling for MEMERAG 
 (MEMERAG paper, Table 2). Cost: USD 0, about 1 395 GPU-s and no quota per 1 000 judgments, latency p50 4.9 s / p95
 9.6 s at 4 in flight. Drift anchors (T5.4d, D1250): stored verdict = majority of 5 runs, flips counted on 4 further runs; one unstable
 anchor (3:6 over 9 runs) replaced; 1 flip in 200 comparisons, f_upper 0.028, `drift_threshold` 6 (was 9), `a0` 1.0.
+The remaining flips still sit on 2 anchors (each odd in about 1 of 9 runs): the caveat of D945 is mitigated, not resolved.
 Bias: not measurable on this sample: the T4.5 gender/register rewrites changed none of the 50 short answers (D942).
 Judge (c) and the GitHub Models arms are not measured yet (hosted runner follow-up, D939); the agreement matrix
 therefore has one judge.

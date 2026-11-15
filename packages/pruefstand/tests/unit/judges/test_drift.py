@@ -111,7 +111,7 @@ def test_flips_are_counted_against_the_stored_scores() -> None:
 
 
 def test_an_anchor_that_keeps_changing_is_unstable_and_one_odd_run_is_not() -> None:
-    # the T5.4d screening run of gemma3:12b: a00 / a02 differ only in run 1, a04 is 3:6
+    # the T5.4d screening run of gemma3:12b: a00 / a02 are odd in one run of 9, a04 is 3:6
     runs = [[0, 2, 2], [1, 0, 1], [1, 0, 2], [1, 0, 1], [1, 0, 2]]
     runs += [[1, 0, 1], [1, 0, 1], [1, 0, 1], [1, 0, 1]]
     assert unstable_anchors(runs) == [2]
