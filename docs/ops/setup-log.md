@@ -310,7 +310,10 @@ systemctl --user disable --now telebit 2>/dev/null; rm -rf ~/Applications/telebi
 VM side (done 2026-10-31; one-time browser login with the owner's account):
 
 ```bash
-curl -fsSL https://tailscale.com/install.sh | sh
+# install: the pinned, SHA-256-checked tarball of scripts/cloud/connect-vm.sh (D1220), as root:
+TS_VERSION=1.104.7; TS_SHA256=e56693ff74a64f2591b7e819c280635a100aae1ddfb0ef058fcd052b7cd8d16c  # D1220
+curl -fsSL --retry 3 --retry-all-errors --retry-delay 5 -o /tmp/ts.tgz "https://pkgs.tailscale.com/stable/tailscale_${TS_VERSION}_amd64.tgz"
+echo "$TS_SHA256  /tmp/ts.tgz" | sha256sum -c - && tar -xzf /tmp/ts.tgz -C /tmp && install -m 0755 /tmp/tailscale_${TS_VERSION}_amd64/tailscale{,d} /usr/local/bin/
 sudo tailscale up --hostname=pruefstand-exec   # open the printed login link once
 tailscale status && tailscale ip -4            # shows pruefstand-exec with a 100.x address
 ```
@@ -335,7 +338,9 @@ settings icon of an existing one):
 ```bash
 #!/bin/bash
 apt-get update -qq && apt-get install -y -qq openssh-client || true
-curl -fsSL https://tailscale.com/install.sh | sh || true
+TS_VERSION=1.104.7; TS_SHA256=e56693ff74a64f2591b7e819c280635a100aae1ddfb0ef058fcd052b7cd8d16c  # D1220
+curl -fsSL --retry 3 --retry-all-errors --retry-delay 5 -o /tmp/ts.tgz "https://pkgs.tailscale.com/stable/tailscale_${TS_VERSION}_amd64.tgz"
+echo "$TS_SHA256  /tmp/ts.tgz" | sha256sum -c - && tar -xzf /tmp/ts.tgz -C /tmp && install -m 0755 /tmp/tailscale_${TS_VERSION}_amd64/tailscale{,d} /usr/local/bin/ || true
 ```
 
 Verified 2026-10-31: in a cloud session `bash scripts/cloud/connect-vm.sh` connected (`ssh vm` → VM hostname,
@@ -351,7 +356,9 @@ private key `pruefstand_cloud`, made on Windows with
 appended to the VM user's `authorized_keys`). Setup script:
 
 ```bash
-curl -fsSL https://tailscale.com/install.sh | sh
+TS_VERSION=1.104.7; TS_SHA256=e56693ff74a64f2591b7e819c280635a100aae1ddfb0ef058fcd052b7cd8d16c  # D1220
+curl -fsSL --retry 3 --retry-all-errors --retry-delay 5 -o /tmp/ts.tgz "https://pkgs.tailscale.com/stable/tailscale_${TS_VERSION}_amd64.tgz"
+echo "$TS_SHA256  /tmp/ts.tgz" | sha256sum -c - && tar -xzf /tmp/ts.tgz -C /tmp && install -m 0755 /tmp/tailscale_${TS_VERSION}_amd64/tailscale{,d} /usr/local/bin/
 (tailscaled --tun=userspace-networking --state=mem: > /tmp/tailscaled.log 2>&1 &) ; sleep 3 && tailscale up --authkey="$TS_AUTHKEY" --hostname=claude-cloud --accept-dns=false
 mkdir -p ~/.ssh && printf '%s' "$VM_SSH_KEY" | base64 -d > ~/.ssh/id_vm && chmod 600 ~/.ssh/id_vm
 printf 'Host vm\n  HostName pruefstand-exec\n  User <vm-user>\n  IdentityFile ~/.ssh/id_vm\n  IdentitiesOnly yes\n  ProxyCommand tailscale nc %%h %%p\n  ServerAliveInterval 30\n' >> ~/.ssh/config
