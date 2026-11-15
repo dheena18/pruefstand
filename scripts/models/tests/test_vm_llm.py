@@ -35,6 +35,7 @@ def _env(tmp: Path, **extra: str) -> dict[str, str]:
         "VM_LLM_LOCK_CMD": str(LOCK),
         "VM_LLM_LOCK_WAIT_S": "0",
         "VM_LLM_READY_S": "20",
+        "VM_LLM_START_WAIT_S": "1",
         "VM_LLM_PORT": str(_free_port()),
         "PRUEFSTAND_LOCK_DIR": str(tmp / "lock"),
         "PRUEFSTAND_CHECK_DIR": str(tmp / "check"),
@@ -45,7 +46,7 @@ def _env(tmp: Path, **extra: str) -> dict[str, str]:
 def _run(tmp: Path, *args: str, **extra: str) -> subprocess.CompletedProcess[str]:
     cmd = ["bash", str(SCRIPT), *args]
     return subprocess.run(  # noqa: S603
-        cmd, env=_env(tmp, **extra), capture_output=True, text=True, check=False, timeout=60
+        cmd, env=_env(tmp, **extra), capture_output=True, text=True, check=False, timeout=300
     )
 
 
@@ -66,6 +67,7 @@ def test_the_server_binds_127_0_0_1_pinned_niced_and_time_limited(tmp_path: Path
     assert words[words.index("taskset") + 2] == "0-19"
     assert words[words.index("nice") + 2] == "15"
     assert "-c3" in words
+    assert "--no-slots" in words
     assert words[words.index("timeout") + 3] == "240m"
     assert words[words.index("-m") + 1].endswith("Ministral-3-14B-Instruct-2512-Q4_K_M.gguf")
     assert words[words.index("--alias") + 1] == "ministral-3-14b-instruct-2512"
@@ -122,7 +124,7 @@ def test_start_is_refused_while_a_check_slot_is_busy(tmp_path: Path) -> None:
 
 def test_a_missing_model_file_fails_before_any_server_starts(tmp_path: Path) -> None:
     run = _run(tmp_path, "start")
-    assert run.returncode == 1
+    assert run.returncode == 2
     assert "model file missing" in run.stderr
     assert _run(tmp_path, "status").returncode == 3
 
@@ -132,5 +134,68 @@ def test_a_model_file_of_the_wrong_size_is_refused(tmp_path: Path) -> None:
     models.mkdir()
     (models / "Ministral-3-14B-Instruct-2512-Q4_K_M.gguf").write_bytes(b"GGUF")
     run = _run(tmp_path, "start")
-    assert run.returncode == 1
+    assert run.returncode == 2
     assert "wrong size" in run.stderr
+
+
+@pytest.mark.slow  # hashes 5 GB (a sparse file): about 20-40 s
+def test_a_file_of_the_right_size_but_another_hash_is_refused_and_not_cached(
+    tmp_path: Path,
+) -> None:
+    models = tmp_path / "models"
+    models.mkdir()
+    with (models / "Ministral-3-8B-Instruct-2512-Q4_K_M.gguf").open("wb") as fh:
+        fh.truncate(
+            5198911904
+        )  # sparse: the real size, zero bytes, so only the SHA-256 check can refuse it
+    run = _run(tmp_path, "start", "8b", VM_LLM_READY_S="240")
+    assert run.returncode == 2, run.stderr
+    assert "SHA-256 mismatch" in run.stderr
+    assert not (tmp_path / "state" / "verified-8b").exists()
+    assert not (tmp_path / "state" / "pid").exists()
+
+
+def test_the_inherited_lock_bypass_variable_is_ignored(tmp_path: Path) -> None:
+    with _held(tmp_path / "lock" / "gpu.lock"):
+        run = _run(tmp_path, "start", PRUEFSTAND_LOCK_HELD="1")
+    assert run.returncode == 75, run.stderr
+
+
+def test_a_second_start_waits_for_the_first_and_gives_up_cleanly(tmp_path: Path) -> None:
+    (tmp_path / "state").mkdir()
+    (tmp_path / "state" / "pid").write_text("999999 1 other\n", encoding="utf-8")
+    with _held(tmp_path / "state" / "start.lock"):  # a first start is still running
+        run = _run(tmp_path, "start")
+        stop = _run(tmp_path, "stop", VM_LLM_STOP_WAIT_S="1")
+        status = _run(tmp_path, "status")
+    assert run.returncode == 75, run.stderr
+    assert "start.lock" in run.stderr
+    assert stop.returncode == 75
+    assert status.returncode == 3
+    assert (tmp_path / "state" / "pid").exists()  # nobody removed the first start's file
+
+
+@pytest.mark.parametrize("content", ["-1 0 x", "0 0 x", "1 1 x", "abc def x", ""])
+def test_a_bad_or_foreign_pid_file_is_never_signalled_and_is_cleaned_up(
+    tmp_path: Path, content: str
+) -> None:
+    (tmp_path / "state").mkdir()
+    (tmp_path / "state" / "pid").write_text(content + "\n", encoding="utf-8")
+    run = _run(tmp_path, "stop")
+    assert run.returncode == 0, run.stderr
+    assert "not running" in run.stdout
+    assert not (tmp_path / "state" / "pid").exists()
+
+
+def test_a_live_process_that_is_not_our_server_is_not_killed(tmp_path: Path) -> None:
+    victim = subprocess.Popen(["sleep", "30"])  # noqa: S607
+    try:
+        fields = Path(f"/proc/{victim.pid}/stat").read_text().rsplit(") ", 1)[1].split()
+        (tmp_path / "state").mkdir()
+        (tmp_path / "state" / "pid").write_text(f"{victim.pid} {fields[19]} x\n", encoding="utf-8")
+        assert _run(tmp_path, "status").returncode == 3
+        assert _run(tmp_path, "stop").returncode == 0
+        assert victim.poll() is None
+    finally:
+        victim.kill()
+        victim.wait(timeout=10)
