@@ -145,17 +145,20 @@ successful in the newest `pull_request` run of `ci.yml`, `security.yml`, `build-
 `pruefstand/gate` is verified (success by `pruefstand-bot[bot]`) **only if the ruleset lists it**, which it does not today (owner: D5, after T6.2b),
 so today a gated PR can merge without tier 2; any other listed context is unverifiable and refused. It then squash-merges with
 `--match-head-commit` and posts one "merged by lead" comment. It refuses with exit 3 ("owner merge required") when the changes touch an
-owner-merge path (renames and deletions included; casefolded): `.github/workflows/**`, `.github/actions/**`, any `CODEOWNERS`, `.github/dependabot.yml`, `infra/gpu/pruefstand-cluster`, `infra/gpu/install-cluster-wrapper.sh`, `infra/gpu/*.sh`, `infra/vm/**`, `infra/cluster/**`, `infra/gate-executor/**`, `**/sudoers*`, `security.yml`, `.gitleaks*`, `.gitleaksignore`, `.claude/**`, `docs/ops/secrets.md`, `scripts/merge_reviewed.sh`, `scripts/merge_paths.py`, `scripts/hooks/**`. The owner merges those, including any change to the script itself.
+owner-merge path (renames and deletions included; casefolded): `.github/workflows/**`, `.github/actions/**`, any `CODEOWNERS`, `.github/dependabot.yml`, `infra/gpu/pruefstand-cluster`, `infra/gpu/install-cluster-wrapper.sh`, `infra/gpu/*.sh`, `infra/vm/**`, `infra/cluster/**`, `infra/gate-executor/**`, `**/sudoers*`, `security.yml`, `.gitleaks*`, `.gitleaksignore`, `.claude/**`, `docs/ops/secrets.md`, `scripts/merge_reviewed.sh`, `scripts/merge_paths.py`, `scripts/hooks/**`, `scripts/lead/**`. The owner merges those, including any change to the script itself.
 Never `--admin`. The refusal is advisory: without the admin bypass, `uv run gh pr merge <n> --squash` can still merge an owner-path PR once the
 checks are green (0 approvals, no code-owner review). Git's own configuration (`url.insteadOf`, `GIT_CONFIG_COUNT`) and bash's lazy reading of the script file are trusted.
 
 ## 10. Lead helper scripts (D1230)
 
-`scripts/lead/` holds the helpers (nothing lives only in `/tmp` or `~/.local/lead-bin` any more): `draft_push.sh [--dry-run] <worktree> <branch> <title> <msg-file> <body-file>`
-(ruff check + format check, commit, plain push, DRAFT PR against `main`), `draft_update.sh [--dry-run] <worktree> <branch> <msg-file>` and
-`resolve_merge.sh [--dry-run] <worktree> <branch> [pytest args...]` (merge `origin/main`; both sides kept in `docs/decisions.md`, `docs/decisions/**` and the other append-only
-files; stops on other conflicts, duplicate D-numbers and leftover markers; progress in `<git-dir>/lead-resolve-merge.state`, a rerun resumes; `LEAD_TEST_TIMEOUT` bounds pytest). A message
-or PR body with a `Claude-Session:` line or a "Generated with Claude Code" footer is refused (exit 2). They work from any cwd.
+`scripts/lead/` holds the helpers (nothing lives only in `/tmp` or `~/.local/lead-bin` any more); the folder is an owner-merge path because the wrappers run `origin/main`'s copy with the lead's rights.
+`draft_push.sh [--dry-run] [--add <path>]... <worktree> <branch> <title> <msg-file> <body-file>` (ruff check + format check, commit, plain push of exactly that branch, DRAFT PR against `main`),
+`draft_update.sh [--dry-run] [--add <path>]... <worktree> <branch> <msg-file>` and `resolve_merge.sh [--dry-run] <worktree> <branch> [pytest args...]`. Staging: tracked changes plus the
+`--add` paths; other untracked files, files over 1 MB and secret-looking names (`.env`, `*.pem`, `id_*`, ...) are refused. A message, body, title or committed message with a `Claude-Session:` line or a
+"Generated with/by Claude Code" footer is refused (exit 2). `resolve_merge.sh` merges `origin/main` (a merge already in progress must be of `origin/main`), keeps both sides in `docs/decisions.md` and the other
+append-only files, stops on other conflicts (every conflict under `docs/decisions/**` included), duplicate D-numbers and leftover markers; progress is in `<git-dir>/lead-resolve-merge.state` and a rerun resumes;
+pytest runs in its own process group bounded by `LEAD_TEST_TIMEOUT` and dies with the script (after a SIGKILL of the script an orphaned pytest holds the lock until it ends or you kill the group named
+`child_pgid` in the state file); `--dry-run` uses the local `origin/main` and does not fetch. They work from any cwd.
 
 A worktree of a stale branch lacks `scripts/lead/`: call the wrappers instead. `scripts/lead/install_wrappers.sh` (run once from the main checkout, no sudo; `--dir` and `--main` override the
 defaults) writes `~/.local/bin/lead-draft-push`, `lead-draft-update` and `lead-resolve-merge`; each fetches `origin/main` in the main checkout (`~/code/pruefstand`), fast-forwards it when it is a clean `main`

@@ -11,6 +11,7 @@ the conflict markers away, exit 1 when a file has none or is not allowed), ``dup
 """
 
 import re
+import shutil
 import subprocess
 import sys
 from collections import Counter
@@ -31,7 +32,6 @@ APPEND_ONLY: frozenset[str] = frozenset(
         ".gitleaks.toml",
     }
 )
-APPEND_ONLY_PREFIXES: tuple[str, ...] = ("docs/decisions/",)
 ROW = re.compile(r"^\| D(\d+) \|")
 LAST = 10**9
 
@@ -39,12 +39,13 @@ LAST = 10**9
 def is_append_only(path: str) -> bool:
     """Return True when ``path`` may be resolved by keeping both sides.
 
-    >>> is_append_only("docs/decisions.md"), is_append_only("docs/decisions/d1200.md")
-    (True, True)
-    >>> is_append_only("scripts/x.py")
-    False
+    The per-decision files of ``docs/decisions/`` (one file per decision, front matter plus
+    prose) are NOT append-only: any conflict there needs a human.
+
+    >>> is_append_only("docs/decisions.md"), is_append_only("docs/decisions/D1200.md")
+    (True, False)
     """
-    return path in APPEND_ONLY or path.startswith(APPEND_ONLY_PREFIXES)
+    return path in APPEND_ONLY
 
 
 def _row_key(line: str) -> int:
@@ -53,21 +54,25 @@ def _row_key(line: str) -> int:
 
 
 def _merge_block(ours: list[str], theirs: list[str], *, rows: bool) -> list[str]:
-    lines = [ln for ln in ours + theirs if ln.strip()] if rows else ours + theirs
-    seen: set[str] = set()
-    merged: list[str] = []
-    for line in lines:
-        if line.strip() and line in seen:
-            continue
-        seen.add(line)
-        merged.append(line)
-    return sorted(merged, key=_row_key) if rows else merged
+    """Return ours followed by the lines of theirs that ours lacks (blank lines are kept).
+
+    Only lines identical ACROSS the two sides collapse; repeated lines within one side stay (code
+    fences). With ``rows`` the ``| D<n> |`` rows are ordered by number in the positions they occupy.
+    """
+    present = set(ours)
+    merged = list(ours) + [ln for ln in theirs if ln not in present or not ln.strip()]
+    if rows:
+        slots = [i for i, ln in enumerate(merged) if ROW.match(ln)]
+        ordered = sorted((merged[i] for i in slots), key=_row_key)
+        for slot, line in zip(slots, ordered, strict=True):
+            merged[slot] = line
+    return merged
 
 
 def resolve_text(text: str, *, rows: bool) -> tuple[str, int]:
     r"""Replace every conflict block by both sides; return the new text and the block count.
 
-    ``rows`` drops blank lines inside a block and orders ``| D<n> |`` rows by number.
+    ``rows`` orders ``| D<n> |`` rows by number (identical lines of the two sides appear once).
 
     >>> src = "a\n<<<<<<< HEAD\n| D2 | x |\n=======\n| D1 | y |\n>>>>>>> main\nb\n"
     >>> resolve_text(src, rows=True)
@@ -140,6 +145,14 @@ def _cmd_allowed(files: Sequence[str]) -> int:
     return 1 if bad else 0
 
 
+def _write_atomic(path: Path, text: str) -> None:
+    """Replace ``path`` with ``text`` through a temp file in the same directory (kill-safe)."""
+    tmp = path.with_name(path.name + ".lead-tmp")
+    tmp.write_text(text, encoding="utf-8")
+    shutil.copymode(path, tmp)
+    Path(tmp).replace(path)
+
+
 def _cmd_resolve(files: Sequence[str]) -> int:
     if _cmd_allowed(files):
         return 1
@@ -153,7 +166,7 @@ def _cmd_resolve(files: Sequence[str]) -> int:
         if blocks == 0:
             sys.stderr.write(f"NEEDS MANUAL: {path}: no conflict markers (modify/delete?)\n")
             return 1
-        Path(path).write_text(new, encoding="utf-8")
+        _write_atomic(Path(path), new)
         sys.stdout.write(f"resolved {path} ({blocks} block(s))\n")
     return 0
 

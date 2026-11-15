@@ -24,6 +24,10 @@ echo "$*" >> "$FAKE_DIR/gh.log"
 [ "$1 $2" = "pr create" ] && echo "https://github.com/dheena18/pruefstand/pull/1"
 exit 0
 """
+FAKE_GIT = f"""#!/usr/bin/env bash
+echo "$*" >> "$FAKE_DIR/git.log"
+exec "{shutil.which("git")}" "$@"
+"""
 FAKE_UV = f"""#!/usr/bin/env bash
 [ "$1" = run ] && shift
 tool="$1"; shift
@@ -72,6 +76,7 @@ class Lab:
         self.fake.mkdir()
         _exe(self.bin / "gh", FAKE_GH)
         _exe(self.bin / "uv", FAKE_UV)
+        _exe(self.bin / "git", FAKE_GIT)
         seed = root / "seed"
         seed.mkdir()
         git(seed, "init", "-q", "-b", "main")
@@ -138,6 +143,33 @@ class Lab:
             check=False,
             timeout=300,
         )
+
+    def popen(
+        self, script: str, *args: str, extra_env: dict[str, str] | None = None
+    ) -> subprocess.Popen[str]:
+        """Start ``scripts/lead/<script>`` without waiting (own session: signals reach only it)."""
+        env = {
+            **os.environ,
+            **GIT_ENV,
+            "PATH": f"{self.bin}:{os.environ['PATH']}",
+            "HOME": str(self.home),
+            "FAKE_DIR": str(self.fake),
+            **(extra_env or {}),
+        }
+        return subprocess.Popen(  # noqa: S603  # fixed argv
+            [str(LEAD / script), *args],
+            cwd=self.root,
+            env=env,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+            start_new_session=True,
+        )
+
+    def git_log(self) -> str:
+        """Return the log of git calls made by the scripts (through the fake git)."""
+        log = self.fake / "git.log"
+        return log.read_text(encoding="utf-8") if log.exists() else ""
 
     def gh_log(self) -> str:
         """Return the fake gh call log."""

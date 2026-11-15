@@ -1,17 +1,21 @@
 """Flag ``pgrep -f`` / ``pkill -f`` that can match more than the intended process (D1230).
 
-Scans shell scripts, Makefiles / ``mk/*.mk`` and the ``run:`` blocks of workflows (text inside
-quotes, such as ``ssh host 'pkill -f x'``, and heredoc bodies included). A full-command-line match
-also hits the shell that carries the pattern in its own command line and every other session whose
-arguments contain it (a ``pkill -f`` once killed another session's polling loop). Accepted: the
-bracket trick (``pgrep -f '[x]yz'``), ``-x`` / ``--exact``, ``-P`` / ``--parent``, ``-F`` /
-``--pidfile`` (a PID file), a PID kept by the caller (no pgrep at all), or a
-``# selfmatch-ok: <reason>`` comment on the line.
+Scans shell scripts (``.sh``, ``.bash``, ``.zsh``, extensionless with an sh shebang), Makefiles
+and ``mk/*.mk``, systemd ``.service`` files, Dockerfiles (``HEALTHCHECK``, ``RUN``), the ``run:``
+blocks of workflows and composite actions, and the command strings of Python ``subprocess`` /
+``os.system`` calls. Text inside quotes (``ssh host 'pkill -f x'``), heredoc bodies and
+backslash-continued lines are covered. A full-command-line match also hits the shell that carries
+the pattern in its own command line and every other session whose arguments contain it (a
+``pkill -f`` once killed another session's polling loop). Accepted: the bracket trick
+(``pgrep -f '[x]yz'``), ``-x`` / ``--exact``, ``-P`` / ``--parent``, ``-F`` / ``--pidfile`` (a PID
+file), a PID kept by the caller (no pgrep at all), or a ``# selfmatch-ok: <reason>`` comment on the
+line. Signal names (``-HUP``, ``-STOP``) are not options.
 
 Usage: ``python scripts/check_self_matching_pgrep.py [ROOT]`` (default: the repository root).
 Prints one finding per line and exits 1, or prints ``ok: N files checked`` and exits 0.
 """
 
+import ast
 import re
 import subprocess
 import sys
@@ -29,6 +33,49 @@ SKIP_DIRS = frozenset(
     {".git", ".venv", "node_modules", "__pycache__", ".mypy_cache", ".ruff_cache"}
 )
 STOP = ";&|)\n"
+SIGNALS = frozenset(
+    [
+        "HUP",
+        "INT",
+        "QUIT",
+        "ILL",
+        "TRAP",
+        "ABRT",
+        "BUS",
+        "FPE",
+        "KILL",
+        "USR1",
+        "SEGV",
+        "USR2",
+        "PIPE",
+        "ALRM",
+        "TERM",
+        "STKFLT",
+        "CHLD",
+        "CONT",
+        "STOP",
+        "TSTP",
+        "TTIN",
+        "TTOU",
+        "URG",
+        "XCPU",
+        "XFSZ",
+        "VTALRM",
+        "PROF",
+        "WINCH",
+        "IO",
+        "PWR",
+        "SYS",
+    ]
+)
+SHELL_SUFFIXES = frozenset({".sh", ".bash", ".zsh", ".mk", ".service"})
+PY_CALLS = frozenset(
+    {"system", "popen", "run", "call", "check_call", "check_output", "Popen", "getoutput"}
+    | {"getstatusoutput", "create_subprocess_shell", "create_subprocess_exec"}
+)
+MESSAGE = (
+    "pgrep/pkill -f can match its own or another command line ('[x]yz', -x, -P, -F, PID file): "
+)
 
 
 def _tokens(rest: str) -> list[str]:
@@ -71,16 +118,28 @@ def _tokens(rest: str) -> list[str]:
 def flags_of(tokens: Sequence[str]) -> tuple[set[str], list[str]]:
     """Return the option letters/words used and the remaining (pattern) tokens.
 
-    >>> flags_of(["-9", "-fx", "pat"])
-    ({'f', 'x'}, ['pat'])
+    Signal names (``-HUP``, ``-SIGSTOP``, ``-9``) are skipped; everything after ``--`` is a pattern.
+
+    >>> letters, rest = flags_of(["-9", "-fx", "pat"])
+    >>> sorted(letters), rest
+    (['f', 'x'], ['pat'])
+    >>> flags_of(["-HUP", "-f", "--", "-x"])
+    ({'f'}, ['-x'])
     """
     letters: set[str] = set()
     rest: list[str] = []
+    after_dashes = False
     for tok in tokens:
-        if tok.startswith("--") and len(tok) > 2:
+        if after_dashes:
+            rest.append(tok)
+        elif tok == "--":
+            after_dashes = True
+        elif tok.startswith("--") and len(tok) > 2:
             letters.add(tok.split("=", 1)[0])
-        elif re.fullmatch(r"-[A-Za-z]+", tok):
-            letters.update(tok[1:])
+        elif re.fullmatch(r"-[A-Za-z][A-Za-z0-9]*", tok):
+            body = tok[1:]
+            if body.upper().removeprefix("SIG") not in SIGNALS:
+                letters.update(body)
         elif not re.fullmatch(r"-\d+", tok):
             rest.append(tok)
     return letters, rest
@@ -91,8 +150,10 @@ def offends(tokens: Sequence[str]) -> bool:
 
     >>> offends(["-f", "worker"]), offends(["-f", "[w]orker"]), offends(["-fx", "worker"])
     (True, False, False)
-    >>> offends(["-x", "worker"]), offends(["-u", "me", "-P", "1", "-f", "w"])
-    (False, False)
+    >>> offends(["-HUP", "-f", "w"]), offends(["-f", "--", "-x"])
+    (True, True)
+    >>> offends(["-u", "me", "-P", "1", "-f", "w"])
+    False
     """
     letters, rest = flags_of(tokens)
     if "f" not in letters and "--full" not in letters:
@@ -102,14 +163,33 @@ def offends(tokens: Sequence[str]) -> bool:
     return not any(BRACKET.search(tok) for tok in rest)
 
 
+def logical_lines(text: str) -> Iterator[tuple[int, str]]:
+    r"""Yield ``(first line number, text)`` with backslash-continued lines joined.
+
+    >>> list(logical_lines("pgrep \\\n  -f x\nb"))
+    [(1, 'pgrep    -f x'), (3, 'b')]
+    """
+    buf, start = "", 0
+    for number, line in enumerate(text.split("\n"), start=1):
+        if not buf:
+            start = number
+        if line.rstrip().endswith("\\"):
+            buf += line.rstrip()[:-1] + " "
+            continue
+        yield start, buf + line
+        buf = ""
+    if buf:
+        yield start, buf
+
+
 def scan_text(text: str) -> Iterator[tuple[int, str]]:
     """Yield ``(line number, source line)`` of every offending pgrep/pkill use in ``text``."""
-    for number, line in enumerate(text.split("\n"), start=1):
-        stripped = line.lstrip()
-        if stripped.startswith("#") or OK_MARK in line:
+    for number, line in logical_lines(text):
+        if line.lstrip().startswith("#") or OK_MARK in line:
             continue
-        for match in COMMAND.finditer(line):
-            if offends(_tokens(line[match.end() :])):
+        flat = re.sub(r'"\s*,\s*"', " ", line)  # exec-form lists: ["pgrep", "-f", "x"]
+        for match in COMMAND.finditer(flat):
+            if offends(_tokens(flat[match.end() :])):
                 yield number, line.strip()
                 break
 
@@ -143,10 +223,56 @@ def workflow_run_blocks(text: str) -> list[tuple[int, str]]:
     return out
 
 
+def _command_text(node: ast.expr) -> str:
+    """Render a call argument (string, f-string or list of strings) as one command line."""
+    if isinstance(node, ast.Constant) and isinstance(node.value, str):
+        return node.value
+    if isinstance(node, ast.JoinedStr):
+        return "".join(
+            p.value if isinstance(p, ast.Constant) and isinstance(p.value, str) else "X"
+            for p in node.values
+        )
+    if isinstance(node, ast.List | ast.Tuple):
+        parts = [
+            _command_text(e) if isinstance(e, ast.Constant | ast.JoinedStr) else "X"
+            for e in node.elts
+        ]
+        return " ".join(parts)
+    return ""
+
+
+def scan_python(text: str) -> Iterator[tuple[int, str]]:
+    """Yield offending pgrep/pkill command strings passed to subprocess / os.system style calls."""
+    try:
+        tree = ast.parse(text)
+    except SyntaxError:
+        return
+    lines = text.split("\n")
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.Call) or not node.args:
+            continue
+        func = node.func
+        name = func.attr if isinstance(func, ast.Attribute) else getattr(func, "id", "")
+        if name not in PY_CALLS:
+            continue
+        end = node.end_lineno or node.lineno
+        if any(OK_MARK in ln for ln in lines[node.lineno - 1 : end]):
+            continue
+        command = _command_text(node.args[0])
+        if any(True for _ in scan_text(command)):
+            yield node.lineno, lines[node.lineno - 1].strip()
+
+
 def _is_shell(path: Path) -> bool:
-    if path.suffix in {".sh", ".bash"}:
+    if path.suffix in SHELL_SUFFIXES or path.name == "Makefile":
         return True
-    if path.suffix or path.name == "Makefile":
+    if (
+        path.name == "Dockerfile"
+        or path.name.startswith("Dockerfile.")
+        or path.suffix == ".dockerfile"
+    ):
+        return True
+    if path.suffix:
         return False
     try:
         with path.open("rb") as fh:
@@ -178,14 +304,19 @@ def candidate_files(root: Path) -> Iterator[Path]:
             yield path
 
 
+def _kind(path: Path, rel: str) -> str:
+    in_yaml = path.suffix in {".yml", ".yaml"}
+    if in_yaml and (rel.startswith(".github/workflows/") or rel.startswith(".github/actions/")):
+        return "workflow"
+    if path.suffix == ".py":
+        return "python"
+    return "shell" if _is_shell(path) else ""
+
+
 def file_findings(path: Path, root: Path) -> list[str]:
     """Return the findings of one file (``rel:line: message``)."""
     rel = path.relative_to(root).as_posix()
-    kind = ""
-    if rel.startswith(".github/workflows/") and path.suffix in {".yml", ".yaml"}:
-        kind = "workflow"
-    elif path.suffix == ".mk" or path.name == "Makefile" or _is_shell(path):
-        kind = "shell"
+    kind = _kind(path, rel)
     if not kind:
         return []
     try:
@@ -196,12 +327,11 @@ def file_findings(path: Path, root: Path) -> list[str]:
     if kind == "workflow":
         for first, block in workflow_run_blocks(text):
             hits.extend((first + n - 1, src) for n, src in scan_text(block))
+    elif kind == "python":
+        hits.extend(scan_python(text))
     else:
         hits.extend(scan_text(text))
-    msg = (
-        "pgrep/pkill -f can match its own or another command line ('[x]yz', -x, -P, -F, PID file): "
-    )
-    return [f"{rel}:{n}: {msg}{src}" for n, src in hits]
+    return [f"{rel}:{n}: {MESSAGE}{src}" for n, src in hits]
 
 
 def main(argv: Sequence[str] | None = None) -> int:
