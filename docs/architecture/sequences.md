@@ -376,7 +376,7 @@ sequenceDiagram
     Exp->>Cal: calibration_table(labels, verdicts)
     Cal-->>Exp: binary kappa with 95 % cluster-bootstrap CI on the full set, specificity on the hard-negative subset with Wilson bound, Spearman, cost, latency, bias
     alt some judge has kappa >= 0.6 on the full set and specificity >= 0.80 on hard negatives (Wilson lower bound >= 0.70)
-        Exp->>Exp: pin the cheapest passing judge, store its 50 drift-anchor verdicts, update decision log
+        Exp->>Exp: pin the cheapest passing judge, store its 50 drift-anchor verdicts, add a decision file (`docs/decisions/D<n>.md`)
     else no judge passes
         Exp->>Exp: judged metrics informational only in every tier, follow-up opened
     end
@@ -385,7 +385,7 @@ sequenceDiagram
 Calibration is offline and scripted with a fixed seed. κ is never computed on a single-label subset
 (X1.1); the in-domain `legal_hard` set is built in T5.3 (X3.1). Hard negatives (D119) are same-paragraph wrong
 spans, number/date swaps, negation flips, partially correct answers and MEMERAG "Not Supported" items.
-The chosen gating judge goes into config and the decision log, and changing a judge prompt version means
+The chosen gating judge goes into config and a decision file (`docs/decisions/D<n>.md`), and changing a judge prompt version means
 re-running this sequence.
 
 ## 7. Demo "Try it" query

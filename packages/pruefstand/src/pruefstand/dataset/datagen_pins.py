@@ -9,8 +9,8 @@ Two backends, chosen by ``PRUEFSTAND_DATAGEN_BACKEND`` (``PruefstandSettings.dat
 - ``github``: the GitHub Models catalogue ids (retired 2026-07-30; kept so old cassettes and
   ledgers stay readable). Families ``gpt`` (datagen) and ``llama`` (cross-check).
 
-Changing a pin is a row in ``docs/decisions.md``, not a code change elsewhere. No pin is the
-generator family ``qwen`` or the judge family ``gemma`` (``core/data/model_families.yaml``).
+Changing a pin is a decision file ``docs/decisions/D<n>.md``, not a code change elsewhere. No pin
+is the generator family ``qwen`` or the judge family ``gemma`` (``core/data/model_families.yaml``).
 """
 
 from pruefstand.core.settings import DatagenBackend

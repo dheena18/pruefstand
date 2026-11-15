@@ -6,7 +6,8 @@ Rules, applied to ``git ls-files``:
 * a tracked ``*.xml.zip``, ``*.parquet`` or ``*.arrow`` fails unless it matches ``ALLOWLIST``;
 * any tracked path with a ``memerag`` component fails, allowlist or not (MEMERAG is download-only).
 
-Extending ``ALLOWLIST`` is an interface change (decision line + T2.1 prompt), never a quiet edit.
+Extending ``ALLOWLIST`` is an interface change (decision file ``docs/decisions/D<n>.md`` + T2.1
+prompt), never a quiet edit.
 Prints ``OK`` and exits 0, or one line per violation and exits 1.
 """
 
