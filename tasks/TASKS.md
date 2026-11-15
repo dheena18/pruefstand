@@ -1,7 +1,7 @@
 # Prüfstand — master task list (round-13 revision: App-pinned gate status, dispatch-only tier 2, `full` quota, contracts `post_status`/`--stratum`/nightly counter; round-12 revision: nightly blocks, proxy options, drift rule; round-11 revision: one VM identity, `/v1/retrieve`, native Ollama, GitHub Pages; round-10 revision: real cluster + TrueNAS VM; round 9; round 8: tier-1 fit, executor operations, UI spec)
 
 Every task has one prompt file `prompts/<ID>-<slug>.md` (index: `prompts/README.md`). Round-8 changes
-(`docs/decisions.md` D94–D145) are marked **R8** in the task cells; round-9 changes (D146–D195,
+(`docs/decisions/` D94–D145) are marked **R8** in the task cells; round-9 changes (D146–D195,
 `docs/planning/reviews/round9-resolution.md`) are marked **R9**; round-10 changes (D196–D210,
 `docs/planning/reviews/round10-resolution.md` Z1–Z7: Ollama-only serving on the cluster, everything else on
 the TrueNAS VM `pruefstand-exec`) are marked **R10**; round-11 changes (D211–D247; D242–D247 from the round-11 integration,

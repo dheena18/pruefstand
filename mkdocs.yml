@@ -37,6 +37,7 @@ validation:
 # Historical material stays out of the site and is never edited to satisfy strict mode.
 exclude_docs: |
   planning/
+  decisions/
   spec/SPEC-v1-original.md
   ops/setup-log.md
   architecture/generated/module-deps.svg
@@ -70,7 +71,9 @@ nav:
   - Home: index.md
   - Review: _external/review.md
   - Spec: spec/SPEC.md
-  - Decisions: decisions.md
+  - Decisions:
+      - decisions.md
+      - Decision log (generated): decisions-log.md
   - ADRs:
       - adr/README.md
       - adr/0001-monorepo-uv-pnpm.md

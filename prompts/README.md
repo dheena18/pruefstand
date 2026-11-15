@@ -23,7 +23,7 @@ update, and a **Prompt to paste** block at the end.
 
 UI prompts (T1.9, T6.4, T8.1–T8.5, T9.2) cite their sections of `docs/design/ui-spec.md`, the UI source of
 truth (D134). Binding round-8 decisions are D94–D145 and binding round-9 decisions D146–D195 in
-`docs/decisions.md` (source: `docs/planning/reviews/round9-resolution.md`), binding round-10 decisions D196–D210
+`docs/decisions/` (source: `docs/planning/reviews/round9-resolution.md`), binding round-10 decisions D196–D210
 (source: `docs/planning/reviews/round10-resolution.md`: Ollama-only cluster, TrueNAS VM as dev + executor host),
 binding round-11 decisions D211–D241 (source: `docs/planning/reviews/round11-resolution.md` Y1–Y7: one VM service
 user `pruefstand`, `/var/lib/pruefstand/gpu.lock` + `pruefstand-lock`, rootful Docker, dev ports `PORT_OFFSET=10000`,
@@ -36,8 +36,8 @@ binding round-13 decisions D287–D323 (D319–D323 from the round-13 integratio
 `gate-router.yml` + App-pinned `pruefstand/gate`, tier 2 only by owner `workflow_dispatch` (no `run-gate` label),
 `full` quota and `Split.RQ1`, judged subset on generation + judging, `post_status`, `--stratum`,
 `state/nightly_counter`, `release-b<k>` anchors, whole-tree dashboard publish, `demo-ready.yml`, `build-id.txt`);
-where a prompt and a D-row disagree,
-the newer D-row wins and the prompt is fixed in the same PR. Before merging, re-derive the task's rows in
+where a prompt and a decision file (`docs/decisions/D<n>.md`) disagree,
+the newer decision wins and the prompt is fixed in the same PR. Before merging, re-derive the task's rows in
 `docs/engineering/test-matrix.md` from the prompt's "Tests to write first" table (real file names; D182).
 
 Support files: [`_TEMPLATE.md`](_TEMPLATE.md) (structure every prompt follows) ·
