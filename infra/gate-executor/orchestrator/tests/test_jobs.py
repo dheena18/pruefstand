@@ -155,3 +155,29 @@ def test_no_run_gate_label_and_no_not_gated_status_in_the_package() -> None:
     assert "/labels" not in source
     assert "not gated" not in source
     assert "not_gated" not in source
+
+
+@pytest.mark.parametrize(
+    "pr",
+    [
+        {"number": 7, "head": {"sha": HEAD, "repo": None}, "base": {"repo": None}},
+        {"number": 7, "head": {"sha": HEAD, "repo": None}, "base": {}},
+        {"number": 7, "head": {"sha": HEAD}, "base": {"repo": {"full_name": REPO}}},
+        {"number": 7, "head": {"sha": HEAD, "repo": {"full_name": REPO}}, "base": {"repo": None}},
+        {"number": 7, "head": {"sha": HEAD, "repo": {}}, "base": {"repo": {}}},
+    ],
+    ids=["both-null", "base-missing", "head-repo-missing", "base-null", "names-missing"],
+)
+def test_missing_repo_info_fails_closed_as_a_fork(pr: dict[str, Any]) -> None:
+    # D1087: no repo identity = untrusted; never a gate job on an unmirrored head
+    assert _select(["uv.lock"], pr=pr) == [
+        Job(kind="pending", sha=HEAD, pr_number=7, tier="pr", reason=FORK_MOVED)
+    ]
+    mirrored = _select(["uv.lock"], pr=pr, mirror=HEAD)
+    assert [j.kind for j in mirrored] == ["gate"]  # the owner's mirror still works
+
+
+def test_same_repo_needs_both_names_equal() -> None:
+    assert [j.kind for j in _select(["uv.lock"])] == ["gate"]
+    other = _pr("dheena18/other")
+    assert _select(["uv.lock"], pr=other)[0].reason == FORK_MOVED

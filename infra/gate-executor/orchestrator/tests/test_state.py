@@ -14,6 +14,10 @@ from gate_orchestrator.state import (
     read_counter,
 )
 
+from pruefstand.core.errors import ConfigError
+from pruefstand.pipeline.select import nightly_counter_path as pipeline_path
+from pruefstand.pipeline.select import read_nightly_counter
+
 AT = datetime(2026, 11, 10, 7, 30, tzinfo=UTC)
 
 
@@ -73,8 +77,9 @@ def test_counter_path_from_env() -> None:
     assert nightly_counter_path({"PRUEFSTAND_NIGHTLY_COUNTER": "/x/c"}) == Path("/x/c")
     home = {"PRUEFSTAND_HOME": "/srv/ph"}
     assert nightly_counter_path(home) == Path("/srv/ph/state/nightly_counter")
-    with pytest.raises(ValueError, match="unset"):
-        nightly_counter_path({})
+    assert (
+        nightly_counter_path({}) == Path("~/pruefstand").expanduser() / "state" / "nightly_counter"
+    )
 
 
 def test_counter_missing_is_zero_and_increment_is_atomic(tmp_path: Path) -> None:
@@ -91,7 +96,7 @@ def test_counter_missing_is_zero_and_increment_is_atomic(tmp_path: Path) -> None
 def test_invalid_counter_is_an_error(tmp_path: Path, text: str) -> None:
     path = tmp_path / "nightly_counter"
     path.write_text(text, encoding="utf-8")
-    with pytest.raises(ValueError, match="nightly counter"):
+    with pytest.raises(ConfigError, match="nightly counter"):
         read_counter(path)
 
 
@@ -113,3 +118,19 @@ def test_counter_moves_only_after_a_completed_nightly(
     path.write_text("4", encoding="utf-8")
     assert finish_nightly(path, status) == expected
     assert read_counter(path) == expected
+
+
+@pytest.mark.parametrize("text", ["\u0663", "\u00b2", "1" * 30, "+4", " 4 x"])
+def test_counter_parser_matches_the_pipeline(tmp_path: Path, text: str) -> None:
+    # D1087: one parser for the orchestrator (writer) and `pruefstand run --block auto` (reader)
+    path = tmp_path / "nightly_counter"
+    path.write_text(text, encoding="utf-8")
+    with pytest.raises(ConfigError):
+        read_nightly_counter(path)
+    with pytest.raises(ConfigError):
+        read_counter(path)
+
+
+def test_counter_path_default_matches_the_pipeline() -> None:
+    for env in ({"PRUEFSTAND_NIGHTLY_COUNTER": "/x/c"}, {"PRUEFSTAND_HOME": "/srv/ph"}, {}):
+        assert nightly_counter_path(env) == pipeline_path(env)
