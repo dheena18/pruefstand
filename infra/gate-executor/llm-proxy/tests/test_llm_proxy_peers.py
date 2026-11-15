@@ -27,7 +27,8 @@ def port() -> Iterator[int]:
     cfg = proxy.ProxyConfig(
         key="unit-test-key", policy=build_policy(CATALOGUE, ["bge-m3"]), upstream="http://127.0.0.1:9",
         client_timeout_s=5, max_connections=4, request_deadline_s=5, reserve_deadline_s=2,
-        trusted_peers=frozenset({TRUSTED}), per_peer_connections=4,
+        # per_peer_connections > the cap: the cap, not the per-peer limit, refuses below
+        trusted_peers=frozenset({TRUSTED}), per_peer_connections=10,
     )  # fmt: skip
     server = proxy.serve(cfg, ("0.0.0.0", 0))  # noqa: S104 - test binds all loopback addresses
     threading.Thread(target=server.serve_forever, daemon=True).start()

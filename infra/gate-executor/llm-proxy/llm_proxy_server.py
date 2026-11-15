@@ -63,7 +63,12 @@ class BoundedServer(ThreadingHTTPServer):
         for slot, health_only in options:
             if slot.acquire(blocking=False):
                 args = (request, client_address, slot, health_only)
-                threading.Thread(target=self._serve, args=args, daemon=True).start()
+                try:
+                    threading.Thread(target=self._serve, args=args, daemon=True).start()
+                except BaseException:  # D1078: a failed start must not leak the slot or the count
+                    slot.release()
+                    self._release_peer(peer)
+                    raise
                 return
         self._release_peer(peer)
         self.shutdown_request(request)

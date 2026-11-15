@@ -22,3 +22,9 @@ without bounds keeps the default (D1060).
 Tests: `uv run pytest infra/gate-executor/llm-proxy/tests -q` (pure policy on the real catalogue, the server against
 a local recording upstream, static compose/Dockerfile checks). The live checks from a candidate container are T6.2a's
 `[GPU] [DOCKER]` Done-when items.
+
+Reading `/health` (D1078): the reserve slots serve only trusted peers (default loopback). The orchestrator must
+read `/health` with `docker exec` inside the `llm-proxy` container (loopback) or from an address listed in
+`trusted_peers`. A request from the VM host reaches the container from the `gate-net` gateway address and counts as
+untrusted: it gets a normal slot only while the cap is not full.
+
