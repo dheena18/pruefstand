@@ -1,5 +1,5 @@
 {
-  "recorded_at": "2026-11-10T01:20:06+00:00",
+  "recorded_at": "2026-11-15T07:02:12+00:00",
   "model_id": "ollama/gemma3:12b",
   "model_version": null,
   "request": {
@@ -47,14 +47,14 @@
     }
   },
   "response": {
-    "text": "{\"reason\": \"Die Antwort gibt einen inhaltlichen Bescheid auf die Frage.\", \"score\": 0}",
+    "text": "{\"reason\": \"Die Antwort gibt einen inhaltlichen Bescheid zur Frage.\", \"score\": 0}",
     "model": "ollama/gemma3:12b",
     "usage": {
       "prompt_tokens": 643,
-      "completion_tokens": 24
+      "completion_tokens": 23
     },
     "cost_usd": 0.0,
-    "latency_ms": 3507.6901549473405,
+    "latency_ms": 3414.322553000602,
     "cached": false,
     "provider": "ollama",
     "fallback": false,
