@@ -181,9 +181,9 @@ sources:
   kind: gii
   abbrev: UWG
   slug: uwg_2004
-  pinned: '2026-10-31'
+  pinned: '2026-11-10'
   files:
-    xml.zip: ab59e944f8ffdd5f9b677808893372a5fb79bb596522eb4ac25d187d94cc6db1
+    xml.zip: dd95caf09bb124a41655df4144875dc7bb5ea51d0b1846e77c99d05a7e8817c9
 - id: gii:tdddg
   kind: gii
   abbrev: TDDDG
