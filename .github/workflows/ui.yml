@@ -302,7 +302,8 @@ jobs:
         run: scripts/dashboard/build_set.sh populated
       - name: Lighthouse CI (budgets of ui-spec 14.3; @lhci/cli is fetched on demand, not a dependency)
         run: |
-          export CHROME_PATH="$(cd apps/dashboard && node -e "process.stdout.write(require('@playwright/test').chromium.executablePath())")"
+          CHROME_PATH="$(cd apps/dashboard && node -e "process.stdout.write(require('@playwright/test').chromium.executablePath())")"
+          export CHROME_PATH
           (cd apps/dashboard && npx --yes @lhci/cli@0.14.0 autorun --config=lighthouserc.cjs)
       - name: Upload the Lighthouse report
         if: always()
