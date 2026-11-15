@@ -104,7 +104,7 @@ VM reboot test, TrueNAS host reboot test V7).
 | T0.6 | `docs/T0.6-cluster-feasibility` | `infra/cluster/feasibility/**` (tunnel check on the existing tunnel or temporary port 21434, Y1.4, ADR-0018; detached-process-survives-logout check, Y5.4), `scripts/models/quota_probe.py`, gpu-cluster.md §0.2 rows C1–C9, ci-cd.md §1.1a | GPU, NET, HUMAN | 2 |
 | T0.5 (human) | — | GitHub settings, App `pruefstand-bot` | HUMAN | 1 |
 
-Shared hunks: `live-e2e.yml` (T0.6 input `probe_quota`). Merge: T1.2 → T1.5a → T0.4 → T0.6.
+Shared hunks: `live-e2e.yml` (T0.6 input `probe_quota`; removed by D1202, GitHub Models retired). Merge: T1.2 → T1.5a → T0.4 → T0.6.
 Checkpoint: `make check`, `make docs`; T0.6 verdict `go`/`go-with-conditions` (else stop GPU lane).
 Human: T0.5; T0.6 probe over SSH + admin questions; after merge, the 24-hour quota probe follow-up PR (S7).
 

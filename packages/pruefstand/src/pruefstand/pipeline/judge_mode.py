@@ -1,7 +1,8 @@
 """Stack and judge mode of a run (T1.10 S4, round-8 W1.4 / W3.9).
 
-``judge_mode`` is ``github`` (tier 1, informational), ``local`` (tier 2) or ``skipped``. There is
-no CPU judge in any tier.
+``judge_mode`` is ``local`` (tier 2) or ``skipped``; ``github`` (the tier-1 GitHub Models judge)
+is retired (2026-07-30, D1202): it is never selected and a request for it is refused. It stays in
+``JudgeMode`` only so older ``run.json`` files still read. There is no CPU judge in any tier.
 """
 
 import re
@@ -25,7 +26,8 @@ from pruefstand.pipeline.select import Tier
 Stack = Literal["live", "a40"]
 JudgeMode = Literal["github", "local", "skipped"]
 _STACKS: tuple[Stack, ...] = ("live", "a40")
-_MODES: tuple[JudgeMode, ...] = ("github", "local", "skipped")
+_MODES: tuple[JudgeMode, ...] = ("local", "skipped")
+RETIRED = "GitHub Models is retired (2026-07-30, D1202)"
 _SHOWABLE = re.compile(r"[a-z0-9_-]{1,12}")
 
 
@@ -65,36 +67,41 @@ def requested_judge_mode(
 ) -> JudgeMode:
     """Decide the judge mode before the run.
 
-    ``PRUEFSTAND_JUDGE_MODE`` names the mode explicitly (``skipped`` for fork PRs). Without it the
-    mode follows the stack: ``live`` is ``github`` (``skipped`` when no GitHub Models token is
-    present), ``a40`` is ``local``.
+    ``PRUEFSTAND_JUDGE_MODE`` names the mode explicitly. Without it the mode follows the stack:
+    ``live`` is ``skipped`` (no tier-1 judge since D1202, whether or not an old GitHub Models token
+    is set), ``a40`` is ``local``.
 
     Args:
         stack: ``live`` or ``a40``.
         env: The environment.
-        has_models_token: Whether ``PRUEFSTAND_GH_MODELS_TOKEN`` is set.
+        has_models_token: Whether ``PRUEFSTAND_GH_MODELS_TOKEN`` is set; ignored since D1202 (kept
+            so the signature in ``interfaces.md`` is unchanged).
 
     Returns:
         The requested mode.
 
     Raises:
-        ConfigError: ``PRUEFSTAND_JUDGE_MODE`` is not ``github``, ``local`` or ``skipped``
-            (``cpu`` never existed as a tier).
+        ConfigError: ``PRUEFSTAND_JUDGE_MODE`` is ``github`` (retired) or not ``local`` /
+            ``skipped`` (``cpu`` never existed as a tier).
 
     Examples:
         >>> requested_judge_mode(stack="a40", env={}, has_models_token=False)
         'local'
+        >>> requested_judge_mode(stack="live", env={}, has_models_token=True)
+        'skipped'
     """
+    del has_models_token  # D1202: a token never selects the retired GitHub Models judge
     value = env.get("PRUEFSTAND_JUDGE_MODE")
+    if value == "github":
+        msg = f"PRUEFSTAND_JUDGE_MODE=github: {RETIRED}; use skipped (tier 1) or local (tier 2)"
+        raise ConfigError(msg)
     if value:
         for mode in _MODES:
             if value == mode:
                 return mode
         msg = f"PRUEFSTAND_JUDGE_MODE={_shown(value)}: must be one of {', '.join(_MODES)}"
         raise ConfigError(msg)
-    if stack == "a40":
-        return "local"
-    return "github" if has_models_token else "skipped"
+    return "local" if stack == "a40" else "skipped"
 
 
 def final_judge_mode(

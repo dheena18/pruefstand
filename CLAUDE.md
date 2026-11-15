@@ -129,7 +129,7 @@ optional alternatives: WSL2 Ubuntu 24.04, Linux, macOS (all commands are POSIX).
 all files are LF (`.gitattributes`: `* text=auto eol=lf`).
 Prerequisites (T0.0, each with a verify command): git, make, jq, uv, Python 3.12 (`uv python install`),
 Node 22 LTS (fnm) + pnpm (`corepack enable`), Docker (+ Compose, user in `docker` group), gh (HTTPS; on the VM with the public-repo-only fine-grained token, §1 rule 9).
-GitHub Models is retired (2026-07-30, D1202); its old credential `PRUEFSTAND_GH_MODELS_TOKEN` (never `GITHUB_TOKEN`, D333) is read only by the `github` datagen backend; never export `.env` wholesale into a shell that runs `gh` (an exported `GITHUB_TOKEN`/`GH_TOKEN` overrides gh's stored login → 404 on `actions/runs`); if one is set, use `env -u GITHUB_TOKEN -u GH_TOKEN gh …`.
+GitHub Models is retired (2026-07-30, D1202); its old credential `PRUEFSTAND_GH_MODELS_TOKEN` (never `GITHUB_TOKEN`, D333) is still read by the `github/` LiteLLM provider, the `github` datagen backend and the GitHub live tests, but never selects a judge (`judge_mode` refuses `github`) and is not needed; never export `.env` wholesale into a shell that runs `gh` (an exported `GITHUB_TOKEN`/`GH_TOKEN` overrides gh's stored login → 404 on `actions/runs`); if one is set, use `env -u GITHUB_TOKEN -u GH_TOKEN gh …`.
 
 | Target | Runs |
 | --- | --- |
@@ -322,8 +322,8 @@ Modules in the same row never import each other. All shared types live in `core`
   `docs/engineering/ci-cd.md` (incl. `pruefstand/gate`, **pinned** to the App `pruefstand-bot`, D287). The maintainer
   merges.
 - Every PR gets an AI review with `prompts/_review.md` in a fresh session **and** a second review from a
-  different model family (GitHub Models, `gh models run`, is retired, D1202: use the VM CPU model, family `mistral`,
-  via `scripts/models/vm_llm.sh` and its OpenAI-compatible API, or another free provider of §5). Copilot code
+  different model family via a free provider listed in §5 (the VM CPU model `scripts/models/vm_llm.sh`, or an Ollama
+  model on the cluster under the lock; `gh models run` is retired, D1202; the replacement is an owner decision). Copilot code
   review is optional (not part of GitHub Pro). Findings are fixed or answered before merge.
 
 ## 8. Docker and deployment

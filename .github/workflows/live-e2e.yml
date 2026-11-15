@@ -50,7 +50,6 @@ jobs:
         env:
           EVENT: ${{ github.event_name }}
           JOB_INPUT: ${{ inputs.job }}
-          PROBE_QUOTA: ${{ inputs.probe_quota }}
           # Changes that cannot affect the live stack: the job exits early with success (ci-cd.md section 1).
           DOCS_ONLY: '^(docs/|prompts/|tasks/|\.github/ISSUE_TEMPLATE/)|\.md$|^(mkdocs\.yml|\.github/(pull_request_template\.md|CODEOWNERS))$'
           # Changes that run the scenario matrix on a PR.
@@ -69,7 +68,6 @@ jobs:
               ;;
             workflow_dispatch)
               scenarios=true
-              if [ "$PROBE_QUOTA" = "true" ]; then live=false; scenarios=false; fi
               if [ "$JOB_INPUT" = "scenarios" ]; then live=false; fi
               ;;
           esac
@@ -196,7 +194,7 @@ jobs:
           TIER: ${{ github.event_name == 'schedule' && 'nightly' || 'pr' }}
           BASELINE_DIR: ${{ steps.baseline_pr.outputs.dir || steps.baseline_nightly.outputs.dir }}
           BASELINE_NOTE: ${{ steps.baseline_pr.outputs.note || steps.baseline_nightly.outputs.note }}
-          PRUEFSTAND_NONCE_KEY: tier1-hosted-ci-nonce  # fixed, not a secret: informational tier-1 judge (D703)
+          PRUEFSTAND_NONCE_KEY: tier1-hosted-ci-nonce  # fixed, not a secret (D703); tier 1 runs no judge since D1202
         run: |
           mkdir -p runs
           run_one() {
@@ -240,11 +238,8 @@ jobs:
           # One judge line from run.json (judged metrics never decide this gate, W1.4), after the marker line.
           mode="$(jq -r '.judge_mode' "$cand/run.json")"
           calls="$(jq -r '.cost.llm_calls' "$cand/run.json")"
-          skipped="$(jq -r '.counts.judge_skipped // 0' "$cand/run.json")"
           if [ "$mode" != "skipped" ]; then judge="ok"
-          elif [ "$IS_FORK" = "true" ]; then judge="skipped (fork PR)"
-          elif [ "$skipped" != "0" ]; then judge="skipped (quota)"
-          else judge="skipped (no judged case)"; fi
+          else judge="skipped (GitHub Models retired, D1202)"; fi
           {
             head -n 1 comment.md
             if [ "$self" = "true" ]; then
