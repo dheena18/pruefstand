@@ -11,7 +11,9 @@ from rq2.construct import clean_span
 from rq2.construct_checks import (
     coverage,
     edit_in_first_clause,
+    first_clause_end,
     has_answer_content,
+    is_single_sentence,
     may_support,
     near_number,
     negation_ok,
@@ -147,3 +149,24 @@ def test_negation_rules() -> None:
     assert not negation_ok("Der Wert ist hoch.", "Der Wert ist hoch nicht.")
     orient = "Sie kommt nicht von einem Faktor, sondern entwickelt sich."
     assert not negation_ok(orient, "Sie kommt von einem Faktor, sondern entwickelt sich.")
+
+
+def test_a_colon_and_und_end_the_first_clause() -> None:
+    """T5.4b2 (D1241): the answer after a colon or in an 'und' clause is not in the first clause."""
+    assert first_clause_end("Zhejiang ist in sechs Zonen gegliedert: eine Ebene") == len(
+        "Zhejiang ist in sechs Zonen gegliedert"
+    )
+    text = "Südostasien ist ein Teil Asiens und umfasst die Länder"
+    assert first_clause_end(text) == text.index(" und ")
+    assert not edit_in_first_clause(text, text.replace("umfasst", "nicht umfasst"))
+
+
+def test_single_sentence_rejects_merged_cut_and_open_sentences() -> None:
+    assert is_single_sentence("Die Ehe wurde heilig gehalten.")
+    assert not is_single_sentence(
+        "FIFA- und AFC-Mitglied. 2002 nahm Guam teil."
+    )  # merged (digit start)
+    assert not is_single_sentence("Er kam. Sie ging.")
+    assert not is_single_sentence("Aus der Geschichte des 20.")  # cut after an ordinal
+    assert not is_single_sentence("Man kann vier Phasen definieren:")  # open enumeration
+    assert not is_single_sentence("Ein Satz ohne Punkt")

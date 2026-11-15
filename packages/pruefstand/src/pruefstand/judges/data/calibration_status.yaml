@@ -62,7 +62,7 @@ judges:
         status: failed
         passed: false
         reasons:
-        - discrimination negate 0.700 < 0.9
+        - discrimination negate 0.714 < 0.9
         - discrimination swap_first_number 0.820 < 0.9
     drift_threshold: 6
     a0: 1.0

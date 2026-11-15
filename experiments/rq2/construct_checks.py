@@ -5,7 +5,7 @@ import re
 from rq2.construct import STOPWORDS, norm, tokens
 
 COVERAGE_MAX = 0.6
-_CLAUSE_BREAKS = (",", "(", ";", "–", " - ")
+_CLAUSE_BREAKS = (",", "(", ";", ":", "–", " - ", " und ")
 NUMBER_TOLERANCE = 0.1
 _NUMBER = re.compile(r"\d+(?:\.\d{3})*(?:,\d+)?")
 _DANGLING_NEGATION = re.compile(r"\b(?:nicht|kein\w*)\s*(?:[,.;:)]|$)")
@@ -57,7 +57,13 @@ def may_support(answer: str, passage: str) -> bool:
 
 
 def first_clause_end(text: str) -> int:
-    """Return the index of the first comma, bracket, semicolon or dash (else ``len(text)``)."""
+    """Return the index of the first comma, bracket, semicolon, colon, dash or " und ".
+
+    Else ``len(text)``.
+
+    A coordinated or enumerating part ("... und umfasst ...", "...: vier Phasen") is another clause,
+    so a negation before it does not negate what follows (T5.4b2, D1241).
+    """
     breaks = [text.find(b) for b in _CLAUSE_BREAKS if b in text]
     return min(breaks, default=len(text))
 
@@ -65,8 +71,8 @@ def first_clause_end(text: str) -> int:
 def edit_in_first_clause(original: str, edited: str) -> bool:
     """True iff the edit starts in the first clause of ``original``.
 
-    The first differing character must lie before the first comma, bracket, semicolon or dash,
-    so a parenthesis or relative clause is never the only negated part.
+    The first differing character must lie before the first comma, bracket, semicolon, colon,
+    dash or " und ", so a parenthesis or relative clause is never the only negated part.
     """
     first_diff = next(
         (i for i, (a, b) in enumerate(zip(original, edited, strict=False)) if a != b),
@@ -89,3 +95,27 @@ def negation_ok(original: str, edited: str) -> bool:
 def has_answer_content(candidate: str) -> bool:
     """True iff ``candidate`` has at least one non-stopword token."""
     return bool(content_tokens(candidate))
+
+
+_INNER_SENTENCE_END = re.compile(r"[.!?]\s+\S")
+_CUT_END = re.compile(r"\d\.$")
+
+
+def is_single_sentence(text: str) -> bool:
+    """True iff ``text`` is exactly one complete sentence (T5.4b2, D1241).
+
+    It ends in ``.``, ``!`` or ``?`` (not a colon or a missing stop), has no further sentence end
+    inside (a full stop, ``!`` or ``?`` followed by another word, whatever its first character:
+    "... AFC-Mitglied. 2002 nahm ..."), and is not cut after an ordinal ("... des 20.").
+
+    >>> is_single_sentence("Die Ehe wurde heilig gehalten.")
+    True
+    >>> is_single_sentence("Er kam. 2002 ging er.")
+    False
+    >>> is_single_sentence("Das gilt seit dem 20.")
+    False
+    """
+    stripped = text.strip()
+    if not stripped.endswith((".", "!", "?")) or _CUT_END.search(stripped):
+        return False
+    return _INNER_SENTENCE_END.search(stripped[:-1]) is None
