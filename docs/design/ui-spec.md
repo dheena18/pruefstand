@@ -137,7 +137,7 @@ There is no hand-written `public/404.html`; the export writes the 404 page. Ther
 `public/.nojekyll` either: with the Actions deploy Jekyll never runs, and the one `.nojekyll` at the
 site root is written by `assemble_pages_site.sh` (T0.4) to document intent (UI12-20). If `next build`
 rejects this tree, the task stops and reports (CLAUDE.md §1). It does not switch to middleware or
-another layout without a `decisions.md` entry.
+another layout without a new decision file `docs/decisions/D<n>.md`.
 
 **Hosting (Y7.1, D243, N5.2):** GitHub Pages of the public repo, with **one writer**, `docs.yml`, which
 deploys **one** artefact. The dashboard is the **site root**: `https://dheena18.github.io/pruefstand/`,
@@ -1705,7 +1705,7 @@ with `context.setOffline(true)` (browser offline emulation, not interception).
 
 **`C-SHARD-ERROR` mechanics (UI11-18).** Playwright does not document whether `route.continue()` of a
 request intercepted before `setOffline(true)` fails. T8.3 first runs a one-off probe and records the
-result in `decisions.md`, then uses exactly one of:
+result in a decision file `docs/decisions/D<n>.md`, then uses exactly one of:
 - **primary** (if the probe shows the continued request fails offline): shards 1+ delayed →
   `setOffline(true)` → release → shard error asserted → `setOffline(false)` → Retry → shard loaded;
 - **fallback** (if it passes through): shard 1 is held by the delay longer than the loader's

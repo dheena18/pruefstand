@@ -16,7 +16,7 @@ that the result stays consistent. The step-by-step playbook for one task is `pro
 
 ## 2. Session rules
 
-1. One task ID per session and branch. The session reads `CLAUDE.md` (auto-loaded), `docs/decisions.md` and the task prompt before anything else.
+1. One task ID per session and branch. The session reads `CLAUDE.md` (auto-loaded), `docs/decisions/` and the task prompt before anything else.
 2. The session posts its plan first: files, interfaces, tests.
 3. Tests come first; the session shows them failing before implementing.
 4. Context hygiene: paste the prompt, not the whole spec. The prompt lists the sections to read. If the context gets long or the session loops, restart with `CLAUDE.md` + decisions + prompt + a 5-line status.
@@ -74,12 +74,12 @@ git worktree add ../pruefstand-T1.5b -b feat/T1.5b-deterministic-metrics origin/
 ```
 
 - Only tasks in the same parallel lane (`tasks/TASKS.md`, Critical path) run at the same time, one worktree each.
-- Two sessions never edit the same file. Shared files (`docs/decisions.md`, `tasks/TASKS.md`) are edited in the last commit of the PR, and conflicts are resolved by appending.
+- Two sessions never edit the same file. Shared files (`tasks/TASKS.md`) are edited in the last commit of the PR, and conflicts are resolved by appending. A decision is a new file `docs/decisions/D<n>.md` (D1211), never a row appended to `docs/decisions.md`, so decisions never conflict.
 - Every new worktree gets the git-ignored `.env` as a symlink, never committed (Y6.6):
   `ln -s ~/code/pruefstand/.env <worktree>/.env` (the lead agent does this, `prompts/_lead-agent.md`).
 - Remove a worktree after merge with `git worktree remove ../pruefstand-T1.5b`.
 - Shared files (`Makefile`, root `pyproject.toml`, `.gitignore`, `.env.example`, `.importlinter`, `DATA_LICENSES.md`,
-  `docs/decisions.md`, `tasks/TASKS.md`) are append-only for parallel tasks: add lines in the last commit and rebase
+  `tasks/TASKS.md`) are append-only for parallel tasks: add lines in the last commit and rebase
   before merging. Make targets added after T0.1 go into `mk/<task>.mk` files included by the Makefile.
 
 ## 6. Development environment (Windows → TrueNAS VM via Remote-SSH; WSL2 optional)
