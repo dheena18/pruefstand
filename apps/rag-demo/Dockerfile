@@ -4,7 +4,7 @@
 # RAG_CONFIG=/app/configs/rag.yaml (or /app/configs/bugs/<name>.yaml); tier 2: /app/configs/rag.gpu.yaml (or bugs/gpu/<name>.yaml).
 FROM python:3.12-slim-bookworm@sha256:935c3c5b12357a7e10caa9c1e6ca5692344d97cf229832ef584be2cec9fc03df AS base
 
-FROM ghcr.io/astral-sh/uv:0.13.7@sha256:96f40d3904aad8d0bd010539001d36c8e2188b981e1334471a90c4a1d93bb490 AS uv
+FROM ghcr.io/astral-sh/uv:0.13.8@sha256:5cc1805e2426484abca4ad46ea783bab281fdb225fd82d8ce6d66a81254bac85 AS uv
 
 FROM base AS builder
 COPY --from=uv /uv /usr/local/bin/uv
