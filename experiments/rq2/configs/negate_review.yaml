@@ -1,0 +1,16 @@
+# T5.4b manual review of the 29 sentence `negate` pairs (datasets/calibration/v1/degraded_pairs_germanquad.jsonl).
+# Read pair by pair by the Opus reviewer of PR #173 (2026-11-15) and checked again by the task agent.
+# invalid: the negation does not hit the answer -> left out of results/rq2/discrimination_sensitivity.csv.
+# borderline: kept everywhere, listed for transparency. Gated number = the full set (D146 unchanged, D1240).
+# Cause (follow-up T5.4b2): construct_checks.first_clause_end breaks only on , ( ; and dashes, not on ':' or 'und'.
+invalid:
+  "correctness:406aaa0a74636ebb:negate_sentence": "Victoria: answer in the 'und' clause after the negated one"
+  "correctness:36dee725bcbe5e63:negate_sentence": "Südostasien: answer (the countries) in the 'und umfasst' clause"
+  "correctness:a620b8e31846ee44:negate_sentence": "Griechenland: answer (four phases) after the colon"
+  "correctness:40757ff697af6243:negate_sentence": "St. John's: answer (the airlines) after the colon"
+  "correctness:d7edd154b8e5cbf5:negate_sentence": "Zhejiang: answer (the zones) after the colon"
+  "correctness:b93cbb1fd50030bc:negate_sentence": "Florida: negation lands on the date, not on the person"
+borderline:
+  "correctness:4108048ed36202fb:negate_sentence": "Koran: 'nicht üblicherweise' only weakens"
+  "correctness:3ec7cb77af3dbbef:negate_sentence": "Fußballjargon: 'nicht vor allem' only weakens"
+  "correctness:9b1c44eb849c450a:negate_sentence": "Paul VI: the base sentence does not answer the question"

@@ -2,7 +2,7 @@
 
 ``uv run python experiments/rq2/report.py`` reads the ``test`` verdicts of every judge
 (``<out_dir>/verdicts_<slug>_test.parquet``), the pairs, bias and anchor results and writes
-``results/rq2/{calibration,agreement_matrix,bias,discrimination,discrimination_by_form}.csv``,
+``results/rq2/{calibration,agreement_matrix,bias,discrimination*}.csv``,
 ``results/rq2/cost_vs_kappa.png``,
 ``results/_inputs/rq2/verdicts.parquet`` (no text, no MEMERAG) and the status file. MEMERAG
 verdicts go
@@ -20,6 +20,7 @@ import polars as pl
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))  # run as a script: import rq2.*
 
+from rq2.negate_review import invalid_negations
 from rq2.pass_rule import Outcome, metric_outcome, pass_rule_items, refusal_outcome
 from rq2.report_figure import cost_vs_kappa
 from rq2.report_tables import (
@@ -227,7 +228,9 @@ def evaluate_judge(judge: str) -> bool:
     return bool(doc["passed"]) and judge in doc["judges"]  # type: ignore[operator]  # mapping from the builder
 
 
-def _discrimination(cfg: RQ2Config, by: tuple[str, ...] = ()) -> pl.DataFrame:
+def _discrimination(
+    cfg: RQ2Config, by: tuple[str, ...] = (), exclude: frozenset[str] = frozenset()
+) -> pl.DataFrame:
     paths = [
         p for j in cfg.judges if (p := REPO / cfg.out_dir / f"pairs_{slug(j.id)}.parquet").is_file()
     ]
@@ -246,9 +249,8 @@ def _discrimination(cfg: RQ2Config, by: tuple[str, ...] = ()) -> pl.DataFrame:
                 "base_top_share": pl.Float64,
             }
         )
-    return discrimination_table(
-        pl.concat([pl.read_parquet(p) for p in paths], how="diagonal_relaxed"), by
-    )
+    pairs = pl.concat([pl.read_parquet(p) for p in paths], how="diagonal_relaxed")
+    return discrimination_table(pairs.filter(~pl.col("pair_id").is_in(list(exclude))), by)
 
 
 def main() -> int:
@@ -261,6 +263,8 @@ def main() -> int:
     table.sort(["judge", "metric", "label_set", "stratum"]).write_csv(RESULTS / "calibration.csv")
     disc.write_csv(RESULTS / "discrimination.csv")
     _discrimination(cfg, ("form",)).write_csv(RESULTS / "discrimination_by_form.csv")  # T5.4b
+    sens = _discrimination(cfg, ("form",), invalid_negations())  # reported only, never gated
+    sens.write_csv(RESULTS / "discrimination_sensitivity.csv")
     agreement_matrix(verdicts).write_csv(RESULTS / "agreement_matrix.csv")
     from rq2.bias_report import bias_table  # noqa: PLC0415
 

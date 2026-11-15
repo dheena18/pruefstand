@@ -47,7 +47,9 @@ seed 1234); hard-negative specificity with its Wilson lower bound.
 
 Discrimination (T5.4b, D1240; 95 % Wilson CI in `discrimination.csv`): `correctness` `swap_first_number` 0.82 (0.69-0.90),
 `negate` 0.70 (0.56-0.81, n 50 = 21 T5.4 span pairs 0.62 + 29 GermanQuAD sentence pairs 0.76,
-`discrimination_by_form.csv`). The sentence pairs (`sentence_answers.py`) need the GermanQuAD test download for
+`discrimination_by_form.csv`). 6 of the 29 sentence pairs do not negate the answer (manual review,
+`configs/negate_review.yaml`); without them `negate` is 0.73 (0.58-0.84), sentence 0.83
+(`discrimination_sensitivity.csv`, reported only, never gated). The sentence pairs (`sentence_answers.py`) need the GermanQuAD test download for
 `make_degraded.py`.
 
 Outcome: `calibration_status.yaml` `passed: false` (judged metrics informational in both tiers; the refusal judge
