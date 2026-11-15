@@ -10,7 +10,8 @@ name that matches none of these falls back to the dump's own ``court.jurisdictio
 ``tenant_domain`` is the coarse topic T2.5 maps to tenants: ``labour`` for labour courts,
 ``insurance`` when the first 4 000 characters of any other decision mention *Versicherung*
 (Hausrat-, Kranken-, Rentenversicherung, Versicherungsnehmer, ...) and ``other`` otherwise. It is
-a heuristic (a keyword in the head of the text), documented as such in ``docs/decisions.md``.
+a heuristic (a keyword in the head of the text), documented as such in a decision file
+(``docs/decisions/D<n>.md``).
 """
 
 from typing import NamedTuple
