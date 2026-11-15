@@ -43,6 +43,12 @@ def informational_lines(b: Builder) -> list[str]:
         out.append(
             "Judge input check: exact count unavailable (tokenizer file missing); estimate only."
         )
+    timeouts = b.cand.counts.get("timeout", 0)
+    if timeouts > 0:  # D1082: still candidate errors (error_rate), shown apart, no gate change
+        noun = "case" if timeouts == 1 else "cases"
+        out.append(
+            f"Timeouts: {timeouts} {noun} timed out (scored as candidate errors in error_rate)."
+        )
     cut = len(b.truncated_ids) or b.cand.counts.get("judge_truncated", 0)  # ids agree with text
     if cut > 0:
         noun = "case" if cut == 1 else "cases"

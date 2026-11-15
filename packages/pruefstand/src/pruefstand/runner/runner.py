@@ -23,6 +23,7 @@ from pruefstand.metrics.registry import MetricRegistry
 from pruefstand.runner.judging import JudgeScope, JudgeStage
 from pruefstand.runner.manifest import RunEnd, RunFacts, StopReason, build_manifest
 from pruefstand.runner.refusal import finalise_refusal
+from pruefstand.runner.retry import is_timeout
 from pruefstand.runner.routing import Route, route_case
 from pruefstand.runner.scoring import deterministic_values
 from pruefstand.runner.target_call import TargetCaller
@@ -185,6 +186,8 @@ def _case_counts(
 ) -> Counter[str]:
     counts: Counter[str] = Counter()
     counts["error" if record.error is not None else "ok"] += 1
+    if is_timeout(record.error):  # also in "error"; reported apart (D1082)
+        counts["timeout"] += 1
     counts["cached"] += record.cached
     counts["retrieve"] += record.mode == "retrieve"
     judged_names = {m.name for m in registry.all() if m.kind is MetricKind.JUDGED}

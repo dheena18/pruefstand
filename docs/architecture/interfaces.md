@@ -577,6 +577,7 @@ class RunManifest(BaseModel):    # (schema) -> run.json
     #   judge_skipped (details reason "judge_quota" | "judge_cap"), judge_truncated (X3.9), think_stripped, corpus_mismatch,
     #   retrieve (R11 D218: robust_pr cases sent to /v1/retrieve), retrieve_fallback (target without /v1/retrieve),
     #   metric_truncated (T1.8, D366: deterministic metric values with details.truncated; logged as well),
+    #   timeout (D1082: cases whose error is a client timeout; also counted in error; only when > 0),
     #   model_reloads, upstream_errors (R12 N6.4, D267: llm-proxy /health differences over the run, measured by the
     #   orchestrator and written with ArtifactStore.add_counts; absent in tier 1 and in local runs),
     #   (no infra_error count: the infra failure is the field below, R11 integration D245)

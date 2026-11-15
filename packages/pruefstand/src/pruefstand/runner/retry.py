@@ -1,6 +1,7 @@
 """Retry policy of target calls: transient errors only (never a timeout, D624), with backoff."""
 
 import asyncio
+import re
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 
@@ -9,6 +10,7 @@ import numpy as np
 from pruefstand.core.errors import TargetError
 
 MAX_ERROR_CHARS = 500
+_TIMEOUT = re.compile(r"\btimed out after\b|\btimeout after\b")
 _JITTER = 0.25
 
 
@@ -85,3 +87,12 @@ async def call_with_retry[T](
             return Attempts(None, error, attempt + 1)
         await sleep(backoff_delay(attempt, backoff_s, rng))
         attempt += 1
+
+
+def is_timeout(error: str | None) -> bool:
+    """True for the two timeout texts of a target call (adapter deadline, runner deadline; D1082).
+
+    >>> is_timeout("timeout after 360 s"), is_timeout("POST /v1/query: HTTP 503: busy")
+    (True, False)
+    """
+    return error is not None and _TIMEOUT.search(error) is not None

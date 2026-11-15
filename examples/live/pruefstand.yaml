@@ -6,7 +6,7 @@ target:
   type: http
   url: http://localhost:8000      # rag-demo, compose profile `live`
   auth_env: null                  # name of an env var holding a bearer token, never the token
-  timeout_s: 60
+  timeout_s: 180
 dataset: datasets/fixtures/slice_v1   # 40 hand-written cases, 20 in smoke_live (T1.11, docs/engineering/fixtures.md)
 splits: [smoke_live]
 generator_family: qwen            # llama.cpp generator, thinking off (D95)
@@ -46,7 +46,7 @@ budget:
   max_requests_per_run: 10        # the only tier-1 judge cap (D143): <= 10 informational judge calls per PR run
 runner:
   concurrency: 2
-  timeout_s: 60
+  timeout_s: 180
   max_retries: 3
   backoff_s: 1.0
 baseline_store:

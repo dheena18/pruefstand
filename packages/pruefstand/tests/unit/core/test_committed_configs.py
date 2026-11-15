@@ -150,8 +150,8 @@ def test_each_committed_gate_config_loads(path: Path) -> None:
 
 def _tier2(tmp_path: Path, runner: str, target_timeout_s: int = 360) -> Path:
     text = (ROOT / "examples" / "live" / "pruefstand.yaml").read_text(encoding="utf-8")
-    assert "\n  timeout_s: 60\n" in text  # the first one is the target's
-    text = text.replace("\n  timeout_s: 60\n", f"\n  timeout_s: {target_timeout_s}\n", 1)
+    assert "\n  timeout_s: 180\n" in text  # the first one is the target's
+    text = text.replace("\n  timeout_s: 180\n", f"\n  timeout_s: {target_timeout_s}\n", 1)
     text = text.replace("splits: [smoke_live]", "splits: [smoke, core]")
     assert "splits: [smoke, core]" in text
     start, end = text.index("\nrunner:"), text.index("\nbaseline_store:")
@@ -184,3 +184,12 @@ def test_root_pruefstand_yaml_follows_the_tier2_runner_rule() -> None:
     assert Split.CORE in cfg.splits
     assert tier2_runner_ok(cfg), "runner/target timeout_s 60 and concurrency 8 would time out first"
     assert cfg.target.timeout_s > QUEUE_WAIT_S  # the adapter's own deadline (adapters/http.py)
+
+
+@pytest.mark.parametrize(
+    "path", sorted((ROOT / "examples" / "live").glob("*.yaml")), ids=lambda p: p.name
+)
+def test_tier1_configs_wait_180_s_for_a_slow_cpu_call(path: Path) -> None:
+    # D1082: tier 1 never retries a timeout, so one CPU latency spike must not hit a 60 s limit
+    cfg = load_config(path)
+    assert cfg.target.timeout_s == cfg.runner.timeout_s == 180
