@@ -1,0 +1,39 @@
+{
+  "recorded_at": "2026-11-10T07:08:55+00:00",
+  "model_id": "ollama/gemma3:12b",
+  "model_version": null,
+  "request": {
+    "role": "datagen",
+    "model": "ollama/gemma3:12b",
+    "messages": [
+      {
+        "role": "system",
+        "content": "Du schreibst vollständig erfundene Geschäftsdokumente für Software-Tests. Alle Organisationen, Personen und Zahlen sind frei erfunden. Du schreibst sachlich, natürlich und in korrektem Deutsch, wie in einem echten Unternehmen. Du gibst nur das Dokument aus, ohne Vorrede und ohne Erklärung."
+      },
+      {
+        "role": "user",
+        "content": "Schreibe das folgende interne Dokument.\n\nOrganisation: Stadtwerke Süd (ein kommunaler Energieversorger)\nDokumentart: Netzanschlussvereinbarung\n\nRegeln:\n1. Beginne mit einer Überschrift in der Form \"# Titel\" (eine Zeile, höchstens acht Wörter).\n2. Schreibe danach zwei bis drei kurze Abschnitte, insgesamt etwa 120 bis 160 Wörter.\n3. Der folgende Satz muss GENAU EINMAL und WÖRTLICH im Text stehen, in einem eigenen Absatz, und darf nirgends sonst wiederholt oder umschrieben werden:\nDer Netzanschluss für Lüttgenau Transporte wird innerhalb von 149 Tage hergestellt.\n4. Nenne keine weiteren Zahlen mit Einheiten (Fristen, Beträge, Prozentsätze). Jahreszahlen und Paragrafen sind erlaubt.\n5. Erfinde keine Adressen, Telefonnummern, E-Mail-Adressen und keine Aktenzeichen oder Referenznummern.\n6. Beende das Dokument mit einer eigenen letzten Zeile: [ENDE]\n"
+      }
+    ],
+    "temperature": 0.0,
+    "max_tokens": 384,
+    "seed": 7,
+    "prompt_id": "datagen.private_docs.private_doc_de",
+    "prompt_version": "v1",
+    "response_format": "text"
+  },
+  "response": {
+    "text": "# Netzanschlussvereinbarung – Lüttgenau Transporte\n\nDie vorliegende Netzanschlussvereinbarung regelt die Bedingungen für den Anschluss des Kunden Lüttgenau Transporte an das Verteilnetz der Stadtwerke Süd. Sie basiert auf den gesetzlichen Bestimmungen des Energiewirtschaftsgesetzes (EnWG) und der dazugehörigen Verordnungen. Die Vereinbarung tritt mit Unterzeichnung durch beide Parteien in Kraft und ersetzt alle vorherigen Absprachen. Ziel ist die rechtssichere und effiziente Integration des Kunden in das Stromnetz der Stadtwerke Süd unter Berücksichtigung der technischen Anforderungen und der geltenden Sicherheitsstandards.\n\nDie technischen Voraussetzungen für den Netzanschluss wurden in den vorangegangenen Gesprächen und Gutachten detailliert festgelegt. Diese umfassen insbesondere die Dimensionierung der Leitungen, die Auswahl der Schutzmaßnahmen und die Einhaltung der Netzauslegungsrichtlinien. Die Stadtwerke Süd sind verpflichtet, die notwendigen Maßnahmen zur Realisierung des Anschlusses durchzuführen und den Kunden über den Fortschritt zu informieren.\n\nDer Netzanschluss für Lüttgenau Transporte wird innerhalb von 149 Tage hergestellt.\n\nDie Kosten für den Netzanschluss sind gemäß den geltenden Preisbestimmungen der Stadtwerke Süd zu tragen. Der Kunde ist verpflichtet, alle Weisungen der Stadtwerke Süd bezüglich der Bauausführung und der Inbetriebnahme zu befolgen. Änderungen der Anschlussleistung oder der technischen Daten müssen vorab schriftlich bei den Stadtwerken Süd angemeldet und von diesen genehmigt werden.\n\n[ENDE]",
+    "model": "ollama/gemma3:12b",
+    "usage": {
+      "prompt_tokens": 314,
+      "completion_tokens": 321
+    },
+    "cost_usd": 0.0,
+    "latency_ms": 6459.36688198708,
+    "cached": false,
+    "provider": "ollama",
+    "fallback": false,
+    "model_version": null
+  }
+}

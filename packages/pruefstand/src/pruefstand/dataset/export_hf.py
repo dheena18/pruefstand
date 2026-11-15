@@ -3,6 +3,7 @@
 Layout (``hf_export`` or ``--out``)::
 
     README.md                      dataset card, YAML header ``configs:`` + ``config_licenses:``
+    dataset_manifest.json          copy of the manifest (pipeline.datasets rebuilds the directory)
     <license_config>/<split>.jsonl one file per split that has rows of that config
 
 ``datasets/private/**`` is never exported, and cases tagged ``heldout`` / ``private`` are filtered.
@@ -32,6 +33,7 @@ from pruefstand.core.errors import ConfigError, DatasetError
 from pruefstand.core.logging import get_logger
 from pruefstand.core.models.testcase import TestCase
 from pruefstand.core.settings import PruefstandSettings
+from pruefstand.dataset.export_manifest import write_hf_manifest
 from pruefstand.dataset.io import read_dataset, write_split_file
 from pruefstand.dataset.licenses import LICENSE_CONFIGS
 
@@ -153,6 +155,7 @@ def build_hf_layout(
         for split, rows in by_split.items():
             if rows:
                 write_split_file(out / config / f"{split.value}.jsonl", rows)
+    write_hf_manifest(directory, out, grouped)
     (out / MARKER).write_text("written by pruefstand.dataset.export_hf\n", encoding="utf-8")
     (out / "README.md").write_text(
         _render_card(directory, repo_id, counts, layout), encoding="utf-8"

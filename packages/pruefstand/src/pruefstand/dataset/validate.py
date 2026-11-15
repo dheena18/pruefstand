@@ -18,7 +18,7 @@ from pruefstand.dataset.splits import assignment_summary
 from pruefstand.dataset.validate_quota import check_quotas
 from pruefstand.dataset.validate_report import Findings, is_fixture
 
-_DERIVED_SPLITS = frozenset({Split.SMOKE_LIVE, Split.HUMAN_LABELS})
+DERIVED_SPLITS = frozenset({Split.SMOKE_LIVE, Split.HUMAN_LABELS})
 """Splits that reuse cases of other splits; excluded from the cluster-disjointness check."""
 _ORDER = {s: i for i, s in enumerate(Split)}
 
@@ -64,7 +64,7 @@ def _licenses(cases: list[TestCase], manifest: DatasetManifest, out: Findings) -
 def _clusters(loaded: LoadedDataset, out: Findings) -> None:
     spread: dict[str, set[Split]] = defaultdict(set)
     for split, cases in loaded.cases.items():
-        if split not in _DERIVED_SPLITS:
+        if split not in DERIVED_SPLITS:
             for c in cases:
                 spread[c.cluster_id].add(split)
     for cluster, splits in sorted(spread.items()):
@@ -104,7 +104,7 @@ def _blocks(
     for cluster, blocks in sorted(blocks_of.items()):
         if len(blocks) > 1:
             out.problem(f"cluster {cluster} spans blocks {','.join(map(str, sorted(blocks)))}")
-    in_scope = [c for c in cases if c.split not in _DERIVED_SPLITS]
+    in_scope = [c for c in cases if c.split not in DERIVED_SPLITS]
     rows_blocks, subset, _ = assignment_summary(in_scope, manifest.assignment_seed)
     if rows_blocks != manifest.blocks:
         out.problem(f"manifest blocks {manifest.blocks} differ from the rows {rows_blocks}")

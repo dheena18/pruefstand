@@ -1,0 +1,2 @@
+# Exact-fingerprint allowlist (gitleaks v8: commit:file:rule:line). A public SHA-256 of the tokenizer file under the key tokenizer_sha256 in an early version of the budget calibration fixture; not a credential.
+e99b8c8c54d911054db64a264be2d3df13d1e098:apps/rag-demo/tests/fixtures/budget_calibration.json:generic-api-key:5
