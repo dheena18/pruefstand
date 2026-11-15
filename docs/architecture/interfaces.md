@@ -3,7 +3,7 @@
 This file fixes the contracts **between** modules and between processes. Implementations may add
 private helpers freely, but the names, fields and signatures below change only through the process
 in `CLAUDE.md` §1.5 (paragraph + ADR + PR flag). Signatures are Python 3.12 with Pydantic v2.
-Round-9 changes (`docs/planning/reviews/round9-resolution.md`, `docs/decisions.md` D146–D195) are marked **R9**;
+Round-9 changes (`docs/planning/reviews/round9-resolution.md`, `docs/decisions/` D146–D195) are marked **R9**;
 round-10 changes (`docs/planning/reviews/round10-resolution.md`, D196–D210: Ollama-only GPU serving reached
 through the VM tunnels, `llm-proxy`, NAS storage) are marked **R10**; round-11 changes
 (`docs/planning/reviews/round11-resolution.md`, D211–D241: VM identity, `POST /v1/retrieve`, native Ollama API,
@@ -278,6 +278,9 @@ llm-proxy (trusted, T6.2a; module infra/gate-executor/llm-proxy/llm_proxy.py; D2
   inside the container (reached as http://llm-proxy:11500 from gate-net); forwards only to
   LLM_PROXY_UPSTREAM = http://172.17.0.1:11434 over proxy-egress (D242; the one server, ADR-0018)
   allowed: POST /api/chat, POST /api/embed, GET /api/tags; only the run's catalogue generator + embedding tags
+  (GET /api/tags is answered by the proxy from that allow-list, never forwarded, D1071; request bodies are read
+  strictly: duplicate or case/NFKC-colliding keys, NaN/Infinity and top-level keys outside the route's exact
+  allow-list -> 403, D1070)
   (passed by the orchestrator). Judges run on the same server, so this allow-list IS the generator/judge
   separation (ADR-0018): every judge tag (and any other non-allowed tag) -> 403
   auth: Authorization: Bearer $PRUEFSTAND_CANDIDATE_API_KEY (sent by rag-demo: T3.4 embeddings client, T3.6
@@ -567,13 +570,15 @@ class RunManifest(BaseModel):    # (schema) -> run.json
     judge_models: dict[str, str]; judge_prompt_versions: dict[str, str]
     judge_serving: dict[str, str] = {}   # R9 X3.3: metric -> "<engine> <engine_version> <quantization> <digest[:12]>" of its
                                          # GATED judge (digest = Ollama manifest digest; R11 AI11-09, R12 AI12-04)
-    judge_epoch: int = 0                 # R9 X3.3: from judges/data/calibration_status.yaml (T5.4); bumped only by re-calibration
+    judge_epoch: int = 0                 # R9 X3.3: from judges/data/calibration_status.yaml (T5.4); bumped by a passing re-calibration (D163, D934) or an owner bump without a pass (D1251)
     metric_versions: dict[str, str]; seed: int; cost: CostSummary
     duration_s: float; counts: dict[str, int]
     # counts keys (R9, single owner = the runner, D9-07/D9-21): ok, error, cached, not_applicable, judge_error,
     #   judge_skipped (details reason "judge_quota" | "judge_cap"), judge_truncated (X3.9), think_stripped, corpus_mismatch,
     #   retrieve (R11 D218: robust_pr cases sent to /v1/retrieve), retrieve_fallback (target without /v1/retrieve),
     #   metric_truncated (T1.8, D366: deterministic metric values with details.truncated; logged as well),
+    #   timeout (D1082: cases whose error is a client timeout; also counted in error; only when > 0),
+    #   aborted_after_timeouts (D1084: cases not run after runner.max_consecutive_timeouts; also in error),
     #   model_reloads, upstream_errors (R12 N6.4, D267: llm-proxy /health differences over the run, measured by the
     #   orchestrator and written with ArtifactStore.add_counts; absent in tier 1 and in local runs),
     #   (no infra_error count: the infra failure is the field below, R11 integration D245)
@@ -806,7 +811,10 @@ evidence_recall (1 if any retrieved chunk text contains the case's evidence_span
 faithfulness, answer_correctness, perturbation_consistency, refusal_judged
 # faithfulness: the judge sees EXACTLY the chunks the generator saw (D115): R9 X3.14 = the chunks with
 #   used_in_prompt=True in rank order; fallback when no chunk carries the flag: the first top_k chunks
-# R9 X3.9 judge input cap = the judge's context window - 1 024 tokens, counted with the judge's tokenizer;
+# R9 X3.9 judge input cap = the judge's context window - 1 024 tokens, counted with the judge's tokenizer (pre-call:
+#   conservative estimate; after the call D1010: reported < window, or in the cut band, or < 0.8 x the EXACT count of
+#   the pinned tokenizer.json, installed by scripts/models/fetch_judge_tokenizer.py; counts["judge_exact_count_unavailable"]
+#   when it is missing);
 #   truncation is logged per case (details["truncated"]=True), counted in RunManifest.counts["judge_truncated"],
 #   and the truncated case ids are listed in the report; the value is still computed on the truncated input (never
 #   not_applicable). D815 (owner decision, supersedes the earlier informational rule): candidate truncation never
@@ -931,6 +939,8 @@ def is_drift(agreement: float, n: int, *, a0: float | None = None, threshold: in
 #   judges/anchors.py: AnchorItem (anchor_id, item_id, label_set, metric, label, hard_negative, judge_model, prompt_id,
 #     prompt_version, messages, raw_score; .request() -> LLMRequest, .stored_verdict()); anchor_file(model) ->
 #     judges/data/anchors/<slug>.jsonl (slug: "/" -> "_", ":" -> "-"); load_anchors(path) (ConfigError when invalid).
+#   T5.4d (D1250, D1251, additive): judges/drift.py majority_scores(runs) -> list[int], count_flips(stored, runs) -> (flips, comparisons),
+#     unstable_anchors(runs, min_share=0.8, max_spread=1) -> list[int]; AnchorItem gains majority_runs: int = 1 (old files still load).
 #   llm/cache_epochs.py DriftFlag gains optional changed, threshold, a0 (judge_drift.json; `epoch` = the bumped cache epoch).
 #   pipeline/judge_drift.py: run_judge_drift(model, anchors_path, backend, cache_dir, *, threshold=None, a0=None, now)
 #     -> DriftResult(status ok|drift|skipped, n, agreement, changed, threshold); synchronous, builds a cacheless client.
@@ -1054,6 +1064,8 @@ class RunIndex:                # DuckDB over runs/*/run.json + results.parquet (
 
 ```python
 class RunnerConfig(BaseModel): concurrency: int = 8; timeout_s: float = 60; max_retries: int = 3; backoff_s: float = 1.0
+                               max_consecutive_timeouts: int | None = None   # D1084: stop calling the target after N
+                               # timeouts in a row; later cases are recorded as errors, counts["aborted_after_timeouts"]
 class RunResults(BaseModel):   manifest: RunManifest; records: tuple[CaseRecord, ...]; values: tuple[ScoredCase, ...]
 class ScoredCase(BaseModel):   case: TestCase; values: tuple[MetricValue, ...]   # each metric at most once (ValidationError, T1.7a)
 class RunArtifacts(BaseModel): results: RunResults; root: Path   # a run as stored on disk (runs/<run_id>/)

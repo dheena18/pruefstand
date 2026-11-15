@@ -33,7 +33,9 @@ class RunManifest(BaseModel):
     ``judge_truncated``, ``metric_truncated`` (deterministic values with ``details.truncated``),
     ``think_stripped``, ``corpus_mismatch``, ``retrieve`` (``robust_pr``
     cases sent to ``/v1/retrieve``, R11 D218), ``retrieve_fallback`` (target without
-    ``/v1/retrieve``), and ``model_reloads`` / ``upstream_errors`` (R12 N6.4: ``llm-proxy``
+    ``/v1/retrieve``), ``timeout`` (cases whose error is a client timeout, also in ``error``,
+    D1082), ``aborted_after_timeouts`` (cases not run after ``runner.max_consecutive_timeouts``,
+    also in ``error``, D1084), and ``model_reloads`` / ``upstream_errors`` (R12 N6.4: ``llm-proxy``
     ``/health`` differences over the run, written by the T6.2a executor; absent in tier 1 and in
     local runs). An infra failure is the ``infra_error`` field, never a count.
 

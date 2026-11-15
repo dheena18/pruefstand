@@ -39,6 +39,23 @@ def informational_lines(b: Builder) -> list[str]:
     line = b.joined("Informational (does not block):", items, SEP)
     if line:
         out.append(line)
+    if b.cand.counts.get("judge_exact_count_unavailable", 0):
+        out.append(
+            "Judge input check: exact count unavailable (tokenizer file missing); estimate only."
+        )
+    timeouts = b.cand.counts.get("timeout", 0)
+    if timeouts > 0:  # D1082: still candidate errors (error_rate), shown apart, no gate change
+        noun = "case" if timeouts == 1 else "cases"
+        out.append(
+            f"Timeouts: {timeouts} {noun} timed out (scored as candidate errors in error_rate)."
+        )
+    not_run = b.cand.counts.get("aborted_after_timeouts", 0)
+    if not_run > 0:  # D1084: report only, the gate is unchanged
+        noun = "case" if not_run == 1 else "cases"
+        out.append(
+            f"Not run: {not_run} {noun} after consecutive timeouts "
+            "(runner.max_consecutive_timeouts; recorded as candidate errors)."
+        )
     cut = len(b.truncated_ids) or b.cand.counts.get("judge_truncated", 0)  # ids agree with text
     if cut > 0:
         noun = "case" if cut == 1 else "cases"

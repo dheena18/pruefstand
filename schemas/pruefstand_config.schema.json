@@ -349,6 +349,19 @@
           "title": "Concurrency",
           "type": "integer"
         },
+        "max_consecutive_timeouts": {
+          "anyOf": [
+            {
+              "minimum": 1,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Max Consecutive Timeouts"
+        },
         "max_retries": {
           "default": 3,
           "minimum": 0,
