@@ -1,0 +1,39 @@
+{
+  "recorded_at": "2026-11-10T07:08:48+00:00",
+  "model_id": "ollama/gemma3:12b",
+  "model_version": null,
+  "request": {
+    "role": "datagen",
+    "model": "ollama/gemma3:12b",
+    "messages": [
+      {
+        "role": "system",
+        "content": "Du schreibst vollständig erfundene Geschäftsdokumente für Software-Tests. Alle Organisationen, Personen und Zahlen sind frei erfunden. Du schreibst sachlich, natürlich und in korrektem Deutsch, wie in einem echten Unternehmen. Du gibst nur das Dokument aus, ohne Vorrede und ohne Erklärung."
+      },
+      {
+        "role": "user",
+        "content": "Schreibe das folgende interne Dokument.\n\nOrganisation: Stadtwerke Süd (ein kommunaler Energieversorger)\nDokumentart: Sondervertrag Strom\n\nRegeln:\n1. Beginne mit einer Überschrift in der Form \"# Titel\" (eine Zeile, höchstens acht Wörter).\n2. Schreibe danach zwei bis drei kurze Abschnitte, insgesamt etwa 120 bis 160 Wörter.\n3. Der folgende Satz muss GENAU EINMAL und WÖRTLICH im Text stehen, in einem eigenen Absatz, und darf nirgends sonst wiederholt oder umschrieben werden:\nDie Grundpreisanpassung für den Sondervertrag mit Hollenbeck Bau GmbH beträgt 383 Euro.\n4. Nenne keine weiteren Zahlen mit Einheiten (Fristen, Beträge, Prozentsätze). Jahreszahlen und Paragrafen sind erlaubt.\n5. Erfinde keine Adressen, Telefonnummern, E-Mail-Adressen und keine Aktenzeichen oder Referenznummern.\n6. Beende das Dokument mit einer eigenen letzten Zeile: [ENDE]\n"
+      }
+    ],
+    "temperature": 0.0,
+    "max_tokens": 384,
+    "seed": 7,
+    "prompt_id": "datagen.private_docs.private_doc_de",
+    "prompt_version": "v1",
+    "response_format": "text"
+  },
+  "response": {
+    "text": "# Sondervertrag Strom – Hollenbeck Bau GmbH\n\nDieser Sondervertrag regelt die Stromversorgung der Baustelle „Neubau Wohnanlage Am Park“ durch die Stadtwerke Süd. Der Vertrag basiert auf den Allgemeinen Geschäftsbedingungen für Stromlieferverträge der Stadtwerke Süd in der Fassung vom 1. Januar 2022 und ergänzt diese um die hier festgelegten Sonderbedingungen. Die Vereinbarung dient der Sicherstellung einer zuverlässigen Stromversorgung während der Bauphase und berücksichtigt die spezifischen Anforderungen des Bauvorhabens, insbesondere hinsichtlich der flexiblen Anpassung des Strombedarfs.\n\nDie technischen Voraussetzungen für die Stromversorgung wurden in Abstimmung mit der Hollenbeck Bau GmbH erarbeitet und sind in den Anlagen zu diesem Vertrag detailliert beschrieben. Die Verantwortung für die Einhaltung der Sicherheitsbestimmungen liegt sowohl bei den Stadtwerken Süd als auch bei der Hollenbeck Bau GmbH. Eine regelmäßige Überprüfung der Anlagen und die Beachtung der geltenden Vorschriften sind obligatorisch.\n\nDie Grundpreisanpassung für den Sondervertrag mit Hollenbeck Bau GmbH beträgt 383 Euro.\n\nDieser Sondervertrag tritt mit dem Datum der Unterschrift in Kraft und endet mit der offiziellen Abnahme der Wohnanlage Am Park. Eine vorzeitige Beendigung des Vertrags ist unter Einhaltung der vertraglichen Kündigungsfristen möglich.\n\n[ENDE]",
+    "model": "ollama/gemma3:12b",
+    "usage": {
+      "prompt_tokens": 315,
+      "completion_tokens": 289
+    },
+    "cost_usd": 0.0,
+    "latency_ms": 5890.508683980443,
+    "cached": false,
+    "provider": "ollama",
+    "fallback": false,
+    "model_version": null
+  }
+}
