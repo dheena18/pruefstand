@@ -90,4 +90,5 @@ def test_failed_thread_start_releases_slot_and_peer(monkeypatch: pytest.MonkeyPa
         assert _health(int(srv.server_address[1]), B)  # the one slot and B's one count are free
     finally:
         left.close()
+        right.close()  # closing twice is harmless if the server already shut it
         srv.shutdown()
