@@ -570,7 +570,7 @@ class RunManifest(BaseModel):    # (schema) -> run.json
     judge_models: dict[str, str]; judge_prompt_versions: dict[str, str]
     judge_serving: dict[str, str] = {}   # R9 X3.3: metric -> "<engine> <engine_version> <quantization> <digest[:12]>" of its
                                          # GATED judge (digest = Ollama manifest digest; R11 AI11-09, R12 AI12-04)
-    judge_epoch: int = 0                 # R9 X3.3: from judges/data/calibration_status.yaml (T5.4); bumped only by re-calibration
+    judge_epoch: int = 0                 # R9 X3.3: from judges/data/calibration_status.yaml (T5.4); bumped by a passing re-calibration (D163, D934) or an owner bump without a pass (D1251)
     metric_versions: dict[str, str]; seed: int; cost: CostSummary
     duration_s: float; counts: dict[str, int]
     # counts keys (R9, single owner = the runner, D9-07/D9-21): ok, error, cached, not_applicable, judge_error,

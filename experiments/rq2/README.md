@@ -16,6 +16,7 @@ Everything runs on the VM; GPU steps under the shared lock. `OLLAMA_GPU1_URL` (j
 | Bias (S6) | `pruefstand-lock uv run python experiments/rq2/bias.py --judge ollama/gemma3:12b` | yes | ~ 15 min (loads the generator) |
 | Report (S4, S5, S7, S8) | `uv run python experiments/rq2/report.py` | no | ~ 1 min |
 | Re-calibration (S11) | `uv run python experiments/rq2/recalibrate.py --judge <id>` | no | after a new `run_judges.py` run |
+| Owner epoch bump (D1251) | `uv run python experiments/rq2/recalibrate.py --judge <id> --bump-epoch` | no | only `epoch` + 1, no pass; changes `eval_fingerprint` |
 
 Prompt work uses only `--split dev` (`run_judges.py --split dev --prompt faithfulness=v3`, refused on `test`);
 the pass rule and every RQ2 number are computed once per prompt version on `test` (AI13-12).
