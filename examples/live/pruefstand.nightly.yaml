@@ -46,6 +46,7 @@ budget:
 runner:
   concurrency: 2
   timeout_s: 180
+  max_consecutive_timeouts: 3     # D1084: a hung target ends the run early, rest = errors
   max_retries: 3
   backoff_s: 1.0
 baseline_store:

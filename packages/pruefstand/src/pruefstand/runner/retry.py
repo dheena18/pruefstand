@@ -10,7 +10,11 @@ import numpy as np
 from pruefstand.core.errors import TargetError
 
 MAX_ERROR_CHARS = 500
-_TIMEOUT = re.compile(r"\btimed out after\b|\btimeout after\b")
+# D1084: only the two texts this package writes (runner deadline, adapter deadline), anchored, so a
+# target-controlled error body ("HTTP 504: upstream timed out after 30s") never counts as a timeout.
+_TIMEOUT = re.compile(
+    r"^timeout after [0-9.e+-]+ s$|^(?:GET|POST) /[^\s:]*: timed out after [0-9.e+-]+s$"
+)
 _JITTER = 0.25
 
 
@@ -90,9 +94,9 @@ async def call_with_retry[T](
 
 
 def is_timeout(error: str | None) -> bool:
-    """True for the two timeout texts of a target call (adapter deadline, runner deadline; D1082).
+    """True only for the two timeout texts this package writes (runner, adapter; D1082, D1084).
 
     >>> is_timeout("timeout after 360 s"), is_timeout("POST /v1/query: HTTP 503: busy")
     (True, False)
     """
-    return error is not None and _TIMEOUT.search(error) is not None
+    return error is not None and _TIMEOUT.fullmatch(error) is not None

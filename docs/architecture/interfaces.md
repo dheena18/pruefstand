@@ -578,6 +578,7 @@ class RunManifest(BaseModel):    # (schema) -> run.json
     #   retrieve (R11 D218: robust_pr cases sent to /v1/retrieve), retrieve_fallback (target without /v1/retrieve),
     #   metric_truncated (T1.8, D366: deterministic metric values with details.truncated; logged as well),
     #   timeout (D1082: cases whose error is a client timeout; also counted in error; only when > 0),
+    #   aborted_after_timeouts (D1084: cases not run after runner.max_consecutive_timeouts; also in error),
     #   model_reloads, upstream_errors (R12 N6.4, D267: llm-proxy /health differences over the run, measured by the
     #   orchestrator and written with ArtifactStore.add_counts; absent in tier 1 and in local runs),
     #   (no infra_error count: the infra failure is the field below, R11 integration D245)
@@ -1061,6 +1062,8 @@ class RunIndex:                # DuckDB over runs/*/run.json + results.parquet (
 
 ```python
 class RunnerConfig(BaseModel): concurrency: int = 8; timeout_s: float = 60; max_retries: int = 3; backoff_s: float = 1.0
+                               max_consecutive_timeouts: int | None = None   # D1084: stop calling the target after N
+                               # timeouts in a row; later cases are recorded as errors, counts["aborted_after_timeouts"]
 class RunResults(BaseModel):   manifest: RunManifest; records: tuple[CaseRecord, ...]; values: tuple[ScoredCase, ...]
 class ScoredCase(BaseModel):   case: TestCase; values: tuple[MetricValue, ...]   # each metric at most once (ValidationError, T1.7a)
 class RunArtifacts(BaseModel): results: RunResults; root: Path   # a run as stored on disk (runs/<run_id>/)

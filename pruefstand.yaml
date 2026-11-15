@@ -44,6 +44,7 @@ budget:
 runner:
   concurrency: 8
   timeout_s: 360                  # D624: > 300 s, the tier-2 generator queue (rag-demo read timeout)
+  max_consecutive_timeouts: 8     # D1084: = concurrency; a hung target ends the run early
   max_retries: 3
   backoff_s: 1.0
 baseline_store:

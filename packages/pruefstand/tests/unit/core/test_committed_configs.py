@@ -193,3 +193,4 @@ def test_tier1_configs_wait_180_s_for_a_slow_cpu_call(path: Path) -> None:
     # D1082: tier 1 never retries a timeout, so one CPU latency spike must not hit a 60 s limit
     cfg = load_config(path)
     assert cfg.target.timeout_s == cfg.runner.timeout_s == 180
+    assert cfg.runner.max_consecutive_timeouts == 3  # D1084: a hung target ends in about 10 min
