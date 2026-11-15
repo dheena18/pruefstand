@@ -71,6 +71,11 @@ class MutationSpec(_Frozen):
         return self
 
     @property
+    def is_noop(self) -> bool:
+        """True for a no-op entry (``N<nn>``): expected PASS, measures the false-alarm rate."""
+        return self.id.startswith("N")
+
+    @property
     def is_leak(self) -> bool:
         """True for a leak mutation (expected hard fail on ``tenant_leak`` / ``canary_leak``)."""
         return self.expected.hard_fail and bool(LEAK_METRICS & set(self.expected.metrics))
@@ -80,13 +85,12 @@ def _shape_problems(spec: MutationSpec) -> list[str]:
     problems = []
     if (spec.patch is None) == (spec.rag_overrides is None):
         problems.append("exactly one of patch and rag_overrides")
-    if spec.kind == "config" and spec.rag_overrides is None:
-        problems.append("kind config needs rag_overrides")
     if spec.silent and not spec.silent_reason:
         problems.append("silent needs silent_reason")
-    is_noop = spec.id.startswith("N")
-    if is_noop and (spec.expected.status != "PASS" or spec.expected.hard_fail):
+    if spec.is_noop and (spec.expected.status != "PASS" or spec.expected.hard_fail):
         problems.append("a no-op expects PASS without a hard fail")
+    if spec.is_noop and (spec.in_detection_rate or spec.tier1 or spec.expected.metrics):
+        problems.append("a no-op is in no detection rate, not tier1 and names no metric")
     return problems
 
 
@@ -96,6 +100,8 @@ def _tier_problems(spec: MutationSpec) -> list[str]:
         problems.append("tier nightly runs on splits [full] only (X3.10, D223)")
     if spec.tier == "pr" and not set(spec.splits) <= PR_SPLITS:
         problems.append("tier pr runs on smoke/core/robust_pr only")
+    if spec.is_noop:
+        return problems
     if spec.stratum == "statistical" and spec.expected.status != "FAIL":
         problems.append("a statistical entry expects FAIL (round 13 P3.3)")
     if (spec.stratum == "normaliser") == spec.in_detection_rate:
@@ -106,10 +112,25 @@ def _tier_problems(spec: MutationSpec) -> list[str]:
 
 
 class MutationIndex(_Frozen):
-    """``index.yaml``: the commit every patch applies to and the entry list."""
+    """``index.yaml``: the commit every patch applies to, the entry list and the pending entries.
+
+    A pending entry has a folder but is neither applied nor scored until the reason is resolved.
+    """
 
     base_sha: str = Field(pattern=r"^[0-9a-f]{40}$")
     entries: tuple[str, ...] = Field(min_length=1)
+    pending: dict[str, str] = Field(default_factory=dict)
+
+    @model_validator(mode="after")
+    def _check_pending(self) -> Self:
+        both = set(self.entries) & set(self.pending)
+        if both:
+            msg = f"entries and pending overlap: {sorted(both)}"
+            raise ValueError(msg)
+        if any(len(reason.strip()) < 20 for reason in self.pending.values()):
+            msg = "every pending entry needs a reason"
+            raise ValueError(msg)
+        return self
 
 
 def load_index(root: Path = MUTATIONS_ROOT) -> MutationIndex:

@@ -1,0 +1,22 @@
+diff --git a/apps/rag-demo/src/rag_demo/retrieval/filters.py b/apps/rag-demo/src/rag_demo/retrieval/filters.py
+index cffd111..5e2a540 100644
+--- a/apps/rag-demo/src/rag_demo/retrieval/filters.py
++++ b/apps/rag-demo/src/rag_demo/retrieval/filters.py
+@@ -8,7 +8,7 @@ from pydantic import BaseModel, ConfigDict
+ from rag_demo.errors import UnknownTenantError
+ 
+ SHARED = "shared_public"
+-_TENANT = re.compile(r"[a-z][a-z0-9_]{0,63}")
++_TENANT_NAME = re.compile(r"[a-z][a-z0-9_]{0,63}")
+ 
+ 
+ class _Frozen(BaseModel):
+@@ -54,7 +54,7 @@ def allowed_tenants(tenant_id: str, known: Collection[str] | None = None) -> fro
+         >>> sorted(allowed_tenants("shared_public"))
+         ['shared_public']
+     """
+-    if not _TENANT.fullmatch(tenant_id) or (known is not None and tenant_id not in known):
++    if not _TENANT_NAME.fullmatch(tenant_id) or (known is not None and tenant_id not in known):
+         msg = "unknown tenant"
+         raise UnknownTenantError(msg)
+     return frozenset({tenant_id, SHARED})

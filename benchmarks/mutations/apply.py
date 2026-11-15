@@ -212,6 +212,10 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser.add_argument("--allow-published", action="store_true")
     args = parser.parse_args(argv)
     try:
+        pending = load_index().pending
+        if args.action == "apply" and args.entry in pending:
+            msg = f"{args.entry} is pending, not applied: {pending[args.entry]}"
+            raise MutationError(msg)
         spec = load_spec(args.entry)
         if args.action == "revert":
             revert(args.worktree)
