@@ -2,7 +2,7 @@
 
 Prüfstand is an open-source release gate for German-language RAG. The authoritative spec is
 `docs/spec/SPEC.md`; the cross-module contracts are `docs/architecture/interfaces.md`; decisions are
-in `docs/decisions.md` and `docs/adr/`. Tasks are in `tasks/TASKS.md`, one prompt per task in `prompts/`.
+in `docs/decisions/` (one file `D<n>.md` per decision, D1211) and `docs/adr/`. Tasks are in `tasks/TASKS.md`, one prompt per task in `prompts/`.
 The UI source of truth is `docs/design/ui-spec.md` (D134); the per-symbol test plan is
 `docs/engineering/test-matrix.md` (D133).
 
@@ -19,7 +19,7 @@ work around it.
    change is needed: write one paragraph (what, why, impact), update the doc + ADR in the same PR,
    and flag it in the PR description under **Interface changes**.
 6. Do not start work belonging to another task. Note it under **Follow-ups** in the PR.
-7. Update `docs/decisions.md` (one line per decision) and any diagram your change affects.
+7. Create `docs/decisions/D<n>.md` (one file per decision; never append to `docs/decisions.md`) and update any diagram your change affects.
 8. On the VM, never read, write or delete anything under `/var/lib/pruefstand/**` or `/home/pruefstand/**` (the
    executor's lock, state, key and secrets; R11 D213). GPU work goes through `pruefstand-lock <cmd>`; never edit
    or remove `/var/lib/pruefstand/MAINTENANCE` by hand unless your prompt is a model-swap task that says so (ADR-0019).
@@ -295,7 +295,7 @@ Modules in the same row never import each other. All shared types live in `core`
   follow-ups, checklist).
 - Bootstrap exception: T0.1–T0.4 run before branch protection exists (switched on in T0.5); use local
   `make check` and `git diff main...HEAD`.
-- Binding round-9 decisions are D146–D195 in `docs/decisions.md` (source: `docs/planning/reviews/round9-resolution.md`);
+- Binding round-9 decisions are D146–D195 in `docs/decisions/` (source: `docs/planning/reviews/round9-resolution.md`);
   binding round-10 decisions are D196–D210 (source: `docs/planning/reviews/round10-resolution.md`, Z1–Z7);
   binding round-11 decisions are D211–D247 (source: `docs/planning/reviews/round11-resolution.md`, Y1–Y7; D242–D247 from `round11-integration.md`);
   binding round-12 decisions are D248–D283 (source: `docs/planning/reviews/round12-resolution.md`, N1–N7, plus the reviewers' exact minor fixes in `round12-{dev,ai,ui,arch}.md`; D284–D286 from `round12-integration.md`);
@@ -351,6 +351,6 @@ Modules in the same row never import each other. All shared types live in `core`
 - [ ] `make check` green locally and in CI
 - [ ] Tests written first; coverage gates hold (§6)
 - [ ] `docs/engineering/test-matrix.md` rows for my symbols are `covered` (D133)
-- [ ] Docs updated: module README/docstrings, affected diagrams, `docs/decisions.md`
+- [ ] Docs updated: module README/docstrings, affected diagrams, `docs/decisions/D<n>.md`
 - [ ] No TODOs without a linked follow-up task ID
 - [ ] Reviewed with `prompts/_review.md`; review findings resolved
