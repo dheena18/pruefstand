@@ -5,7 +5,8 @@ import re
 from rq2.construct import STOPWORDS, norm, tokens
 
 COVERAGE_MAX = 0.6
-_CLAUSE_BREAKS = (",", "(", ";", ":", "–", " - ", " und ")
+_CLAUSE_BREAKS = (",", "(", ";", "–", " - ")
+_SENTENCE_CLAUSE_BREAKS = (*_CLAUSE_BREAKS, ":", " und ")
 NUMBER_TOLERANCE = 0.1
 _NUMBER = re.compile(r"\d+(?:\.\d{3})*(?:,\d+)?")
 _DANGLING_NEGATION = re.compile(r"\b(?:nicht|kein\w*)\s*(?:[,.;:)]|$)")
@@ -56,32 +57,35 @@ def may_support(answer: str, passage: str) -> bool:
     )
 
 
-def first_clause_end(text: str) -> int:
-    """Return the index of the first comma, bracket, semicolon, colon, dash or " und ".
+def first_clause_end(text: str, *, strict: bool = False) -> int:
+    """Return the index of the first comma, bracket, semicolon or dash (else ``len(text)``).
 
-    Else ``len(text)``.
-
-    A coordinated or enumerating part ("... und umfasst ...", "...: vier Phasen") is another clause,
-    so a negation before it does not negate what follows (T5.4b2, D1241).
+    Args:
+        text: The text.
+        strict: Also break on a colon and on " und " (T5.4b2, D1241, D1300). Only the sentence
+            pairs of ``sentence_answers`` use it: a coordinated or enumerating part
+            ("... und umfasst ...", "...: vier Phasen") is another clause there. The T5.3 builders
+            keep ``strict=False``, so the committed calibration sets still reproduce from code.
     """
-    breaks = [text.find(b) for b in _CLAUSE_BREAKS if b in text]
+    marks = _SENTENCE_CLAUSE_BREAKS if strict else _CLAUSE_BREAKS
+    breaks = [text.find(b) for b in marks if b in text]
     return min(breaks, default=len(text))
 
 
-def edit_in_first_clause(original: str, edited: str) -> bool:
-    """True iff the edit starts in the first clause of ``original``.
+def edit_in_first_clause(original: str, edited: str, *, strict: bool = False) -> bool:
+    """True iff the edit starts in the first clause of ``original`` (see ``first_clause_end``).
 
-    The first differing character must lie before the first comma, bracket, semicolon, colon,
-    dash or " und ", so a parenthesis or relative clause is never the only negated part.
+    The first differing character must lie before the first clause break, so a parenthesis or
+    relative clause is never the only negated part.
     """
     first_diff = next(
         (i for i, (a, b) in enumerate(zip(original, edited, strict=False)) if a != b),
         min(len(original), len(edited)),
     )
-    return first_diff < first_clause_end(original)
+    return first_diff < first_clause_end(original, strict=strict)
 
 
-def negation_ok(original: str, edited: str) -> bool:
+def negation_ok(original: str, edited: str, *, strict: bool = False) -> bool:
     """True iff a negation edit starts in the first clause and leaves no dangling negation.
 
     A ``nicht`` / ``kein…`` right before a comma, a full stop or the end ("..., die ... war nicht,
@@ -89,7 +93,9 @@ def negation_ok(original: str, edited: str) -> bool:
     """
     if "sondern" in edited.lower():  # "nicht X, sondern Y" breaks when the negation moves
         return False
-    return edit_in_first_clause(original, edited) and not _DANGLING_NEGATION.search(edited)
+    return edit_in_first_clause(original, edited, strict=strict) and not _DANGLING_NEGATION.search(
+        edited
+    )
 
 
 def has_answer_content(candidate: str) -> bool:

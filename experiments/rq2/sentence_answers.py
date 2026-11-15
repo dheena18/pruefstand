@@ -60,9 +60,11 @@ def negated_sentence(row: QuadRow, answer: str) -> tuple[str, str] | None:
     span = _span(answer)
     start = sentence.find(span)
     edited = negate(sentence)
-    if start >= first_clause_end(sentence) or edited is None or edited == sentence:
+    if start >= first_clause_end(sentence, strict=True) or edited is None or edited == sentence:
         return None
-    if _first_diff(sentence, edited) > start + len(span) or not negation_ok(sentence, edited):
+    if _first_diff(sentence, edited) > start + len(span) or not negation_ok(
+        sentence, edited, strict=True
+    ):
         return None
     return sentence, edited
 
