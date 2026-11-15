@@ -1,36 +1,76 @@
-"""Post-run health probe classification (D226, D1082; T6.2a S7).
+"""Post-run health probe classification (D226, D1082, D1083; T6.2a S7).
 
 After ``pruefstand run`` the orchestrator probes the infrastructure again (``health.sh`` without
-``--repair``, plus the tunnel unit; no restart). A failed probe means the run cannot be trusted as a
-candidate result: it is an infra error (``"<kind>: <detail>"``, D245) that ``run_with_retry``
-reports as ``error`` and retries once / asks for a re-dispatch, never a candidate ``failure``. A
-passing probe keeps the run's own result (including timeouts, which stay candidate errors, D1082).
-``evaluate`` (not built yet) calls :func:`post_run_infra_error` right after the run.
+``--repair``, plus the tunnel unit; no restart). The outcome decides between the run's own result
+and an infra error (``"<kind>: <detail>"``, D245) that ``run_with_retry`` reports as ``error``:
+
+* tunnel unit inactive → ``tunnel_lost``; exit 11 (endpoint or mode model not answering) and 12
+  (``status.sh`` unreachable) → ``ollama_down``; 13 (resident digest changed) and 15 (not fully on
+  the GPU) → ``model_reload``; 16 → ``data_root_unavailable``. Limit: with the tunnel unit active,
+  an exit 11 is always ``ollama_down`` (the probe cannot tell a dead forward from a dead server).
+* exit 10 (free VRAM below the minimum, e.g. another cluster user) and 14 (cluster bin dir differs
+  from the checkout) do not touch a finished run: logged as WARN, the run's result stands.
+* any other exit (1, 2, 64: the script itself failed) → ``executor``.
+
+Every probe command carries a subprocess timeout (``POST_RUN_TIMEOUT_S``); a timeout raises
+``subprocess.TimeoutExpired``, which ``run_with_retry`` treats as an infra error of kind
+``executor``. ``evaluate`` (not built yet) calls :func:`post_run_infra_error` right after the run.
 """
 
-from collections.abc import Mapping
+import logging
+import subprocess
+from collections.abc import Callable, Mapping, Sequence
 from pathlib import Path
 
 from gate_orchestrator.lock import LOCK_HELD_ENV
-from gate_orchestrator.preflight import DATA_ROOT_EXIT, IS_ACTIVE, Mode, Runner, fail_row
+from gate_orchestrator.preflight import DATA_ROOT_EXIT, IS_ACTIVE, Mode, fail_row
 
-KIND_FOR_EXIT = {13: "model_reload", 15: "model_reload", DATA_ROOT_EXIT: "data_root_unavailable"}
+TimedRunner = Callable[[Sequence[str], Mapping[str, str], float], tuple[int, str]]
+POST_RUN_TIMEOUT_S = 120.0
+KIND_FOR_EXIT = {
+    11: "ollama_down",
+    12: "ollama_down",
+    13: "model_reload",
+    15: "model_reload",
+    DATA_ROOT_EXIT: "data_root_unavailable",
+}
+WARN_ONLY_EXITS = frozenset({10, 14})
+LOG = logging.getLogger("gate_orchestrator.post_run")
+
+
+def subprocess_runner(
+    argv: Sequence[str], env: Mapping[str, str], timeout_s: float
+) -> tuple[int, str]:
+    """Run ``argv`` with ``env`` and a timeout; return ``(exit code, stdout)``.
+
+    Raises:
+        subprocess.TimeoutExpired: the command ran longer than ``timeout_s``.
+    """
+    done = subprocess.run(  # noqa: S603 - fixed argv from this module, never from a PR
+        list(argv), env=dict(env), capture_output=True, text=True, timeout=timeout_s, check=False
+    )
+    return done.returncode, done.stdout
 
 
 def post_run_infra_error(
-    mode: Mode, health_sh: Path, run: Runner, env: Mapping[str, str]
+    mode: Mode,
+    health_sh: Path,
+    run: TimedRunner,
+    env: Mapping[str, str],
+    *,
+    timeout_s: float = POST_RUN_TIMEOUT_S,
 ) -> str | None:
-    """Probe after the run; ``None`` when healthy, else the run's ``infra_error``.
+    """Probe after the run; ``None`` when the run's result stands, else its ``infra_error``.
 
     Args:
         mode: the job's mode (``night`` for the nightly).
         health_sh: ``infra/gpu/health.sh`` of the trusted checkout.
-        run: ``(argv, env) -> (exit code, stdout)``.
+        run: ``(argv, env, timeout_s) -> (exit code, stdout)``, e.g. :func:`subprocess_runner`.
         env: the locked job's child env (``PRUEFSTAND_LOCK_HELD=1``).
+        timeout_s: per-command timeout.
 
     Returns:
-        ``None`` or ``"<kind>: post-run ..."`` with kind ``tunnel_lost``, ``ollama_down``,
-        ``model_reload`` (digest or placement changed) or ``data_root_unavailable``.
+        ``None`` or ``"<kind>: post-run ..."`` (kinds in the module docstring).
 
     Raises:
         ValueError: called without the GPU lock.
@@ -38,12 +78,14 @@ def post_run_infra_error(
     if env.get(LOCK_HELD_ENV) != "1":
         msg = "post-run probe needs PRUEFSTAND_LOCK_HELD=1 (run it under the GPU lock)"
         raise ValueError(msg)
-    if run(IS_ACTIVE, env)[0] != 0:
+    if run(IS_ACTIVE, env, timeout_s)[0] != 0:
         return "tunnel_lost: pruefstand-tunnel inactive after the run"
-    code, out = run(("bash", str(health_sh), "--mode", mode), env)
+    code, out = run(("bash", str(health_sh), "--mode", mode), env, timeout_s)
     if code == 0:
         return None
     row = fail_row(out, code)
-    kind = KIND_FOR_EXIT.get(code, "ollama_down")
     detail = f"post-run health.sh exit {code}" + (f" ({row})" if row else "")
-    return f"{kind}: {detail}"
+    if code in WARN_ONLY_EXITS:
+        LOG.warning("post-run probe WARN, run result kept: %s", detail)
+        return None
+    return f"{KIND_FOR_EXIT.get(code, 'executor')}: {detail}"
