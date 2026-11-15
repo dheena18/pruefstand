@@ -1,0 +1,4 @@
+# RQ3 mutation benchmark (T7.1a): every patch applies at base_sha; rag_overrides merge into
+# apps/rag-demo/configs/rag.gpu.yaml (and rag.yaml for tier1 entries). Slice 1: the config entries.
+base_sha: 0c4cd87df987f9431acdd944fc9f3a5dcb1c5b9e
+entries: [M01, M04, M05, M06, M07, M08, M09, M10]

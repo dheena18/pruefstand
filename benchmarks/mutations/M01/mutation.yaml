@@ -1,0 +1,21 @@
+id: M01
+title: Remove the reranker
+kind: config
+rag_overrides: {reranker: "off"}
+needs_reindex: false
+cache_invalidating: true
+tier: pr
+splits: [smoke, core, robust_pr]
+stratum: statistical
+tier1: false
+in_detection_rate: true
+expected:
+  status: FAIL
+  metrics: [ndcg_at_k]
+  secondary_metrics: [context_recall]
+  gated_slices: [overall]
+  likely_cause: retrieval
+rationale: >-
+  The tier-2 reranker reorders the top 10 fused hits; without it the rank quality (ndcg_at_k, gated) drops.
+  context_recall is informational only: with top_k 8 the set-based recall@8 changes only through fused
+  ranks 9-10 (round 12 AI12-06).
