@@ -20,7 +20,7 @@ Rules:
    deadline, so dispatch it before about 23:00) and record its result in the last
    column. A nightly FAIL caused by a bypassed
    PR is handled like any regression (revert or fix PR).
-4. A bypass that changes a gate threshold also needs a `docs/decisions.md` line.
+4. A bypass that changes a gate threshold also needs a new decision file `docs/decisions/D<n>.md`.
 
 | Date (UTC) | PR | Head SHA | Reason | Outage evidence | Follow-up nightly (run id, result) |
 | --- | --- | --- | --- | --- | --- |
