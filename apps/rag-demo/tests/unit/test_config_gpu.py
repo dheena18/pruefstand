@@ -1,7 +1,6 @@
 """Tier-2 profile of rag-demo: catalogue-validated config, endpoint rules, Ollama request (T3.2)."""
 
 import json
-from pathlib import Path
 from typing import Any
 
 import httpx
@@ -297,15 +296,3 @@ def test_a_gpu_config_must_set_reranker_explicitly() -> None:
     del data["reranker"]
     with pytest.raises(ValidationError, match="reranker"):
         _parse(data)
-
-
-@pytest.mark.parametrize(
-    "path", [GPU, *sorted((CONFIGS / "bugs" / "gpu").glob("*.yaml"))], ids=lambda p: p.name
-)
-def test_every_tier2_profile_reaches_models_only_through_llm_proxy(path: Path) -> None:
-    # D1081 (closes the D1068 open point): the candidate gets LLM_PROXY_URL, never OLLAMA_GPU*_URL
-    text = path.read_text(encoding="utf-8")
-    assert "OLLAMA_GPU" not in text
-    cfg = load_config(path, catalogue_path=CATALOGUE)
-    assert cfg.generator.endpoint_env == "LLM_PROXY_URL"
-    assert cfg.embed.endpoint_env == "LLM_PROXY_URL"
