@@ -4,7 +4,8 @@ A PR branched before D1211 appends ``| D<n> | ... |`` rows to the old ``docs/dec
 helper does, safely and in one step, what the recipe in ``docs/decisions.md`` describes:
 
 1. find the PR's side (``HEAD`` normally and in a merge; ``orig-head`` during ``git rebase``, where
-   ``HEAD`` is the upstream side) and refuse when it cannot be determined;
+   ``HEAD`` is the upstream side) and refuse when it cannot be determined or the rebase is
+   interactive;
 2. move the PR's rows into ``docs/decisions/D<n>.md`` (idempotent) and ``git add`` them;
 3. 3-way merge the PR's other edits of the old page (pinned versions, prose) onto the page of the
    base ref and stage the result; a real conflict leaves markers in the page and is reported.
@@ -54,6 +55,28 @@ def _show(repo: Path, ref: str) -> str:
     return _git(repo, "show", f"{ref}:{PAGE}").stdout
 
 
+def _edited(repo: Path, folder: Path, tip: str) -> bool:
+    """True when the rebase todo of ``folder`` no longer lists every commit of the original tip."""
+    if not (folder / "interactive").exists():
+        return False
+    onto = folder / "onto"
+    if not onto.is_file():
+        return True
+    base = _git(repo, "merge-base", tip, onto.read_text(encoding="utf-8").strip(), check=False)
+    expected = _git(repo, "rev-list", "--no-merges", f"{base.stdout.strip()}..{tip}").stdout.split()
+    listed: list[str] = []
+    for name in ("done", "git-rebase-todo"):
+        f = folder / name
+        lines = f.read_text(encoding="utf-8").splitlines() if f.is_file() else []
+        for ln in lines:
+            parts = ln.split()
+            if len(parts) >= 2 and not ln.startswith("#"):
+                if parts[0] in ("drop", "d"):
+                    return True
+                listed.append(parts[1])
+    return any(not any(sha.startswith(p) for p in listed) for sha in expected)
+
+
 def pr_side(repo: Path) -> str:
     """Name the commit that holds the PR's version of the page.
 
@@ -70,7 +93,15 @@ def pr_side(repo: Path) -> str:
         if folder.is_dir():
             tip = folder / "orig-head"
             if tip.is_file() and tip.read_text(encoding="utf-8").strip():
-                return tip.read_text(encoding="utf-8").strip()
+                sha = tip.read_text(encoding="utf-8").strip()
+                if _edited(repo, folder, sha):
+                    msg = (
+                        "interactive rebase that drops or loses commits: the PR side would be the "
+                        "whole original tip, not the replayed commits. Run it after the rebase "
+                        "finishes, from a merge of origin/main, or use a non-interactive rebase"
+                    )
+                    raise PrSideError(msg)
+                return sha
             msg = f"rebase in progress but {name}/orig-head is missing; PR side unknown"
             raise PrSideError(msg)
     return "HEAD"

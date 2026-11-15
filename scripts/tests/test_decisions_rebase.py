@@ -118,6 +118,19 @@ def test_unknown_pr_side_during_a_rebase_is_refused_and_writes_nothing(tmp_path:
     assert not (repo / "docs" / "decisions" / "D1300.md").exists()
 
 
+def test_interactive_rebase_is_refused_with_a_clear_message(tmp_path: Path) -> None:
+    repo = _repo(tmp_path, PR_PAGE)
+    folder = repo / ".git" / "rebase-merge"
+    folder.mkdir()
+    (folder / "orig-head").write_text(_git(repo, "rev-parse", "pr").strip(), encoding="utf-8")
+    (folder / "interactive").write_text("", encoding="utf-8")
+    (folder / "onto").write_text(_git(repo, "rev-parse", "main").strip(), encoding="utf-8")
+    (folder / "git-rebase-todo").write_text("# commit dropped by the editor\n", encoding="utf-8")
+    with pytest.raises(PrSideError, match="interactive rebase"):
+        rebase_pending(repo, "main")
+    assert not (repo / "docs" / "decisions" / "D1300.md").exists()
+
+
 def test_a_real_conflict_of_the_page_is_reported(tmp_path: Path) -> None:
     repo = _repo(tmp_path, PR_PAGE)
     _git(repo, "checkout", "-q", "main")
@@ -148,6 +161,11 @@ def test_migrate_pending_stages_the_new_files(tmp_path: Path) -> None:
         "### D1301 new decision",
         "D1301 is decided: x",
         "- **D1301** x",
+        "**D1301** x",
+        "1. D1301 x",
+        "+ D1301 x",
+        "> | D1301 | quoted | - |",
+        "| x | D1301 | y |",
     ],
 )
 def test_guard_bypass_forms_are_caught(tmp_path: Path, line: str) -> None:

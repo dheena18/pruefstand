@@ -11,7 +11,7 @@ This is the **authoritative** spec. When it disagrees with anything else, the or
 - Ground rules for every coding session: `CLAUDE.md` (auto-loaded by Claude Code).
 - Work items: `tasks/TASKS.md`, one ready-to-paste prompt per task in `prompts/`.
 - How to run a session: `prompts/_session-start.md`; how to review a PR: `prompts/_review.md`.
-- Cross-module contracts: `docs/architecture/interfaces.md`. Decisions: `docs/decisions.md`, `docs/adr/`.
+- Cross-module contracts: `docs/architecture/interfaces.md`. Decisions: `docs/decisions/` (one file per decision), `docs/adr/`.
 - A task prompt names the spec sections it needs; read those, not the whole file.
 
 ## 1. Project summary
@@ -1607,7 +1607,7 @@ not repeated here.
 - One task per session; tests first; evidence at the end (`prompts/_session-start.md`).
 - Statistics code always ships with a plain-words explanation and a worked numeric example.
 - Read 20 generated German questions yourself per generation round; LLMs write stiff Amtsdeutsch.
-- Keep `docs/decisions.md` short and current.
+- Keep `docs/decisions/` current (one file per decision, never append to `docs/decisions.md`).
 - If a session goes in circles, restart with CLAUDE.md + decisions + the task prompt.
 
 ## 11. Resume, GitHub and release checklist

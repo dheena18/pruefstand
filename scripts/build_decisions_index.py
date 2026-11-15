@@ -55,7 +55,8 @@ def check(directory: Path, decisions_md: Path) -> list[str]:
         pending = find_rows(text)
         row_lines = {r.line_no for r in pending}
         problems += [
-            f"{decisions_md.name}:{no + 1}: decision entry, make it a file: {ln.strip()[:50]}"
+            f"{decisions_md.name}:{no + 1}: decision entry; make it a file "
+            f"(prose may not start with a D-number): {ln.strip()[:40]}"
             for no, ln in loose_entries(text)
             if no not in row_lines
         ]

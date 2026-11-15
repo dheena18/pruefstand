@@ -66,7 +66,8 @@ def _merge_split_code(cells: list[str]) -> list[str]:
 LOOSE_ROW = re.compile(r"^\s*\|\s*(D[0-9]+)\s*\|")
 # A decision-style entry that is not a table row: heading, list item or prose starting with D<n>.
 _ENTRY = re.compile(
-    r"^\s*(\|\s*D[0-9]+\s*\||#+\s+D[0-9]{1,5}\b|[-*]\s+\**D[0-9]{1,5}\b|D[0-9]{1,5}\b)"
+    r"^\s*(>\s*)?(\|\s*D[0-9]+\s*\||\|[^|]*\|\s*D[0-9]+\s*\||#+\s+D[0-9]{1,5}\b"
+    r"|([-*+]|[0-9]+\.)\s+\**D[0-9]{1,5}\b|\*{2}D[0-9]{1,5}\b|D[0-9]{1,5}\b)"
 )
 
 

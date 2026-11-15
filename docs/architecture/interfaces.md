@@ -3,7 +3,7 @@
 This file fixes the contracts **between** modules and between processes. Implementations may add
 private helpers freely, but the names, fields and signatures below change only through the process
 in `CLAUDE.md` §1.5 (paragraph + ADR + PR flag). Signatures are Python 3.12 with Pydantic v2.
-Round-9 changes (`docs/planning/reviews/round9-resolution.md`, `docs/decisions.md` D146–D195) are marked **R9**;
+Round-9 changes (`docs/planning/reviews/round9-resolution.md`, `docs/decisions/` D146–D195) are marked **R9**;
 round-10 changes (`docs/planning/reviews/round10-resolution.md`, D196–D210: Ollama-only GPU serving reached
 through the VM tunnels, `llm-proxy`, NAS storage) are marked **R10**; round-11 changes
 (`docs/planning/reviews/round11-resolution.md`, D211–D241: VM identity, `POST /v1/retrieve`, native Ollama API,
