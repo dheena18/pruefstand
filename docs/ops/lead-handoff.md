@@ -148,3 +148,16 @@ so today a gated PR can merge without tier 2; any other listed context is unveri
 owner-merge path (renames and deletions included; casefolded): `.github/workflows/**`, `.github/actions/**`, any `CODEOWNERS`, `.github/dependabot.yml`, `infra/gpu/pruefstand-cluster`, `infra/gpu/install-cluster-wrapper.sh`, `infra/gpu/*.sh`, `infra/vm/**`, `infra/cluster/**`, `infra/gate-executor/**`, `**/sudoers*`, `security.yml`, `.gitleaks*`, `.gitleaksignore`, `.claude/**`, `docs/ops/secrets.md`, `scripts/merge_reviewed.sh`, `scripts/merge_paths.py`, `scripts/hooks/**`. The owner merges those, including any change to the script itself.
 Never `--admin`. The refusal is advisory: without the admin bypass, `uv run gh pr merge <n> --squash` can still merge an owner-path PR once the
 checks are green (0 approvals, no code-owner review). Git's own configuration (`url.insteadOf`, `GIT_CONFIG_COUNT`) and bash's lazy reading of the script file are trusted.
+
+## 10. Lead helper scripts (D1230)
+
+`scripts/lead/` holds the helpers (nothing lives only in `/tmp` or `~/.local/lead-bin` any more): `draft_push.sh [--dry-run] <worktree> <branch> <title> <msg-file> <body-file>`
+(ruff check + format check, commit, plain push, DRAFT PR against `main`), `draft_update.sh [--dry-run] <worktree> <branch> <msg-file>` and
+`resolve_merge.sh [--dry-run] <worktree> <branch> [pytest args...]` (merge `origin/main`; both sides kept in `docs/decisions.md`, `docs/decisions/**` and the other append-only
+files; stops on other conflicts, duplicate D-numbers and leftover markers; progress in `<git-dir>/lead-resolve-merge.state`, a rerun resumes; `LEAD_TEST_TIMEOUT` bounds pytest). A message
+or PR body with a `Claude-Session:` line or a "Generated with Claude Code" footer is refused (exit 2). They work from any cwd.
+
+A worktree of a stale branch lacks `scripts/lead/`: call the wrappers instead. `scripts/lead/install_wrappers.sh` (run once from the main checkout, no sudo; `--dir` and `--main` override the
+defaults) writes `~/.local/bin/lead-draft-push`, `lead-draft-update` and `lead-resolve-merge`; each fetches `origin/main` in the main checkout (`~/code/pruefstand`), fast-forwards it when it is a clean `main`
+and execs that checkout's `scripts/lead/<name>.sh`. The old `/tmp/draft_push.sh` etc. symlinks are no longer needed. `make check` also runs `scripts/check_self_matching_pgrep.py`: never write
+`pkill -f` / `pgrep -f` with a pattern that matches the calling shell or another session; use `pgrep -x`, `-P`, a PID file or the bracket trick (`pkill -f '[w]orker'`).
