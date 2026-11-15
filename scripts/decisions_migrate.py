@@ -9,6 +9,7 @@ written.
 """
 
 import collections
+import re
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -62,6 +63,29 @@ def _merge_split_code(cells: list[str]) -> list[str]:
     return cells
 
 
+LOOSE_ROW = re.compile(r"^\s*\|\s*(D[0-9]+)\s*\|")
+# A decision-style entry that is not a table row: heading, list item or prose starting with D<n>.
+_ENTRY = re.compile(
+    r"^\s*(\|\s*D[0-9]+\s*\||#+\s+D[0-9]{1,5}\b|[-*]\s+\**D[0-9]{1,5}\b|D[0-9]{1,5}\b)"
+)
+
+
+def loose_entries(text: str) -> list[tuple[int, str]]:
+    r"""Lines that look like a decision entry in any form (tight or indented rows, headings, prose).
+
+    >>> loose_entries("|D5|x|\n### D6 new\nD7 is: x\n| 2026-01-01 | T0 | y | z |\nDense")
+    [(0, '|D5|x|'), (1, '### D6 new'), (2, 'D7 is: x')]
+    """
+    return [(i, ln) for i, ln in enumerate(text.split("\n")) if _ENTRY.match(ln)]
+
+
+def _row_cells(line: str) -> list[str]:
+    if ROW_START.match(line) and line.endswith(" |"):
+        return split_row(line)
+    inner = line.strip().removeprefix("|").removesuffix("|")
+    return [c.strip() for c in re.split(r"(?<!\\)\|", inner)]
+
+
 def find_rows(text: str) -> list[ParsedRow]:
     """Find every ``| D<n> | ... |`` row of a Markdown text.
 
@@ -86,8 +110,8 @@ def find_rows(text: str) -> list[ParsedRow]:
             heading, header = line[3:].strip(), []
         elif line.startswith("| #") or line.startswith("| Date"):
             header = split_row(line) if line.endswith(" |") else []
-        elif ROW_START.match(line):
-            cells = _merge_split_code(split_row(line))
+        elif LOOSE_ROW.match(line):
+            cells = _merge_split_code(_row_cells(line))
             known = _is_decision_header(header) and len(header) == len(cells)
             names = [_extra_name(h) for h in header[2:]] if known else []
             if not known:

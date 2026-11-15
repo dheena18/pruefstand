@@ -16,25 +16,34 @@ provenance, the task rows from before decision numbers, the pinned versions and 
   `decisions-log.md` (generated, git-ignored, never committed, so it cannot conflict).
 - **Check:** `uv run python scripts/build_decisions_index.py --check` (also run by `make docs` and the
   test `scripts/tests/test_decisions_unique.py`).
-- **A branch that still appends a row to the old table** (cut before D1211): after merging or rebasing on
-  `main`, do **either** the one-step helper (run it on the PR branch before the merge, or during the conflicted merge) **or** the four steps by hand. Both refuse (exit 2, nothing
-  written) when `docs/decisions.md` or a decision file holds git conflict markers: resolve the merge first.
+- **A branch that still appends a row to the old table** (cut before D1211): during the merge or rebase
+  on `main` (or right before it), run the one-step helper on the PR branch:
 
   ```text
-  uv run python scripts/build_decisions_index.py --rebase-pending      # one step: steps 1-3 below + step 4's diff
-
-  git show HEAD:docs/decisions.md > /tmp/mine.md                       # 1. the PR's own copy of the old page
-  git checkout origin/main -- docs/decisions.md                        # 2. main's new short page
-  uv run python scripts/build_decisions_index.py --migrate-pending \
-      --decisions-md /tmp/mine.md                                      # 3. its D<n> rows become files (idempotent)
-  git diff --no-index <(git show origin/main:docs/decisions.md) /tmp/mine.md   # 4. other edits (pinned
-                                                                       #    versions, prose): re-apply by hand
+  uv run python scripts/build_decisions_index.py --rebase-pending     # base ref: origin/main
   ```
 
-  `--rebase-pending` prints the PR's non-row edits of the old page as a diff (step 4); it cannot carry
-  them over itself. Rows whose file already exists with the same text are skipped; an id clash with
-  different text or a duplicate id is refused. Without a merge conflict, plain
-  `uv run python scripts/build_decisions_index.py --migrate-pending` is enough.
+  It finds the PR's side (`HEAD` normally and in a merge; the original tip, `.git/rebase-merge/orig-head`,
+  during `git rebase`, where `HEAD` is main's side; it refuses with exit 2 if that cannot be told),
+  moves the PR's rows into `docs/decisions/D<n>.md` and `git add`s them (idempotent; an id clash with
+  different text or a duplicate id is refused), 3-way merges the PR's other edits of the old page (pinned
+  versions, prose) onto main's page and stages it (exit 3 with conflict markers when that conflicts),
+  and prints those edits. Conflict markers in the PR's copy: refused, exit 2, nothing written.
+  Then `git rebase --continue` or `git commit`. By hand, the same in 5 steps:
+
+  ```text
+  PR=HEAD                                   # during git rebase: PR=$(cat .git/rebase-merge/orig-head)
+  git show $PR:docs/decisions.md > /tmp/mine.md                  # 1. the PR's copy of the old page
+  git checkout origin/main -- docs/decisions.md                  # 2. main's new short page
+  uv run python scripts/build_decisions_index.py --migrate-pending --decisions-md /tmp/mine.md   # 3.
+  git add docs/decisions/                                        # 4. new files must be staged
+  F='^(#|\| *D[0-9]+ *\|)'                                       # 5. re-apply other edits (pins, prose):
+  diff -u <(git show $(git merge-base $PR origin/main):docs/decisions.md | grep -vE "$F") <(grep -vE "$F" /tmp/mine.md)
+  ```
+
+  Without a merge conflict, plain `uv run python scripts/build_decisions_index.py --migrate-pending`
+  (it stages the new files) is enough. `--check` and the guard test also reject tight, indented or
+  heading/prose forms of a decision entry on this page (`|D5|x|`, `### D5 ...`, `D5 is ...`).
 
 Reserved decision ranges (2026-11-03): disjoint ranges per agent avoid merge collisions, so gaps are intentional and rows are not renumbered: D520 T5.1, D540 T6.4, D560 wrapper PR, D580 checkpoint, D600 T3.1b prep, D620 T3.6, D900-D909 cassettes-models.yml.
 

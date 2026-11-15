@@ -221,7 +221,7 @@ Modules in the same row never import each other. All shared types live in `core`
   adds a variable adds its row there and its line in `.env.example`.
 - Public functions/classes have docstrings (Google style) stating inputs, outputs, raises.
 - German test strings are UTF-8 literals (`"Kündigung"`), never escaped.
-- No new dependency without adding it to the ADR/decision log with a reason; prefer stdlib.
+- No new dependency without adding it to the ADR or a decision file (`docs/decisions/D<n>.md`) with a reason; prefer stdlib.
 - **Free providers only**: Ollama on the A40 cluster (provider `ollama`, ids `ollama/<tag>`, via the VM tunnels; always
   the native `/api/chat` / `/api/embed` API, LiteLLM `ollama_chat` inside `llm/backends/litellm.py` only, per-model
   `options` from `infra/gpu/models.yaml`; R11 D219–D221; R12 D252: `num_ctx` is fixed per model, sampling options are
@@ -338,7 +338,7 @@ Modules in the same row never import each other. All shared types live in `core`
   dumps, …) except under the allowlist (R9 X1.3): `results/**`, `experiments/**/results/**`,
   `apps/dashboard/fixtures/**`, `datasets/fixtures/**`, `tests/**/fixtures/**` (the last pattern matches a `tests/`
   path segment anywhere, e.g. `packages/pruefstand/tests/fixtures/runs/`). MEMERAG-derived files stay banned
-  everywhere. Nothing else may be added to the allowlist without a decision row.
+  everywhere. Nothing else may be added to the allowlist without a decision file (`docs/decisions/D<n>.md`).
 - GermanQuAD/GermanDPR-derived data is CC BY 4.0 (HF cards, checked 2026-10-28; GermanRAG verified in
   T2.1); OLDP-derived is ODbL; keep them in separate dataset configs. MEMERAG (CC BY-NC 4.0) is
   download-only: never redistributed, never used for training. Update `DATA_LICENSES.md` when adding a source.

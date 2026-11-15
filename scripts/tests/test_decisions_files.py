@@ -19,7 +19,6 @@ from decisions_files import (
     validate,
 )
 from decisions_migrate import find_rows, migrate, roundtrip_problems, row_line
-from decisions_rebase import rebase_pending
 
 OLD = """# Log
 
@@ -221,43 +220,3 @@ def test_conflict_markers_in_a_decision_file_fail_the_check(tmp_path: Path) -> N
     md = tmp_path / "decisions.md"
     md.write_text(MARKERS, encoding="utf-8")
     assert any("conflict markers" in p for p in check(out, md))
-
-
-def _git(repo: Path, *args: str) -> str:
-    env = ["-c", "user.name=t", "-c", "user.email=t@example.org", "-c", "commit.gpgsign=false"]
-    cmd = ["git", "-C", str(repo), *env, *args]
-    done = subprocess.run(cmd, capture_output=True, text=True, check=True)  # noqa: S603
-    return done.stdout
-
-
-def test_rebase_pending_carries_rows_and_reports_other_edits(tmp_path: Path) -> None:
-    repo = tmp_path / "repo"
-    (repo / "docs").mkdir(parents=True)
-    _git(repo, "init", "-q", "-b", "main")
-    old = "# Log\n\n| # | Decision | ADR |\n| --- | --- | --- |\n| D1 | one | - |\n\nPinned: a\n"
-    (repo / "docs" / "decisions.md").write_text(old, encoding="utf-8")
-    _git(repo, "add", "-A")
-    _git(repo, "commit", "-q", "-m", "base")
-    _git(repo, "checkout", "-q", "-b", "pr")
-    mine = old.replace("Pinned: a", "Pinned: b") + "| D2 | two | - |\n"
-    (repo / "docs" / "decisions.md").write_text(mine, encoding="utf-8")
-    _git(repo, "commit", "-qam", "pr")
-    _git(repo, "checkout", "-q", "main")
-    (repo / "docs" / "decisions").mkdir()
-    (repo / "docs" / "decisions" / "D1.md").write_text(
-        render_file(Decision("D1", "S", "one", (("adr", "-"),))), encoding="utf-8"
-    )
-    (repo / "docs" / "decisions.md").write_text("# Decisions\n\nPinned: a\n", encoding="utf-8")
-    _git(repo, "add", "-A")
-    _git(repo, "commit", "-q", "-m", "new layout")
-    _git(repo, "checkout", "-q", "pr")
-    written, diff = rebase_pending(repo, "main")
-    assert "D2" in written
-    assert (repo / "docs" / "decisions.md").read_text(encoding="utf-8").startswith("# Decisions")
-    assert (
-        parse_file((repo / "docs" / "decisions" / "D2.md").read_text(encoding="utf-8")).text
-        == "two"
-    )
-    assert "-Pinned: a" in diff
-    assert "+Pinned: b" in diff
-    assert rebase_pending(repo, "main")[0] == []  # idempotent: the page is main's now

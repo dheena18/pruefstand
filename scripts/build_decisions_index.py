@@ -27,8 +27,8 @@ from decisions_files import (
     render_log,
     validate,
 )
-from decisions_migrate import find_rows, migrate
-from decisions_rebase import rebase_pending
+from decisions_migrate import find_rows, loose_entries, migrate
+from decisions_rebase import PrSideError, rebase_pending, stage_files
 
 REPO = Path(__file__).resolve().parents[1]
 DEFAULT_DIR = REPO / "docs" / "decisions"
@@ -53,6 +53,12 @@ def check(directory: Path, decisions_md: Path) -> list[str]:
         if CONFLICT_RE.search(text):
             problems.append(f"{decisions_md.name}: contains git conflict markers")
         pending = find_rows(text)
+        row_lines = {r.line_no for r in pending}
+        problems += [
+            f"{decisions_md.name}:{no + 1}: decision entry, make it a file: {ln.strip()[:50]}"
+            for no, ln in loose_entries(text)
+            if no not in row_lines
+        ]
         problems += [
             f"{decisions_md.name}: row {r.decision.id} must be a file "
             f"{directory.name}/{r.decision.id}.md (run: scripts/build_decisions_index.py "
@@ -92,23 +98,35 @@ def _parser() -> argparse.ArgumentParser:
     return ap
 
 
+def _rebase(base_ref: str) -> int:
+    res = rebase_pending(REPO, base_ref)
+    print(f"wrote and staged {len(res.written)} file(s): {', '.join(res.written) or '-'}")
+    if res.diff:
+        print("PR edits of the old page, merged onto main's page:\n" + res.diff)
+    if res.conflicts:
+        msg = f"decisions: {res.conflicts} conflict(s) in docs/decisions.md; resolve, then git add"
+        print(msg, file=sys.stderr)
+        return 3
+    return 0
+
+
 def main(argv: Sequence[str] | None = None) -> int:
     """CLI entry point.
 
     Returns:
-        0 on success, 1 on problems, 2 on git conflict markers (printed to stderr; nothing is
-        written in that case).
+        0 on success, 1 on problems, 2 on git conflict markers or an unknown PR side (nothing is
+        written), 3 when the page merge of ``--rebase-pending`` has conflicts.
     """
     args = _parser().parse_args(argv)
     try:
         if args.rebase_pending:
-            written, diff = rebase_pending(REPO, args.base_ref)
-            print(f"wrote {len(written)} file(s): {', '.join(written) or '-'}")
-            if diff:
-                print("Other edits of the PR on the old page, re-apply by hand:\n" + diff)
+            code = _rebase(args.base_ref)
+            if code:
+                return code
         if args.migrate_pending:
             moved = migrate(args.decisions_md, args.dir)
             print(f"wrote {len(moved)} file(s): {', '.join(moved) or '-'}")
+            stage_files(args.dir, [args.dir / f"{i}.md" for i in moved])
         problems = check(args.dir, args.decisions_md)
         if problems:
             print("\n".join(problems), file=sys.stderr)
@@ -116,7 +134,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         if args.check:
             return 0
         log = build_log(args.dir)
-    except ConflictMarkerError as exc:
+    except (ConflictMarkerError, PrSideError) as exc:
         print(f"decisions: {exc}", file=sys.stderr)
         return 2
     except DecisionError as exc:

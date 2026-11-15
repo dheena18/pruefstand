@@ -36,8 +36,8 @@ binding round-13 decisions D287–D323 (D319–D323 from the round-13 integratio
 `gate-router.yml` + App-pinned `pruefstand/gate`, tier 2 only by owner `workflow_dispatch` (no `run-gate` label),
 `full` quota and `Split.RQ1`, judged subset on generation + judging, `post_status`, `--stratum`,
 `state/nightly_counter`, `release-b<k>` anchors, whole-tree dashboard publish, `demo-ready.yml`, `build-id.txt`);
-where a prompt and a D-row disagree,
-the newer D-row wins and the prompt is fixed in the same PR. Before merging, re-derive the task's rows in
+where a prompt and a decision file (`docs/decisions/D<n>.md`) disagree,
+the newer decision wins and the prompt is fixed in the same PR. Before merging, re-derive the task's rows in
 `docs/engineering/test-matrix.md` from the prompt's "Tests to write first" table (real file names; D182).
 
 Support files: [`_TEMPLATE.md`](_TEMPLATE.md) (structure every prompt follows) ·
