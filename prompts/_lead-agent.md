@@ -20,7 +20,7 @@ You coordinate sub-agents; you never write task code yourself.
 
 Read first, in order: CLAUDE.md, tasks/PARALLEL-PLAN.md (§1 rules, Wave <N>, §3 checkpoint),
 tasks/TASKS.md (rows of this wave's tasks, "Parallel lanes", shared-file notes),
-docs/engineering/ai-workflow.md §4–§5, prompts/_review.md, and docs/decisions.md (last 30 rows).
+docs/engineering/ai-workflow.md §4–§5, prompts/_review.md, and docs/decisions/ (the 30 highest D-numbers: `uv run python scripts/build_decisions_index.py --stdout | tail -30`).
 
 PHASE 0 — Preflight (stop and report on any failure)
 1. `git switch main && git pull --ff-only`; `git status` clean; `make check` green. Wave 1 exception: the
@@ -80,7 +80,8 @@ PHASE 3 — Review and merge (in the wave's merge order)
    review: `gh models run <model> < review-input.md` (review-input = _review.md checklist + diff).
 12. Send blocker/major findings back to the implementing sub-agent; repeat review until no blocker/major
    is open. Minor findings: fixed or answered in the PR.
-13. Before each merge: rebase on main, CI green (all required checks, incl. `pruefstand/gate` once it
+13. Before each merge: rebase on main (a branch cut before D1211 that still appends a row to `docs/decisions/`: run
+   `uv run python scripts/build_decisions_index.py --migrate-pending`, commit the new files), CI green (all required checks, incl. `pruefstand/gate` once it
    exists). If the PR touches a gated path, ask me to dispatch tier 2 (private repo → Actions →
    `gate-executor.yml` → Run workflow → `pr = <N>`, from my browser or the GitHub mobile app); you cannot
    start it, and there is no `run-gate` label (round 13 P1.2). **Source check (A13-01):** via the API

@@ -10,7 +10,7 @@
 7. Open a **new** session and paste `prompts/_review.md`. Fix blockers/majors in the first session
    (or a new one with the review output).
 8. Merge (squash, Conventional Commit title). Tick the task in `tasks/TASKS.md`.
-9. If the session goes in circles: stop, start fresh with CLAUDE.md + decisions.md + the prompt +
+9. If the session goes in circles: stop, start fresh with CLAUDE.md + the decision files + the prompt +
    a 5-line summary of what is already done.
 
 ## Model choice

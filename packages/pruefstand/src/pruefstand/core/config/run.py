@@ -58,6 +58,9 @@ class RunnerConfig(BaseModel):
     timeout_s: float = Field(default=60, gt=0, allow_inf_nan=False)
     max_retries: int = Field(default=3, ge=0)
     backoff_s: float = Field(default=1.0, ge=0, allow_inf_nan=False)
+    # D1084: stop calling the target after this many timeouts in a row (completion order); the
+    # remaining cases are recorded as errors (counts["aborted_after_timeouts"]). None = off.
+    max_consecutive_timeouts: int | None = Field(default=None, ge=1)
 
 
 class LLMPolicyConfig(BaseModel):

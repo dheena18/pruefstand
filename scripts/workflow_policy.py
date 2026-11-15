@@ -1,7 +1,7 @@
 """Allow-lists of the workflow guard (T0.2 S3, S3d), kept as data and not as scattered conditions.
 
-Every entry carries its reason. Adding an entry is a security decision: it needs a row in
-``docs/decisions.md`` and a line in ``docs/engineering/ci-cd.md`` §1.
+Every entry carries its reason. Adding an entry is a security decision: it needs a
+decision file ``docs/decisions/D<n>.md`` and a line in ``docs/engineering/ci-cd.md`` §1.
 """
 
 import re

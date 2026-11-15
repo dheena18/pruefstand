@@ -1,5 +1,5 @@
 {
-  "recorded_at": "2026-11-10T01:19:30+00:00",
+  "recorded_at": "2026-11-15T15:32:55+00:00",
   "model_id": "ollama/gemma3:12b",
   "model_version": null,
   "request": {
@@ -54,7 +54,7 @@
       "completion_tokens": 47
     },
     "cost_usd": 0.0,
-    "latency_ms": 5681.170195923187,
+    "latency_ms": 5680.010589996527,
     "cached": false,
     "provider": "ollama",
     "fallback": false,

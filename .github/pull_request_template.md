@@ -25,6 +25,6 @@
 - [ ] `make check` green locally and in CI
 - [ ] Tests written first; coverage gates hold
 - [ ] `docs/engineering/test-matrix.md` rows for my symbols are `covered`
-- [ ] Docs updated: module README/docstrings, affected diagrams, `docs/decisions.md`
+- [ ] Docs updated: module README/docstrings, affected diagrams, `docs/decisions/D<n>.md` (a new file per decision)
 - [ ] No TODOs without a linked follow-up task ID
 - [ ] Reviewed with `prompts/_review.md`; review findings resolved

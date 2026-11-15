@@ -1,6 +1,7 @@
-"""Retry policy of target calls: transient errors and timeouts only, exponential backoff."""
+"""Retry policy of target calls: transient errors only (never a timeout, D624), with backoff."""
 
 import asyncio
+import re
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 
@@ -9,6 +10,11 @@ import numpy as np
 from pruefstand.core.errors import TargetError
 
 MAX_ERROR_CHARS = 500
+# D1084: only the two texts this package writes (runner deadline, adapter deadline), anchored, so a
+# target-controlled error body ("HTTP 504: upstream timed out after 30s") never counts as a timeout.
+_TIMEOUT = re.compile(
+    r"^timeout after [0-9.e+-]+ s$|^(?:GET|POST) /[^\s:]*: timed out after [0-9.e+-]+s$"
+)
 _JITTER = 0.25
 
 
@@ -53,9 +59,11 @@ async def call_with_retry[T](
     rng: np.random.Generator,
     sleep: Callable[[float], Awaitable[None]] = asyncio.sleep,
 ) -> Attempts[T]:
-    """Run ``call`` with a per-try timeout; retry timeouts and ``TargetError(transient=True)``.
+    """Run ``call`` with a per-try timeout; retry only ``TargetError(transient=True)``.
 
-    There are at most ``max_retries + 1`` tries. A non-transient ``TargetError`` ends at once.
+    There are at most ``max_retries + 1`` tries. A non-transient ``TargetError`` and a timeout
+    end at once: the tier-2 generator serialises requests, so a retried timeout would only queue a
+    duplicate generation (D624; rag-demo cancels the upstream call on client disconnect, D961).
     Other exceptions (bugs) propagate; so does cancellation.
 
     Args:
@@ -74,7 +82,7 @@ async def call_with_retry[T](
         try:
             value = await asyncio.wait_for(call(), timeout_s)
         except TimeoutError:
-            error, transient = f"timeout after {timeout_s:g} s", True
+            error, transient = f"timeout after {timeout_s:g} s", False
         except TargetError as exc:
             error, transient = _clip(str(exc) or type(exc).__name__), exc.transient
         else:
@@ -83,3 +91,12 @@ async def call_with_retry[T](
             return Attempts(None, error, attempt + 1)
         await sleep(backoff_delay(attempt, backoff_s, rng))
         attempt += 1
+
+
+def is_timeout(error: str | None) -> bool:
+    """True only for the two timeout texts this package writes (runner, adapter; D1082, D1084).
+
+    >>> is_timeout("timeout after 360 s"), is_timeout("POST /v1/query: HTTP 503: busy")
+    (True, False)
+    """
+    return error is not None and _TIMEOUT.fullmatch(error) is not None

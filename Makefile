@@ -81,7 +81,7 @@ schemas-fresh:
 	$(MAKE) schemas && git diff --exit-code -- schemas/ && test -z "$$(git status --porcelain -- schemas/)"
 
 docs:
-	@if [ -f mkdocs.yml ]; then uv run mkdocs build --strict; else echo "docs: mkdocs.yml not there yet (T0.4), skipped"; fi
+	@if [ -f mkdocs.yml ]; then uv run python scripts/build_decisions_index.py --check && uv run mkdocs build --strict; else echo "docs: mkdocs.yml not there yet (T0.4), skipped"; fi
 
 ui-check:
 	@if [ -f apps/dashboard/package.json ]; then set -e; \
