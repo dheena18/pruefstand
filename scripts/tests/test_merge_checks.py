@@ -160,3 +160,9 @@ def test_missing_gate_status(env: Env) -> None:
     assert _ok(env).returncode == 0  # not required by the ruleset yet
     env.set_rules([*REQUIRED, "pruefstand/gate"])
     assert _ok(env).returncode == 4
+
+
+def test_newer_run_for_the_pr_with_another_base_is_ignored(env: Env) -> None:
+    env.pr()
+    env.add_run("check", 300, 301, "failure", base="dev")  # same PR number, wrong base.ref
+    assert _ok(env).returncode == 0

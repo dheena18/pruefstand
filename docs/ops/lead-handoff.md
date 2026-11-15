@@ -147,4 +147,4 @@ so today a gated PR can merge without tier 2; any other listed context is unveri
 `--match-head-commit` and posts one "merged by lead" comment. It refuses with exit 3 ("owner merge required") when the changes touch an
 owner-merge path (renames and deletions included; casefolded): `.github/workflows/**`, `.github/actions/**`, any `CODEOWNERS`, `.github/dependabot.yml`, `infra/gpu/pruefstand-cluster`, `infra/gpu/install-cluster-wrapper.sh`, `infra/gpu/*.sh`, `infra/vm/**`, `infra/cluster/**`, `infra/gate-executor/**`, `**/sudoers*`, `security.yml`, `.gitleaks*`, `.gitleaksignore`, `.claude/**`, `docs/ops/secrets.md`, `scripts/merge_reviewed.sh`, `scripts/merge_paths.py`, `scripts/hooks/**`. The owner merges those, including any change to the script itself.
 Never `--admin`. The refusal is advisory: without the admin bypass, `uv run gh pr merge <n> --squash` can still merge an owner-path PR once the
-checks are green (0 approvals, no code-owner review).
+checks are green (0 approvals, no code-owner review). Git's own configuration (`url.insteadOf`, `GIT_CONFIG_COUNT`) and bash's lazy reading of the script file are trusted.

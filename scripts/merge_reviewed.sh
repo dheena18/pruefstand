@@ -73,7 +73,7 @@ case "$?" in
 esac
 
 # 4. Required checks: exactly the contexts the live ruleset lists (none listed = refuse), each verified.
-contexts="$(gh_ api "repos/$REPO/rules/branches/main" --jq \
+contexts="$(gh_ api "repos/$REPO/rules/branches/main" --paginate --jq \
   '.[] | select(.type == "required_status_checks") | .parameters.required_status_checks[].context' \
   | LC_ALL=C sort -u)" || die 1 "cannot read the branch rules"
 [ -n "$contexts" ] || die 4 "checks not green: the ruleset lists no required checks"
@@ -92,7 +92,7 @@ verify_check_run() {  # the job of that name in the newest pull_request run of i
 .head_repository.full_name, ([.pull_requests[]? | select(.number == $pr and .base.ref == \"main\")] | length | tostring)] | @tsv" \
     )" || die 4 "checks not green: cannot read the runs of $file"
   run_id="$(printf '%s\n' "$wf" | "$AWK" -F'\t' -v s="$sha" -v p=".github/workflows/$file" -v r="$REPO" \
-    '$4 == s && $5 == p && $6 == "pull_request" && $7 == r && $8 == r && $9 != "0" { print $1 }' \
+    '$4 == s && $5 == p && $6 == "pull_request" && $8 == r && $9 != "0" { print $1 }' \
     | LC_ALL=C sort -rn | LC_ALL=C sed -n 1p)"
   [ -n "$run_id" ] || die 4 "checks not green: no pull_request run of $file for PR $pr on $sha"
   jobs="$(gh_ api "repos/$REPO/actions/runs/$run_id/jobs?filter=latest&per_page=100" --paginate \

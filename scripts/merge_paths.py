@@ -114,7 +114,7 @@ def parse_nul(data: str) -> list[str]:
 def main() -> int:
     """CLI entry: read NUL-separated paths on stdin, report owner paths on stderr."""
     try:
-        paths = parse_nul(sys.stdin.read())
+        paths = parse_nul(sys.stdin.buffer.read().decode("utf-8"))
     except (UnicodeDecodeError, OSError) as exc:
         sys.stderr.write(f"merge_paths: bad input: {exc}\n")
         return 64

@@ -175,7 +175,14 @@ class Env:
         self.set_gate("success", "pruefstand-bot[bot]")
 
     def add_run(
-        self, name: str, run_id: int, job_id: int, conclusion: str | None, *, listed: bool = True
+        self,
+        name: str,
+        run_id: int,
+        job_id: int,
+        conclusion: str | None,
+        *,
+        listed: bool = True,
+        base: str = "main",
     ) -> None:
         """Add a pull_request run of ``name``'s workflow with one job (and its check run)."""
         file = WORKFLOW[name]
@@ -195,7 +202,7 @@ class Env:
                 "event": "pull_request",
                 "repository": {"full_name": REPO},
                 "head_repository": {"full_name": REPO},
-                "pull_requests": [{"number": self.pr_number, "base": {"ref": "main"}}]
+                "pull_requests": [{"number": self.pr_number, "base": {"ref": base}}]
                 if listed
                 else [],
             }
@@ -246,7 +253,11 @@ class Env:
         write_json(path, obj)
 
     def run(
-        self, *args: str, verdict: str | None = None, home: Path | None = None
+        self,
+        *args: str,
+        verdict: str | None = None,
+        home: Path | None = None,
+        script: Path | None = None,
     ) -> subprocess.CompletedProcess[str]:
         """Run the script in the work checkout with the fake gh first on PATH."""
         env = {
@@ -257,7 +268,7 @@ class Env:
         if verdict is not None:
             env["REVIEW_VERDICT"] = verdict
         return subprocess.run(  # noqa: S603  # fixed argv
-            [str(self.script), *args],
+            [str(script or self.script), *args],
             capture_output=True,
             text=True,
             env=env,

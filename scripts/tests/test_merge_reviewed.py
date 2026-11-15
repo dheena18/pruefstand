@@ -190,3 +190,15 @@ def test_origin_must_be_the_public_repo(env: Env, url: str) -> None:
     assert res.returncode == 3
     assert "origin is not" in res.stderr
     assert not env.merged()
+
+
+def test_script_copy_outside_the_scripts_directory_is_refused(env: Env) -> None:
+    env.pr()
+    other = env.work / "other"
+    other.mkdir()
+    for name in ("merge_reviewed.sh", "merge_paths.py"):
+        (other / name).write_bytes((env.work / "scripts" / name).read_bytes())
+        (other / name).chmod(0o755)
+    res = env.run("7", env.sha, "APPROVE", script=other / "merge_reviewed.sh")
+    assert res.returncode == 3
+    assert not env.merged()
