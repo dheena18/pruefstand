@@ -131,6 +131,7 @@ llama.cpp and TEI servers by `make cassettes` and from `rerank-cpu` by `make cas
 - Build and Trivy-scan the rag-demo image in `build-images.yml`, push and sign it: T6.2b (`push-sign`).
 - Check the TEI weights SHA-256 (`live-models.yaml` `weights_sha256`) in the live stack, not only in the integration fixture: T1.12.
 - Measure the p95 margin (14.2 s against 15 s on the VM) and the guard-on injection result on the hosted runner: T1.12.
+  T1.13b (D1262) recalibrated the smoke probe's p95 limit to 20 s from 12 hosted-runner runs (p95 10.2-16.8 s).
 
 ## Analyzer (T3.3)
 

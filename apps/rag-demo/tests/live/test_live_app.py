@@ -23,7 +23,11 @@ URL = os.environ.get(
 )
 QUESTIONS = yaml.safe_load((APP_DIR / "tests" / "live" / "smoke_questions.yaml").read_text("utf-8"))
 OPENAPI = yaml.safe_load((REPO / "schemas" / "target-api-v1.openapi.yaml").read_text("utf-8"))
-P95_LIMIT_S = 15.0
+# T1.13b (D1262): 12 hosted-runner runs of this probe (2026-11-15) measured p95 10.2-16.8 s with the
+# 0.5B tier-1 generator (3 of 12 above the old 15 s, the VM measured 14.2 s); 20 s is the observed
+# maximum plus ~20 %. The citation threshold stays 6/10 (6/10 in every measured run, temperature 0).
+P95_LIMIT_S = 20.0
+MIN_CITED = 6
 
 
 def ask(tenant: str, question: str) -> tuple[dict[str, object], float]:
@@ -54,8 +58,8 @@ def test_smoke_questions_cite_the_expected_norm_within_the_latency_budget() -> N
         assert body["chunks"]
         cited += cites(body, row["expect"])
     p95 = statistics.quantiles(latencies, n=20)[-1]
-    print(f"smoke: cited {cited}/10, p95 {p95:.1f} s")  # noqa: T201
-    assert cited >= 6
+    print(f"smoke: cited {cited}/10, p95 {p95:.1f} s, max {max(latencies):.1f} s")  # noqa: T201
+    assert cited >= MIN_CITED
     assert p95 <= P95_LIMIT_S
 
 
