@@ -32,6 +32,8 @@ from gate_orchestrator.preflight import DATA_ROOT_EXIT, IS_ACTIVE, Mode, fail_ro
 
 TimedRunner = Callable[[Sequence[str], Mapping[str, str], float], tuple[int, str]]
 POST_RUN_TIMEOUT_S = 120.0
+TERM_GRACE_S = 2.0
+DRAIN_S = 5.0
 KIND_FOR_EXIT = {
     11: "ollama_down",
     12: "ollama_down",
@@ -48,8 +50,9 @@ def subprocess_runner(
 ) -> tuple[int, str]:
     """Run ``argv`` in its own process group with a timeout; return ``(exit code, stdout)``.
 
-    On timeout the whole group is killed (``killpg``: ``bash`` and its children such as ``ssh``,
-    ``curl``, ``gpu_health.py``), never anything outside it.
+    On timeout the whole group gets SIGTERM, then after a 2 s grace SIGKILL (``killpg``: ``bash``
+    and its children such as ``ssh``, ``curl``, ``gpu_health.py``), never anything outside it;
+    all waits after the timeout are bounded (``_stop_group``).
 
     Raises:
         subprocess.TimeoutExpired: the command ran longer than ``timeout_s``.
@@ -61,10 +64,30 @@ def subprocess_runner(
     try:
         out, _ = proc.communicate(timeout=timeout_s)
     except subprocess.TimeoutExpired:
-        os.killpg(proc.pid, signal.SIGKILL)  # its own session: pgid == pid
-        proc.communicate()
+        _stop_group(proc)
         raise
     return proc.returncode, out
+
+
+def _stop_group(proc: "subprocess.Popen[str]") -> None:
+    """Stop the probe's own process group: TERM, a 2 s grace, then KILL; all waits bounded.
+
+    TERM first lets ``health.sh``'s EXIT trap remove its temp dir (D1083). A process that left the
+    group and still holds the pipe cannot block: after ``DRAIN_S`` the pipe is closed.
+    """
+    for sig, wait_s in ((signal.SIGTERM, TERM_GRACE_S), (signal.SIGKILL, DRAIN_S)):
+        try:
+            os.killpg(proc.pid, sig)  # its own session: pgid == pid, nothing outside it
+        except ProcessLookupError:
+            break
+        try:
+            proc.communicate(timeout=wait_s)
+        except subprocess.TimeoutExpired:
+            continue
+        return
+    if proc.stdout is not None:
+        proc.stdout.close()  # a daemon outside the group keeps the write end; stop reading
+    proc.wait(timeout=DRAIN_S)
 
 
 def _model_change_row(csv: str) -> str:

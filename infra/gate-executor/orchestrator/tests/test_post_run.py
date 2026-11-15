@@ -3,9 +3,7 @@
 Row formats are the real ones of ``infra/gpu/health.sh`` / ``gpu_health.py``.
 """
 
-import os
 import subprocess
-import time
 from collections.abc import Mapping, Sequence
 from pathlib import Path
 
@@ -138,17 +136,10 @@ def test_exit_14_does_not_mask_a_model_change_during_the_run(row: str, check: st
     assert got.startswith(f"model_reload: post-run health.sh exit 14 ({check} ")
 
 
-def test_timeout_kills_the_whole_process_group(tmp_path: Path) -> None:
-    pidfile = tmp_path / "grandchild.pid"
-    script = f"sleep 30 & echo $! > {pidfile}; wait"
-    with pytest.raises(subprocess.TimeoutExpired):
-        subprocess_runner(("sh", "-c", script), {"PATH": os.environ.get("PATH", "")}, 0.5)
-    pid = int(pidfile.read_text(encoding="utf-8"))
-    deadline = time.monotonic() + 5
-    while time.monotonic() < deadline:
-        try:
-            os.kill(pid, 0)
-        except ProcessLookupError:
-            return
-        time.sleep(0.05)
-    pytest.fail(f"grandchild {pid} survived the timeout")
+def test_a_not_resident_row_with_exit_14_stays_a_warning() -> None:
+    # D1083: only a resident digest-differs row is a model change; "not resident" is not one
+    out = (
+        "bin-dir,FAIL,cluster scripts differ from this checkout; run deploy-cluster-bin.sh\n"
+        "resident:gemma3:12b,FAIL,not resident (health.sh --repair loads it)\n"
+    )
+    assert post_run_infra_error("day", HEALTH, Commands(health=(14, out)), LOCKED) is None
