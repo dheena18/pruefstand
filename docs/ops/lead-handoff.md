@@ -138,10 +138,13 @@ Reserved decision ranges (2026-11-03): the lead assigned disjoint ranges per age
 
 The lead merges with `scripts/merge_reviewed.sh <pr> <sha> "<reviewer verdict>"` and nothing else; the verdict is the third **argument**
 (an env prefix such as `REVIEW_VERDICT=... scripts/merge_reviewed.sh ...` does not match the allow rule `Bash(scripts/merge_reviewed.sh:*)`).
-Use it only after an approving review of exactly that head SHA. The script refuses unless its own files equal `origin/main` (exit 3), the PR
-is open, not a draft, based on `main` and headed by `<sha>` (exit 5), the ruleset still lists exactly `check`, `scan`, `images-gate`,
-`docs-gate`, `ui-check`, each is a successful job of its own workflow (`ci.yml`, `security.yml`, `build-images.yml`, `docs.yml`, `ui.yml`)
-run by a `pull_request` event on `<sha>`, and `pruefstand/gate` is a success on `<sha>` set by `pruefstand-bot[bot]` (exit 4; a PR whose gate
-status is still pending cannot be merged by the lead). It then squash-merges with `--match-head-commit` and posts one "merged by lead" comment.
-It refuses with exit 3 ("owner merge required") when the changes touch an owner-merge path (renames and deletions included; casefolded):
-`.github/workflows/**`, `.github/actions/**`, `.github/CODEOWNERS`, `.github/dependabot.yml`, `infra/gpu/pruefstand-cluster`, `infra/gpu/install-cluster-wrapper.sh`, `infra/gpu/*.sh`, `infra/vm/**`, `infra/cluster/**`, `infra/gate-executor/**`, `**/sudoers*`, `security.yml`, `.gitleaks*`, `.gitleaksignore`, `.claude/**`, `docs/ops/secrets.md`, `scripts/merge_reviewed.sh`, `scripts/merge_paths.py`, `scripts/hooks/**`. The owner merges those, including any change to the script itself. Never `--admin`.
+Use it only after an approving review of exactly that head SHA. The script refuses unless its own files have the same content as `main`
+of the public origin (exit 3), the PR is open, not a draft, based on `main` and headed by `<sha>` (exit 5), and every context the live ruleset
+lists is verified on `<sha>` (exit 4): the ruleset must list at least one; `check`, `scan`, `images-gate`, `docs-gate`, `ui-check` must be
+successful in the newest `pull_request` run of `ci.yml`, `security.yml`, `build-images.yml`, `docs.yml`, `ui.yml` that belongs to this PR;
+`pruefstand/gate` is verified (success by `pruefstand-bot[bot]`) **only if the ruleset lists it**, which it does not today (owner: D5, after T6.2b),
+so today a gated PR can merge without tier 2; any other listed context is unverifiable and refused. It then squash-merges with
+`--match-head-commit` and posts one "merged by lead" comment. It refuses with exit 3 ("owner merge required") when the changes touch an
+owner-merge path (renames and deletions included; casefolded): `.github/workflows/**`, `.github/actions/**`, any `CODEOWNERS`, `.github/dependabot.yml`, `infra/gpu/pruefstand-cluster`, `infra/gpu/install-cluster-wrapper.sh`, `infra/gpu/*.sh`, `infra/vm/**`, `infra/cluster/**`, `infra/gate-executor/**`, `**/sudoers*`, `security.yml`, `.gitleaks*`, `.gitleaksignore`, `.claude/**`, `docs/ops/secrets.md`, `scripts/merge_reviewed.sh`, `scripts/merge_paths.py`, `scripts/hooks/**`. The owner merges those, including any change to the script itself.
+Never `--admin`. The refusal is advisory: without the admin bypass, `uv run gh pr merge <n> --squash` can still merge an owner-path PR once the
+checks are green (0 approvals, no code-owner review).

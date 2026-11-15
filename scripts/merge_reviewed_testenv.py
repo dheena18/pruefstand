@@ -60,8 +60,8 @@ case "$2" in
   */rules/branches/main) out "$d/rules.json" ;;
   */check-runs*) out "$d/checkruns.json" ;;
   */statuses*) out "$d/statuses.json" ;;
-  */actions/jobs/*) out "$d/jobs/${2##*/}.json" ;;
-  */actions/runs/*) out "$d/runs/${2##*/}.json" ;;
+  */actions/workflows/*/runs*) w="${2#*/actions/workflows/}"; out "$d/wfruns/${w%%/*}.json" ;;
+  */actions/runs/*/jobs*) w="${2#*/actions/runs/}"; out "$d/runjobs/${w%%/*}.json" ;;
   *) exit 9 ;;
 esac
 """
@@ -107,6 +107,13 @@ def make_template(root: Path) -> Path:
     return origin
 
 
+def _git_config_origin(work: Path, origin: Path, home: Path) -> None:
+    """Give ``work`` the real origin URL and map that URL to the local bare repo for git."""
+    url = f"https://github.com/{REPO}.git"
+    git(work, "remote", "set-url", "origin", url)
+    (home / ".gitconfig").write_text(f'[url "{origin}"]\n\tinsteadOf = {url}\n', encoding="utf-8")
+
+
 class Env:
     """One sandbox: fake gh, bare origin, the checkout that runs the script, a PR author clone."""
 
@@ -125,6 +132,7 @@ class Env:
         shutil.copytree(template, self.origin)
         self.work = root / "work"
         git(root, "clone", "-q", str(self.origin), str(self.work))
+        _git_config_origin(self.work, self.origin, self.home)
         self.author = root / "author"
         git(root, "clone", "-q", str(self.origin), str(self.author))
         self.sha = ""
@@ -160,34 +168,60 @@ class Env:
             self.fake / "pr.json",
             {"baseRefName": "main", "state": "OPEN", "isDraft": False, "headRefOid": sha},
         )
-        runs = []
+        write_json(self.fake / "checkruns.json", {"check_runs": []})
         for i, name in enumerate(REQUIRED):
-            runs.append(
-                {
-                    "id": 100 + i,
-                    "name": name,
-                    "status": "completed",
-                    "conclusion": "success",
-                    "app": {"slug": "github-actions"},
-                }
-            )
-            write_json(
-                self.fake / "jobs" / f"{100 + i}.json",
-                {"run_id": 200 + i, "name": name, "head_sha": sha},
-            )
-            write_json(
-                self.fake / "runs" / f"{200 + i}.json",
-                {
-                    "event": "pull_request",
-                    "head_sha": sha,
-                    "path": f".github/workflows/{WORKFLOW[name]}",
-                    "repository": {"full_name": REPO},
-                    "head_repository": {"full_name": REPO},
-                },
-            )
-        write_json(self.fake / "checkruns.json", {"check_runs": runs})
+            self.add_run(name, 200 + i, 100 + i, "success")
         self.set_rules(list(REQUIRED))
         self.set_gate("success", "pruefstand-bot[bot]")
+
+    def add_run(
+        self, name: str, run_id: int, job_id: int, conclusion: str | None, *, listed: bool = True
+    ) -> None:
+        """Add a pull_request run of ``name``'s workflow with one job (and its check run)."""
+        file = WORKFLOW[name]
+        wf_path = self.fake / "wfruns" / f"{file}.json"
+        wf = (
+            json.loads(wf_path.read_text(encoding="utf-8"))
+            if wf_path.exists()
+            else {"workflow_runs": []}
+        )
+        wf["workflow_runs"].append(
+            {
+                "id": run_id,
+                "run_attempt": 1,
+                "status": "completed",
+                "head_sha": self.sha,
+                "path": f".github/workflows/{file}",
+                "event": "pull_request",
+                "repository": {"full_name": REPO},
+                "head_repository": {"full_name": REPO},
+                "pull_requests": [{"number": self.pr_number, "base": {"ref": "main"}}]
+                if listed
+                else [],
+            }
+        )
+        write_json(wf_path, wf)
+        status = "completed" if conclusion else "in_progress"
+        job = {
+            "id": job_id,
+            "name": name,
+            "status": status,
+            "conclusion": conclusion,
+            "head_sha": self.sha,
+        }
+        write_json(self.fake / "runjobs" / f"{run_id}.json", {"jobs": [job]})
+        cr_path = self.fake / "checkruns.json"
+        crs = json.loads(cr_path.read_text(encoding="utf-8"))
+        crs["check_runs"].append({**job, "app": {"slug": "github-actions"}})
+        write_json(cr_path, crs)
+
+    def patch_run(self, name: str, **fields: object) -> None:
+        """Merge ``fields`` into every workflow run recorded for ``name``'s workflow."""
+        path = self.fake / "wfruns" / f"{WORKFLOW[name]}.json"
+        data = json.loads(path.read_text(encoding="utf-8"))
+        for run in data["workflow_runs"]:
+            run.update(fields)
+        write_json(path, data)
 
     def set_rules(self, contexts: list[str]) -> None:
         """Set the required contexts the fake ruleset lists."""

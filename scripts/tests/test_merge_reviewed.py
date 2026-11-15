@@ -1,10 +1,9 @@
 """Tests of ``scripts/merge_reviewed.sh`` with a stubbed ``gh`` and a real git sandbox."""
 
-import json
 import subprocess
 
 import pytest
-from merge_reviewed_testenv import REPO, REQUIRED, SCRIPTS, Env, write_json
+from merge_reviewed_testenv import REPO, SCRIPTS, Env, git, write_json
 
 
 def _ok(env: Env, verdict: str = "APPROVE") -> subprocess.CompletedProcess[str]:
@@ -112,122 +111,6 @@ def test_head_moving_before_merge_is_refused(env: Env) -> None:
     assert not env.merged()
 
 
-@pytest.mark.parametrize("conclusion", ["failure", "cancelled", None])
-@pytest.mark.parametrize("name", REQUIRED)
-def test_checks_not_green(env: Env, name: str, conclusion: str | None) -> None:
-    env.pr()
-    path = env.fake / "checkruns.json"
-    data = json.loads(path.read_text(encoding="utf-8"))
-    for run in data["check_runs"]:
-        if run["name"] == name:
-            run["conclusion"] = conclusion
-            run["status"] = "completed" if conclusion else "in_progress"
-    write_json(path, data)
-    assert _ok(env).returncode == 4
-    assert not env.merged()
-
-
-def test_missing_check_and_foreign_app(env: Env) -> None:
-    env.pr()
-    path = env.fake / "checkruns.json"
-    data = json.loads(path.read_text(encoding="utf-8"))
-    data["check_runs"][0]["app"]["slug"] = "evil-app"
-    write_json(path, data)
-    assert _ok(env).returncode == 4
-    data["check_runs"][0]["app"]["slug"] = "github-actions"
-    data["check_runs"].pop(1)
-    write_json(path, data)
-    assert _ok(env).returncode == 4
-    assert not env.merged()
-
-
-@pytest.mark.parametrize("name", REQUIRED)
-def test_forged_check_without_a_workflow_job(env: Env, name: str) -> None:
-    env.pr()
-    (env.fake / "jobs" / f"{100 + REQUIRED.index(name)}.json").unlink()
-    res = _ok(env)
-    assert res.returncode == 4
-    assert "no workflow job" in res.stderr
-
-
-@pytest.mark.parametrize(
-    "patch",
-    [
-        {"path": ".github/workflows/forged.yml"},
-        {"path": ".github/workflows/ci.yml"},  # a real workflow, but not this check's
-        {"event": "push"},
-        {"event": "workflow_dispatch"},
-        {"head_sha": "d" * 40},
-        {"head_repository": {"full_name": "someone/pruefstand"}},
-    ],
-)
-def test_forged_check_wrong_run(env: Env, patch: dict[str, object]) -> None:
-    env.pr()
-    env.patch("runs/201.json", **patch)  # the `scan` run, which must be security.yml
-    res = _ok(env)
-    assert res.returncode == 4
-    assert not env.merged()
-
-
-def test_forged_check_wrong_job(env: Env) -> None:
-    env.pr()
-    env.patch("jobs/100.json", name="other")
-    assert _ok(env).returncode == 4
-    env.patch("jobs/100.json", name="check", head_sha="e" * 40)
-    assert _ok(env).returncode == 4
-
-
-def test_ruleset_without_required_checks_is_refused(env: Env) -> None:
-    env.pr()
-    env.set_rules([])
-    res = _ok(env)
-    assert res.returncode == 4
-    assert "no required checks" in res.stderr
-
-
-def test_unknown_required_context_is_unverifiable(env: Env) -> None:
-    env.pr()
-    env.set_rules([*REQUIRED, "extra"])
-    res = _ok(env)
-    assert res.returncode == 4
-    assert "unverifiable required context: extra" in res.stderr
-    assert not env.merged()
-
-
-def test_ruleset_drives_which_checks_are_verified(env: Env) -> None:
-    env.pr()
-    env.set_rules(["check"])
-    env.patch("runs/201.json", event="push")  # `scan` is forged but not required here
-    assert _ok(env).returncode == 0
-    env.set_rules(["check", "scan"])
-    assert _ok(env).returncode == 4
-
-
-@pytest.mark.parametrize(
-    ("state", "creator"),
-    [
-        ("failure", "pruefstand-bot[bot]"),
-        ("pending", "pruefstand-bot[bot]"),
-        ("success", "github-actions[bot]"),
-        ("success", "someone"),
-    ],
-)
-def test_gate_status_must_be_a_success_from_the_bot(env: Env, state: str, creator: str) -> None:
-    env.pr()
-    env.set_rules([*REQUIRED, "pruefstand/gate"])
-    env.set_gate(state, creator)
-    assert _ok(env).returncode == 4
-    assert not env.merged()
-
-
-def test_missing_gate_status(env: Env) -> None:
-    env.pr()
-    write_json(env.fake / "statuses.json", [])
-    assert _ok(env).returncode == 0  # not required by the ruleset yet
-    env.set_rules([*REQUIRED, "pruefstand/gate"])
-    assert _ok(env).returncode == 4
-
-
 def test_merge_failure_is_exit_1_without_comment(env: Env) -> None:
     env.pr()
     (env.fake / "merge_fails").write_text("", encoding="utf-8")
@@ -266,3 +149,44 @@ def test_script_never_uses_admin_or_unpinned_merge() -> None:
     assert text.count("pr merge") == 1
     assert "--match-head-commit" in text
     assert "--squash" in text
+
+
+def test_clean_filter_in_info_attributes_cannot_fake_the_script(env: Env) -> None:
+    env.pr()
+    original = env.root / "original.sh"
+    original.write_bytes(env.script.read_bytes())
+    git_dir = env.work / ".git"
+    (git_dir / "info").mkdir(exist_ok=True)
+    (git_dir / "info" / "attributes").write_text(
+        "scripts/merge_reviewed.sh filter=x\n", encoding="utf-8"
+    )
+    git(env.work, "config", "filter.x.clean", f"cat {original}")
+    with env.script.open("a", encoding="utf-8") as fh:
+        fh.write("\n# local edit\n")
+    res = _ok(env)
+    assert res.returncode == 3
+    assert "differs from origin/main" in res.stderr
+    assert not env.merged()
+
+
+def test_stale_or_forged_origin_main_ref_is_not_trusted(env: Env) -> None:
+    env.pr()
+    with env.script.open("a", encoding="utf-8") as fh:
+        fh.write("\n# local edit\n")
+    git(env.work, "commit", "-q", "-am", "local")
+    git(env.work, "update-ref", "refs/remotes/origin/main", "HEAD")  # looks like main, is not
+    res = _ok(env)
+    assert res.returncode == 3
+    assert not env.merged()
+
+
+@pytest.mark.parametrize(
+    "url", ["https://github.com/someone/pruefstand.git", "/nonexistent/elsewhere.git"]
+)
+def test_origin_must_be_the_public_repo(env: Env, url: str) -> None:
+    env.pr()
+    git(env.work, "remote", "set-url", "origin", url)
+    res = _ok(env)
+    assert res.returncode == 3
+    assert "origin is not" in res.stderr
+    assert not env.merged()

@@ -32,6 +32,8 @@ from merge_reviewed_testenv import SCRIPTS
         "docs/ops/secrets.md",
         "Docs/Ops/Secrets.md",
         ".github/CODEOWNERS",
+        "docs/CODEOWNERS",
+        "apps/x/codeowners",
         ".github/dependabot.yml",
         "scripts/merge_reviewed.sh",
         "scripts/merge_paths.py",

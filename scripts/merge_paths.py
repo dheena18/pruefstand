@@ -38,7 +38,7 @@ OWNER_EXACT: frozenset[str] = frozenset(
     }
 )
 OWNER_NAME_PREFIXES: tuple[str, ...] = ("sudoers", ".gitleaks")
-OWNER_BASENAMES: frozenset[str] = frozenset({"security.yml"})
+OWNER_BASENAMES: frozenset[str] = frozenset({"security.yml", "codeowners"})
 # More changed files than this are not reviewed by the script (refuse, owner decides).
 MAX_FILES = 3000
 
