@@ -8,7 +8,8 @@
       "Bash(pnpm:*)",
       "Bash(git status)",
       "Bash(git diff:*)",
-      "Bash(git log:*)"
+      "Bash(git log:*)",
+      "Bash(scripts/merge_reviewed.sh:*)"
     ],
     "deny": [
       "Read(./.env)",

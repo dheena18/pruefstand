@@ -133,3 +133,13 @@ Reserved decision ranges (2026-11-03): the lead assigned disjoint ranges per age
   the file afterwards, and branch with `if ! cmd >file 2>&1; then ...; exit 1; fi`. For the full check test the exit code of `make check-vm` itself (it `exec`s `make check`, so the status is make's own); when the check runs in the background, write `EXIT=$?` right after it into the log and gate on that line. Do not gate on `cmd | tail -1 && next`.
   (2026-11-03: `ruff | tail && git add` let two lint-failing commits through to a PR branch; CI caught them.)
 
+
+## 9. Merging (D1210)
+
+The lead merges with `scripts/merge_reviewed.sh <pr> <sha> "<reviewer verdict>"` (or `REVIEW_VERDICT=...`) and nothing else; it is the only
+merge command the allow list covers. Use it only after an approving review of exactly that head SHA and when CI is green on it:
+the script re-checks that the PR head equals `<sha>` (exit 5), that `check`, `scan`, `images-gate`, `docs-gate` and `ui-check`
+are green on it (exit 4), squash-merges with `--match-head-commit`, and posts one "merged by lead" comment. It refuses with exit 3
+("owner merge required") when the PR touches an owner-merge path (renames and deletions included): `.github/workflows/**`,
+`.github/actions/**`, `infra/gpu/pruefstand-cluster`, `infra/gpu/install-cluster-wrapper.sh`, `infra/vm/**`, `**/sudoers*`,
+`security.yml`, `.gitleaks*`, `.gitleaksignore`, `.claude/**`, `docs/ops/secrets.md`; the owner merges those. Never `--admin`.
