@@ -31,6 +31,7 @@ ROUTES: dict[tuple[str, str], str] = {
 }
 FORWARD_ROLES = frozenset({"generator", "embed"})
 BOUNDED = ("temperature", "top_p", "num_predict")
+SEED_BOUNDS = (0, 2**31 - 1)  # D1077: an int32 seed; larger values break the Go decoder
 RELOAD_NS = 1_000_000_000  # load_duration > 1 s = a model (re)load (SPEC 6.2)
 Number = int | float
 
@@ -159,7 +160,7 @@ def _options(raw: object, model: ModelPolicy) -> dict[str, Number] | Reject:
             continue
         bad_type = isinstance(value, bool) or not isinstance(value, int | float)
         if key == "seed":
-            bad_type = bad_type or not isinstance(value, int)
+            bad_type = bad_type or not isinstance(value, int) or not _inside(value, SEED_BOUNDS)
         if bad_type or (key in model.bounds and not _inside(value, model.bounds[key])):
             return Reject(403, f"option out of bounds: {key}")
         out[key] = value

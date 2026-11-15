@@ -5,7 +5,8 @@ At most ``slots`` connections are served; ``reserve`` more may connect but are s
 request (``Connection: close``) and must deliver its request line, headers and body within
 ``deadline_s``, else its read side is shut down: a client trickling one byte per second cannot hold
 a slot (the per-read idle timeout alone restarts with every byte). The deadline is cancelled once
-the request is read, so a long upstream generation is never cut.
+the request is read, so a long upstream generation is never cut. Reserved slots get a much shorter
+deadline (2 s), so tricklers on them cannot starve ``/health`` either (D1077).
 """
 
 import logging
@@ -32,10 +33,12 @@ class BoundedServer(ThreadingHTTPServer):
         *,
         slots: int,
         deadline_s: float,
+        reserve_deadline_s: float,
     ) -> None:
         self._slots = threading.BoundedSemaphore(slots)
         self._reserve = threading.BoundedSemaphore(HEALTH_RESERVE)
         self._deadline_s = deadline_s
+        self._reserve_deadline_s = reserve_deadline_s
         self._local = threading.local()
         super().__init__(address, handler)
 
@@ -56,7 +59,8 @@ class BoundedServer(ThreadingHTTPServer):
         health_only: bool,  # noqa: FBT001 - internal thread target
     ) -> None:
         sock = request if isinstance(request, socket.socket) else request[1]
-        timer = threading.Timer(self._deadline_s, _cut, args=(sock,))
+        limit = self._reserve_deadline_s if health_only else self._deadline_s  # D1077
+        timer = threading.Timer(limit, _cut, args=(sock,))
         self._local.health_only, self._local.timer = health_only, timer
         timer.start()
         try:

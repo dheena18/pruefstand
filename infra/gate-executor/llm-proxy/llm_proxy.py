@@ -40,6 +40,7 @@ MAX_BODY_BYTES = 4 * 1024 * 1024
 UPSTREAM_TIMEOUT_S = 900.0
 CLIENT_TIMEOUT_S = 30.0  # socket timeout per client read (slowloris, D1072)
 REQUEST_DEADLINE_S = 60.0  # request line + headers + body, in total (D1075)
+RESERVE_DEADLINE_S = 2.0  # the same on a reserved /health slot (D1077)
 MAX_CONNECTIONS = 32  # concurrent client connections; more are closed at once (D1072)
 LOG = logging.getLogger("llm_proxy")
 
@@ -84,6 +85,7 @@ class ProxyConfig:
     client_timeout_s: float = CLIENT_TIMEOUT_S
     max_connections: int = MAX_CONNECTIONS
     request_deadline_s: float = REQUEST_DEADLINE_S
+    reserve_deadline_s: float = RESERVE_DEADLINE_S
 
 
 def check_upstream(url: str) -> str:
@@ -146,6 +148,10 @@ class ProxyHandler(BaseHTTPRequestHandler):
             return
         body = self.rfile.read(length)
         request_read(self.server)
+        if len(body) != length:  # D1077: a cut or half-closed body is never forwarded
+            self.close_connection = True
+            self._error(403, "body shorter than Content-Length")
+            return
         self._handle(body)
 
     def do_PUT(self) -> None:
@@ -215,7 +221,9 @@ class ProxyHandler(BaseHTTPRequestHandler):
 
     def log_message(self, format: str, *args: object) -> None:  # noqa: A002, ARG002 - stdlib signature
         """Log method and path only: never a body, a query or a header."""
-        LOG.info("%s %s", self.command, self.path.split("?", 1)[0])
+        # D1077: set only after a valid request line; a 400/414/505 is logged before that
+        path = str(getattr(self, "path", "") or "")
+        LOG.info("%s %s", getattr(self, "command", None) or "-", path.split("?", 1)[0][:200])
 
 
 def make_handler(cfg: ProxyConfig, counters: Counters) -> type[ProxyHandler]:
@@ -259,7 +267,11 @@ def serve(cfg: ProxyConfig, address: tuple[str, int] = DEFAULT_LISTEN) -> Bounde
     """Create (not start) the bounded threaded server; the caller runs ``serve_forever``."""
     handler = make_handler(cfg, Counters())
     return BoundedServer(
-        address, handler, slots=cfg.max_connections, deadline_s=cfg.request_deadline_s
+        address,
+        handler,
+        slots=cfg.max_connections,
+        deadline_s=cfg.request_deadline_s,
+        reserve_deadline_s=cfg.reserve_deadline_s,
     )
 
 

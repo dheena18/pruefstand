@@ -65,7 +65,7 @@ def load_object(body: bytes, role: str) -> dict[str, object]:
         )
     except StrictJSONError:
         raise
-    except (ValueError, UnicodeDecodeError) as err:
+    except (ValueError, UnicodeDecodeError, RecursionError) as err:  # RecursionError: D1077
         msg = "body is not JSON"
         raise StrictJSONError(msg) from err
     if not isinstance(data, dict):
