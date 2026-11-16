@@ -26,14 +26,23 @@ def test_reaching_the_token_cap_is_budget_exhausted_until_midnight_utc() -> None
     assert refused.retry_after_s == 86400 - 3600
 
 
+class _SlowBudget(DailyBudget):
+    """Reading the used tokens takes a moment: without the lock every thread sees a stale value."""
+
+    _stored = 0
+
+    @property  # type: ignore[override]  # replaces the dataclass field in this test subclass
+    def _used(self) -> int:  # type: ignore[override]
+        time.sleep(0.003)
+        return self._stored
+
+    @_used.setter
+    def _used(self, value: int) -> None:
+        self._stored = value
+
+
 def test_ten_concurrent_reserves_admit_at_most_five() -> None:
-    """The clock sleeps inside the critical section, so a removed lock overshoots."""
-
-    def slow_clock() -> float:
-        time.sleep(0.005)
-        return 86400 * 30 + 1.0
-
-    budget = DailyBudget(tokens=3000, clock=slow_clock)
+    budget = _SlowBudget(tokens=3000, clock=lambda: 86400 * 30 + 1.0)
     barrier = threading.Barrier(10)
 
     def go(_: int) -> Rejection | Reservation:
