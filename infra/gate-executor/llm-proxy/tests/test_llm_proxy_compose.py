@@ -40,9 +40,9 @@ def test_container_is_locked_down() -> None:
     assert SERVICE["mem_limit"] == "256m"
 
 
-def test_no_service_publishes_a_port_or_uses_the_host_network() -> None:
+def test_no_service_but_qdrant_publishes_a_port_or_uses_the_host_network() -> None:
     for name, svc in COMPOSE["services"].items():
-        assert "ports" not in svc, name
+        assert name == "qdrant" or "ports" not in svc, name  # D1020: qdrant on loopback only
         assert svc.get("network_mode") != "host", name
 
 
