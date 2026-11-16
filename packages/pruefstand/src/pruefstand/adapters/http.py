@@ -9,10 +9,12 @@ exceptions or the body excerpts of error messages. There are no retries here (ru
 
 import asyncio
 import functools
+import json
 import os
 import ssl
 import time
 from concurrent.futures import ThreadPoolExecutor
+from http import HTTPStatus
 from typing import Any
 from urllib.parse import urlsplit
 from uuid import uuid4
@@ -43,6 +45,8 @@ MAX_RESPONSE_BYTES = 8 * 1024 * 1024
 
 _CONNECT_TIMEOUT_S = 10.0
 _NO_RETRIEVE = frozenset({404, 405})
+#: ``detail.code`` of the HTTP 504 a target answers after its own generator read timeout (D624).
+GENERATOR_TIMEOUT_CODE = "generator_timeout"
 
 _log = get_logger(__name__)
 
@@ -179,7 +183,9 @@ class HttpTargetAdapter(TargetAdapter):
             raise TargetError(msg, transient=False)
         if not 200 <= status < 300:
             msg = f"{what}: HTTP {status}: {excerpt(data, secret_forms(self._secret()))}"
-            raise TargetError(msg, transient=status >= 500)
+            raise TargetError(
+                msg, transient=status >= 500 and not _is_generator_timeout(status, data)
+            )
         return data
 
     async def _call(self, method: str, path: str, req: TargetRequest | None) -> tuple[int, bytes]:
@@ -235,6 +241,23 @@ class HttpTargetAdapter(TargetAdapter):
 
 class _BodyRejected(Exception):  # noqa: N818  # internal control flow
     """The body is over the cap or encoded; the caller decides whether that matters."""
+
+
+def _is_generator_timeout(status: int, data: bytes) -> bool:
+    """True for HTTP 504 with ``detail.code == "generator_timeout"`` (T1.13c, D624).
+
+    The target gave up on its own generator after the full read timeout; asking again only queues a
+    second generation behind the first, so the answer is not transient. Any other 504 (a proxy in
+    front of the target) stays transient.
+    """
+    if status != HTTPStatus.GATEWAY_TIMEOUT:
+        return False
+    try:
+        body = json.loads(data)
+    except ValueError:
+        return False
+    detail = body.get("detail") if isinstance(body, dict) else None
+    return isinstance(detail, dict) and detail.get("code") == GENERATOR_TIMEOUT_CODE
 
 
 def _is_cert_error(exc: BaseException) -> bool:

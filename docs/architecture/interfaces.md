@@ -115,6 +115,10 @@ GET  /v1/health -> {"status": "ok",
                                                               # num_predict; the runner shows > 0 as an informational
                                                               # report warning (absent key = 0)
 ```
+  errors  : 4xx permanent; 5xx transient (the runner may retry), EXCEPT HTTP 504 with body
+            {"detail": {"code": "generator_timeout", "message": ...}} = the target's own generator read/write
+            timeout: HttpTargetAdapter maps it to TargetError(transient=False) because a retry would only queue
+            a duplicate generation behind the first (D624, T1.13c, D1302); any other 504 stays transient.
 
 Tolerance (T1.3, D352): the core target models stay `extra="forbid"` and requests stay strict, but `HttpTargetAdapter` normalises the response before validating it: unknown keys are dropped at each known level, null optionals and a `usage` lacking either token count are treated as absent, and integer citation ids are stringified; type errors in known fields remain permanent `TargetError`s.
 
