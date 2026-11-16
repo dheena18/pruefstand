@@ -23,10 +23,10 @@ URL = os.environ.get(
 )
 QUESTIONS = yaml.safe_load((APP_DIR / "tests" / "live" / "smoke_questions.yaml").read_text("utf-8"))
 OPENAPI = yaml.safe_load((REPO / "schemas" / "target-api-v1.openapi.yaml").read_text("utf-8"))
-# T1.13b (D1262): 12 hosted-runner runs of this probe (2026-11-15) measured p95 10.2-16.8 s with the
-# 0.5B tier-1 generator (3 of 12 above the old 15 s, the VM measured 14.2 s); the owner set the
-# limit to 25 s (observed maximum 16.8 s plus ~50 % headroom for runner noise). The citation
-# threshold stays 6/10 (6/10 in every measured run, temperature 0).
+# T1.13b (D1262, D1264): 12 hosted-runner runs of this probe (2026-11-15) measured p95
+# 10.2-16.8 s with the 0.5B tier-1 generator (3 of 12 above the old 15 s, the VM measured 14.2 s);
+# the owner set the limit to 25 s (observed maximum 16.8 s plus ~50 % headroom for runner noise).
+# The citation threshold stays 6/10 (6/10 in every measured run, temperature 0).
 P95_LIMIT_S = 25.0
 MIN_CITED = 6
 

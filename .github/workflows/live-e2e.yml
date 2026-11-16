@@ -286,7 +286,7 @@ jobs:
       - name: Live tests (stack only)
         env:
           PRUEFSTAND_TARGET_URL: http://localhost:8000
-        # T1.13b (D1262): the generator-quality probe (cites >= 6/10, p95 <= 25 s) gates again.
+        # T1.13b (D1262, D1264): the generator-quality probe (cites >= 6/10, p95 <= 25 s) gates again.
         run: |
           uv run pytest -m "live and not e2e and not gpu and not network" packages/pruefstand/tests apps/rag-demo/tests/live
       - name: Wall time and judge calls

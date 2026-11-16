@@ -2,8 +2,6 @@
 
 import io
 import json
-import os
-import resource
 import signal
 import subprocess
 import sys
@@ -132,24 +130,28 @@ def test_how_a_dead_reader_is_reported(code: int, kind: str) -> None:
     assert [p.kind for p in problems] == [kind]
 
 
-def test_the_reader_child_sets_the_configured_cpu_limit() -> None:
+def test_the_reader_child_sets_the_configured_cpu_limit(tmp_path: Path) -> None:
     # Was a real 0 s CPU limit on a real read: Linux treats RLIMIT_CPU 0 as 1 s, so a reader that
     # finished in under 1 s of CPU (fast CI runner) got no SIGXCPU and the test flaked (#187).
-    # A forked child applies the limits (never this process) and reports what the kernel holds.
-    read_end, write_end = os.pipe()
-    pid = os.fork()
-    if pid == 0:  # pragma: no cover  (child)
-        os.close(read_end)
-        warning = records_child.limit_resources(OldpLimits(max_parquet_cpu_seconds=7))
-        limits = resource.getrlimit(resource.RLIMIT_CPU)
-        os.write(write_end, json.dumps([warning, list(limits)]).encode())
-        os._exit(0)
-    os.close(write_end)
-    with os.fdopen(read_end, "rb") as reader:
-        warning, limits = json.loads(reader.read())
-    os.waitpid(pid, 0)
-    assert warning is None
-    assert limits == [7, 8]
+    # A separate interpreter applies the limits (never this process) and reports what the kernel
+    # holds.
+    code = (
+        "import json, resource\n"
+        "from pruefstand.ingest.records_child import limit_resources\n"
+        "from pruefstand.ingest.records_model import OldpLimits\n"
+        "warning = limit_resources(OldpLimits(max_parquet_cpu_seconds=7))\n"
+        "print(json.dumps([warning, list(resource.getrlimit(resource.RLIMIT_CPU))]))\n"
+    )
+    done = subprocess.run(  # noqa: S603  (our interpreter, fixed code)
+        [sys.executable, "-c", code],
+        check=False,
+        cwd=tmp_path,
+        capture_output=True,
+        text=True,
+        timeout=60,
+    )
+    assert done.returncode == 0, done.stderr
+    assert json.loads(done.stdout) == [None, [7, 8]]
 
 
 def test_a_reader_killed_by_a_real_sigxcpu_is_a_read_timeout(tmp_path: Path) -> None:
