@@ -1,10 +1,10 @@
 // `check_fixture_states.mjs [populated dir] [empty dir]`: ui-spec §14.1 state coverage (exit 1 on a gap).
-// Allow-listed until T8.3: the tier-2 rows. Needs real refused / error / `en` cases (UI9-12, UI9-16).
+// Strict since T8.3: the tier-2 rows are covered by synthetic runs (derive_tier2.mjs). Needs real refused / error / `en` cases (UI9-12, UI9-16).
 import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { T83_STATES, caseFacts, statesOf } from "./states.mjs";
+import { caseFacts, statesOf } from "./states.mjs";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
 
@@ -38,5 +38,4 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
   }
   const covered = Object.entries(states).map(([s, r]) => `${s} (${r.length})`).join(", ");
   console.log(`ok: ${covered}; refused ${facts.refused.length}, error ${facts.error.length}, en ${facts.en.length}`);
-  console.log(`allow-listed until T8.3: ${T83_STATES.join(", ")}`);
 }
