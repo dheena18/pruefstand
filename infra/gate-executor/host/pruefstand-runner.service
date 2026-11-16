@@ -21,7 +21,9 @@ RestartSec=10
 KillMode=process
 KillSignal=SIGTERM
 TimeoutStopSec=5min
-NoNewPrivileges=yes
+# No NoNewPrivileges= (and no directive that implies it, systemd.exec(5)): the preflight repairs the tunnel
+# with `sudo -n systemctl restart pruefstand-tunnel` (the one sudoers rule), which no_new_privs would block
+# (D1096, review #202; test_host_privileges.py). pruefstand is in group docker anyway (root-equivalent).
 
 [Install]
 WantedBy=multi-user.target

@@ -47,5 +47,7 @@ Runner installed in $dir. As root (owner), once:
   install -m 0644 $here/pruefstand-runner.service /etc/systemd/system/pruefstand-runner.service
   install -m 0440 $here/sudoers.d/pruefstand-tunnel /etc/sudoers.d/pruefstand-tunnel && visudo -c
   systemctl daemon-reload && systemctl enable --now pruefstand-runner.service
+Hooks (D1096): as pruefstand, clone the private repo once to /home/pruefstand/pruefstand-gate (the hook path in
+$dir/.env; never a job workspace under $dir/_work, which the hooks wipe); after each sync: git pull --ff-only.
 Then, as pruefstand: bash $here/check-host.sh
 EOF

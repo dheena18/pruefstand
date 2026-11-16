@@ -5,15 +5,39 @@
 # pruefstand.job, Qdrant collections named pr_*, and cache overlays named pr-* under $PRUEFSTAND_HOME/cache/.
 # Never the shared cache, baselines, model weights or the owner's dev stack (compose profile dev, Y1.4).
 set -euo pipefail
+set -f  # no pathname expansion anywhere in this script (review #202)
 
 QDRANT="${PRUEFSTAND_QDRANT_URL:-http://127.0.0.1:6333}"
 
+# Wipes only a canonical directory below a runner `_work/` dir: no `.`/`..` components and no symlink on
+# the way (realpath must equal the given path), so a crafted GITHUB_WORKSPACE cannot reach anything else.
 wipe_workspace() {
-  local ws="${GITHUB_WORKSPACE:-}"
-  case "$ws" in
-    */_work/*) [ -d "$ws" ] && find "$ws" -mindepth 1 -delete ;;
-    *) echo "job_cleanup: no runner workspace to wipe" >&2 ;;
+  local ws="${GITHUB_WORKSPACE:-}" real
+  if [ -z "$ws" ]; then
+    echo "job_cleanup: no runner workspace to wipe" >&2
+    return 0
+  fi
+  ws="${ws%/}"
+  case "/$ws/" in
+    */../* | */./*)
+      echo "job_cleanup: workspace has . or .. components, not wiped" >&2
+      return 0
+      ;;
   esac
+  case "$ws" in
+    /*/_work/?*) ;;
+    *)
+      echo "job_cleanup: workspace is not below a runner _work dir, not wiped" >&2
+      return 0
+      ;;
+  esac
+  [ -d "$ws" ] || return 0
+  real="$(realpath -e -- "$ws")"
+  if [ "$real" != "$ws" ]; then
+    echo "job_cleanup: workspace resolves through a symlink, not wiped" >&2
+    return 0
+  fi
+  find "$real" -mindepth 1 -delete
 }
 
 remove_labelled() {
@@ -30,11 +54,12 @@ drop_pr_collections() {
     echo "job_cleanup: qdrant not reachable, no collection dropped" >&2
     return 0
   fi
-  for name in $names; do
+  # one name per line, read literally: no word splitting, no globbing of names such as `pr_*`
+  while IFS= read -r name; do
     case "$name" in
       pr_*) curl -fsS -m 30 "${auth[@]}" -X DELETE "$QDRANT/collections/$name" >/dev/null ;;
     esac
-  done
+  done <<<"$names"
 }
 
 drop_overlays() {
