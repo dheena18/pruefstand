@@ -15,7 +15,7 @@ def _directives(name: str) -> list[str]:
 
 
 def test_exec_start_is_run_sh_and_never_the_listener() -> None:
-    assert _directives("ExecStart") == ["/home/pruefstand/actions-runner/run.sh"]
+    assert _directives("ExecStart") == ["/home/pruefstand/pruefstand/runner/run.sh"]
     assert "Runner.Listener" not in UNIT
     assert "--disableupdate" not in "".join(
         p.read_text(encoding="utf-8") for p in HOST.rglob("*") if p.is_file()

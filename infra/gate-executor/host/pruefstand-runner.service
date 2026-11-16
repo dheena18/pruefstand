@@ -11,8 +11,8 @@ Requires=docker.service
 [Service]
 User=pruefstand
 Group=pruefstand
-WorkingDirectory=/home/pruefstand/actions-runner
-ExecStart=/home/pruefstand/actions-runner/run.sh
+WorkingDirectory=/home/pruefstand/pruefstand/runner
+ExecStart=/home/pruefstand/pruefstand/runner/run.sh
 Restart=always
 RestartSec=10
 KillMode=process
