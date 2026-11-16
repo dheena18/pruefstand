@@ -78,7 +78,8 @@ def test_triggers(live: tuple[Doc, str], selftest: tuple[Doc, str]) -> None:
     assert set(triggers(live[0])) == {"pull_request", "push", "schedule", "workflow_dispatch"}
     assert triggers(live[0])["schedule"] == [{"cron": "37 2 * * *"}]
     assert set(triggers(selftest[0])) == {"pull_request", "push"}
-    assert "probe_quota" in triggers(live[0])["workflow_dispatch"]["inputs"]
+    assert "probe_quota" not in triggers(live[0])["workflow_dispatch"]["inputs"]
+    assert "quota-probe" not in live[0]["jobs"]
 
 
 def test_every_workflow_starts_without_permissions(
@@ -93,14 +94,22 @@ def test_every_workflow_starts_without_permissions(
 def test_the_live_job_budget(live: tuple[Doc, str]) -> None:
     job = live[0]["jobs"]["live"]
     assert job["timeout-minutes"] == 30
-    assert job["permissions"] == {"contents": "read", "actions": "read", "models": "read"}
+    assert job["permissions"] == {"contents": "read", "actions": "read"}
 
 
-def test_models_read_only_in_the_allowed_files() -> None:
-    allowed = {"live-e2e.yml", "cassettes.yml", "cassettes-models.yml"}
+def test_no_workflow_grants_models_or_passes_a_models_token() -> None:
+    # GitHub Models is retired (D1202): no `models:` permission, no token mapped for it.
     for path in sorted(WORKFLOWS.glob("*.yml")):
-        if path.name not in allowed:
-            assert "models:" not in path.read_text(encoding="utf-8"), path.name
+        text = path.read_text(encoding="utf-8")
+        assert "models: read" not in text, path.name
+        assert "PRUEFSTAND_GH_MODELS_TOKEN: ${{" not in text, path.name
+    assert not (WORKFLOWS / "cassettes-models.yml").exists()
+
+
+def test_tier1_never_judges(live: tuple[Doc, str]) -> None:
+    run = " ".join(str(s.get("run", "")) for s in live[0]["jobs"]["live"]["steps"])
+    assert 'echo "PRUEFSTAND_JUDGE_MODE=skipped" >> "$GITHUB_ENV"' in run
+    assert "judge-drift" not in live[1]
 
 
 def test_scenarios_matrix_and_when_it_runs(live: tuple[Doc, str]) -> None:

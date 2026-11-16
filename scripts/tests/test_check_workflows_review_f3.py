@@ -224,10 +224,3 @@ def test_dependabot_covers_the_composite_actions() -> None:
 def test_every_dependabot_ecosystem_has_a_cooldown() -> None:
     for update in _dependabot():
         assert update.get("cooldown", {}).get("default-days") == 5, update["package-ecosystem"]
-
-
-def test_cassettes_models_installs_from_the_lock_file() -> None:
-    text = (REPO / ".github" / "workflows" / "cassettes-models.yml").read_text(encoding="utf-8")
-    syncs = re.findall(r"uv sync[^\n]*", text)
-    assert syncs
-    assert all("--frozen" in s for s in syncs), syncs

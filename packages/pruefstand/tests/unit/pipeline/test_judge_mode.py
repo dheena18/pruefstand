@@ -31,7 +31,7 @@ SYNTHETIC_TOKEN = "synthetic-test-value"  # noqa: S105
 
 
 def test_follows_the_stack_when_nothing_is_forced() -> None:
-    assert requested_judge_mode(stack="live", env={}, has_models_token=True) == "github"
+    assert requested_judge_mode(stack="live", env={}, has_models_token=True) == "skipped"
     assert requested_judge_mode(stack="a40", env={}, has_models_token=False) == "local"
 
 
@@ -111,14 +111,16 @@ async def test_skipped_forces_the_runner_to_get_no_judges(
     assert pool.score_calls == []
 
 
-async def test_live_stack_with_judged_values_is_github(
+async def test_live_stack_never_judges_even_with_an_old_models_token(
     dataset: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    use_stub_judges(monkeypatch, SpyPool())
+    # D1202: GitHub Models is retired; a token left in .env must not start the tier-1 judge
+    spy = SpyPool()
+    use_stub_judges(monkeypatch, spy)
     monkeypatch.setenv(TOKEN_ENV, SYNTHETIC_TOKEN)
     results = await go(dataset, tmp_path)
-    assert (results.manifest.stack, results.manifest.judge_mode) == ("live", "github")
-    assert results.manifest.judged_cases == 20
+    assert (results.manifest.stack, results.manifest.judge_mode) == ("live", "skipped")
+    assert results.manifest.judged_cases == 0
 
 
 async def test_a40_stack_is_local(
@@ -232,3 +234,15 @@ async def test_a_drift_file_for_the_judge_sets_the_flag_not_the_fingerprint(
     )
     other = await go(dataset, tmp_path)
     assert other.manifest.judge_drift is False
+
+
+def test_an_old_models_token_never_selects_the_retired_github_judge() -> None:
+    # D1202: a PRUEFSTAND_GH_MODELS_TOKEN left in a local .env must not start the retired judge
+    assert requested_judge_mode(stack="live", env={}, has_models_token=True) == "skipped"
+
+
+def test_asking_for_the_github_judge_is_refused_as_retired() -> None:
+    with pytest.raises(ConfigError, match=r"GitHub Models is retired \(2026-07-30, D1202\)"):
+        requested_judge_mode(
+            stack="live", env={"PRUEFSTAND_JUDGE_MODE": "github"}, has_models_token=True
+        )
