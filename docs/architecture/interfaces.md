@@ -291,6 +291,8 @@ llm-proxy (trusted, T6.2a; module infra/gate-executor/llm-proxy/llm_proxy.py; D2
     - keep_alive: removed from the body (Ollama keeps the preload's keep_alive),
     - load-time keys other than num_ctx (num_gpu, num_batch, num_thread, use_mmap, main_gpu, low_vram, any key not
       in {num_ctx, temperature, seed, top_p, num_predict}): dropped, so no request can force a reload;
+    - think: POST /api/chat is always forwarded with "think": false (absent or any other value is rewritten;
+      D1076, CLAUDE.md §5 / D95: the gate never depends on the candidate config for this); /api/embed unchanged;
     temperature, seed, top_p and num_predict pass through unchanged when inside the catalogue option_bounds of that
     tag; a missing key gets the catalogue default; a value outside the bounds -> 403 {"error": "option out of
     bounds: <key>"}. Catalogue values are defaults, not overrides (mutation M17 and the T6.3 churn arms work)
@@ -400,11 +402,16 @@ unattended operation (R11 Y5, D225-D229)
                     upstream_errors grew during the run) ->
                     RunManifest.stop_reason = "aborted" and RunManifest.infra_error = "<kind>: <detail>"
                     (str | None, §2; kind ollama_down|tunnel_lost|data_root_unavailable|proxy_upstream|model_reload|
-                    window_exceeded), commit status `error` (not `failure`), one automatic retry after
+                    executor|window_exceeded), commit status `error` (not `failure`), one automatic retry after
                     health.sh --repair. R12 (A12-M1, D274): the first failure is not recorded as processed (the
                     retry runs in the same job); after the SECOND infra failure the orchestrator writes a
                     processed.jsonl line with result "error", so it is not re-run automatically; the status text
-                    ends "re-dispatch to retry" (R13 P1.2, D288); only a new owner dispatch runs it again
+                    ends "re-dispatch to retry" (R13 P1.2, D288); only a new owner dispatch runs it again.
+                    Post-run probe (D1082/D1083, gate_orchestrator.post_run): tunnel inactive or health.sh exit
+                    11/12/13/15/16 -> infra error as above; exit 10 (free VRAM) and 14 (bin dir) only log a
+                    WARNING and keep the finished run's result, unless a resident-digest or placement FAIL row
+                    is also present (then model_reload); other exits -> kind executor. The status text keeps
+                    its ending within GitHub's 140 characters: the infra text is shortened first (D1086)
   data root         ADR-0019 (supersedes the R12 mount unit, D254): /mnt/pruefstand is a plain directory on the VM
                     disk; no mount unit, no service dependency. The preflight (health.sh exit 16) checks that it
                     exists, is writable by pruefstand and has >= 20 GB free; otherwise the job ends with
@@ -584,7 +591,8 @@ class RunManifest(BaseModel):    # (schema) -> run.json
     #   (no infra_error count: the infra failure is the field below, R11 integration D245)
     complete: bool; stop_reason: Literal["completed", "budget_exceeded", "aborted"]
     infra_error: str | None = None    # R11 D226/D245: "<kind>: <detail>" (kind ollama_down | tunnel_lost |
-                                      # data_root_unavailable (ADR-0019; was nas_unavailable) | proxy_upstream | model_reload | window_exceeded (R12 N4.3,
+                                      # data_root_unavailable (ADR-0019; was nas_unavailable) | proxy_upstream | model_reload |
+                                      # executor (D1080/D1083: health.sh or another executor subprocess failed) | window_exceeded (R12 N4.3,
                                       # D256: nightly stopped before 06:00 Berlin; no retry)); set only together with
                                       # stop_reason="aborted" (validator: infra_error set => stop_reason == "aborted")
     stack: Literal["live", "a40"]     # where it ran: live = tier 1 (GitHub-hosted CPU), a40 = tier 2 executor
@@ -978,7 +986,14 @@ class ArtifactStore:           def __init__(self, root: Path) -> None
                                # RunManifest.counts atomically (only "model_reloads" and "upstream_errors" are accepted,
                                # other keys -> StoreError); other files untouched
 class BaselineStore(Protocol): def get(self, eval_fingerprint: str, ref: str = "main") -> RunArtifacts | None
-                               def put(self, run: RunArtifacts, ref: str = "main") -> None
+                               def put(self, run: RunArtifacts, ref: str = "main", *,
+                                       override: PromotionOverride | None = None,
+                                       expected: ExpectedBaseline | None = None) -> None
+                               # expected (D1120 review): run id gated against; the store refuses (BaselineRefused)
+                               # under its promote lock when another baseline is stored by now
+                               # D1123 (review F8): override = core.models.baseline.PromotionOverride {by, at, reasons,
+                               # note}; stored in the baseline's manifest.json (current + history) and its index.json entry;
+                               # the key is omitted when None (byte layout of plain promotions unchanged)
 class LocalDirBaselineStore(BaselineStore); class GitBranchBaselineStore(BaselineStore)
 # store/canary_source.py (T6.1; reused by T8.1): load_canary_registry() -> CanaryRegistry — registry source of
 #   `baseline export-public` and `export-dashboard`: slice corpus/*/canaries.public.json + T2.6 registries + held-out
@@ -1330,7 +1345,7 @@ class GitHubPublisher:
                     context: str = "pruefstand/gate") -> None
     # R13 P4.2 (D297; owner T1.9 = function + test_github.py, T6.2a = call sites): the single low-level commit-status
     # POST (`POST /repos/{repo}/statuses/{sha}`); description truncated to 140 chars, sent verbatim otherwise. The
-    # only path for non-gate-result states: the executor posts `pending` "executor busy (GPU lock held)" /
+    # only path for non-gate-result states: the executor posts `pending` "executor busy (GPU lock held); dispatch again" /
     # "tier-2 run started", `error` "executor unhealthy: <reason>" (preflight failure under the lock), and the
     # nightly result with context "pruefstand/nightly" (T6.2b). "not gated" (incl. "not gated (release version
     # bump)") is posted ONLY by gate-router.yml (§1.5), never through GitHubPublisher by the executor
@@ -1358,8 +1373,10 @@ Descriptions are truncated to GitHub's 140-character limit.
 
 | Caller | Context | State | `description` |
 | --- | --- | --- | --- |
-| executor, lock wait (T6.2a) | `pruefstand/gate` | `pending` | `"executor busy (GPU lock held)"` |
+| executor, `MAINTENANCE` present (T6.2a; no lock taken, D1064) | `pruefstand/gate` | `pending` | `"executor in maintenance; dispatch again later"` |
+| executor, lock wait timed out (T6.2a, D1064) | `pruefstand/gate` | `pending` | `"executor busy (GPU lock held); dispatch again"` |
 | executor, job start (T6.2a) | `pruefstand/gate` | `pending` | `"tier-2 run started"` |
+| executor, a non-infra exception during the retry after "retrying once" was posted (T6.2a, D1080) | `pruefstand/gate` | `error` | `"executor error: <ExceptionType>; re-dispatch to retry"` (never the infra wording; recorded as processed `error`) |
 | executor, preflight failure (T6.2a) | `pruefstand/gate` | `error` | `"executor unhealthy: <reason>"` (e.g. `"executor unhealthy: data root unavailable"`) |
 | nightly gate phase (T6.2b) | `pruefstand/nightly` | `success` / `failure` | `"<GateStatus>: <summary>"` (non-blocking, D91) |
 | nightly skipped (T6.2b) | `pruefstand/nightly` | `error` | `"skipped: <reason>"` (the §7 heartbeat vocabulary) |
@@ -1770,10 +1787,20 @@ pruefstand baseline   promote --run runs/<id> --ref main|nightly-b0|nightly-b1|n
                       # judge_degraded / judge_truncated-informational / infra_error is never promoted (exit 1, D321)
                       # D881 (T6.1a): main / nightly-b<k> need <run>/gate.json (absent -> exit 1); status FAIL or any
                       # hard-fail finding (hard_fail, hard_fail_unverifiable; recomputed from the run) -> exit 1,
-                      # store unchanged; gate.json unreadable / invalid / of another run -> exit 3; release-b<k> may
-                      # lack gate.json (never gated) but is checked for hard-fail findings. Option
-                      # --allow-failed-gate (owner only, by hand; never in a workflow) waives FAIL and hard-fail
-                      # findings, never a missing or unusable gate.json
+                      # store unchanged; gate.json unreadable / invalid / of another run / of another
+                      # eval_fingerprint -> exit 3; release-b<k> may lack gate.json (never gated) but is checked for
+                      # hard-fail findings. D1120 (review F1): for main / nightly-b<k> gate.json must be decided
+                      # against the baseline stored now for (fingerprint, ref): baseline_run_id == candidate (a
+                      # self-gate) or != the stored run id -> exit 1, never waived; no_baseline is accepted only for
+                      # the first promote of (fingerprint, ref), later -> exit 1, never waived; status
+                      # INSUFFICIENT_DATA / UNSUPPORTED_CONFIG -> exit 1 like FAIL; the store re-checks the
+                      # expected baseline under its lock (a concurrent promote loses with exit 1). Option --allow-failed-gate (owner only, by hand; never in a workflow)
+                      # waives FAIL, INSUFFICIENT_DATA, UNSUPPORTED_CONFIG and hard-fail findings, never a missing,
+                      # unusable or unbound gate.json. D1123 (review F8): --allow-failed-gate needs --reason TEXT
+                      # (1-500 chars after whitespace folding; missing, longer, control/format chars, or --reason
+                      # without the flag -> exit 2; `by` is a label, not authentication); when the flag waives
+                      # something, the stored baseline records override {by: GITHUB_ACTOR or the OS user, at: UTC,
+                      # reasons: what the guard would have refused, note: --reason} in manifest.json and index.json
                       fingerprint-check --candidate <run> --baseline <run>   (D1000, CI fix; read by the tier-1 step of live-e2e.yml)
                       # prints `comparable`, `changed <fp> <fp>` (12+ chars, enough to tell the two apart) or `unreadable` (baseline
                       # run cannot be read); exit 0 for all three; exit 3 only if the CANDIDATE cannot be read. Decides nothing.

@@ -22,7 +22,8 @@ from pruefstand.ingest.records_model import (
     ProblemLog,
     RowBudget,
 )
-from pruefstand.ingest.records_read import jsonl_rows, parquet_rows
+from pruefstand.ingest.records_proc import parquet_rows
+from pruefstand.ingest.records_read import jsonl_rows
 
 __all__ = [
     "OldpDataError",

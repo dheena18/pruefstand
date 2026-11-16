@@ -165,7 +165,8 @@ class OllamaDenseEncoder(_HttpEncoder):
 
     Args:
         cfg: Model entry (``model`` is the bare tag, D221).
-        base_url: ``OLLAMA_GPU0_URL`` (dev stack) or ``LLM_PROXY_URL`` (gate runs), without ``/v1``.
+        base_url: the value of ``LLM_PROXY_URL`` (D1081: llm-proxy in gate runs, the tunnel on the
+            dev stack), without ``/v1``.
         options: Catalogue options to send (default: ``cfg.options``).
         count_tokens: Counter built from the model's ``tokenizer.json`` (default: word lower bound).
         client: Optional ``httpx.Client`` (tests).

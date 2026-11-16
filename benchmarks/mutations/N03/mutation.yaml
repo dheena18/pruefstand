@@ -1,0 +1,15 @@
+id: N03
+title: Re-run the identical config with production cache settings
+kind: config
+rag_overrides: {}
+needs_reindex: false
+cache_invalidating: false
+tier: pr
+splits: [smoke, core, robust_pr]
+stratum: statistical
+tier1: false
+in_detection_rate: false
+expected:
+  status: PASS
+rationale: >-
+  Nothing changes; the run uses the production cache settings, so this measures the gate's false-alarm floor on an identical candidate.

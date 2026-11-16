@@ -1,6 +1,9 @@
 """``pruefstand baseline``: promote, export-public, prune, publish-dashboard, fingerprint-check."""
 
+import getpass
+import os
 import re
+import unicodedata
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Annotated
@@ -11,6 +14,11 @@ from pruefstand.cli._common import EXIT_FAIL, EXIT_USAGE, fail, guarded
 from pruefstand.core.config import GatePolicy
 from pruefstand.core.config_loader import load_config
 from pruefstand.core.errors import GateInputError
+from pruefstand.core.models.baseline import (
+    MAX_OVERRIDE_NOTE,
+    ExpectedBaseline,
+    PromotionOverride,
+)
 from pruefstand.core.protocols import BaselineStore
 from pruefstand.gate.baseline_run import check_baseline_run
 from pruefstand.metrics.registry import MetricRegistry
@@ -47,6 +55,57 @@ def _informational_metrics(stack: str, ref: str, policy: GatePolicy) -> frozense
     return frozenset({"refusal_correct"}) if ref == "main" else frozenset()
 
 
+def _current_baseline(store: BaselineStore, fingerprint: str, ref: str) -> str | None:
+    """Run id of the baseline stored now for (fingerprint, ref); release anchors are not gated."""
+    if ref.startswith("release-"):
+        return None
+    current = store.get(fingerprint, ref)
+    return None if current is None else str(current.results.manifest.run_id)
+
+
+def _who() -> str:
+    """``GITHUB_ACTOR`` when set, else the OS user name (bounded, printable)."""
+    try:
+        name = os.environ.get("GITHUB_ACTOR") or getpass.getuser()
+    except (OSError, KeyError):
+        name = "unknown"
+    clean = "".join(c for c in name if not _hidden(c))[:64]
+    return clean or "unknown"
+
+
+_FILLERS = frozenset("\u034f\u115f\u1160\u2800\u3164\uffa0")
+
+
+def _hidden(char: str) -> bool:
+    """Control, format, line/paragraph separator or invisible filler character."""
+    return (
+        unicodedata.category(char) in {"Zl", "Zp"}
+        or char in _FILLERS
+        or (unicodedata.category(char).startswith("C"))
+    )
+
+
+def _note(reason: str | None, *, allow_failed_gate: bool) -> str | None:
+    r"""The validated ``--reason``: required with ``--allow-failed-gate``, refused without (D1123).
+
+    Control and format characters (``C*``, newlines and ``\x1c``-``\x1f`` included), line and
+    paragraph separators and invisible fillers (U+034F, U+115F, U+2800, U+3164, ...) are refused
+    (exit 2), never stripped (tabs too); runs of spaces are folded to one.
+    """
+    if not allow_failed_gate:
+        if reason is not None:
+            fail("error: --reason is only allowed with --allow-failed-gate", EXIT_USAGE)
+        return None
+    raw = reason or ""
+    if any(_hidden(c) for c in raw):  # checked before folding: \n, \x1c-\x1f, \x85 refused too
+        fail("error: --reason must not contain control or format characters", EXIT_USAGE)
+    text = " ".join(raw.split())
+    if not text or len(text) > MAX_OVERRIDE_NOTE:
+        msg = f"error: --allow-failed-gate needs --reason TEXT (1 to {MAX_OVERRIDE_NOTE} chars)"
+        fail(msg, EXIT_USAGE)
+    return text
+
+
 def promote_command(
     ctx: typer.Context,
     *,
@@ -60,20 +119,38 @@ def promote_command(
             help="Promote although the gate FAILed or the run has hard fails (owner only).",
         ),
     ] = False,
+    reason: Annotated[
+        str | None,
+        typer.Option(
+            "--reason",
+            help="Why the gate is overridden; required with --allow-failed-gate (D1123).",
+        ),
+    ] = None,
 ) -> None:
     """Promote a complete run to the baseline of its fingerprint and ref.
 
-    main and nightly runs need their gate.json (run `pruefstand gate` first); a run whose gate
-    FAILed or that has a hard-fail finding is refused (exit 1) unless --allow-failed-gate is
-    given; an invalid gate.json is exit 3 (D881).
+    main and nightly runs need their gate.json (run `pruefstand gate` first), decided against
+    the baseline stored now (a self-gate, another baseline, or no_baseline once a baseline is
+    stored: exit 1, never waived; D1120); a run whose gate FAILed or had INSUFFICIENT_DATA or
+    UNSUPPORTED_CONFIG, or a hard-fail finding is refused (exit 1) unless --allow-failed-gate
+    (with --reason) is given; an
+    invalid gate.json or one of another fingerprint is exit 3 (D881).
     """
+    note = _note(reason, allow_failed_gate=allow_failed_gate)
     with guarded(ctx):
         artifacts = ArtifactStore(run.parent).read_run(run)
         cfg = load_config(config)
         try:
             prepared = prepare_promotion(artifacts, ref)
-            check_gate_for_promotion(
-                run, artifacts.results, cfg.gate, ref=ref, allow_failed_gate=allow_failed_gate
+            store = build_baseline_store(cfg.baseline_store)
+            current = _current_baseline(store, prepared.results.manifest.eval_fingerprint, ref)
+            waived = check_gate_for_promotion(
+                run,
+                artifacts.results,
+                cfg.gate,
+                ref=ref,
+                allow_failed_gate=allow_failed_gate,
+                current=current,
             )
             check_baseline_run(
                 prepared.results,
@@ -81,7 +158,13 @@ def promote_command(
                 MetricRegistry.full().directions(),
                 skip=_informational_metrics(prepared.results.manifest.stack, ref, cfg.gate),
             )
-            build_baseline_store(cfg.baseline_store).put(prepared, ref)
+            override = None
+            if waived and note is not None:
+                override = PromotionOverride(
+                    by=_who(), at=datetime.now(UTC), reasons=tuple(waived), note=note
+                )
+            expected = None if ref.startswith("release-") else ExpectedBaseline(run_id=current)
+            store.put(prepared, ref, override=override, expected=expected)
         except BaselineRefused as exc:
             fail(f"error: {exc}", EXIT_FAIL)
         except GateInputError as exc:
@@ -91,6 +174,8 @@ def promote_command(
             )
         manifest = prepared.results.manifest
         typer.echo(f"promoted {manifest.run_id} to {manifest.eval_fingerprint}/{ref}")
+        if override is not None:
+            typer.echo(f"override recorded: by {override.by}, {len(override.reasons)} reason(s)")
 
 
 def export_public_command(

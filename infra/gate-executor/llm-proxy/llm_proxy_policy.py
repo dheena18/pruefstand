@@ -10,6 +10,7 @@ Rules (the single definition is interfaces 1.5):
 * only ``POST /api/chat`` (generator tags), ``POST /api/embed`` (embed tags), ``GET /api/tags``;
 * a bearer key compared in constant time; an empty configured key rejects everything;
 * the body's ``model`` must be one of the run's tags (judges are never in the policy, ADR-0018);
+* ``/api/chat`` always gets ``think: false`` (D1076, CLAUDE.md §5);
 * ``num_ctx`` is always the catalogue value; ``keep_alive`` and every other load-time or unknown
   option key are dropped; ``temperature``, ``top_p`` and ``num_predict`` pass through inside the
   catalogue ``option_bounds`` (else 403 ``option out of bounds: <key>``); ``seed`` passes when it is
@@ -30,6 +31,8 @@ ROUTES: dict[tuple[str, str], str] = {
     ("GET", TAGS): "",
 }
 FORWARD_ROLES = frozenset({"generator", "embed"})
+# D1076: Ollama ResolveThinking overrides think false for Harmony models; never a generator
+THINK_ALWAYS_ON = frozenset({"gptoss", "gpt-oss"})
 BOUNDED = ("temperature", "top_p", "num_predict")
 SEED_BOUNDS = (0, 2**31 - 1)  # D1077: an int32 seed; larger values break the Go decoder
 RELOAD_NS = 1_000_000_000  # load_duration > 1 s = a model (re)load (SPEC 6.2)
@@ -132,6 +135,10 @@ def build_policy(
         if role not in FORWARD_ROLES:
             msg = f"tag {tag} has role {role}; only generator and embed tags are allowed"
             raise PolicyError(msg)
+        families = {str(entry.get(k, "")).lower() for k in ("family", "ollama_family")}
+        if role == "generator" and families & THINK_ALWAYS_ON:
+            msg = f"tag {tag}: thinking cannot be disabled for this model family (D1076)"
+            raise PolicyError(msg)
         options = _number_map(entry.get("options", {}), f"options of {tag}")
         num_ctx = options.pop("num_ctx", None)
         if not isinstance(num_ctx, int):
@@ -213,6 +220,8 @@ def decide(  # noqa: PLR0911 - one return per rejection reason keeps the rule ta
         return options
     data.pop("keep_alive", None)
     data["options"] = options
+    if role == "generator":
+        data["think"] = False  # D1076: thinking always off, whatever the candidate sends
     try:
         return Forward(method, path, dump(data))
     except StrictJSONError as err:

@@ -1,0 +1,18 @@
+id: M09
+title: Tenant filter missing on the shared_public merge path
+kind: config
+rag_overrides: {shared_public_merge: unfiltered}
+needs_reindex: false
+cache_invalidating: true
+tier: pr
+splits: [smoke, core, robust_pr]
+stratum: deterministic
+tier1: true
+in_detection_rate: true
+expected:
+  status: FAIL
+  hard_fail: true
+  metrics: [tenant_leak]
+rationale: >-
+  The shared_public merge returns chunks of every tenant; the tenant_leak hard fail decides in both
+  tiers.
