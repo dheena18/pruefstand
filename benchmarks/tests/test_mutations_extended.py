@@ -144,3 +144,12 @@ def test_m02_reindexes_with_256_token_pieces(worktree: Path) -> None:
         yaml.safe_load((worktree / GPU_CONFIG).read_text(encoding="utf-8"))
     )
     assert (cfg.chunking.strategy, cfg.chunking.size) == ("fixed_tokens", 256)
+
+
+def test_data_ref_belongs_to_kind_data_only() -> None:
+    m16 = BY_ID["M16"].model_dump()
+    with pytest.raises(ValidationError, match="data_ref exactly for kind data"):
+        MutationSpec.model_validate({**m16, "kind": "config"})
+    m12 = BY_ID["M12"].model_dump()
+    with pytest.raises(ValidationError, match="data_ref exactly for kind data"):
+        MutationSpec.model_validate({**m12, "kind": "data"})
