@@ -1,4 +1,4 @@
-"""install_runner.sh and check-host.sh (T6.2a S9, D1021) with stubbed system commands."""
+"""install_runner.sh and check-host.sh (T6.2a S9, D1090) with stubbed system commands."""
 
 import os
 import stat
@@ -87,7 +87,6 @@ def _install(tmp: Path, **env_extra: str) -> subprocess.CompletedProcess[str]:
     env = {
         **os.environ,
         "PATH": f"{_bin(tmp, {})}:{os.environ['PATH']}",
-        "RUNNER_DIR": str(tmp / "runner"),
         "INSTALL_DRY_RUN": "1",
         "RUNNER_VERSION": "2.300.0",
         "RUNNER_SHA256": "0" * 64,
@@ -141,3 +140,10 @@ def test_install_refuses_another_user(tmp_path: Path) -> None:
     )
     assert res.returncode == 2
     assert "pruefstand" in res.stderr
+
+
+def test_install_refuses_a_runner_dir_the_unit_does_not_use(tmp_path: Path) -> None:
+    # the systemd unit hard-codes /home/pruefstand/pruefstand/runner (WorkingDirectory, ExecStart)
+    res = _install(tmp_path, RUNNER_DIR=str(tmp_path / "elsewhere"))
+    assert res.returncode == 2
+    assert "pruefstand-runner.service" in res.stderr

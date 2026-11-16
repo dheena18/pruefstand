@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# check-host.sh (T6.2a S9, D1021): read-only checks of the executor VM, run as user pruefstand.
+# check-host.sh (T6.2a S9, D1090): read-only checks of the executor VM, run as user pruefstand.
 # Prints CSV rows `check,OK|FAIL,detail`; exit 0 when every row is OK, 1 otherwise. Changes nothing.
 # Env: OWNER_USER (the owner login, the only other member of group docker), PRUEFSTAND_DATA_ROOT
 #      (default /mnt/pruefstand), CLUSTER_SSH_HOST (default cairo-s101lp), LOCK_DIR (default /var/lib/pruefstand),

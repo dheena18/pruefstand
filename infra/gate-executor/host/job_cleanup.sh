@@ -25,7 +25,7 @@ remove_labelled() {
 drop_pr_collections() {
   local names name
   local auth=()
-  [ -z "${QDRANT_API_KEY:-}" ] || auth=(-H "api-key: $QDRANT_API_KEY")  # D1020: the executor Qdrant needs it
+  [ -z "${QDRANT_API_KEY:-}" ] || auth=(-H "api-key: $QDRANT_API_KEY")  # D1089: the executor Qdrant needs it
   if ! names="$(curl -fsS -m 10 "${auth[@]}" "$QDRANT/collections" | jq -r '.result.collections[].name')"; then
     echo "job_cleanup: qdrant not reachable, no collection dropped" >&2
     return 0
