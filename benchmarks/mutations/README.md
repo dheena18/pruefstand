@@ -7,7 +7,7 @@ one entry on a fresh worktree with
 `uv run python benchmarks/mutations/apply.py apply <ID> --worktree <dir>` and undo it with
 `revert`. No-ops (`N`) expect PASS and measure the false-alarm rate, never the detection rate.
 
-`base_sha`: `0c4cd87df987f9431acdd944fc9f3a5dcb1c5b9e`
+`base_sha`: `8186931af266d5c9d39b4fc0abb3e02a2a171e35`
 
 | ID | Title | Kind | Change | Tier | Splits | Stratum | tier1 | Expected | Metrics |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
@@ -22,11 +22,8 @@ one entry on a fresh worktree with
 | N01 | Whitespace in rag.gpu.yaml | config | patch | pr | smoke, core, robust_pr | statistical | no | PASS | – |
 | N02 | Comment in the retriever code | code | patch | pr | smoke, core, robust_pr | statistical | no | PASS | – |
 | N03 | Re-run the identical config with production cache settings | config | overrides | pr | smoke, core, robust_pr | statistical | no | PASS | – |
+| N04 | Prompt synonym as a new prompt version | config | patch | pr | smoke, core, robust_pr | statistical | no | PASS | – |
 | N05 | Reorder keys in rag.gpu.yaml | config | patch | pr | smoke, core, robust_pr | statistical | no | PASS | – |
 | N06 | Rename an internal Python variable | code | patch | pr | smoke, core, robust_pr | statistical | no | PASS | – |
 | N07 | Bump an unrelated dependency's lower bound | code | patch | pr | smoke, core, robust_pr | statistical | no | PASS | – |
 | N08 | Change the server log level | code | patch | pr | smoke, core, robust_pr | statistical | no | PASS | – |
-
-## Pending (neither applied nor scored)
-
-- `N04`: The new prompt version breaks 20 rag-demo tests (generator budget rows, the one-field invariants of configs/bugs/gpu in test_config_gpu, the generator cassette); it waits for the bug configs to follow v3 and for the budget rows and cassette re-recorded on the GPU (owner-approved).

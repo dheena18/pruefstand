@@ -12,4 +12,4 @@ in_detection_rate: false
 expected:
   status: PASS
 rationale: >-
-  answer_de_v3.txt says "Antworte auf die Frage" instead of "Beantworte die Frage"; a new prompt version changes the config hash (cache miss) but not the meaning. Also one of T6.3's churn-arm kinds.
+  answer_de_v3.txt says "Antworte auf die Frage" instead of "Beantworte die Frage"; a new prompt version changes the config hash (cache miss) but not the meaning. Like a real PR, the patch also moves the configs/bugs/gpu files to v3 (one-field invariant), points the config-hash test at v3, and carries the generator budget rows and the generator cassette re-recorded from the real A40 generator (2026-11-16, D1261). Also one of T6.3's churn-arm kinds.
