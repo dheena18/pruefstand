@@ -21,6 +21,7 @@ RELEASE_BRANCH = "release-please--"
 NOT_GATED = "not gated (no gated paths changed)"
 RELEASE_BUMP = "not gated (release version bump)"
 AWAITING = "gated: awaiting tier-2 dispatch"
+LIST_LIMIT = 3000  # pulls/{n}/files returns at most this many files
 # ci-cd.md §5 "Release exemption": file -> the only changed-line shape allowed (without +/-)
 RELEASE_RULES: tuple[dict[str, object], ...] = (
     {"file": r"^(?:.+/)?pyproject\.toml$", "line": r'^version = "[^"]+"$'},
@@ -78,8 +79,8 @@ def _line_exempt(patch: str, rule: Mapping[str, object]) -> bool:
 
 def _file_exempt(item: Mapping[str, object], rules: Sequence[Mapping[str, object]]) -> bool:
     name, patch = str(item.get("filename", "")), item.get("patch")
-    if not isinstance(patch, str):
-        return False  # no patch (binary, too large): never exempt (fail closed)
+    if not isinstance(patch, str) or item.get("previous_filename"):
+        return False  # no patch (binary, too large) or a rename: never exempt (fail closed)
     rule = next((r for r in rules if re.match(str(r["file"]), name)), None)
     return rule is not None and _line_exempt(patch, rule)
 
@@ -90,6 +91,8 @@ def classify(
     author: str,
     head_ref: str,
     gated: str,
+    changed_files: int | None = None,
+    head_stable: bool = True,
     rules: Sequence[Mapping[str, object]] = RELEASE_RULES,
 ) -> tuple[str, str]:
     """``(state, description)`` that ``gate-router.yml`` posts as ``pruefstand/gate``.
@@ -99,13 +102,20 @@ def classify(
         author: the PR author's login.
         head_ref: the PR's head branch name.
         gated: :func:`gated_regex` of the gated paths.
+        changed_files: ``pull_request.changed_files``; a different count or a list at the API limit
+            means unseen files (fail closed, D1088). ``None`` = the listed count.
+        head_stable: the PR head equalled the event SHA before and after listing the files.
         rules: the release-exempt rules.
 
     Returns:
         ``("success", NOT_GATED)``, ``("success", RELEASE_BUMP)`` or ``("pending", AWAITING)``.
     """
     gated_re = re.compile(gated)
-    if not any(gated_re.match(str(f.get("filename", ""))) for f in files):
+    complete = len(files) < LIST_LIMIT and changed_files in (None, len(files))
+    if not complete or not head_stable:
+        return "pending", AWAITING  # unseen files or another SHA's files: never "not gated"
+    names = [str(f.get(k)) for f in files for k in ("filename", "previous_filename") if f.get(k)]
+    if not any(gated_re.match(n) for n in names):
         return "success", NOT_GATED
     release_pr = author == RELEASE_AUTHOR and head_ref.startswith(RELEASE_BRANCH)
     if release_pr and files and all(_file_exempt(f, rules) for f in files):
