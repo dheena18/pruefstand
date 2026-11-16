@@ -262,7 +262,8 @@ def test_the_memory_limit_is_clamped_to_an_existing_hard_limit(
     unlimited = FakeResource(hard=-1)
     monkeypatch.setattr(records_child, "resource", unlimited)
     assert records_child._limit_memory(512 * MIB) is None
-    assert unlimited.set_to == (2_900_000_000 + 512 * MIB, -1)
+    # soft = hard: the reader cannot raise its own limit again (review F5, D1122)
+    assert unlimited.set_to == (2_900_000_000 + 512 * MIB, 2_900_000_000 + 512 * MIB)
 
 
 def test_a_limit_that_cannot_be_set_is_reported_not_silent(monkeypatch: pytest.MonkeyPatch) -> None:

@@ -1,0 +1,13 @@
+# T5.4b2 manual review of the 21 sentence `negate` pairs (datasets/calibration/v1/degraded_pairs_germanquad.jsonl),
+# rebuilt after construct_checks.first_clause_end breaks on ':' and ' und ' and the bases became single sentences
+# (D1241, D1242). Read pair by pair by the task agent (2026-11-15); the 6 invalid pairs of T5.4b (answer after a
+# colon or an 'und' clause, merged sentences) no longer exist.
+# invalid: the negation does not hit the answer -> left out of results/rq2/discrimination_sensitivity.csv.
+# borderline: kept everywhere, listed for transparency. Gated number = the full set (D146 unchanged).
+invalid: {}
+borderline:
+  "correctness:a300bbeb6340cddd:negate_sentence": "Drosophila: 'haben nicht sich' is ungrammatical word order, the negation still hits the span"
+  "correctness:e1be257b392b8f5e:negate_sentence": "Horchata: 'ist nicht auch die Horchata' reads oddly, meaning still reversed"
+  "correctness:36dee725bcbe5e63:negate_sentence": "Südostasien: the base sentence defines the region but does not list the countries asked for"
+  "correctness:e33f375a25d974da:negate_sentence": "Himachal Pradesh: 'ist nicht es die Muttersprache' ungrammatical, the 89 percent claim is negated"
+  "correctness:013c321e97acbd0d:negate_sentence": "Antarktis: the base names Prime Head, the reference says Seal Islands (different answer)"

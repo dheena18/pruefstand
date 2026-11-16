@@ -22,10 +22,11 @@ from pathlib import Path
 from typing import Literal
 
 import zstandard
-from pydantic import AwareDatetime, BaseModel, ConfigDict, ValidationError
+from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, ValidationError
 
 from pruefstand.core.errors import StoreError, StoreIntegrityError
 from pruefstand.core.logging import get_logger
+from pruefstand.core.models.baseline import PromotionOverride
 from pruefstand.core.models.run import RunArtifacts, RunManifest
 from pruefstand.store._run_files import (
     MAX_FILE_BYTES,
@@ -62,6 +63,7 @@ class BaselineManifest(BaseModel):
     promoted_at: AwareDatetime
     git_sha: str | None
     files: dict[str, str]
+    override: PromotionOverride | None = Field(default=None, exclude_if=lambda v: v is None)
 
 
 def manifest_bytes(manifest: BaselineManifest) -> bytes:

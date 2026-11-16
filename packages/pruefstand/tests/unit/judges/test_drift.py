@@ -6,10 +6,13 @@ from scipy import stats
 from pruefstand.core.models.judge import JudgeVerdict
 from pruefstand.judges.drift import (
     anchor_agreement,
+    count_flips,
     drift_threshold,
     flip_rate,
     is_drift,
+    majority_scores,
     threshold_cap,
+    unstable_anchors,
 )
 
 
@@ -79,3 +82,41 @@ def test_a_threshold_above_the_cap_means_the_judge_is_unfit() -> None:
     with pytest.raises(ValueError, match="cap"):
         is_drift(0.70, 50, threshold=11)
     assert is_drift(0.80, 50, threshold=10)
+
+
+def test_the_majority_of_five_runs_outvotes_one_odd_first_run() -> None:
+    # T5.4d (D1250): an anchor that is 1 in run 1 and 0 in runs 2-5 stores 0, not 1
+    runs = [[2, 1, 0], [2, 0, 0], [2, 0, 1], [2, 0, 0], [2, 0, 1]]
+    assert majority_scores(runs) == [2, 0, 0]
+    assert majority_scores(runs[:1]) == runs[0]  # one run = the T5.4 behaviour
+
+
+def test_a_tie_goes_to_the_score_of_the_earliest_run() -> None:
+    assert majority_scores([[1], [2], [2], [1]]) == [1]
+    assert majority_scores([[2], [1], [1], [2]]) == [2]
+
+
+def test_majority_needs_runs_of_equal_length() -> None:
+    with pytest.raises(ValueError, match="equal length"):
+        majority_scores([])
+    with pytest.raises(ValueError, match="equal length"):
+        majority_scores([[1, 2], [1]])
+
+
+def test_flips_are_counted_against_the_stored_scores() -> None:
+    assert count_flips([2, 0], [[2, 0], [2, 1], [0, 1], [2, 0]]) == (3, 8)
+    assert count_flips([2, 0], []) == (0, 0)
+    with pytest.raises(ValueError, match="one score per"):
+        count_flips([2, 0], [[2]])
+
+
+def test_an_anchor_that_keeps_changing_or_jumps_is_unstable() -> None:
+    # T5.4d screening of gemma3:12b: a04 is 3:6 between 2 and 1; a02 jumped 2 <-> 0 once
+    runs = [[0, 2, 2], [1, 0, 1], [1, 0, 2], [1, 0, 1], [1, 0, 2]]
+    runs += [[1, 0, 1], [1, 0, 1], [1, 0, 1], [1, 0, 1]]
+    assert unstable_anchors(runs) == [1, 2]
+    adjacent = [[2], [1], [1], [1], [1], [1], [1], [1], [1]]  # one odd run 2 vs 1: kept (D1251)
+    assert unstable_anchors(adjacent) == []
+    assert unstable_anchors([[0], [1], [1], [1], [1], [1], [1], [1], [2]]) == [0]  # 0, 1 and 2
+    with pytest.raises(ValueError, match="equal length"):
+        unstable_anchors([[1], [1, 2]])

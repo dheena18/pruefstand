@@ -1,5 +1,6 @@
 """Review fixes of #107: validity filters for constructed negatives, MEMERAG majority edge cases."""
 
+import json
 from pathlib import Path
 
 import numpy as np
@@ -11,11 +12,14 @@ from rq2.construct import clean_span
 from rq2.construct_checks import (
     coverage,
     edit_in_first_clause,
+    first_clause_end,
     has_answer_content,
+    is_single_sentence,
     may_support,
     near_number,
     negation_ok,
 )
+from rq2.rq2_config import REPO
 
 FIXTURES = Path(__file__).parent / "fixtures"
 
@@ -147,3 +151,40 @@ def test_negation_rules() -> None:
     assert not negation_ok("Der Wert ist hoch.", "Der Wert ist hoch nicht.")
     orient = "Sie kommt nicht von einem Faktor, sondern entwickelt sich."
     assert not negation_ok(orient, "Sie kommt von einem Faktor, sondern entwickelt sich.")
+
+
+def test_a_colon_and_und_end_the_first_clause_only_when_strict() -> None:
+    """T5.4b2 (D1241): the answer after a colon or in an 'und' clause is not in the first clause."""
+    colon = "Zhejiang ist in sechs Zonen gegliedert: eine Ebene"
+    assert first_clause_end(colon, strict=True) == colon.index(":")
+    assert first_clause_end(colon) == len(colon)  # the T5.3 builders are unchanged
+    text = "Südostasien ist ein Teil Asiens und umfasst die Länder"
+    assert first_clause_end(text, strict=True) == text.index(" und ")
+    assert first_clause_end(text) == len(text)
+    edited = text.replace("umfasst", "nicht umfasst")
+    assert not edit_in_first_clause(text, edited, strict=True)
+    assert edit_in_first_clause(text, edited)
+
+
+def test_single_sentence_rejects_merged_cut_and_open_sentences() -> None:
+    assert is_single_sentence("Die Ehe wurde heilig gehalten.")
+    assert not is_single_sentence(
+        "FIFA- und AFC-Mitglied. 2002 nahm Guam teil."
+    )  # merged (digit start)
+    assert not is_single_sentence("Er kam. Sie ging.")
+    assert not is_single_sentence("Aus der Geschichte des 20.")  # cut after an ordinal
+    assert not is_single_sentence("Man kann vier Phasen definieren:")  # open enumeration
+    assert not is_single_sentence("Ein Satz ohne Punkt")
+
+
+def test_the_committed_t53_negation_flips_still_pass_the_builders_rule() -> None:
+    """The calibration sets must reproduce from code: negation_ok keeps its T5.3 behaviour."""
+    rows = [
+        json.loads(line)
+        for line in (REPO / "datasets/calibration/v1/correctness.jsonl")
+        .read_text(encoding="utf-8")
+        .splitlines()
+    ]
+    flips = [r for r in rows if r["construction"] == "negation_flip"]
+    assert len(flips) == 6
+    assert all(negation_ok(r["inputs"]["referenz"], r["inputs"]["antwort"]) for r in flips)

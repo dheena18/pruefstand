@@ -112,11 +112,13 @@ async def test_http_errors_map_to_transient_flag(
     assert str(status) in str(excinfo.value)
 
 
-async def test_timeout_is_transient(router: respx.MockRouter, adapter: HttpTargetAdapter) -> None:
+async def test_read_timeout_is_not_transient(
+    router: respx.MockRouter, adapter: HttpTargetAdapter
+) -> None:
     router.post("/v1/query").mock(side_effect=httpx.ReadTimeout("slow"))
     with pytest.raises(TargetError) as excinfo:
         await adapter.query(request())
-    assert excinfo.value.transient is True
+    assert excinfo.value.transient is False  # D624: never retried
 
 
 async def test_connection_error_is_transient(

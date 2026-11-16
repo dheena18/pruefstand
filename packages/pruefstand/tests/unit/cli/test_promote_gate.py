@@ -1,61 +1,17 @@
 """T6.1a (7), D881: ``baseline promote`` needs the run's gate result and refuses failed runs."""
 
 from pathlib import Path
-from typing import Any
 
 import pytest
-from testsupport.builders import fixture_f0, make_record, make_run
-from testsupport.pipeline_support import config_file, mini_config
-from testsupport.report_builders import gate_report
-from testsupport.store_support import FP
-from typer.testing import CliRunner, Result
+from testsupport.pipeline_support import mini_config
+from testsupport.promote_support import OTHER, RUN, promote, promoted, stored, write_gate
+from typer.testing import CliRunner
 
-from pruefstand.cli import app
-from pruefstand.core.config import BaselineStoreConfig
 from pruefstand.core.enums import GateStatus
 from pruefstand.core.errors import StoreIntegrityError
-from pruefstand.core.models.run import RunArtifacts
 from pruefstand.pipeline.promotion import check_gate_for_promotion
-from pruefstand.report.json_report import write_gate_json
 from pruefstand.store.artifacts import ArtifactStore
-from pruefstand.store.baselines_local import LocalDirBaselineStore
 from pruefstand.store.promote import BaselineRefused
-
-RUN = "20261102T220001-bbbbbb"
-OTHER = "20261102T220009-cccccc"
-
-
-def stored(
-    tmp_path: Path,
-    edits: dict[str, dict[int, float]] | None = None,
-    drop: tuple[str, ...] = (),
-) -> Path:
-    cases, values = fixture_f0()
-    values = {m: v for m, v in values.items() if m != "faithfulness" and m not in drop}
-    for metric, change in (edits or {}).items():
-        for index, value in change.items():
-            values[metric][index] = value
-    records = [make_record(c) for c in cases]
-    run = make_run(RUN, cases, values, records=records, eval_fingerprint=FP)
-    root = tmp_path / "runs"
-    return ArtifactStore(root).write_run(RunArtifacts(results=run, root=root / RUN))
-
-
-def write_gate(run: Path, status: GateStatus = GateStatus.PASS, **changes: Any) -> None:
-    changes = {"hard_fails": (), **changes}
-    report = gate_report(candidate_run_id=run.name, status=status, **changes)
-    write_gate_json(report, run / "gate.json")
-
-
-def promote(cli: CliRunner, tmp_path: Path, run: Path, *extra: str, ref: str = "main") -> Result:
-    store = BaselineStoreConfig(type="local_dir", path=tmp_path / "store")
-    cfg = config_file(tmp_path / "cfg.yaml", mini_config(baseline_store=store))
-    args = ["baseline", "promote", "--run", str(run), "--ref", ref, "--config", str(cfg)]
-    return cli.invoke(app, [*args, *extra])
-
-
-def promoted(tmp_path: Path) -> bool:
-    return LocalDirBaselineStore(tmp_path / "store").get(FP, "main") is not None
 
 
 @pytest.fixture
@@ -169,11 +125,17 @@ def test_the_release_anchor_may_lack_a_gate_json_when_it_is_clean(tmp_path: Path
     run = stored(tmp_path)
     results = ArtifactStore(tmp_path / "runs").read_run(run).results
     policy = mini_config().gate
-    check_gate_for_promotion(run, results, policy, ref="release-b0", allow_failed_gate=False)
+    check_gate_for_promotion(
+        run, results, policy, ref="release-b0", allow_failed_gate=False, current=None
+    )
     with pytest.raises(BaselineRefused, match="pruefstand gate"):
-        check_gate_for_promotion(run, results, policy, ref="main", allow_failed_gate=False)
+        check_gate_for_promotion(
+            run, results, policy, ref="main", allow_failed_gate=False, current=None
+        )
     with pytest.raises(BaselineRefused, match="pruefstand gate"):
-        check_gate_for_promotion(run, results, policy, ref="nightly-b1", allow_failed_gate=True)
+        check_gate_for_promotion(
+            run, results, policy, ref="nightly-b1", allow_failed_gate=True, current=None
+        )
 
 
 def test_the_release_anchor_with_a_leak_is_refused(tmp_path: Path) -> None:
@@ -181,7 +143,12 @@ def test_the_release_anchor_with_a_leak_is_refused(tmp_path: Path) -> None:
     results = ArtifactStore(tmp_path / "runs").read_run(run).results
     with pytest.raises(BaselineRefused, match="canary_leak"):
         check_gate_for_promotion(
-            run, results, mini_config().gate, ref="release-b1", allow_failed_gate=False
+            run,
+            results,
+            mini_config().gate,
+            ref="release-b1",
+            allow_failed_gate=False,
+            current=None,
         )
 
 
@@ -193,5 +160,5 @@ def test_an_unusable_gate_json_is_an_integrity_error_for_the_release_anchor_too(
     results = ArtifactStore(tmp_path / "runs").read_run(run).results
     with pytest.raises(StoreIntegrityError):
         check_gate_for_promotion(
-            run, results, mini_config().gate, ref="release-b0", allow_failed_gate=True
+            run, results, mini_config().gate, ref="release-b0", allow_failed_gate=True, current=None
         )

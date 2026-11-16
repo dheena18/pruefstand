@@ -1,0 +1,20 @@
+id: M05
+title: Delete the "cite the paragraph" instruction
+kind: config
+rag_overrides: {prompt_file: prompts/answer_no_citations_de_v2.txt}
+needs_reindex: false
+cache_invalidating: true
+tier: pr
+splits: [smoke, core, robust_pr]
+stratum: statistical
+tier1: false
+in_detection_rate: true
+expected:
+  status: FAIL
+  metrics: [citation_recall]
+  secondary_metrics: [citation_f1]
+  gated_slices: [overall]
+  likely_cause: citation_format
+rationale: >-
+  Without the instruction the generator drops most § citations; citation_recall is gated, citation_f1 is
+  reported only (not in the shipped gate.metrics, so it cannot decide detection).

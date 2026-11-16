@@ -1,5 +1,5 @@
 {
-  "recorded_at": "2026-11-10T01:19:36+00:00",
+  "recorded_at": "2026-11-15T15:33:01+00:00",
   "model_id": "ollama/gemma3:12b",
   "model_version": null,
   "request": {
@@ -47,14 +47,14 @@
     }
   },
   "response": {
-    "text": "{\"reason\": \"„Nach 1840 wurde der Stil durch ein weites Repertoire an pseudoklassischen Elementen ergänzt und somit unklarer“ belegt die Aussage, dass es nach 1840 einen Wandel gab.\", \"score\": 2}",
+    "text": "{\"reason\": \"„Nach 1840 wurde der Stil durch ein weites Repertoire an pseudoklassischen Elementen ergänzt und somit unklarer“ belegt die Aussage.\", \"score\": 2}",
     "model": "ollama/gemma3:12b",
     "usage": {
       "prompt_tokens": 1420,
-      "completion_tokens": 60
+      "completion_tokens": 47
     },
     "cost_usd": 0.0,
-    "latency_ms": 5344.05610896647,
+    "latency_ms": 5056.409006996546,
     "cached": false,
     "provider": "ollama",
     "fallback": false,

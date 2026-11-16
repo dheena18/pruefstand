@@ -329,7 +329,7 @@ data root $PRUEFSTAND_DATA_ROOT/baselines/ (= /mnt/pruefstand/baselines, plain d
   <eval_fingerprint>/<ref>/manifest.json                       sha256 per file, checked on read (no signatures, ADR-0004)
   <eval_fingerprint>/history/<run_id>/                         run.json, results.parquet, manifest.json (last 20 kept)
 private repo pruefstand-gate, branch baselines (protected, no force-push; INDEX ONLY, X2.7):
-  baselines/index.json              per (fingerprint, ref): ordered run ids (newest = current), manifest sha256, created_at, git_sha
+  baselines/index.json              per (fingerprint, ref): ordered run ids (newest = current), manifest sha256, created_at, git_sha, override (only when --allow-failed-gate waived something: by, at, reasons, note; D1123)
 private repo pruefstand-gate, branch executor-state:
   state/processed.jsonl             one line per dispatched gated run: pr, head_sha, dispatch_run_id, result, run_id, at (D102; a record, not a trigger, R13 P1.2)
   state/nightly_counter             one integer, block = counter mod 3, incremented only after a completed nightly (R13 P4.4, D299)
