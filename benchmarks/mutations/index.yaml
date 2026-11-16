@@ -1,0 +1,9 @@
+# RQ3 mutation benchmark (T7.1a): every patch applies at base_sha; rag_overrides merge into
+# apps/rag-demo/configs/rag.gpu.yaml (and rag.yaml for tier1 entries). M02, M03: later slice (D1261).
+base_sha: 0c4cd87df987f9431acdd944fc9f3a5dcb1c5b9e
+entries: [M01, M04, M05, M06, M07, M08, M09, M10, N01, N02, N03, N05, N06, N07, N08]
+pending:
+  N04: >-
+    The new prompt version breaks 20 rag-demo tests (generator budget rows, the one-field
+    invariants of configs/bugs/gpu in test_config_gpu, the generator cassette); it waits for the bug
+    configs to follow v3 and for the budget rows and cassette re-recorded on the GPU (owner-approved).

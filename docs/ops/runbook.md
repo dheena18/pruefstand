@@ -226,7 +226,7 @@ runner.
    **Bypass drill (once after T0.5/T0.7, and after every token or ruleset change):** open a throwaway PR whose
    required check fails, then on the VM run `gh pr merge <N> --admin --squash`. It **must be refused**. If it is
    not, empty the ruleset's bypass list in the browser and handle outages by temporarily disabling the ruleset
-   (needs Administration, which the token lacks); record the result in `docs/decisions.md`.
+   (needs Administration, which the token lacks); record the result as a decision file `docs/decisions/D<n>.md`.
 
 ## 2a. Cluster and Ollama operations (T3.1a scripts; all started from the VM)
 
@@ -247,7 +247,7 @@ Every step that loads, unloads or pulls models runs under the GPU lock: `pruefst
    **Server with other settings** (`$C status` shows WARN for `OLLAMA_*` env ≠ `cluster.env`): decide once,
    outside any gate run, under the lock: fix `~/start-ollama.sh`, then restart by hand on the cluster
    (`pkill -x ollama; sleep 3; setsid nohup ~/start-ollama.sh > $CLUSTER_DATA_ROOT/ollama.log 2>&1 < /dev/null &`,
-   setup log §7); record the decision in `docs/decisions.md`. The wrapper's mutating ops (`start-ollama`,
+   setup log §7); record the decision as a decision file `docs/decisions/D<n>.md`. The wrapper's mutating ops (`start-ollama`,
    `stop-ollama`, `pull`, `rm`) refuse unless you hold the GPU lock (`pruefstand-lock …`, A12-M5);
    `status` and `show` work without it. Check: `$C status`; `curl -s localhost:11434/api/tags`.
 2. **Stop**: normally not needed (unload models instead: `switch-mode.sh` or `keep_alive: 0`).
@@ -281,7 +281,7 @@ Every step that loads, unloads or pulls models runs under the GPU lock: `pruefst
 8. **Shared-cluster checks** (accepted risk `security.md` C14): `$C status` shows other processes on
    our cards; a resident digest that is not in the catalogue fails the preflight. Ask the cluster admins
    once whether per-user network namespaces or a loopback firewall exist and record the answer in
-   `docs/decisions.md`.
+   a decision file `docs/decisions/D<n>.md`.
 
 ## 3. Gated PR shows "no baseline for <fp>"
 
@@ -295,9 +295,9 @@ new Ollama model digest, D103). In the browser (or the GitHub mobile app) run `b
 knowingly accepted drop the new `main` run never becomes the baseline and every later PR gates against the old one.
 Decide first that the drop is accepted (and that it is no leak: hard fails are never an accepted drop). Then, on the VM
 as the owner and **by hand, never from a workflow**: `pruefstand baseline promote --run <run dir of main's run> --ref main
---allow-failed-gate --config <pruefstand.yaml>` (under `pruefstand-lock` if it touches the data root while a job runs).
-Note the run id and the reason in `docs/ops/bypass-log.md`. A missing or invalid `gate.json` (exit 1 / 3) is not waived:
-run `pruefstand gate` for the run first.
+--allow-failed-gate --reason "<why the drop is accepted>" --config <pruefstand.yaml>` (the stored `override.by` is `GITHUB_ACTOR` or your OS user name: a label for the audit trail, not authentication) (under `pruefstand-lock` if it touches the data root while a job runs).
+Note the run id and the reason in `docs/ops/bypass-log.md`. A missing or invalid `gate.json` (exit 1 / 3) is not waived,
+nor is one decided against another run than the stored baseline (D1120): run `pruefstand gate` for the run first.
 
 ## 4. Fork PR
 

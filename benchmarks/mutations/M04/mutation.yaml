@@ -1,0 +1,21 @@
+id: M04
+title: Compound splitting off in the BM25 analyzer
+kind: config
+rag_overrides: {analyzer: {compound_split: false}}
+needs_reindex: true
+cache_invalidating: true
+tier: pr
+splits: [smoke, core, robust_pr]
+stratum: statistical
+tier1: false
+in_detection_rate: true
+expected:
+  status: FAIL
+  metrics: [context_recall]
+  gated_slices: [perturbed_all]
+  informational_slices: [perturbation=compound_split]
+  likely_cause: retrieval
+rationale: >-
+  The sparse vectors are built with the analyzer at index time, so the collection is rebuilt (PR-scoped).
+  Without compound parts a split or joined compound in the question no longer matches; the robust_pr
+  perturbed cases (retrieve only, Y4.1) show the drop on the gated perturbed_all slice.

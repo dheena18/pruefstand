@@ -44,7 +44,7 @@ under `datagen_policy(None)` and the T4.5 stage under the default policy with an
 
    Commit, push and open the PR as for any task (`gh pr create`). `gh run download <run id> -n cassettes-models-<run id>`
    fetches the artefact where the token has Actions read access.
-6. **Then** set the rows of T3.1b/T4.2/T4.5 in `docs/decisions.md` to the real result (the dev-set card and the
+6. **Then** set the rows of T3.1b/T4.2/T4.5 in their `docs/decisions/D<n>.md` files to the real result (the dev-set card and the
    `planned` status of `indomain_dev_sources.json` come from `assemble`) and let the lead update the task status.
 
 ## Budget, rate limits and the cache

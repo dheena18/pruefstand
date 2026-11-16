@@ -1,7 +1,7 @@
 # Prüfstand — master task list (round-13 revision: App-pinned gate status, dispatch-only tier 2, `full` quota, contracts `post_status`/`--stratum`/nightly counter; round-12 revision: nightly blocks, proxy options, drift rule; round-11 revision: one VM identity, `/v1/retrieve`, native Ollama, GitHub Pages; round-10 revision: real cluster + TrueNAS VM; round 9; round 8: tier-1 fit, executor operations, UI spec)
 
 Every task has one prompt file `prompts/<ID>-<slug>.md` (index: `prompts/README.md`). Round-8 changes
-(`docs/decisions.md` D94–D145) are marked **R8** in the task cells; round-9 changes (D146–D195,
+(`docs/decisions/` D94–D145) are marked **R8** in the task cells; round-9 changes (D146–D195,
 `docs/planning/reviews/round9-resolution.md`) are marked **R9**; round-10 changes (D196–D210,
 `docs/planning/reviews/round10-resolution.md` Z1–Z7: Ollama-only serving on the cluster, everything else on
 the TrueNAS VM `pruefstand-exec`) are marked **R10**; round-11 changes (D211–D247; D242–D247 from the round-11 integration,
@@ -83,6 +83,7 @@ the private gate executor on the A40s (end P6, ~week 12–14) · **M5** experime
 | T1.13 | **rag-demo v0** (real): FastAPI `/v1/*`, BM25 with German analyzer v0 (NFC, lowercase, umlaut fold) + small CPU dense model, Qdrant, llama.cpp generator (German-capable ~1.5–4B instruct GGUF Q4_K_M, pinned with SHA-256), bug switches (`tenant_filter`, `shared_public_merge`, `reranker`, `prompt_file`, `answer_language`), `rag.yaml`, compose profile `live`; indexes the real 5-law slice; **R8:** tier-1 generator ≤ 2B (family `qwen`), GGUF Q4_K_M, **thinking disabled** in the chat template; tier-1 profile `top_k: 4`, chunk text ≤ 256 tokens in the prompt, `max_tokens: 256`, `reranker: off` (D95); e5 `query: `/`passage: ` prefixes if an e5 model is used (D121); `test_retrieve_filters.py` under `tests/integration/`; **R9:** `/v1/info.serving` static only, counters in `/v1/health.stats` (D173); chunks carry `used_in_prompt` (D174); **R11:** generator client sends `Authorization: Bearer $PRUEFSTAND_CANDIDATE_API_KEY` from day 1 (empty key → no header; D216); **R12:** `apps/rag-demo/tests/unit/test_client_auth.py` is in Files (N6.2, D265) | T0.3, T1.3, T1.4, T2.1, T2.2 | AI | 5 | Opus | DOCKER, NET | core |
 | T1.13a | `rag-demo` v0: review minors of T1.13. (a) The 413 limit only checks `Content-Length` (`api.py` `limit_body`): a chunked 2 MB body reaches the validators; count the bytes in `receive`, or reject requests without `Content-Length`. (b) The `</dokument>` escape is narrow (`_CLOSING_TAG = </(?=dokument)`): `</ dokument>`, `< /dokument>`, `</\ndokument>`, zero-width and Cyrillic variants and fullwidth `＜/dokument＞` pass, and a forged opening `<dokument id=".." quelle="..">` is not escaped; escape every `<` in chunk text after NFKC and zero-width removal. (c) The rag-demo cassette headers lack the model id and SHA-256 (`record_cassettes.sh` ~line 77; D353 requires them). (d) `_GUARD_NOTE` in `generate.py` and the English-switch sentence in `load_prompt` are inline prompt strings (CLAUDE.md section 5): move them to versioned `*_v1.txt` files. (e) `test_isolation.py` scans only `*.py` outside `tests/` | T1.13 | AI | 1 | Sonnet | – | core |
 | T1.13b | `rag-demo` v0 / tier 1: the `live` test `test_smoke_questions_cite_the_expected_norm_within_the_latency_budget` (cites >= 6/10, p95 <= 15 s) fails on the hosted runner with the 0.5B emergency generator (5/10, p95 21 s; D505). Recalibrate the threshold or the generator for the hosted runner, then move the probe from the non-gating step "Generator quality probe" back into the gating `Live tests (stack only)` step of `live-e2e.yml` (remove the `--deselect`) | T1.12, T1.13 | AI | 1 | Sonnet | NET | core |
+| T1.13c | `rag-demo` / runner: after its own generator read timeout (300 s, D624) rag-demo answers 503, which the runner retries as a transient 5xx (up to `max_retries` + 1 times 300 s, re-queuing the generation). Mark that answer as not retryable (e.g. a distinct status or error code in the target API that `HttpTargetAdapter` maps to `transient=False`), with a contract test on both sides (follow-up of T6.2a, D1065) | T1.13, T6.2a | AI | 1 | Sonnet | – | core |
 
 ## Phase 2 — Corpus and tenants (weeks 4–7)
 
@@ -144,6 +145,10 @@ the private gate executor on the A40s (end P6, ~week 12–14) · **M5** experime
 | T5.3 | **Ships as two PRs** (R10 D210): PR 1 = sets 1–5, PR 2 = `legal_hard` after T4.7b, T3.6, T5.1. **Calibration label sets from existing human data** (no own annotator): MEMERAG-DE faithfulness (Supported → 2, Not Supported → 0, "Challenging" dropped; download-only), GermanQuAD constructed correctness pairs, GermanRAG refusal, constructed consistency pairs as files under `datasets/calibration/` (not a split; `HUMAN_LABELS` is reserved for T5.3-opt) + data card with limitations; **R8:** hard negatives: same-paragraph wrong span, number/date swap, negation flip, partially correct answer; MEMERAG "Not Supported" stratum (D119); **R9:** **builds `legal_hard`** (in-domain hard negatives on the law corpus) (D161); **R11/ADR-0019:** `legal_hard` order: day pass (answers) → review pass (GitHub Models datagen model, D330) → offline `--pass build` (D246); GPU steps under `pruefstand-lock` | T2.1, T5.2a; `legal_hard`: T4.7b, T3.6, T5.1 | AI | 3 | Opus | NET | core |
 | T5.3-opt | Optional human check: 100 hand labels by a German speaker, if one turns up | T5.3, T5.4 | AI+H | 2 (+5 H) | Sonnet | HUMAN | optional |
 | T5.4 | RQ2 calibration on the T5.3 sets: binary κ (judge 2 vs < 2) + accuracy with cluster-bootstrap CIs, Gwet AC1, cost/quota, latency, bias on gender/register; confirm the one A40 judge `gemma3:12b` for PR and nightly (ADR-0019; candidates that fit the disk swapped one at a time if it fails) and choose the tier-1 informational GitHub Models judge by the family plan (D112); **R8:** judged metrics informational if no judge passes (pass rule: R9 D146 below); `judges/drift.py` `anchor_agreement` + anchor set for the nightly drift check (size and rule: R9 D164); `spearman` + numeric `calibration_table` tests; **R9:** pass rule κ ≥ 0.6 full set **and** specificity ≥ 0.80 on hard negatives (Wilson lower ≥ 0.70) on MEMERAG and `legal_hard` (D146); 50 drift anchors, drift = agreement < 0.85 and lower bound < 0.80 (D164); re-calibration bumps `judge_epoch` (D163); `refusal_judged` pass rule (D193); `pruefstand judge-drift` (D195); **R12:** `is_drift` = changed anchor verdicts ≥ `max(3, ceil(0.1·n))` for hosted and local judges; `a0` recorded only (N3, D253); **R13:** per-judge drift threshold from the measured flip rate, `is_drift(..., threshold)` (D308) | T5.3, T5.2b, T4.5 (bias step; skipped with a follow-up until merged) | AI | 4 | Opus | GPU | core |
+| T5.4b | `experiments/rq2` correctness discrimination (D1240, D1241, PR #173, merged): the `negate` cell filled from 21 to 50 pairs with GermanQuAD sentence answers (`sentence_answers.py`), Wilson CIs and span/sentence breakdown in `discrimination*.csv`, manual review `negate_review.yaml` with a sensitivity table (reported only); result `negate` 0.70 (n 50), pass rule unchanged | T5.4 | AI | 1 | Opus | GPU | core |
+| T5.4d | `judges.drift` drift anchors (D1250, D1251, PR #174, merged): stored verdict = majority of 5 runs, flips on 4 further runs, unstable anchors (non-adjacent or back-and-forth) replaced by seeded spares; `drift_threshold` 9 -> 6; owner-approved `judge_epoch` 1 -> 2 (`recalibrate.py --bump-epoch`) | T5.4 | AI | 2 | Opus | GPU | core |
+| T5.4b2 | `experiments/rq2` sentence `negate` pairs (D1240, D1241): `construct_checks.first_clause_end` also breaks on `:` and ` und `; sentence bases are single sentences (no merged or cut sentences); rebuild the sentence pairs (`make_degraded.py`), re-judge them under `pruefstand-lock` (`run_judges.py --pairs`, cached otherwise), re-run `report.py`; the gated `negate` number moves to the fixed set with its own decision file; the manual review (`negate_review.yaml`) is redone on the new pairs | T5.4b | AI | 1 | Sonnet | GPU | core |
+| T5.4e | RQ2 arms (b', c) on the VM CPU model Ministral 3 14B instead of GitHub Models (D1242, plan `docs/planning/T5.4e-vm-judge-plan.md`; skeleton `experiments/rq2/vm_arm.py`): config entry and VM backend in `run_judges` (concurrency 1, `check_vm_served`), pilot of 20 items under `pruefstand-lock` with recorded cassettes, VM provider counted as local for MEMERAG, full run in launcher sessions, `report.py`, decision file | T5.4, #165, #166 | AI | 2 | Opus | GPU | core |
 
 ## Phase 6 — Real gate in CI (weeks 11–14) → M4 (MVP)
 
@@ -258,17 +263,17 @@ follow `tasks/PARALLEL-PLAN.md` §2.
 | 2 | [x] T0.2 · [x] T0.3 · [x] T1.1 · [x] T2.1 · [x] T0.7 | – |
 | 3 | [x] T1.2 · [x] T1.5a · [x] T0.4 · [x] T0.6 (+ S7 quota follow-up) · [ ] T0.5 | – |
 | 4 | [x] T1.6 · [x] T1.5b · [x] T1.3 · [x] T1.4 · [x] T2.2 · [x] T3.1a | – |
-| 5 | [x] T1.7 · [x] T1.8 · [x] T2.3 · [x] T2.4 · [x] T1.13 · [~] T3.1b (phase 1 merged, partial; rest open) | – |
+| 5 | [x] T1.7 · [x] T1.8 · [x] T2.3 · [x] T2.4 · [x] T1.13 · [~] T3.1b (phase 1 #46 and candidate pass #54 merged; rest open) | – |
 | 6 | [x] T1.9 · [x] T4.4 · [x] T3.2 | – |
 | 7 | [x] T1.10 · [x] T3.3 | – |
-| 8 | [x] T1.11 · [x] T2.5 · [ ] T5.1 | – |
-| 9 | [x] T6.1 · [x] T1.12 · [x] T4.1 · [ ] T5.2a · [x] T3.4 · [ ] T2.6 | [ ] M1 |
-| 10 | [x] T3.5 · [x] T4.6 · [ ] T4.5 · [ ] T5.2b · [ ] T5.3 PR 1 · [ ] T4.2 | – |
-| 11 | [ ] T6.4 · [ ] T4.3 · [ ] T3.6 | – |
-| 12 | [ ] T3.7 · [ ] T4.7a · [ ] T8.1 | [ ] M2 |
-| 13 | [ ] T4.7b · [ ] T8.2a | [ ] M3 |
-| 14 | [ ] T5.3 PR 2 (`legal_hard`) · [ ] T6.2a · [ ] T8.2b | – |
-| 15 | [ ] T5.4 · [ ] T6.2b | – |
+| 8 | [x] T1.11 · [x] T2.5 · [x] T5.1 | – |
+| 9 | [x] T6.1 · [x] T1.12 · [x] T4.1 · [x] T5.2a · [x] T3.4 · [x] T2.6 | [ ] M1 |
+| 10 | [x] T3.5 · [x] T4.6 · [x] T4.5 · [x] T5.2b · [x] T5.3 PR 1 · [x] T4.2 | – |
+| 11 | [x] T6.4 · [x] T4.3 · [x] T3.6 | – |
+| 12 | [x] T3.7 · [x] T4.7a · [x] T8.1 | [ ] M2 |
+| 13 | [~] T4.7b (offline parts #138, closed-book #140 merged; rest open) · [x] T8.2a | [ ] M3 |
+| 14 | [ ] T5.3 PR 2 (`legal_hard`) · [~] T6.2a (`llm-proxy` #137, runner timeout #171 merged; rest open) · [x] T8.2b | – |
+| 15 | [x] T5.4 · [ ] T6.2b | – |
 | 16 | [ ] T6.3 · [ ] T7.3 · [ ] T9.1a | – |
 | 17 | [ ] T6.5 · [ ] T9.1b | [ ] M4 (MVP) |
 | 18–19 | [ ] T7.1a · [ ] T8.3 · [ ] T7.1b · [ ] T8.4 (optional) | – |

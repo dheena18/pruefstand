@@ -3,7 +3,7 @@
 This file fixes the contracts **between** modules and between processes. Implementations may add
 private helpers freely, but the names, fields and signatures below change only through the process
 in `CLAUDE.md` §1.5 (paragraph + ADR + PR flag). Signatures are Python 3.12 with Pydantic v2.
-Round-9 changes (`docs/planning/reviews/round9-resolution.md`, `docs/decisions.md` D146–D195) are marked **R9**;
+Round-9 changes (`docs/planning/reviews/round9-resolution.md`, `docs/decisions/` D146–D195) are marked **R9**;
 round-10 changes (`docs/planning/reviews/round10-resolution.md`, D196–D210: Ollama-only GPU serving reached
 through the VM tunnels, `llm-proxy`, NAS storage) are marked **R10**; round-11 changes
 (`docs/planning/reviews/round11-resolution.md`, D211–D241: VM identity, `POST /v1/retrieve`, native Ollama API,
@@ -570,13 +570,15 @@ class RunManifest(BaseModel):    # (schema) -> run.json
     judge_models: dict[str, str]; judge_prompt_versions: dict[str, str]
     judge_serving: dict[str, str] = {}   # R9 X3.3: metric -> "<engine> <engine_version> <quantization> <digest[:12]>" of its
                                          # GATED judge (digest = Ollama manifest digest; R11 AI11-09, R12 AI12-04)
-    judge_epoch: int = 0                 # R9 X3.3: from judges/data/calibration_status.yaml (T5.4); bumped only by re-calibration
+    judge_epoch: int = 0                 # R9 X3.3: from judges/data/calibration_status.yaml (T5.4); bumped by a passing re-calibration (D163, D934) or an owner bump without a pass (D1251)
     metric_versions: dict[str, str]; seed: int; cost: CostSummary
     duration_s: float; counts: dict[str, int]
     # counts keys (R9, single owner = the runner, D9-07/D9-21): ok, error, cached, not_applicable, judge_error,
     #   judge_skipped (details reason "judge_quota" | "judge_cap"), judge_truncated (X3.9), think_stripped, corpus_mismatch,
     #   retrieve (R11 D218: robust_pr cases sent to /v1/retrieve), retrieve_fallback (target without /v1/retrieve),
     #   metric_truncated (T1.8, D366: deterministic metric values with details.truncated; logged as well),
+    #   timeout (D1082: cases whose error is a client timeout; also counted in error; only when > 0),
+    #   aborted_after_timeouts (D1084: cases not run after runner.max_consecutive_timeouts; also in error),
     #   model_reloads, upstream_errors (R12 N6.4, D267: llm-proxy /health differences over the run, measured by the
     #   orchestrator and written with ArtifactStore.add_counts; absent in tier 1 and in local runs),
     #   (no infra_error count: the infra failure is the field below, R11 integration D245)
@@ -937,6 +939,8 @@ def is_drift(agreement: float, n: int, *, a0: float | None = None, threshold: in
 #   judges/anchors.py: AnchorItem (anchor_id, item_id, label_set, metric, label, hard_negative, judge_model, prompt_id,
 #     prompt_version, messages, raw_score; .request() -> LLMRequest, .stored_verdict()); anchor_file(model) ->
 #     judges/data/anchors/<slug>.jsonl (slug: "/" -> "_", ":" -> "-"); load_anchors(path) (ConfigError when invalid).
+#   T5.4d (D1250, D1251, additive): judges/drift.py majority_scores(runs) -> list[int], count_flips(stored, runs) -> (flips, comparisons),
+#     unstable_anchors(runs, min_share=0.8, max_spread=1) -> list[int]; AnchorItem gains majority_runs: int = 1 (old files still load).
 #   llm/cache_epochs.py DriftFlag gains optional changed, threshold, a0 (judge_drift.json; `epoch` = the bumped cache epoch).
 #   pipeline/judge_drift.py: run_judge_drift(model, anchors_path, backend, cache_dir, *, threshold=None, a0=None, now)
 #     -> DriftResult(status ok|drift|skipped, n, agreement, changed, threshold); synchronous, builds a cacheless client.
@@ -974,7 +978,14 @@ class ArtifactStore:           def __init__(self, root: Path) -> None
                                # RunManifest.counts atomically (only "model_reloads" and "upstream_errors" are accepted,
                                # other keys -> StoreError); other files untouched
 class BaselineStore(Protocol): def get(self, eval_fingerprint: str, ref: str = "main") -> RunArtifacts | None
-                               def put(self, run: RunArtifacts, ref: str = "main") -> None
+                               def put(self, run: RunArtifacts, ref: str = "main", *,
+                                       override: PromotionOverride | None = None,
+                                       expected: ExpectedBaseline | None = None) -> None
+                               # expected (D1120 review): run id gated against; the store refuses (BaselineRefused)
+                               # under its promote lock when another baseline is stored by now
+                               # D1123 (review F8): override = core.models.baseline.PromotionOverride {by, at, reasons,
+                               # note}; stored in the baseline's manifest.json (current + history) and its index.json entry;
+                               # the key is omitted when None (byte layout of plain promotions unchanged)
 class LocalDirBaselineStore(BaselineStore); class GitBranchBaselineStore(BaselineStore)
 # store/canary_source.py (T6.1; reused by T8.1): load_canary_registry() -> CanaryRegistry — registry source of
 #   `baseline export-public` and `export-dashboard`: slice corpus/*/canaries.public.json + T2.6 registries + held-out
@@ -1060,6 +1071,8 @@ class RunIndex:                # DuckDB over runs/*/run.json + results.parquet (
 
 ```python
 class RunnerConfig(BaseModel): concurrency: int = 8; timeout_s: float = 60; max_retries: int = 3; backoff_s: float = 1.0
+                               max_consecutive_timeouts: int | None = None   # D1084: stop calling the target after N
+                               # timeouts in a row; later cases are recorded as errors, counts["aborted_after_timeouts"]
 class RunResults(BaseModel):   manifest: RunManifest; records: tuple[CaseRecord, ...]; values: tuple[ScoredCase, ...]
 class ScoredCase(BaseModel):   case: TestCase; values: tuple[MetricValue, ...]   # each metric at most once (ValidationError, T1.7a)
 class RunArtifacts(BaseModel): results: RunResults; root: Path   # a run as stored on disk (runs/<run_id>/)
@@ -1765,10 +1778,20 @@ pruefstand baseline   promote --run runs/<id> --ref main|nightly-b0|nightly-b1|n
                       # judge_degraded / judge_truncated-informational / infra_error is never promoted (exit 1, D321)
                       # D881 (T6.1a): main / nightly-b<k> need <run>/gate.json (absent -> exit 1); status FAIL or any
                       # hard-fail finding (hard_fail, hard_fail_unverifiable; recomputed from the run) -> exit 1,
-                      # store unchanged; gate.json unreadable / invalid / of another run -> exit 3; release-b<k> may
-                      # lack gate.json (never gated) but is checked for hard-fail findings. Option
-                      # --allow-failed-gate (owner only, by hand; never in a workflow) waives FAIL and hard-fail
-                      # findings, never a missing or unusable gate.json
+                      # store unchanged; gate.json unreadable / invalid / of another run / of another
+                      # eval_fingerprint -> exit 3; release-b<k> may lack gate.json (never gated) but is checked for
+                      # hard-fail findings. D1120 (review F1): for main / nightly-b<k> gate.json must be decided
+                      # against the baseline stored now for (fingerprint, ref): baseline_run_id == candidate (a
+                      # self-gate) or != the stored run id -> exit 1, never waived; no_baseline is accepted only for
+                      # the first promote of (fingerprint, ref), later -> exit 1, never waived; status
+                      # INSUFFICIENT_DATA / UNSUPPORTED_CONFIG -> exit 1 like FAIL; the store re-checks the
+                      # expected baseline under its lock (a concurrent promote loses with exit 1). Option --allow-failed-gate (owner only, by hand; never in a workflow)
+                      # waives FAIL, INSUFFICIENT_DATA, UNSUPPORTED_CONFIG and hard-fail findings, never a missing,
+                      # unusable or unbound gate.json. D1123 (review F8): --allow-failed-gate needs --reason TEXT
+                      # (1-500 chars after whitespace folding; missing, longer, control/format chars, or --reason
+                      # without the flag -> exit 2; `by` is a label, not authentication); when the flag waives
+                      # something, the stored baseline records override {by: GITHUB_ACTOR or the OS user, at: UTC,
+                      # reasons: what the guard would have refused, note: --reason} in manifest.json and index.json
                       fingerprint-check --candidate <run> --baseline <run>   (D1000, CI fix; read by the tier-1 step of live-e2e.yml)
                       # prints `comparable`, `changed <fp> <fp>` (12+ chars, enough to tell the two apart) or `unreadable` (baseline
                       # run cannot be read); exit 0 for all three; exit 3 only if the CANDIDATE cannot be read. Decides nothing.

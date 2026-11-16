@@ -1,0 +1,19 @@
+id: M06
+title: Delete the "say when you don't know" instruction
+kind: config
+rag_overrides: {prompt_file: prompts/answer_no_refusal_de_v2.txt}
+needs_reindex: false
+cache_invalidating: true
+tier: nightly
+splits: [full]
+stratum: statistical
+tier1: false
+in_detection_rate: true
+expected:
+  status: FAIL
+  metrics: [refusal_correct]
+  gated_slices: [overall]
+  likely_cause: refusal_policy
+rationale: >-
+  refusal_correct is gated only in nightly runs on the refusal stratum (all unanswerable cases of full,
+  >= 100 clusters), so this entry is scored in the nightly table, block 0 (X3.10, D223).

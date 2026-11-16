@@ -1,0 +1,15 @@
+id: N01
+title: Whitespace in rag.gpu.yaml
+kind: config
+patch: patch.diff
+needs_reindex: false
+cache_invalidating: false
+tier: pr
+splits: [smoke, core, robust_pr]
+stratum: statistical
+tier1: false
+in_detection_rate: false
+expected:
+  status: PASS
+rationale: >-
+  A blank line and trailing spaces; the parsed RagConfig and its config_hash are unchanged, so cached target answers are reused and the gate must PASS.

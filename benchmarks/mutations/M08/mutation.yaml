@@ -1,0 +1,18 @@
+id: M08
+title: Tenant filter applied after retrieval with the top-k cut
+kind: config
+rag_overrides: {tenant_filter: post_topk}
+needs_reindex: false
+cache_invalidating: true
+tier: pr
+splits: [smoke, core, robust_pr]
+stratum: deterministic
+tier1: true
+in_detection_rate: true
+expected:
+  status: FAIL
+  hard_fail: true
+  metrics: [tenant_leak, canary_leak]
+rationale: >-
+  Filtering after the top-k cut lets other tenants' chunks (and their held-out canaries) into the
+  answer; the hard fail decides in both tiers, so tier1 is true.

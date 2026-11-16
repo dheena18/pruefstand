@@ -8,9 +8,11 @@ this class (restore drill, R9-17). There is no index: the current baseline is th
 from datetime import datetime
 from pathlib import Path
 
+from pruefstand.core.models.baseline import ExpectedBaseline, PromotionOverride
 from pruefstand.core.models.run import RunArtifacts
 from pruefstand.store._baseline_dir import read_baseline
 from pruefstand.store._baseline_write import Clock, promote_to_disk, utc_now
+from pruefstand.store._promote_lock import check_expected, promote_lock
 from pruefstand.store.retention import prune_baselines
 
 
@@ -40,7 +42,14 @@ class LocalDirBaselineStore:
         """
         return read_baseline(self._root, eval_fingerprint, ref)
 
-    def put(self, run: RunArtifacts, ref: str = "main") -> None:
+    def put(
+        self,
+        run: RunArtifacts,
+        ref: str = "main",
+        *,
+        override: PromotionOverride | None = None,
+        expected: ExpectedBaseline | None = None,
+    ) -> None:
         """Store ``run`` as the baseline of its fingerprint and ``ref``, atomically.
 
         The previous baseline stays readable until the new one is renamed into place and is kept
@@ -52,8 +61,14 @@ class LocalDirBaselineStore:
                 write (the previous baseline is intact then).
         """
         self._root.mkdir(parents=True, exist_ok=True)
-        promotion = promote_to_disk(self._root, run, ref, self._clock)
-        promotion.commit()
+        with promote_lock(self._root):
+            fingerprint = run.results.manifest.eval_fingerprint
+            if expected is not None:
+                stored = read_baseline(self._root, fingerprint, ref)
+                current = None if stored is None else str(stored.results.manifest.run_id)
+                check_expected(current, expected, f"{fingerprint}/{ref}")
+            promotion = promote_to_disk(self._root, run, ref, self._clock, override=override)
+            promotion.commit()
 
     def prune(self, *, keep: int = 20, unused_days: int = 90, now: datetime) -> list[str]:
         """Delete old history directories and unused fingerprints (see ``prune_baselines``)."""

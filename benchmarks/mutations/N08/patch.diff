@@ -1,0 +1,10 @@
+diff --git a/apps/rag-demo/Dockerfile b/apps/rag-demo/Dockerfile
+index 184104d..ec7d1ca 100644
+--- a/apps/rag-demo/Dockerfile
++++ b/apps/rag-demo/Dockerfile
+@@ -51,4 +51,4 @@ USER 10001
+ EXPOSE 8000
+ HEALTHCHECK --interval=10s --timeout=3s --start-period=10s --retries=5 \
+     CMD ["python", "-c", "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8000/v1/health', timeout=2).status==200 else 1)"]
+-ENTRYPOINT ["uvicorn", "rag_demo.api:create_default_app", "--factory", "--host", "0.0.0.0", "--port", "8000"]
++ENTRYPOINT ["uvicorn", "rag_demo.api:create_default_app", "--factory", "--host", "0.0.0.0", "--port", "8000", "--log-level", "warning"]

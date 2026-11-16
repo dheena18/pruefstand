@@ -1,0 +1,19 @@
+id: M10
+title: top_k 8 to 3
+kind: config
+rag_overrides: {top_k: 3}
+needs_reindex: false
+cache_invalidating: true
+tier: pr
+splits: [smoke, core, robust_pr]
+stratum: statistical
+tier1: false
+in_detection_rate: true
+expected:
+  status: FAIL
+  metrics: [context_recall]
+  gated_slices: [overall]
+  likely_cause: retrieval
+rationale: >-
+  Three chunks instead of eight miss the gold paragraph of multi-paragraph questions; context_recall
+  drops overall.

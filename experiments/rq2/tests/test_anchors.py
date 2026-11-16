@@ -1,14 +1,17 @@
 """T5.4 S9: the 50 drift anchors (X3.4): seeded, half hard negatives, no MEMERAG, rendered
 requests."""
 
+import json
 from collections import defaultdict
+from pathlib import Path
 
 import pytest
-from rq2.anchors import anchor_rows, publishable_sets, select_anchors
+from rq2.anchors import anchor_rows, publishable_sets, screened_out, select_anchors
 from rq2.calib_schema import is_positive
+from rq2.flips import flip_summary
 from rq2.rq2_config import REPO, load_config
 
-from pruefstand.judges.anchors import anchor_file, load_anchors
+from pruefstand.judges.anchors import AnchorItem, anchor_file, load_anchors
 
 CFG = load_config(REPO / "experiments/rq2/configs/rq2_judges.yaml")
 
@@ -51,3 +54,76 @@ def test_the_committed_anchor_file_has_50_valid_lines() -> None:
     rows = load_anchors(path)
     assert len(rows) == 50
     assert sum(1 for r in rows if r.hard_negative) == 25
+
+
+def test_the_stored_verdict_is_the_majority_and_flips_come_from_later_runs() -> None:
+    # T5.4d (D1250): two unstable anchors that are 2 in run 1 and 1 in most later runs
+    stable = [[2, 0, 1] for _ in range(9)]
+    runs = [[*row, 2, 2] for row in stable]
+    for k in range(1, 9):
+        runs[k][3:] = [1, 1] if k != 6 else [1, 2]
+    old = flip_summary(runs[:4], "m")  # T5.4: run 1 stored, runs 2-4 counted
+    assert (old["flips"], old["comparisons"], old["majority_runs"]) == (6, 15, 1)
+    new = flip_summary(runs, "m", majority_runs=5)
+    assert new["stored"] == [2, 0, 1, 1, 1]
+    assert (new["flips"], new["comparisons"]) == (1, 20)  # run 7, anchor 5
+    assert new["a0"] == 1.0
+    assert new["changed_anchors"] == 2
+    kept = new["runs"]
+    assert isinstance(kept, list)
+    assert len(kept) == 9  # every run's scores are kept
+
+
+def test_majority_runs_must_leave_runs_to_count() -> None:
+    with pytest.raises(ValueError, match="majority_runs"):
+        flip_summary([[1], [1]], "m", majority_runs=2)
+
+
+def test_rows_record_the_runs_of_their_majority() -> None:
+    picked = select_anchors(publishable_sets(CFG), 1234)[:2]
+    rows = anchor_rows(picked, [2, 0], "ollama/gemma3:12b", majority_runs=5)
+    assert [r.majority_runs for r in rows] == [5, 5]
+    old = rows[0].model_dump(exclude={"majority_runs"})
+    assert AnchorItem.model_validate(old).majority_runs == 1  # T5.4 files still load
+
+
+def test_an_excluded_anchor_is_replaced_in_place_by_a_spare_of_its_stratum() -> None:
+    sets = publishable_sets(CFG)
+    base = select_anchors(sets, 1234)
+    gone = base[3][1]
+    swapped = select_anchors(sets, 1234, exclude=[gone.item_id])
+    assert len(swapped) == 50
+    changed = [k for k, (a, b) in enumerate(zip(base, swapped, strict=True)) if a != b]
+    assert changed == [3]  # every other anchor stays
+    new = swapped[3][1]
+    assert new.item_id not in {i.item_id for _, i in base}
+    assert (new.metric, new.hard_negative) == (gone.metric, gone.hard_negative)
+    assert swapped == select_anchors(sets, 1234, exclude=[gone.item_id])  # seeded
+
+
+def test_screens_are_pooled_per_item_and_keep_earlier_replacements(tmp_path: Path) -> None:
+    sets = publishable_sets(CFG)
+    ids = [i.item_id for _, i in select_anchors(sets, 1234)]
+    first = [[1] * 50 for _ in range(9)]
+    first[0][0] = 0  # anchor 0: one odd run 0 vs 1 -> adjacent, kept on its own
+    first[0][2] = 2  # anchor 2: one odd run 2 vs 0 -> not adjacent
+    for k in (1, 3, 5):
+        first[k][4] = 2  # anchor 4: 3 of 9 -> share 0.67
+    for run in first:
+        run[2] = run[2] if run is first[0] else 0
+    old = tmp_path / "screen1.json"  # T5.4d pass 1 had no item_ids
+    old.write_text(json.dumps({"stored": first[0], "runs": first}), encoding="utf-8")
+    assert screened_out([old], sets, 1234) == [ids[2], ids[4]]
+    second_ids = [i.item_id for _, i in select_anchors(sets, 1234, [ids[4]])]
+    second = [[1] * 50 for _ in range(9)]
+    second[1][0] = 2  # anchor 0 again: pooled with pass 1 it takes 0, 1 and 2
+    new = tmp_path / "screen2.json"
+    new.write_text(
+        json.dumps({"runs": second, "item_ids": second_ids, "replaced": [ids[4]]}),
+        encoding="utf-8",
+    )
+    assert screened_out([old, new], sets, 1234) == [ids[4], ids[0], ids[2]]
+    bad = tmp_path / "bad.json"
+    bad.write_text(json.dumps({"runs": [[1]], "item_ids": ids}), encoding="utf-8")
+    with pytest.raises(ValueError, match="do not match"):
+        screened_out([bad], sets, 1234)

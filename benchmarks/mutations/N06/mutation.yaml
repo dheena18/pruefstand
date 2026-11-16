@@ -1,0 +1,15 @@
+id: N06
+title: Rename an internal Python variable
+kind: code
+patch: patch.diff
+needs_reindex: false
+cache_invalidating: true
+tier: pr
+splits: [smoke, core, robust_pr]
+stratum: statistical
+tier1: false
+in_detection_rate: false
+expected:
+  status: PASS
+rationale: >-
+  The module-private regex _TENANT in retrieval/filters.py becomes _TENANT_NAME; the image is rebuilt, the behaviour is identical.

@@ -1,13 +1,14 @@
 """Drift anchors of a pinned judge (T5.4 S9, X3.4): ``judges/data/anchors/<model-slug>.jsonl``.
 
 One line per anchor: the rendered judge request (messages exactly as sent, so the nightly re-judges
-the identical prompt without the nonce key) and the judge's stored raw verdict.
+the identical prompt without the nonce key) and the judge's stored raw verdict. Since T5.4d the
+stored verdict is the majority over ``majority_runs`` runs (1: the first run, T5.4 files; D1250).
 """
 
 import json
 from pathlib import Path
 
-from pydantic import BaseModel, ConfigDict, ValidationError
+from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
 from pruefstand.core.errors import ConfigError
 from pruefstand.core.models.judge import JudgeVerdict
@@ -35,6 +36,8 @@ class AnchorItem(BaseModel):
     prompt_version: str
     messages: tuple[Message, ...]
     raw_score: int
+    majority_runs: int = Field(default=1, ge=1)
+    """Runs of which ``raw_score`` is the majority (1: the first run only, T5.4; D1250)."""
 
     def request(self) -> LLMRequest:
         """The judge request of this anchor (temperature 0, the metric's JSON schema)."""
