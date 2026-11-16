@@ -272,7 +272,7 @@ follow `tasks/PARALLEL-PLAN.md` §2.
 | 11 | [x] T6.4 · [x] T4.3 · [x] T3.6 | – |
 | 12 | [x] T3.7 · [x] T4.7a · [x] T8.1 | [ ] M2 |
 | 13 | [~] T4.7b (offline parts #138, closed-book #140 merged; rest open) · [x] T8.2a | [ ] M3 |
-| 14 | [ ] T5.3 PR 2 (`legal_hard`) · [~] T6.2a (`llm-proxy` #137, runner timeout #171, force think false #169, GPU lock/preflight/infra retry #170, rag-demo tier-2 profiles #175, trusted-peer slots #176 merged; orchestrator core #139 open) · [x] T8.2b | – |
+| 14 | [ ] T5.3 PR 2 (`legal_hard`) · [~] T6.2a (merged: `llm-proxy` S4b #137 and #169, trusted-peer slots #176, GPU lock/preflight/infra retry S7 #170, runner timeout #171, rag-demo tier-2 profiles #175; open: orchestrator core S2 #139 and the rest of the prompt, S0, S1, S3-S6, S8-S12) · [x] T8.2b | – |
 | 15 | [x] T5.4 · [x] T5.4b2 (#181) · [ ] T6.2b | – |
 | 16 | [ ] T6.3 · [~] T7.3 (S0b offline part #180 merged; rest open) · [ ] T9.1a | – |
 | 17 | [ ] T6.5 · [ ] T9.1b | [ ] M4 (MVP) |
