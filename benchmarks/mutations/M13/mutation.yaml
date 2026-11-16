@@ -1,0 +1,22 @@
+id: M13
+title: Reranker top_n 10 to 2
+kind: config
+rag_overrides: {rerank: {top_n: 2}}
+needs_reindex: false
+cache_invalidating: true
+tier: pr
+splits: [smoke, core, robust_pr]
+stratum: statistical
+tier1: false
+in_detection_rate: true
+expected:
+  status: FAIL
+  metrics: [ndcg_at_k]
+  secondary_metrics: [context_recall]
+  gated_slices: [overall]
+  informational_slices: [category=multi_hop]
+  likely_cause: retrieval
+rationale: >-
+  rag.gpu.yaml reranks the top 10 fused hits (rerank.top_n 10, Y4.2/D222); the mutation reranks only 2. With
+  top_k 8 the set-based context_recall@8 is about unchanged, only the order moves, so ndcg_at_k is the gated
+  metric (AI12-06). With the D222 reranker-off rule for robust_pr there is no robust_pr effect: overall only.

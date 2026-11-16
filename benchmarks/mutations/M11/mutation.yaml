@@ -1,0 +1,19 @@
+id: M11
+title: Generator swapped to the catalogue's smaller model of the same family
+kind: config
+rag_overrides: {generator: {model: "qwen3:14b-q8_0", catalogue_id: "ollama/qwen3:14b-q8_0"}}
+needs_reindex: false
+cache_invalidating: true
+tier: pr
+splits: [smoke, core, robust_pr]
+stratum: statistical
+tier1: false
+in_detection_rate: true
+expected:
+  status: FAIL
+  metrics: [faithfulness, answer_correctness]
+  gated_slices: [overall]
+  likely_cause: generation
+rationale: >-
+  A smaller local Qwen of the same family (judge-family rule holds). PENDING: no second Qwen generator is in
+  the catalogue or on the cluster disk; the tag shown is a placeholder until T3.1b pins one (no pull here).

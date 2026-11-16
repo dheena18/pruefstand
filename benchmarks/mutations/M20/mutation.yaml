@@ -1,0 +1,18 @@
+id: M20
+title: App writes "Paragraph 622 BGB" instead of "§ 622 BGB"
+kind: code
+patch: patch.diff
+needs_reindex: false
+cache_invalidating: true
+tier: pr
+splits: [core]
+stratum: normaliser
+tier1: false
+in_detection_rate: false
+expected:
+  status: PASS
+  secondary_metrics: [citation_precision]
+rationale: >-
+  The generator output rewrites "§ <n>" to "Paragraph <n>". Expected PASS when core.citations normalises the
+  written-out form (normaliser robustness row, never in the detection rate); citation_precision drops only if
+  the normaliser misses it. Also run nightly.

@@ -1,0 +1,20 @@
+diff --git a/apps/rag-demo/src/rag_demo/generation/generator.py b/apps/rag-demo/src/rag_demo/generation/generator.py
+index cbf968b..2672175 100644
+--- a/apps/rag-demo/src/rag_demo/generation/generator.py
++++ b/apps/rag-demo/src/rag_demo/generation/generator.py
+@@ -4,6 +4,7 @@ They share prompting, the prompt budget, refusal detection, citation extraction
+ ``<think>`` strip; only the wire format (the chat client) differs (T3.6).
+ """
+ 
++import re
+ import logging
+ 
+ import httpx
+@@ -116,6 +117,7 @@ class ChatGenerator:
+         text, stripped = strip_think(reply.text)
+         self._stats.think_stripped += stripped
+         answer = apply_output_guard(text, messages[0]["content"], self._cfg)
++        answer = re.sub(r"§\s*(?=\d)", "Paragraph ", answer)  # mutation M20
+         refused = is_refusal(answer)
+         return GenOutput(
+             answer=answer,
