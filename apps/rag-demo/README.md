@@ -62,7 +62,7 @@ The same app runs two profiles, chosen by `RAG_CONFIG` (`profile:` in the file).
 | Generator | `qwen2.5-0.5b` on llama.cpp (CPU), OpenAI-compatible `/v1` | `ollama/qwen3.8:27b-q8_0` on the A40s, native `/api/chat`, `think: false` |
 | Embeddings | TEI CPU, e5-small | `ollama/bge-m3` via `/api/embed` (`OllamaDenseEncoder`, T3.4) |
 | Models | pinned in `infra/models/live-models.yaml` | resolved from `infra/gpu/models.yaml` (`RAG_MODEL_CATALOGUE`), checked at config load |
-| URLs | `LLM_URL`, `EMBED_URL` | env named by `endpoint_env` (`OLLAMA_GPU0_URL` on the dev stack, `LLM_PROXY_URL` in gate runs), checked at app start |
+| URLs | `LLM_URL`, `EMBED_URL` | env named by `endpoint_env`: `LLM_PROXY_URL` in every tier-2 profile (D1081; the gate sets it to `http://llm-proxy:11500`, the dev stack and `make index` point it at the tunnel `OLLAMA_GPU0_URL`), checked at app start |
 | Bug configs | `configs/bugs/*.yaml` | `configs/bugs/gpu/*.yaml` (the same eight switches on top of `rag.gpu.yaml`) |
 
 `/v1/info.serving` is static: tier 2 reports the catalogue engine, quantisation and manifest digest plus
@@ -109,7 +109,7 @@ no answer, no generator call); `rerank.on_retrieve: false` makes it skip the rer
 uv run rag-demo index --corpus corpus/slice_v1 --encoder tei            # tier 1 (live stack: QDRANT_URL, EMBED_URL)
 make fetch-tokenizer                                                     # once: pinned bge-m3 tokenizer.json (truncation count)
 RAG_EMBED_TOKENIZER=$HOME/.cache/pruefstand/models/tokenizers/bge-m3.json \
-  pruefstand-lock uv run rag-demo index --corpus <corpus dir> --encoder ollama   # tier 2 (OLLAMA_GPU0_URL, dev Qdrant)
+  pruefstand-lock uv run rag-demo index --corpus <corpus dir> --encoder ollama   # tier 2 (LLM_PROXY_URL = the tunnel, dev Qdrant)
 uv run rag-demo index --corpus <dir> --collection pr_7_abc1234 --no-alias        # PR-scoped build, alias untouched
 uv run rag-demo index --drop pr_7_abc1234                                        # executor cleanup
 ```
