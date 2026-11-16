@@ -263,17 +263,17 @@ follow `tasks/PARALLEL-PLAN.md` §2.
 | 2 | [x] T0.2 · [x] T0.3 · [x] T1.1 · [x] T2.1 · [x] T0.7 | – |
 | 3 | [x] T1.2 · [x] T1.5a · [x] T0.4 · [x] T0.6 (+ S7 quota follow-up) · [ ] T0.5 | – |
 | 4 | [x] T1.6 · [x] T1.5b · [x] T1.3 · [x] T1.4 · [x] T2.2 · [x] T3.1a | – |
-| 5 | [x] T1.7 · [x] T1.8 · [x] T2.3 · [x] T2.4 · [x] T1.13 · [~] T3.1b (phase 1 merged, partial; rest open) | – |
+| 5 | [x] T1.7 · [x] T1.8 · [x] T2.3 · [x] T2.4 · [x] T1.13 · [~] T3.1b (phase 1 #46 and candidate pass #54 merged; rest open) | – |
 | 6 | [x] T1.9 · [x] T4.4 · [x] T3.2 | – |
 | 7 | [x] T1.10 · [x] T3.3 | – |
-| 8 | [x] T1.11 · [x] T2.5 · [ ] T5.1 | – |
-| 9 | [x] T6.1 · [x] T1.12 · [x] T4.1 · [ ] T5.2a · [x] T3.4 · [ ] T2.6 | [ ] M1 |
-| 10 | [x] T3.5 · [x] T4.6 · [ ] T4.5 · [ ] T5.2b · [ ] T5.3 PR 1 · [ ] T4.2 | – |
-| 11 | [ ] T6.4 · [ ] T4.3 · [ ] T3.6 | – |
-| 12 | [ ] T3.7 · [ ] T4.7a · [ ] T8.1 | [ ] M2 |
-| 13 | [ ] T4.7b · [ ] T8.2a | [ ] M3 |
-| 14 | [ ] T5.3 PR 2 (`legal_hard`) · [ ] T6.2a · [ ] T8.2b | – |
-| 15 | [ ] T5.4 · [ ] T6.2b | – |
+| 8 | [x] T1.11 · [x] T2.5 · [x] T5.1 | – |
+| 9 | [x] T6.1 · [x] T1.12 · [x] T4.1 · [x] T5.2a · [x] T3.4 · [x] T2.6 | [ ] M1 |
+| 10 | [x] T3.5 · [x] T4.6 · [x] T4.5 · [x] T5.2b · [x] T5.3 PR 1 · [x] T4.2 | – |
+| 11 | [x] T6.4 · [x] T4.3 · [x] T3.6 | – |
+| 12 | [x] T3.7 · [x] T4.7a · [x] T8.1 | [ ] M2 |
+| 13 | [~] T4.7b (offline parts #138, closed-book #140 merged; rest open) · [x] T8.2a | [ ] M3 |
+| 14 | [ ] T5.3 PR 2 (`legal_hard`) · [~] T6.2a (`llm-proxy` #137, runner timeout #171 merged; rest open) · [x] T8.2b | – |
+| 15 | [x] T5.4 · [ ] T6.2b | – |
 | 16 | [ ] T6.3 · [ ] T7.3 · [ ] T9.1a | – |
 | 17 | [ ] T6.5 · [ ] T9.1b | [ ] M4 (MVP) |
 | 18–19 | [ ] T7.1a · [ ] T8.3 · [ ] T7.1b · [ ] T8.4 (optional) | – |

@@ -1,0 +1,15 @@
+id: N07
+title: Bump an unrelated dependency's lower bound
+kind: code
+patch: patch.diff
+needs_reindex: false
+cache_invalidating: true
+tier: pr
+splits: [smoke, core, robust_pr]
+stratum: statistical
+tier1: false
+in_detection_rate: false
+expected:
+  status: PASS
+rationale: >-
+  xxhash>=4.0.2 becomes >=4.1.0 (the locked version), in pyproject and the uv.lock metadata; the image is rebuilt with the same installed versions.

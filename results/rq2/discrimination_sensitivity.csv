@@ -1,5 +1,5 @@
 judge,label_set,metric,edit,form,n,discrimination,discrimination_ci_low,discrimination_ci_high,base_top_share
-ollama/gemma3:12b,correctness,answer_correctness,negate,sentence,23,0.8260869565217391,0.6286235235977385,0.9302134643693744,0.8260869565217391
+ollama/gemma3:12b,correctness,answer_correctness,negate,sentence,21,0.8095238095238095,0.5999943530979508,0.9233243494723822,0.8095238095238095
 ollama/gemma3:12b,correctness,answer_correctness,negate,span,21,0.6190476190476191,0.4087865377511576,0.7924898863143551,0.7142857142857143
 ollama/gemma3:12b,correctness,answer_correctness,swap_first_number,span,50,0.82,0.6920394632569922,0.9022980732976582,0.84
 ollama/gemma3:12b,faithfulness_constructed,faithfulness,negate,span,50,0.5,0.3664451431682858,0.6335548568317142,1.0

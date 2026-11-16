@@ -1,6 +1,7 @@
 """Citation parser, normaliser, matching rule and credit rule (T1.5a)."""
 
 import logging
+import re
 import unicodedata
 
 import pytest
@@ -137,7 +138,8 @@ def test_dropped_citation_is_logged_at_debug(caplog: pytest.LogCaptureFixture) -
     with caplog.at_level(logging.DEBUG):
         assert extract_citations("§ 622") == []
     assert "citation_dropped" in caplog.text
-    assert "622" not in caplog.text
+    # the number must not be logged; a log timestamp such as 14:18:23.762279Z may contain the digits
+    assert re.search(r"(?<!\d)622(?!\d)", caplog.text) is None
 
 
 def test_parse_one() -> None:

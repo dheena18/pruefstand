@@ -12,8 +12,10 @@ repos:
       - id: check-yaml
       - id: check-toml
       - id: end-of-file-fixer
+        exclude: ^benchmarks/mutations/.*/patch\.diff$  # T7.1a: patches keep their exact bytes
       - id: trailing-whitespace
         args: [--markdown-linebreak-ext=md]
+        exclude: ^benchmarks/mutations/.*/patch\.diff$  # T7.1a: patches keep their exact bytes
       - id: check-added-large-files
         args: [--maxkb=500]
   - repo: https://github.com/gitleaks/gitleaks
