@@ -17,7 +17,7 @@ from rd_support import CONFIGS, REPO, hit
 
 from rag_demo.auth import auth_headers
 from rag_demo.config import load_config, parse_config
-from rag_demo.errors import ConfigError, GenerationError
+from rag_demo.errors import ConfigError, GenerationError, GenerationTimeoutError
 from rag_demo.generation import (
     REFUSAL,
     REFUSAL_EN,
@@ -221,7 +221,7 @@ async def test_a_connection_error_is_retried() -> None:
 @respx.mock
 async def test_a_read_timeout_is_not_retried() -> None:
     route = respx.post(OLLAMA_URL).mock(side_effect=httpx.ReadTimeout("slow"))
-    with pytest.raises(GenerationError, match="ReadTimeout"):
+    with pytest.raises(GenerationTimeoutError, match="ReadTimeout"):
         await _ask(_ollama())
     assert route.call_count == 1
 

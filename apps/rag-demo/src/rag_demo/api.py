@@ -15,6 +15,7 @@ from rag_demo.config import Settings, load_config
 from rag_demo.disconnect import cancel_on_disconnect
 from rag_demo.errors import (
     ClientDisconnectedError,
+    GenerationTimeoutError,
     IndexMismatchError,
     IndexUnavailableError,
     RagDemoError,
@@ -150,11 +151,16 @@ async def _meta(parts: _Parts) -> dict[str, Any]:
         raise HTTPException(503, str(err)) from None
 
 
+GENERATOR_TIMEOUT = "generator_timeout"
+
+
 def _http_error(err: RagDemoError, what: str) -> HTTPException:
-    """422 for a malformed tenant of the index, else 503 without details."""
+    """422 for a malformed tenant, 504 ``generator_timeout`` for a generator timeout, else 503."""
     if isinstance(err, UnknownTenantError):
         return HTTPException(422, "unknown tenant")
     _log.warning("%s failed: %s", what, err)
+    if isinstance(err, GenerationTimeoutError):  # T1.13c: a client must not retry this
+        return HTTPException(504, {"code": GENERATOR_TIMEOUT, "message": "generator timed out"})
     return HTTPException(503, "backend unavailable")
 
 
