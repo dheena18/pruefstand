@@ -69,3 +69,12 @@ def test_sudoers_grants_only_the_tunnel_restart() -> None:
         if line and not line.startswith("#")
     ]
     assert rules == ["pruefstand ALL=(root) NOPASSWD: /usr/bin/systemctl restart pruefstand-tunnel"]
+
+
+def test_runner_env_is_loaded_by_systemd_environmentfile() -> None:
+    # D1091: systemd parses runner.env (no shell): the unit names it, no host script sources it
+    assert _directives("EnvironmentFile") == ["/home/pruefstand/runner.env"]
+    for script in HOST.glob("*.sh"):
+        text = script.read_text(encoding="utf-8")
+        assert "source /home/pruefstand/runner.env" not in text, script.name
+        assert ". /home/pruefstand/runner.env" not in text, script.name
