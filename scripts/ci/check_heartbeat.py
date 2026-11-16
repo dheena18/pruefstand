@@ -10,6 +10,7 @@ Usage: ``check_heartbeat.py --heartbeat <file|-> --now <iso> [--open <label>]...
 
 import argparse
 import json
+import re
 import sys
 from collections.abc import Mapping, Sequence
 from dataclasses import asdict, dataclass
@@ -27,6 +28,11 @@ TITLES = {
     "nightly-skipped": "nightly skipped",
 }
 Heartbeat = Mapping[str, object]
+# Heartbeat text reaches public issues: release tags must match this (the workflow's marker grep
+# uses the same class), anything else becomes INVALID_TAG; status text keeps only _TEXT_OK chars.
+TAG = re.compile(r"[A-Za-z0-9._-]{1,64}")
+INVALID_TAG = "invalid-tag"
+_TEXT_DROP = re.compile(r"[^A-Za-z0-9 ._:-]")
 
 
 @dataclass(frozen=True)
@@ -59,6 +65,16 @@ def _time(value: object) -> datetime | None:
     return moment if moment.tzinfo is not None else None
 
 
+def _tag(value: object) -> str:
+    return value if isinstance(value, str) and TAG.fullmatch(value) else INVALID_TAG
+
+
+def _text(value: object) -> str:
+    """Heartbeat text as inline code: no mentions, links or markup (review #198)."""
+    clean = _TEXT_DROP.sub("", str(value)).replace("https:", "https").replace("http:", "http")
+    return f"`{clean[:80]}`"
+
+
 def _age(delta: timedelta) -> str:
     minutes = int(delta.total_seconds() // 60)
     return f"{minutes // 60} h {minutes % 60} min"
@@ -80,7 +96,7 @@ def _down_reasons(hb: Heartbeat | None, now: datetime) -> list[str]:
 def _nightly_skipped(hb: Heartbeat, now: datetime) -> str:
     status = str(hb.get("last_nightly_status", ""))
     if status.startswith(("skipped: ", "aborted: ")):
-        return f"last_nightly_status: {status}"
+        return f"last_nightly_status: {_text(status)}"
     last = _time(hb.get("last_nightly_at"))
     if last is None or now - last > NO_NIGHTLY:
         return "no completed nightly for more than 26 h"
@@ -115,23 +131,27 @@ def evaluate(
 ) -> list[Action]:
     """The issue actions for one hourly run (see the module docstring)."""
     conditions = _conditions(hb, now)
+    # review #198: an unknown, empty or stale heartbeat (or a failing health field) is no evidence
+    # that anything recovered, so nothing is closed while executor-down holds.
+    may_close = "executor-down" not in conditions
     actions: list[Action] = []
     for label, title in TITLES.items():
         reason = conditions.get(label)
         if reason:
             op = "comment" if label in open_labels else "open"
             actions.append(Action(label, op, title, reason))
-        elif label in open_labels and _may_close(label, hb):
+        elif may_close and label in open_labels and _may_close(label, hb):
             actions.append(Action(label, "close", title, "healthy again"))
     if hb is not None and hb.get("drift_no_release_baseline") is True:
-        marker = f"drift-no-release:{hb.get('release_tag', 'unknown')}"
+        tag = _tag(hb.get("release_tag"))
+        marker = f"drift-no-release:{tag}"
         if marker not in markers:
             op = (
                 "comment"
                 if "nightly-skipped" in open_labels or "nightly-skipped" in conditions
                 else "open"
             )
-            body = f"drift: no release baseline for {hb.get('release_tag', 'unknown')} ({marker})"
+            body = f"drift: no release baseline for `{tag}` (`{marker}`)"
             actions.append(Action("nightly-skipped", op, TITLES["nightly-skipped"], body, marker))
     return actions
 

@@ -1,6 +1,7 @@
 """check_heartbeat (T6.2b S8, D1092): a pure function of now, file and open issues."""
 
 import json
+import re
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
@@ -144,3 +145,56 @@ def test_parse_and_cli(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> No
         ("backup-stale", "open"),
         ("nightly-failed", "close"),
     }
+
+
+ALL_OPEN = {"executor-down", "backup-stale", "nightly-failed", "nightly-skipped"}
+WORKFLOW = Path(__file__).resolve().parents[3] / ".github" / "workflows" / "executor-health.yml"
+
+
+@pytest.mark.parametrize(
+    "hb",
+    [None, {}, {"ts": "not a time"}, _hb(ts="2026-11-16T09:00:00+00:00", last_nightly_status="ok")],
+)
+def test_unknown_or_stale_state_closes_nothing(hb: dict[str, Any] | None) -> None:
+    # review #198: an empty, failed-fetch or stale heartbeat must never close an alert
+    actions = evaluate(hb, NOW, open_labels=ALL_OPEN)
+    assert [a for a in actions if a.op == "close"] == []
+    assert _ops(actions)["executor-down"] == "comment"
+
+
+def test_failing_health_field_closes_nothing() -> None:
+    hb = _hb(data_root_ok=False, data_root_ok_false_since=_ago(hours=3))
+    assert [a for a in evaluate(hb, NOW, open_labels=ALL_OPEN) if a.op == "close"] == []
+
+
+def test_fresh_healthy_heartbeat_closes_every_open_alert() -> None:
+    assert _ops(evaluate(_hb(), NOW, open_labels=ALL_OPEN)) == dict.fromkeys(ALL_OPEN, "close")
+
+
+@pytest.mark.parametrize(
+    "tag", ["@someone", "v1 [x](https://evil.example)", "a" * 65, "", 7, "v1\nx"]
+)
+def test_unsafe_release_tag_is_replaced(tag: object) -> None:
+    hb = _hb(drift_no_release_baseline=True, release_tag=tag)
+    (action,) = [a for a in evaluate(hb, NOW, open_labels=set()) if a.marker]
+    assert action.marker == "drift-no-release:invalid-tag"
+    assert "@" not in action.body
+    assert "http" not in action.body
+
+
+def test_unsafe_status_text_is_neutralised() -> None:
+    hb = _hb(last_nightly_status="skipped: @someone see https://evil.example `x`")
+    (action,) = evaluate(hb, NOW, open_labels=set())
+    assert "@" not in action.body
+    assert "https:" not in action.body
+    assert action.body.count("`") == 2
+
+
+@pytest.mark.parametrize("tag", ["v0.3.0", "v1.0.0-rc_1", "x" * 64])
+def test_marker_is_found_by_the_workflow_regex(tag: str) -> None:
+    text = WORKFLOW.read_text(encoding="utf-8")
+    pattern = re.search(r"grep -oE '([^']+)'", text)
+    assert pattern is not None
+    hb = _hb(drift_no_release_baseline=True, release_tag=tag)
+    (action,) = [a for a in evaluate(hb, NOW, open_labels=set()) if a.marker]
+    assert re.findall(pattern.group(1), action.body) == [action.marker]
