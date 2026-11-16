@@ -13,12 +13,12 @@ OK_STUBS = {
     "getent": "echo docker:x:999:pruefstand,owner",
     "stat": 'echo "660 pruefstand"',
     "systemctl": "exit 0",
-    "curl": 'echo \'{"models": []}\'',
-    "df": 'printf "Filesystem 1024-blocks Used Available Capacity Mounted\\n/dev/x 1 1 52428800 1%% /mnt\\n"',
+    "curl": "echo '{\"models\": []}'",
+    "df": 'printf "Filesystem 1K Used Available Use Mounted\\n/dev/x 1 1 52428800 1%% /mnt\\n"',
     "ssh": "exit 0",
     "ip": 'echo "    inet 172.17.0.1/16 brd 172.17.255.255 scope global docker0"',
     "docker": "echo 10.231.0.0/24",
-    "ss": 'printf "LISTEN 0 128 127.0.0.1:11434 0.0.0.0:*\\nLISTEN 0 128 172.17.0.1:11434 0.0.0.0:*\\n"',
+    "ss": 'printf "L 0 1 127.0.0.1:11434 0.0.0.0:*\\nL 0 1 172.17.0.1:11434 0.0.0.0:*\\n"',
 }
 
 
@@ -74,7 +74,9 @@ def test_healthy_host_passes_every_check(tmp_path: Path) -> None:
         ("id", 'case "$1" in -un) echo dheena;; -nG) echo "dheena";; esac', "user"),
     ],
 )
-def test_each_failure_is_a_fail_row_and_exit_1(tmp_path: Path, stub: str, body: str, check: str) -> None:
+def test_each_failure_is_a_fail_row_and_exit_1(
+    tmp_path: Path, stub: str, body: str, check: str
+) -> None:
     res = _check(tmp_path, **{stub: body})
     assert res.returncode == 1
     failed = [line.split(",", 2)[0] for line in res.stdout.splitlines() if ",FAIL," in line]
@@ -100,7 +102,9 @@ def _install(tmp: Path, **env_extra: str) -> subprocess.CompletedProcess[str]:
     )
 
 
-def test_install_is_persistent_auto_updating_and_never_takes_a_token_argument(tmp_path: Path) -> None:
+def test_install_is_persistent_auto_updating_and_never_takes_a_token_argument(
+    tmp_path: Path,
+) -> None:
     res = _install(tmp_path)
     assert res.returncode == 0, res.stderr
     config = next(line for line in res.stdout.splitlines() if "./config.sh" in line)

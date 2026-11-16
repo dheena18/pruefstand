@@ -3,7 +3,7 @@
 # Run once by the owner on the VM as the service user:  sudo -u pruefstand bash install_runner.sh
 # Needs RUNNER_VERSION and RUNNER_SHA256 (the pinned release and its sha256, from the GitHub release page);
 # the registration token is typed by the owner when config.sh asks (it expires after 1 h; never stored).
-# Not --ephemeral (D100) and no --disableupdate (A13-M9: auto-update stays on; run.sh restarts the listener).
+# Not ephemeral (D100) and auto-update stays on (A13-M9; run.sh restarts the listener after an update).
 # The user, /var/lib/pruefstand and the tunnel unit come from T0.7; this script never creates them.
 # Root steps (system unit, sudoers line) are printed, not run.
 # Env: RUNNER_DIR (default /home/pruefstand/pruefstand/runner), RUNNER_REPO_URL (default the private repo),
