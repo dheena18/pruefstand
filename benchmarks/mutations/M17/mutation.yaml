@@ -1,0 +1,20 @@
+id: M17
+title: Generation temperature 0 to 0.7
+kind: config
+rag_overrides: {generation: {temperature: 0.7}}
+needs_reindex: false
+cache_invalidating: true
+tier: pr
+splits: [smoke, core, robust_pr]
+stratum: statistical
+tier1: false
+in_detection_rate: true
+expected:
+  status: FAIL
+  metrics: [faithfulness]
+  gated_slices: [overall]
+  likely_cause: generation
+rationale: >-
+  generation.temperature is sent as the Ollama option temperature, and llm-proxy passes it through within the
+  generator's catalogue option_bounds [0.0, 1.0] (N2), so 0.7 really reaches the generator. Only FAIL counts as
+  detection (P3.3); T7.2 decides from the measured true effect whether it is in the denominator.

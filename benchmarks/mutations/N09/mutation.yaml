@@ -1,0 +1,16 @@
+id: N09
+title: Same generator checkpoint in a second Ollama quantisation tag
+kind: config
+rag_overrides: {generator: {model: "qwen3.8:27b-q6_K", catalogue_id: "ollama/qwen3.8:27b-q6_K"}}
+needs_reindex: false
+cache_invalidating: true
+tier: pr
+splits: [smoke, core, robust_pr]
+stratum: statistical
+tier1: false
+in_detection_rate: false
+expected:
+  status: PASS
+rationale: >-
+  Only the quantisation changes (both tags with the same catalogue options). PENDING: the catalogue has no
+  second quantisation of the generator and the cluster disk has no room; follow-up for T3.1b, no pull here.

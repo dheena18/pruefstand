@@ -1,0 +1,13 @@
+diff --git a/apps/rag-demo/src/rag_demo/analysis/normalise.py b/apps/rag-demo/src/rag_demo/analysis/normalise.py
+index 670b087..47cdcef 100644
+--- a/apps/rag-demo/src/rag_demo/analysis/normalise.py
++++ b/apps/rag-demo/src/rag_demo/analysis/normalise.py
+@@ -17,7 +17,7 @@ def nfc_lower(text: str) -> str:
+         >>> nfc_lower("ÄPFEL")
+         'äpfel'
+     """
+-    return unicodedata.normalize("NFC", text).lower()
++    return unicodedata.normalize("NFC", text)  # mutation M18: lowercasing off
+ 
+ 
+ def fold(text: str) -> str:
