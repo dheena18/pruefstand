@@ -202,8 +202,11 @@ def revert(worktree: Path) -> None:
     _git("clean", "-fdq", cwd=worktree)
 
 
-def main(argv: Sequence[str] | None = None) -> int:
-    """CLI entry point; returns the exit code (0 ok, 1 refused or failed)."""
+def main(argv: Sequence[str] | None = None, *, root: Path = MUTATIONS_ROOT) -> int:
+    """CLI entry point; returns the exit code (0 ok, 1 refused or failed).
+
+    ``root`` is the ``benchmarks/mutations`` directory (tests pass a copy).
+    """
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0] if __doc__ else None)
     parser.add_argument("action", choices=["apply", "revert"])
     parser.add_argument("entry")
@@ -212,16 +215,17 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser.add_argument("--allow-published", action="store_true")
     args = parser.parse_args(argv)
     try:
-        pending = load_index().pending
+        index = load_index(root)
+        pending = index.pending
         if args.action == "apply" and args.entry in pending:
             msg = f"{args.entry} is pending, not applied: {pending[args.entry]}"
             raise MutationError(msg)
-        spec = load_spec(args.entry)
+        spec = load_spec(args.entry, root)
         if args.action == "revert":
             revert(args.worktree)
             return 0
         check_canary_set(spec, args.canary_set, allow_published=args.allow_published)
-        apply_mutation(spec, args.worktree, load_index().base_sha)
+        apply_mutation(spec, args.worktree, index.base_sha, root)
     except PruefstandError as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 1
