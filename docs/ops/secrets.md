@@ -131,6 +131,7 @@ owner's `~/start-ollama.sh`, setup log §7), **public secret**
 | `SERVING_ENGINE_VERSION`, `SERVING_GPU` | candidate container env (dev: VM .env) | orchestrator | static `/v1/info.serving` fields (X3.13) | T3.2 | n/a |
 | `ACTIONS_RUNNER_HOOK_JOB_STARTED` / `_COMPLETED` | VM `runner.env` | T6.2a install script | job hygiene hooks | T6.2a | n/a |
 | `PRUEFSTAND_GII_MIRROR` | workflow only | `cassettes-models.yml` download step | https base URL of the release `data-pins-2026-11b`; unset locally (`--update-pins` refuses it) | D927 | n/a |
+| `VM_LLM_MODEL`, `VM_LLM_PORT`, `VM_LLM_THREADS`, `VM_LLM_CPUS`, `VM_LLM_CTX`, `VM_LLM_MAX_MIN`, `VM_LLM_READY_S`, `VM_LLM_LOCK_WAIT_S`, `VM_LLM_MODELS_DIR`, `VM_LLM_BIN_DIR`, `VM_LLM_STATE_DIR`, `VM_LLM_LOCK_CMD` | VM shell (optional; not secrets) | owner | `scripts/models/vm_llm.sh` (D1200): model `14b`/`8b` (default 14b), port 18091, 16 threads (max 80), CPUs `0-19`, ctx 8192, hard stop 240 min, 240 s ready wait, 5 s lock wait, `~/.cache/pruefstand/models`, `~/.local/llama-cpp/app`, `~/.local/state/pruefstand-vm-llm`, `pruefstand-lock` (tests point it at `infra/vm/pruefstand-lock`) | D1200 | n/a |
 | `PRUEFSTAND_SIM_GRID` | workflow, local .env | `ci.yml` nightly | `reduced` (default) or `full` | T1.6 | n/a |
 | `PRUEFSTAND_ANNOTATOR` | local .env | annotator | pseudonym for optional human labels | T5.3-opt | n/a |
 | `OTEL_EXPORTER_OTLP_ENDPOINT` | local .env (optional) | owner | OTLP export target; empty = off | T5.1 | n/a |
