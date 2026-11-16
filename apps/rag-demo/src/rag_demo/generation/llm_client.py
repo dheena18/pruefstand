@@ -17,7 +17,7 @@ from typing import Any, Protocol
 import httpx
 
 from rag_demo.auth import auth_headers
-from rag_demo.errors import GenerationError
+from rag_demo.errors import GenerationError, GenerationTimeoutError
 from rag_demo.models import RagConfig
 
 _log = logging.getLogger(__name__)
@@ -128,6 +128,9 @@ class _HttpChatClient:
                 if not retry:
                     msg = f"generator unreachable ({type(err).__name__})"
                     raise GenerationError(msg) from None
+            except (httpx.ReadTimeout, httpx.WriteTimeout) as err:
+                msg = f"generator unreachable ({type(err).__name__})"
+                raise GenerationTimeoutError(msg) from None
             except httpx.HTTPError as err:
                 msg = f"generator unreachable ({type(err).__name__})"
                 raise GenerationError(msg) from None
