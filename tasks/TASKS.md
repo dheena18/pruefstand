@@ -258,12 +258,12 @@ follow `tasks/PARALLEL-PLAN.md` §2.
 
 | Wave | Tasks (`[x]` = merged and checkpoint green, `[~]` = partly merged) | Milestone |
 | --- | --- | --- |
-| 0 | [ ] T0.7 S1–S2 (human) · [ ] T0.0 | – |
+| 0 | [x] T0.7 S1–S2 (human, owner confirmed 2026-11-16) · [x] T0.0 (owner confirmed 2026-11-16) | – |
 | 1 | [x] T0.1 (2026-10-31, direct push e885fda) | – |
 | 2 | [x] T0.2 · [x] T0.3 · [x] T1.1 · [x] T2.1 · [x] T0.7 | – |
 | 3 | [x] T1.2 · [x] T1.5a · [x] T0.4 · [x] T0.6 (+ S7 quota follow-up) · [ ] T0.5 | – |
 | 4 | [x] T1.6 · [x] T1.5b · [x] T1.3 · [x] T1.4 · [x] T2.2 · [x] T3.1a | – |
-| 5 | [x] T1.7 · [x] T1.8 · [x] T2.3 · [x] T2.4 · [x] T1.13 · [~] T3.1b (phase 1 #46 and candidate pass #54 merged; rest open) | – |
+| 5 | [x] T1.7 · [x] T1.8 · [x] T2.3 · [x] T2.4 · [x] T1.13 · [~] T1.13b (probe limit recalibrated #183; moving the probe into the gating step is an owner-merge workflow PR, open) · [ ] T1.13c (#171 only added the row: the rag-demo 503 after its generator timeout is still retried) · [~] T3.1b (phase 1 #46 and candidate pass #54 merged; rest open) | – |
 | 6 | [x] T1.9 · [x] T4.4 · [x] T3.2 | – |
 | 7 | [x] T1.10 · [x] T3.3 | – |
 | 8 | [x] T1.11 · [x] T2.5 · [x] T5.1 | – |
@@ -273,10 +273,10 @@ follow `tasks/PARALLEL-PLAN.md` §2.
 | 12 | [x] T3.7 · [x] T4.7a · [x] T8.1 | [ ] M2 |
 | 13 | [~] T4.7b (offline parts #138, closed-book #140 merged; rest open) · [x] T8.2a | [ ] M3 |
 | 14 | [ ] T5.3 PR 2 (`legal_hard`) · [~] T6.2a (`llm-proxy` #137, runner timeout #171 merged; rest open) · [x] T8.2b | – |
-| 15 | [x] T5.4 · [ ] T6.2b | – |
-| 16 | [ ] T6.3 · [ ] T7.3 · [ ] T9.1a | – |
+| 15 | [x] T5.4 · [x] T5.4b2 (#181) · [ ] T6.2b | – |
+| 16 | [ ] T6.3 · [~] T7.3 (S0b offline part #180 merged; rest open) · [ ] T9.1a | – |
 | 17 | [ ] T6.5 · [ ] T9.1b | [ ] M4 (MVP) |
-| 18–19 | [ ] T7.1a · [ ] T8.3 · [ ] T7.1b · [ ] T8.4 (optional) | – |
+| 18–19 | [~] T7.1a (slice 1 #182, slice 2 #186 merged; rest open) · [~] T8.3 (open in #144, #184) · [ ] T7.1b · [ ] T8.4 (optional) | – |
 | 20–21 | [ ] T7.2 · [ ] T7.4 · [ ] T8.5 | [ ] M5 · [ ] M6 |
 | 22–23 | [ ] T9.2 · [ ] T9.3 · [ ] T9.4 | [ ] M7 |
 | optional | [ ] T5.3-opt · [ ] T10.1 · [ ] T10.2 · [ ] T10.3 · [ ] T10.4 | – |
