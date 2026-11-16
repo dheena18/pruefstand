@@ -129,3 +129,12 @@ def test_a_data_entry_changes_no_file(worktree: Path) -> None:
     head = _git(REPO, "rev-parse", "HEAD").strip()
     apply_mutation(BY_ID["M16"], worktree, head)
     assert _git(worktree, "status", "--porcelain") == ""
+
+
+def test_data_ref_belongs_to_kind_data_only() -> None:
+    m16 = BY_ID["M16"].model_dump()
+    with pytest.raises(ValidationError, match="data_ref exactly for kind data"):
+        MutationSpec.model_validate({**m16, "kind": "config"})
+    m12 = BY_ID["M12"].model_dump()
+    with pytest.raises(ValidationError, match="data_ref exactly for kind data"):
+        MutationSpec.model_validate({**m12, "kind": "data"})

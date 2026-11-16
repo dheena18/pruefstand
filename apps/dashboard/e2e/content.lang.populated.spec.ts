@@ -17,7 +17,11 @@ test("evidence of a hard fail is lang=de on an en page", async ({ page }) => {
 test("citations and chunk ids in the case panel are lang=de on an en page", async ({ page }) => {
   await page.goto(`/en/runs/${FAIL_RUN}/cases/?case=${FAIL_CASE}`);
   await expect(page.locator("main[data-hydrated]")).toBeAttached();
-  await expect(page.locator("li.chip").first()).toHaveAttribute("lang", "de");
+  const chips = page.locator("li.chip");
+  await expect(chips.first()).toBeAttached();
+  const chipLangs = await chips.evaluateAll((els) => els.map((e) => e.getAttribute("lang")));
+  expect(chipLangs.length).toBeGreaterThan(0);
+  expect(chipLangs.every((lang) => lang === "de")).toBe(true);
   const ids = page.locator(".chunk__id");
   await expect(ids.first()).toBeAttached();
   for (const lang of await ids.evaluateAll((els) => els.map((e) => e.getAttribute("lang")))) {
