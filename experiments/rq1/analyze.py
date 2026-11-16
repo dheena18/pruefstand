@@ -68,6 +68,24 @@ def drop_table(
     Returns:
         ``config, perturbation, metric, drop, ci_low, ci_high, p, n_cases, n_clusters``,
         sorted by the keys.
+
+    Examples:
+        40 clusters, two perturbed cases each: ``typos`` loses 0.2 in every case, ``eszett``
+        loses 0.2 in half of the clusters and nothing in the others.
+
+        >>> diffs = pl.DataFrame({
+        ...     "config": ["c1"] * 160, "metric": ["context_recall"] * 160,
+        ...     "perturbation": ["typos"] * 80 + ["eszett"] * 80,
+        ...     "base_id": [f"b{i}" for i in range(80)] * 2,
+        ...     "cluster_id": [f"k{i // 2}" for i in range(80)] * 2,
+        ...     "diff": [-0.2] * 80 + [-0.2 if (i // 2) % 2 else 0.0 for i in range(80)],
+        ...     "closed_book": [False] * 160,
+        ... })
+        >>> t = drop_table(diffs, n_resamples=999, seed=1234)
+        >>> t.select("perturbation", "drop", "n_cases", "n_clusters").rows()
+        [('eszett', -0.1, 80, 40), ('typos', -0.2, 80, 40)]
+        >>> t["ci_high"].to_list()[1] < 0, round(t["p"][1], 3)
+        (True, 0.001)
     """
     if exclude_closed_book:
         diffs = diffs.filter(~pl.col("closed_book"))
