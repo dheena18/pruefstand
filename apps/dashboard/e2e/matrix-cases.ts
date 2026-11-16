@@ -20,3 +20,15 @@ export const caseRows: Row[] = [
   // question and answers carry the case language (ui-spec 9): the only `lang="en"` text on a de page
   panel("en case in the panel", EN_CASE, { present: ['p.case-text[lang="en"]'] }),
 ];
+
+// T-DISABLED (ui-spec 14.2): the populated build has no demo URL, so Try it is not linked anywhere
+// (UI-25; the page itself belongs to T8.4).
+export const tryDisabledRows: Row[] = [
+  row({
+    page: "Try it",
+    state: "T-DISABLED (no demo URL)",
+    set: "populated",
+    path: "/{l}/",
+    expect: { hydrated: true, absent: ['a[href$="/try/"]', 'a[href*="/try"]'] },
+  }),
+];
