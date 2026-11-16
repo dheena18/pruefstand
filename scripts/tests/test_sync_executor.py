@@ -222,7 +222,7 @@ def test_no_yml_in_the_source_never_wipes_the_private_workflows(box: Sandbox) ->
     box.tag()
     res = box.run(TAG)
     assert res.returncode == 2
-    assert "no *.yml" in res.stderr
+    assert "no *.yml or *.yaml" in res.stderr
     assert _git(box.private, "branch", "--list", f"sync/{TAG}") == ""
 
 
@@ -232,3 +232,23 @@ def test_init_with_an_unreachable_private_repo_fails(box: Sandbox) -> None:
     res = box.run(TAG, "--init", "--dry-run")
     assert res.returncode == 1
     assert "cannot reach" in res.stderr
+
+
+def test_yaml_workflows_sync_too(box: Sandbox) -> None:
+    _write(box.public, "infra/gate-executor/workflows/nightly.yaml", "name: nightly\n")
+    _git(box.public, "add", "-A")
+    _git(box.public, "commit", "-q", "-m", "yaml workflow")
+    box.tag()
+    assert box.run(TAG).returncode == 0
+    tree = box.private_tree(f"sync/{TAG}")
+    assert tree[".github/workflows/nightly.yaml"] == "name: nightly"
+    assert "workflow nightly.yaml" in tree["SYNCED_FROM"]
+
+
+def test_init_names_the_remote_it_pushed_to(box: Sandbox) -> None:
+    box.private = _empty_remote(box)
+    box.tag()
+    res = box.run(TAG, "--init")
+    assert res.returncode == 0, res.stderr
+    assert str(box.private) in res.stdout
+    assert "dheena18/pruefstand-gate" not in res.stdout
