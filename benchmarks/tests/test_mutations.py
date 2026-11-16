@@ -33,7 +33,7 @@ REPO = MUTATIONS_ROOT.parents[1]
 SPECS = load_all()
 BY_ID = {spec.id: spec for spec in SPECS}
 SLICE_1 = (
-    {"M01", "M04", "M05", "M06", "M07", "M08", "M09", "M10"}
+    {"M01", "M02", "M04", "M05", "M06", "M07", "M08", "M09", "M10"}
     | {f"M{i}" for i in range(12, 21)}
     | {f"N0{i}" for i in range(1, 9)}
 )

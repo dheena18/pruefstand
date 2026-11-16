@@ -12,6 +12,7 @@ one entry on a fresh worktree with
 | ID | Title | Kind | Change | Tier | Splits | Stratum | tier1 | Expected | Metrics |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | M01 | Remove the reranker | config | overrides | pr | smoke, core, robust_pr | statistical | no | FAIL | `ndcg_at_k` |
+| M02 | Fixed 256-token sub-chunks instead of per-paragraph chunks | config | overrides | pr | smoke, core, robust_pr | statistical | no | FAIL | `answer_correctness`, `faithfulness` |
 | M04 | Compound splitting off in the BM25 analyzer | config | overrides | pr | smoke, core, robust_pr | statistical | no | FAIL | `context_recall` |
 | M05 | Delete the "cite the paragraph" instruction | config | overrides | pr | smoke, core, robust_pr | statistical | no | FAIL | `citation_recall` |
 | M06 | Delete the "say when you don't know" instruction | config | overrides | nightly | full | statistical | no | FAIL | `refusal_correct` |
