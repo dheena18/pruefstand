@@ -18,6 +18,8 @@ from mutations.schema import (
 )
 from pydantic import ValidationError
 
+from rag_demo.models import RagConfig
+
 REPO = MUTATIONS_ROOT.parents[1]
 SPECS = load_all()
 BY_ID = {spec.id: spec for spec in SPECS}
@@ -129,3 +131,16 @@ def test_a_data_entry_changes_no_file(worktree: Path) -> None:
     head = _git(REPO, "rev-parse", "HEAD").strip()
     apply_mutation(BY_ID["M16"], worktree, head)
     assert _git(worktree, "status", "--porcelain") == ""
+
+
+def test_m02_reindexes_with_256_token_pieces(worktree: Path) -> None:
+    m02 = BY_ID["M02"]
+    assert m02.needs_reindex
+    assert m02.expected.secondary_metrics == ("evidence_recall",)
+    head = _git(REPO, "rev-parse", "HEAD").strip()
+    apply_mutation(m02, worktree, head)
+    assert _git(worktree, "diff", "--name-only").split() == [GPU_CONFIG]
+    cfg = RagConfig.model_validate(
+        yaml.safe_load((worktree / GPU_CONFIG).read_text(encoding="utf-8"))
+    )
+    assert (cfg.chunking.strategy, cfg.chunking.size) == ("fixed_tokens", 256)

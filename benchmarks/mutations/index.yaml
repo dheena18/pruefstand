@@ -1,8 +1,8 @@
 # RQ3 mutation benchmark (T7.1a): every patch applies at base_sha; rag_overrides merge into
-# apps/rag-demo/configs/rag.gpu.yaml (and rag.yaml for tier1 entries). M02, M03: later slice (D1261);
+# apps/rag-demo/configs/rag.gpu.yaml (and rag.yaml for tier1 entries). M03: later slice (D1261, D1263);
 # N10 is dropped (one Ollama server for generator and judge, ADR-0018; D1269).
 base_sha: 8186931af266d5c9d39b4fc0abb3e02a2a171e35
-entries: [M01, M04, M05, M06, M07, M08, M09, M10, M12, M13, M14, M15, M16, M17, M18, M19, M20, N01, N02, N03, N04, N05, N06, N07, N08]
+entries: [M01, M02, M04, M05, M06, M07, M08, M09, M10, M12, M13, M14, M15, M16, M17, M18, M19, M20, N01, N02, N03, N04, N05, N06, N07, N08]
 pending:
   M11: >-
     needs a second, smaller Qwen generator in the catalogue and on the cluster disk (T3.1b pins it); nothing is
