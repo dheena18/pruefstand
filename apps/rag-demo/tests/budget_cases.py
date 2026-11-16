@@ -20,6 +20,25 @@ Q_NOTICE = "Welche Kündigungsfrist gilt nach zwei Jahren Betriebszugehörigkeit
 Q_SICK = "Wann darf der Arbeitgeber mir kündigen, wenn ich krank bin?"
 
 
+def portable_path(path: Path, home: Path | None = None) -> str:
+    """Return ``path`` as a fixture may record it: ``~/...`` under the home directory.
+
+    A committed fixture must never name the recording user's home directory.
+
+    Args:
+        path: the local file (e.g. the generator tokenizer).
+        home: the home directory (default ``Path.home()``).
+
+    Returns:
+        ``~/<relative path>`` when ``path`` lies under ``home``, else ``path`` unchanged.
+    """
+    home = home or Path.home()
+    try:
+        return "~/" + path.resolve().relative_to(home.resolve()).as_posix()
+    except ValueError:
+        return path.as_posix()
+
+
 class Case(NamedTuple):
     """One calibration prompt: a question over the first ``hits`` chunks of the slice."""
 
