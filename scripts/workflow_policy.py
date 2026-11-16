@@ -109,6 +109,11 @@ OTHER_WRITE: dict[tuple[str, str, str], str] = {
         "comment",
         "pull-requests",
     ): "upserts the one bot comment on same-repo PRs; checks out the BASE sha only",
+    (
+        "executor-health.yml",
+        "check-heartbeat",
+        "issues",
+    ): "T6.2b S8 (D1092): opens/comments/closes the executor alert issues; no secrets",
 }
 
 # (file, trigger) -> reason. Triggers that run with base-repo rights on attacker-influenced input.
