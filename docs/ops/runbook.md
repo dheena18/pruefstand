@@ -139,7 +139,7 @@ Symptoms: issue `executor-down` opened by `executor-health.yml` (heartbeat older
 flag false for more than 2 h by its `<field>_false_since`; health-field alerts are suppressed while the heartbeat
 says `maintenance: true`, e.g. a model swap, A13-M4), issue `nightly skipped` (no nightly for
 > 26 h, or `last_nightly_status` = `skipped: …` / `aborted: window_exceeded`), gated PRs stuck at
-`pending` (incl. "executor busy (GPU lock held); re-dispatch"), or `pruefstand/gate` = `error` "executor unhealthy:
+`pending` (incl. "executor busy (GPU lock held); dispatch again"), or `pruefstand/gate` = `error` "executor unhealthy:
 <reason>" / "executor infra error: <summary>; retrying once" (an infra failure mid-run, Y5.2), or
 "executor infra error: <summary>; re-dispatch to retry" (the retry failed too, A12-M1).
 Non-gated PRs are not affected: `gate-router.yml` posts their status on a hosted

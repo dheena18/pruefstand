@@ -195,8 +195,8 @@ reboot needs no manual step. Outcomes:
 
 | Situation | `pruefstand/gate` on the affected PR | Recorded in `processed.jsonl` |
 | --- | --- | --- |
-| `MAINTENANCE` file present | `pending` "executor in maintenance; re-dispatch later" | no |
-| lock timeout | `pending` "executor busy (GPU lock held); re-dispatch" | no |
+| `MAINTENANCE` file present | `pending` "executor in maintenance; dispatch again later" (D1064) | no |
+| lock timeout | `pending` "executor busy (GPU lock held); dispatch again" (D1064) | no |
 | preflight fails under the lock | `error` "executor unhealthy: <reason>" | no |
 | **infra failure during the run** (Y5.2): Ollama down, tunnel lost, data root unavailable, `llm-proxy` or judge upstream errors > 0, a resident digest changed, or a **model reload during the run** | run `stop_reason="aborted"` with `infra_error`; `error` "executor infra error: <summary>; retrying once" (the interfaces §10 text, never `failure`); **one** automatic retry in the same job after `health.sh --repair`; if the retry completes, its result is posted | only the retry's result, if it completes |
 | **second infra failure** (the retry also hits one; A12-M1, the single rule) | `error` "executor infra error: <summary>; re-dispatch to retry" | **yes**: a line with `result: "error"`; only a new owner dispatch runs the PR again; no all-day 2 × 90-min loop |
