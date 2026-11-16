@@ -1,4 +1,4 @@
-"""The executor compose stack (T6.2a S4, D1020): qdrant and rerank-cpu next to llm-proxy.
+"""The executor compose stack (T6.2a S4, D1089): qdrant and rerank-cpu next to llm-proxy.
 
 Static checks of ``infra/gate-executor/compose.executor.yml``; the live network checks are the
 T6.2a ``[DOCKER]`` Done-when items.

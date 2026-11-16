@@ -1,5 +1,5 @@
 # Executor stack on the VM (T6.2a; project name pruefstand-exec, started by the orchestrator as user pruefstand).
-# qdrant + rerank-cpu (S4, D1020) and llm-proxy (S4b). The candidate container (started by the orchestrator with
+# qdrant + rerank-cpu (S4, D1089) and llm-proxy (S4b). The candidate container (started by the orchestrator with
 # `docker run`, never from this file) joins only the internal network gate-net and reaches the three by name.
 # Only qdrant publishes host ports, on loopback with the executor's default ports (the owner's dev stack uses
 # PORT_OFFSET=10000, Y1.4/D214); rerank-cpu and llm-proxy publish none (D242).

@@ -112,7 +112,7 @@ half). Re-run those steps only to rebuild the VM.
    `pruefstand` (T3.1a, T6.2a); ports in `docker.md` §3. Your dev stack uses `PORT_OFFSET=10000`; run
    `make ports-env` once so even a raw `docker compose … up` binds the dev ports, and `make check-ports`
    to confirm no dev container sits on a default port (A12-M4).
-   The executor stack is `infra/gate-executor/compose.executor.yml` (project `pruefstand-exec`, D1020): set
+   The executor stack is `infra/gate-executor/compose.executor.yml` (project `pruefstand-exec`, D1089): set
    `QDRANT_API_KEY` (Qdrant admin key, `openssl rand -hex 32`) and `PRUEFSTAND_HOME` in `runner.env`; fill the
    rerank weights volume once with egress, because `gate-net` has none, [pruefstand]:
    `docker volume create pruefstand-rerank-models` and one `rerank-cpu` start from the dev stack with
