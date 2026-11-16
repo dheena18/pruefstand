@@ -13,6 +13,8 @@ export interface Expect {
   states?: string[];
   /** `data-state` values that must be absent. */
   absentStates?: string[];
+  /** CSS selectors that must match at least one element. */
+  present?: string[];
   /** CSS selectors that must have no match. */
   absent?: string[];
   /** Query-driven page: wait for `main[data-hydrated]` first (ui-spec §6). */

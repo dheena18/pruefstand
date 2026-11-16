@@ -273,27 +273,9 @@ jobs:
       - name: Live tests (stack only)
         env:
           PRUEFSTAND_TARGET_URL: http://localhost:8000
-          QUALITY_TEST: apps/rag-demo/tests/live/test_live_app.py::test_smoke_questions_cite_the_expected_norm_within_the_latency_budget
+        # T1.13b (D1262, D1264): the generator-quality probe (cites >= 6/10, p95 <= 25 s) gates again.
         run: |
-          uv run pytest -m "live and not e2e and not gpu and not network" packages/pruefstand/tests apps/rag-demo/tests/live --deselect "$QUALITY_TEST"
-      # T1.13's generator-quality probe (cites >= 6/10, p95 <= 15 s) was calibrated on the VM's 4 threads; the 0.5B
-      # fallback model scores 5/10 with p95 21 s on the hosted runner. It is reported, not gating, until T1.13b
-      # recalibrates it and moves it back into the gating step above (D505). Result: job summary and comment.md.
-      - name: Generator quality probe (reported, not gating; T1.13b)
-        continue-on-error: true
-        env:
-          PRUEFSTAND_TARGET_URL: http://localhost:8000
-          QUALITY_TEST: apps/rag-demo/tests/live/test_live_app.py::test_smoke_questions_cite_the_expected_norm_within_the_latency_budget
-        run: |
-          rc=0
-          uv run pytest -m "live and not e2e and not gpu and not network" -s "$QUALITY_TEST" > probe.log 2>&1 || rc=$?
-          tail -n 15 probe.log
-          measured="$(grep -om1 "smoke: cited.*" probe.log || echo 'no measurement')"
-          if [ "$rc" -eq 0 ]; then verdict="passed"; else verdict="FAILED"; fi
-          line="Generator quality probe (reported, not gating, tracked as T1.13b): ${verdict} - ${measured}"
-          echo "$line" >> "$GITHUB_STEP_SUMMARY"
-          if [ -f comment.md ]; then sed -i "1a > ${line}" comment.md; fi
-          exit "$rc"
+          uv run pytest -m "live and not e2e and not gpu and not network" packages/pruefstand/tests apps/rag-demo/tests/live
       - name: Wall time and judge calls
         if: always() && steps.gate.outputs.run_dir != ''
         env:

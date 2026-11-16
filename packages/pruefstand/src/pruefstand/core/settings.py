@@ -2,9 +2,13 @@
 
 import os
 from pathlib import Path
+from typing import Literal
 
 from pydantic import AliasChoices, Field, SecretStr
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+DatagenBackend = Literal["vm", "github"]
+"""Where public-text datagen runs (D1201): the VM CPU model or GitHub Models (retired)."""
 
 
 def _default_cache_dir() -> Path:
@@ -29,6 +33,10 @@ class PruefstandSettings(BaseSettings):
         gh_models_token: ``PRUEFSTAND_GH_MODELS_TOKEN``; the only GitHub Models credential (D333).
         hf_token: ``HF_TOKEN``, else the alias ``PRUEFSTAND_HF_TOKEN``.
         judge_base_url: ``PRUEFSTAND_JUDGE_BASE_URL``; OpenAI-compatible local judge endpoint.
+        datagen_base_url: ``PRUEFSTAND_DATAGEN_BASE_URL``; the VM datagen model (default
+            ``http://127.0.0.1:18091/v1``, the port of ``vm_llm.sh``); never the judge URL, D1201.
+        datagen_backend: ``PRUEFSTAND_DATAGEN_BACKEND``; ``vm`` (default; the on-demand CPU
+            model of ``scripts/models/vm_llm.sh``) or ``github`` (GitHub Models, retired), D1201.
         nonce_key: ``PRUEFSTAND_NONCE_KEY``; HMAC key of the judge-prompt nonces (T5.2a).
         attack_key: ``PRUEFSTAND_ATTACK_KEY``; executor-only HMAC key of injection markers (T4.6).
         log_json: ``PRUEFSTAND_LOG_JSON``; defaults to true when ``CI`` is set.
@@ -58,6 +66,8 @@ class PruefstandSettings(BaseSettings):
         default=None, validation_alias=AliasChoices("HF_TOKEN", "PRUEFSTAND_HF_TOKEN")
     )
     judge_base_url: str | None = None
+    datagen_backend: DatagenBackend = "vm"
+    datagen_base_url: str = "http://127.0.0.1:18091/v1"
     nonce_key: SecretStr | None = None
     attack_key: SecretStr | None = None
     log_json: bool = Field(default_factory=_default_log_json)

@@ -10,7 +10,7 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from rag_demo.catalogue import check_against_catalogue, load_catalogue
 from rag_demo.errors import ConfigError
-from rag_demo.models import RagConfig
+from rag_demo.models import ChunkingCfg, RagConfig
 
 PACKAGE_DIR = Path(__file__).resolve().parent
 
@@ -120,7 +120,10 @@ def config_hash(cfg: RagConfig, prompts_root: Path | None = None) -> str:
     Returns:
         16 hex characters; changes with any config field and with any byte of the prompt file.
     """
-    canonical = json.dumps(cfg.model_dump(mode="json"), sort_keys=True, separators=(",", ":"))
+    dump = cfg.model_dump(mode="json")
+    if cfg.chunking == ChunkingCfg():  # the default must not move any committed config hash (T3.4b)
+        del dump["chunking"]
+    canonical = json.dumps(dump, sort_keys=True, separators=(",", ":"))
     digest = hashlib.sha256(canonical.encode("utf-8"))
     digest.update(b"\0")
     digest.update(prompt_path(cfg.prompt_file, prompts_root).read_bytes())

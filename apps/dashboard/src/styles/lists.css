@@ -39,6 +39,10 @@ table.data tbody th {
 .sort-btn {
   all: unset;
   cursor: pointer;
+  /* WCAG 2.5.8: a target of at least 24 x 24 px */
+  display: inline-flex;
+  align-items: center;
+  min-height: 24px;
   font-weight: inherit;
   border-radius: var(--radius-sm);
 }

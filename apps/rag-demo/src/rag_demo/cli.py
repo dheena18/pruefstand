@@ -14,6 +14,7 @@ from rag_demo.errors import ConfigError, RagDemoError
 from rag_demo.index.indexer import Indexer, IndexReport, IndexTarget
 from rag_demo.index.naming import ALIAS
 from rag_demo.index.qdrant_admin import QdrantAdmin
+from rag_demo.index.tokens import load_token_counter
 from rag_demo.models import RagConfig
 from rag_demo.wiring import build_analyzer, build_catalogue, build_dense, resolve_embed_url
 
@@ -109,7 +110,14 @@ def _run(
         msg = "--corpus is required"
         raise ConfigError(msg)
     cfg = _load(config, encoder, settings)
-    target = IndexTarget(cfg.embed.model, collection=collection, alias=ALIAS if alias else None)
+    counter = load_token_counter(settings.embed_tokenizer) if settings.embed_tokenizer else None
+    target = IndexTarget(
+        cfg.embed.model,
+        collection=collection,
+        alias=ALIAS if alias else None,
+        chunking=cfg.chunking,
+        count_tokens=counter,
+    )
     indexer = _indexer(cfg, settings, target)
     indexer.index(corpus)
     if indexer.last_report is None:  # pragma: no cover  (index always sets it)

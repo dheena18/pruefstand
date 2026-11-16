@@ -165,3 +165,19 @@ def test_the_metadata_read_sends_the_api_key() -> None:
     route = respx.get(URL).mock(return_value=_info(META))
     CorpusMeta(QdrantStore(BASE, "chunks_active", api_key="k9"), EXPECTED).get()
     assert route.calls.last.request.headers["api-key"] == "k9"
+
+
+@respx.mock
+def test_an_index_built_with_another_chunking_is_refused_in_both_directions() -> None:
+    fixed = {"strategy": "fixed_tokens", "size": 512}
+    per_section = {"strategy": "per_section", "size": None}
+    respx.get(URL).mock(return_value=_info(META))  # an index from before T3.4b: per_section
+    CorpusMeta(QdrantStore(BASE, "chunks_active"), EXPECTED, expected_chunking=per_section).get()
+    with pytest.raises(IndexMismatchError, match="chunking"):
+        CorpusMeta(QdrantStore(BASE, "chunks_active"), EXPECTED, expected_chunking=fixed).get()
+    respx.get(URL).mock(return_value=_info({**META, "chunking": fixed}))
+    with pytest.raises(IndexMismatchError, match="chunking"):
+        CorpusMeta(
+            QdrantStore(BASE, "chunks_active"), EXPECTED, expected_chunking=per_section
+        ).get()
+    CorpusMeta(QdrantStore(BASE, "chunks_active"), EXPECTED, expected_chunking=fixed).get()
