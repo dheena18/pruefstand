@@ -1,4 +1,4 @@
-"""gate-router.yml (T6.2b S1b, D1022): inlined rules = generator; Python and JS agree."""
+"""gate-router.yml (T6.2b S1b, D1088): inlined rules = generator; Python and JS agree."""
 
 import json
 import shutil

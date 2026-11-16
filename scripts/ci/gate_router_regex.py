@@ -1,4 +1,4 @@
-"""The rules ``gate-router.yml`` inlines (T6.2b S1b, X2.2, P4.2, D1022), generated once.
+"""The rules ``gate-router.yml`` inlines (T6.2b S1b, X2.2, P4.2, D1088), generated once.
 
 ``gate-router.yml`` cannot read repository files (no checkout of any ref), so the gated-path list
 (``gated_paths.txt``, the ci-cd.md §5 list) and the release-exempt rules are inlined in the workflow

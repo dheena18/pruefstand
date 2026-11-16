@@ -1,4 +1,4 @@
-# gate-router.yml (T6.2b S1b; X2.2, round 13 P1.1/P4.2, D1022). OWNER-MERGE.
+# gate-router.yml (T6.2b S1b; X2.2, round 13 P1.1/P4.2, D1088). OWNER-MERGE.
 # The only pull_request_target workflow: it never checks out or runs PR code. It reads the PR's changed files from
 # the REST API and posts the required status `pruefstand/gate` with a short-lived `pruefstand-bot` App token
 # (environment `gate-router`, deployment branch main only; the ruleset accepts `pruefstand/gate` only from that App):
