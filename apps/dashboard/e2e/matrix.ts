@@ -17,6 +17,8 @@ export interface Expect {
   absent?: string[];
   /** Query-driven page: wait for `main[data-hydrated]` first (ui-spec §6). */
   hydrated?: boolean;
+  /** CSS selectors that must match at least one element. */
+  present?: string[];
   /** Static root document: follow the meta refresh and expect to end on this path. */
   redirectTo?: string;
   /** `<meta name="robots" content="noindex">` present. */

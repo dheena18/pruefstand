@@ -93,3 +93,12 @@ export const PRUNED_RUN = (
 function fail(role: string): never {
   throw new Error(`fixture role ${role} not found`);
 }
+
+const passShard0 = (
+  JSON.parse(readFileSync(path.join(root, "cases", PASS_RUN, "0.json"), "utf8")) as {
+    cases: { case_id: string; lang: string; refused: boolean }[];
+  }
+).cases;
+/** A refused case and an `en` case of the tier-1 PASS run (shard 0), shown in the cases panel. */
+export const REFUSED_CASE = passShard0.find((c) => c.refused)?.case_id as string;
+export const EN_CASE = passShard0.find((c) => c.lang === "en")?.case_id as string;
