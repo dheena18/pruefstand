@@ -1838,7 +1838,19 @@ class RagConfig(BaseModel)          # chosen by RAG_CONFIG: apps/rag-demo/config
                                     # apps/rag-demo/configs/rag.gpu.yaml = tier-2 A40 profile (T3.2), the file the executor
                                     # reads from the PR and the one T6.5 demos / T7.1a tier-2 mutations edit (R9 X3.15).
                                     # Fields: generator model/endpoint, embedding model, top_k, rerank on/off + top_n,
-                                    # hybrid on/off, compound_split on/off, chunking strategy, prompt file, fusion
+                                    # hybrid on/off, compound_split on/off, chunking (below), prompt file, fusion
+                                    # chunking: ChunkingCfg = {strategy: "per_section" | "fixed_tokens", size: int | None}
+                                    # (T3.4b, D1301). Default per_section = one point per corpus chunk (§/Absatz), every
+                                    # committed config and its config_hash unchanged. fixed_tokens needs size in [64, 4096]
+                                    # (forbidden with per_section): each chunk is cut into consecutive pieces of at most
+                                    # `size` tokens of the EMBEDDED text (citation key + piece; embedding-model tokenizer,
+                                    # word lower bound without one), no overlap, cut at the last sentence end in the second
+                                    # half of the window (German legal abbreviations and ordinals are no sentence ends),
+                                    # else hard. A piece keeps doc_id, tenant, citation_key, lang, section; chunk_id is
+                                    # <chunk_id>#p<n> (a chunk that fits keeps its id). The retrieved/stored `text` is the
+                                    # piece BODY only: the citation key is added at embedding time, so evidence_recall never
+                                    # sees it. Collection metadata records chunking; a collection name gets __ft<size>;
+                                    # a retriever refuses an index built with another chunking.
                                     # R11 D216: generator and embed each have api_key_env: str | None (default
                                     # "PRUEFSTAND_CANDIDATE_API_KEY"); when the variable is set and non-empty the client
                                     # sends Authorization: Bearer <value> to LLM_PROXY_URL; unset/empty -> no header (tier 1);
