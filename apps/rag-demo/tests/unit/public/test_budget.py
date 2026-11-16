@@ -1,8 +1,11 @@
 """T8.4: the daily token and request budget (reserve, then settle)."""
 
+import threading
+import time
 from concurrent.futures import ThreadPoolExecutor
 
-from rag_demo.public.budget import DailyBudget
+from rag_demo.public.budget import DailyBudget, Reservation
+from rag_demo.public.errors import Rejection
 
 
 class Clock:
@@ -16,56 +19,87 @@ class Clock:
 def test_reaching_the_token_cap_is_budget_exhausted_until_midnight_utc() -> None:
     clock = Clock(86400 * 30 + 3600.0)  # 01:00 UTC
     budget = DailyBudget(tokens=1000, clock=clock)
-    assert budget.reserve(600) is None
+    assert not isinstance(budget.reserve(600), Rejection)
     refused = budget.reserve(600)
-    assert refused is not None
+    assert isinstance(refused, Rejection)
     assert (refused.code, refused.status) == ("budget_exhausted", 503)
     assert refused.retry_after_s == 86400 - 3600
 
 
 def test_ten_concurrent_reserves_admit_at_most_five() -> None:
-    budget = DailyBudget(tokens=3000)
+    """The clock sleeps inside the critical section, so a removed lock overshoots."""
+
+    def slow_clock() -> float:
+        time.sleep(0.005)
+        return 86400 * 30 + 1.0
+
+    budget = DailyBudget(tokens=3000, clock=slow_clock)
+    barrier = threading.Barrier(10)
+
+    def go(_: int) -> Rejection | Reservation:
+        barrier.wait()
+        return budget.reserve(512)
+
     with ThreadPoolExecutor(10) as pool:
-        results = list(pool.map(lambda _: budget.reserve(512), range(10)))
-    assert sum(r is None for r in results) == 5  # 5 x 512 = 2560, a sixth would be 3072
+        results = list(pool.map(go, range(10)))
+    assert (
+        sum(not isinstance(r, Rejection) for r in results) == 5
+    )  # 5 x 512 = 2560; a sixth is 3072
+
+
+def test_a_settle_across_midnight_leaves_the_new_days_reservations_alone() -> None:
+    """Opus B1: a settle of yesterday's reservation must not erase today's."""
+    clock = Clock(86400 * 30 + 86399.0)  # 23:59:59
+    budget = DailyBudget(tokens=1000, clock=clock)
+    a = budget.reserve(512)
+    assert not isinstance(a, Rejection)
+    clock.now += 2  # just after midnight: a new day
+    b = budget.reserve(512)
+    assert not isinstance(b, Rejection)
+    budget.settle(a, 100)  # yesterday's generation ends: today's 512 stay reserved
+    assert isinstance(budget.reserve(900), Rejection)  # 512 + 900 would be 1412 > 1000
+    budget.settle(b, 100)
+    assert not isinstance(budget.reserve(900), Rejection)
 
 
 def test_settle_refunds_the_unused_reserve() -> None:
     budget = DailyBudget(tokens=1000)
-    assert budget.reserve(800) is None
-    assert budget.reserve(800) is not None
-    budget.settle(800, 100)  # only 100 tokens were generated
-    assert budget.reserve(800) is None
+    first = budget.reserve(800)
+    assert not isinstance(first, Rejection)
+    assert isinstance(budget.reserve(800), Rejection)
+    budget.settle(first, 100)  # only 100 tokens were generated
+    assert not isinstance(budget.reserve(800), Rejection)
 
 
 def test_settle_never_charges_more_than_the_reservation() -> None:
     budget = DailyBudget(tokens=1000)
-    assert budget.reserve(500) is None
-    budget.settle(500, 9999)
-    assert budget.reserve(500) is None
-    assert budget.reserve(1) is not None
+    ticket = budget.reserve(500)
+    assert not isinstance(ticket, Rejection)
+    budget.settle(ticket, 9999)
+    assert not isinstance(budget.reserve(500), Rejection)
+    assert isinstance(budget.reserve(1), Rejection)
 
 
 def test_the_request_cap_is_budget_exhausted() -> None:
     budget = DailyBudget(requests=2)
-    assert budget.reserve(1) is None
-    assert budget.reserve(1) is None
+    assert not isinstance(budget.reserve(1), Rejection)
+    assert not isinstance(budget.reserve(1), Rejection)
     refused = budget.reserve(1)
-    assert refused is not None
+    assert isinstance(refused, Rejection)
     assert refused.code == "budget_exhausted"
 
 
 def test_a_new_utc_day_starts_with_a_full_budget() -> None:
     clock = Clock(86400 * 30 + 10.0)
     budget = DailyBudget(tokens=100, clock=clock)
-    assert budget.reserve(100) is None
-    assert budget.reserve(1) is not None
+    assert not isinstance(budget.reserve(100), Rejection)
+    assert isinstance(budget.reserve(1), Rejection)
     clock.now += 86400
-    assert budget.reserve(100) is None
+    assert not isinstance(budget.reserve(100), Rejection)
 
 
 def test_reset_gives_back_a_full_budget() -> None:
     budget = DailyBudget(tokens=100)
-    assert budget.reserve(100) is None
+    assert not isinstance(budget.reserve(100), Rejection)
     budget.reset()
-    assert budget.reserve(100) is None
+    assert not isinstance(budget.reserve(100), Rejection)

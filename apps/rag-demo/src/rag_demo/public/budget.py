@@ -14,6 +14,19 @@ from rag_demo.public.errors import Rejection
 DAY_S = 86400
 
 
+@dataclass(frozen=True)
+class Reservation:
+    """A reservation of one request: the UTC day it was made on and the tokens held.
+
+    Attributes:
+        day: UTC day number of the reservation; a settle on another day does nothing.
+        tokens: The worst case reserved.
+    """
+
+    day: int
+    tokens: int
+
+
 @dataclass
 class DailyBudget:
     """Tokens and requests per UTC day.
@@ -32,8 +45,12 @@ class DailyBudget:
     _used: int = field(default=0, repr=False)
     _count: int = field(default=0, repr=False)
 
-    def reserve(self, worst_case: int) -> Rejection | None:
-        """Reserve ``worst_case`` tokens and count one request, else ``budget_exhausted``."""
+    def reserve(self, worst_case: int) -> Reservation | Rejection:
+        """Reserve ``worst_case`` tokens and count one request, else ``budget_exhausted``.
+
+        Returns:
+            The ``Reservation`` to settle later, or the ``Rejection``.
+        """
         now = self.clock()
         with self._lock:
             self._roll(now)
@@ -41,13 +58,20 @@ class DailyBudget:
                 return Rejection("budget_exhausted", max(1, int(DAY_S - now % DAY_S)))
             self._used += worst_case
             self._count += 1
-            return None
+            return Reservation(self._day, worst_case)
 
-    def settle(self, reserved: int, used: int) -> None:
-        """Replace a reservation by the tokens really generated (never above the reservation)."""
+    def settle(self, reservation: Reservation, used: int) -> None:
+        """Replace a reservation by the tokens really generated (never above the reservation).
+
+        A reservation of an earlier UTC day is ignored: that day's counters are gone, and
+        subtracting from today's would erase reservations that are still running (Opus B1).
+        """
         with self._lock:
             self._roll(self.clock())
-            self._used = max(0, self._used - reserved + min(used, reserved))
+            if reservation.day != self._day:
+                return
+            kept = min(used, reservation.tokens)
+            self._used = max(0, self._used - reservation.tokens + kept)
 
     def reset(self) -> None:
         """Back to a full budget (test-only reset)."""

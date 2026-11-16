@@ -115,3 +115,10 @@ def test_ipv6_addresses_of_one_64_prefix_share_a_key() -> None:
 def test_an_unparsable_address_shares_one_unknown_key() -> None:
     assert client_key("garbage", None, 0) == "unknown"
     assert client_key(None, None, 1) == "unknown"
+
+
+def test_a_hop_with_a_port_or_brackets_is_parsed_not_collapsed_to_unknown() -> None:
+    assert client_key(None, "1.2.3.4:5555", 1) == "1.2.3.4"
+    assert client_key(None, "[2001:db8:aa:bb::1]:443", 1) == "2001:db8:aa:bb::/64"
+    assert client_key(None, "[2001:db8:aa:bb::1]", 1) == "2001:db8:aa:bb::/64"
+    assert client_key(None, "::ffff:1.2.3.4", 1) == "1.2.3.4"  # an IPv4-mapped address

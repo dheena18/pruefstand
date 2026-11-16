@@ -37,6 +37,10 @@ def client_key(peer: str | None, forwarded_for: str | None, hops: int) -> str:
     '10.0.0.1'
     >>> client_key("10.0.0.1", "2001:db8:1:2:aaaa::1", 1)
     '2001:db8:1:2::/64'
+    >>> client_key(None, "[2001:db8:1:2::9]:443", 1)
+    '2001:db8:1:2::/64'
+    >>> client_key(None, "1.2.3.4:5555", 1)
+    '1.2.3.4'
     """
     raw = peer
     if hops > 0 and forwarded_for:
@@ -46,9 +50,18 @@ def client_key(peer: str | None, forwarded_for: str | None, hops: int) -> str:
     return _normalise(raw)
 
 
+def _strip_port(text: str) -> str:
+    """``[2001:db8::1]:443`` -> ``2001:db8::1``; ``1.2.3.4:5678`` -> ``1.2.3.4``; else unchanged."""
+    if text.startswith("["):
+        return text[1:].split("]", 1)[0]
+    if text.count(":") == 1:  # an IPv4 address with a port (a bare IPv6 address has more colons)
+        return text.split(":", 1)[0]
+    return text
+
+
 def _normalise(raw: str | None) -> str:
     try:
-        addr = ipaddress.ip_address((raw or "").strip())
+        addr = ipaddress.ip_address(_strip_port((raw or "").strip()))
     except ValueError:
         return "unknown"
     if isinstance(addr, ipaddress.IPv6Address):

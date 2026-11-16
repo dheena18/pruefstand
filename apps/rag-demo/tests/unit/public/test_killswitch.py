@@ -24,3 +24,15 @@ def test_the_flag_file_switches_it_off_and_removing_it_switches_it_on(tmp_path: 
     assert demo_disabled({}, flag) is True  # checked per call, no restart
     flag.unlink()
     assert demo_disabled({}, flag) is False
+
+
+def test_the_process_environment_is_read_per_call_not_cached_at_import(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    flag = tmp_path / "none"
+    monkeypatch.delenv("DEMO_ENABLED", raising=False)
+    assert demo_disabled(None, flag) is False
+    monkeypatch.setenv("DEMO_ENABLED", "false")
+    assert demo_disabled(None, flag) is True  # set after import: a cached environ would miss it
+    monkeypatch.setenv("DEMO_ENABLED", "true")
+    assert demo_disabled(None, flag) is False
