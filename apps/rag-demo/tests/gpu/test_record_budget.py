@@ -17,7 +17,14 @@ from pathlib import Path
 
 import httpx
 import pytest
-from budget_cases import CASES, FIXTURE, case_messages, gpu_config, messages_sha256
+from budget_cases import (
+    CASES,
+    FIXTURE,
+    case_messages,
+    gpu_config,
+    messages_sha256,
+    portable_path,
+)
 from rd_support import MODEL_DIR
 
 from rag_demo.generation.budget import count_prompt_tokens
@@ -65,7 +72,7 @@ def test_record_prompt_eval_counts() -> None:
             check=True,
         ).stdout.strip(),
         "tokenizer": {
-            "path": str(TOKENIZER),
+            "path": portable_path(TOKENIZER),
             "sha256": hashlib.sha256(TOKENIZER.read_bytes()).hexdigest(),
         },
         "cases": rows,
