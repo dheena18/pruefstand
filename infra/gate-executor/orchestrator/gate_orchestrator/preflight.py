@@ -1,8 +1,8 @@
 """Preflight under the GPU lock (D200, D208, D227, D228, ADR-0019): tunnel, ``health.sh --repair``.
 
 Steps: ``systemctl is-active pruefstand-tunnel`` (system unit; if inactive one
-``sudo systemctl restart pruefstand-tunnel``, the only sudoers line of ``pruefstand``) → ``health.sh
---repair --mode <job mode>`` with ``PRUEFSTAND_LOCK_HELD=1``. Any failure is posted with
+``sudo -n systemctl restart pruefstand-tunnel``, the only sudoers line of ``pruefstand``) →
+``health.sh --repair --mode <job mode>`` with ``PRUEFSTAND_LOCK_HELD=1``. Any failure is posted with
 ``post_status(sha, "error", "executor unhealthy: <reason>")`` (never ``set_check``) and nothing is
 recorded in ``processed.jsonl``. The command runner is injected (tests never call systemd or ssh).
 """
@@ -45,19 +45,42 @@ class Preflight:
         return self.reason is None
 
 
-def _first_fail(csv: str) -> str:
-    for line in csv.splitlines():
-        parts = line.split(",", 2)
-        if len(parts) == 3 and parts[1] == "FAIL":
-            return f"{parts[0]} {parts[2]}".strip()
-    return ""
+# The FAIL row that explains each exit code (row formats of infra/gpu/health.sh + gpu_health.py,
+# D1079): (check prefixes, text the detail must contain or "").
+ROW_FOR_EXIT: dict[int, tuple[tuple[str, ...], str]] = {
+    10: (("vram:",), ""),
+    11: (("endpoint:", "resident:", "second-server"), ""),
+    12: (("cluster-status",), ""),
+    13: (("resident:",), "differs from the catalogue"),
+    14: (("bin-dir",), ""),
+    15: (("placement:",), ""),
+    DATA_ROOT_EXIT: (("data-root",), ""),
+}
+
+
+def fail_row(csv: str, code: int) -> str:
+    """``"<check> <detail>"`` of the FAIL row matching ``code`` (else the first FAIL row)."""
+    prefixes, needle = ROW_FOR_EXIT.get(code, ((), ""))
+    fails = [
+        p
+        for p in (line.split(",", 2) for line in csv.splitlines())
+        if len(p) == 3 and p[1] == "FAIL"
+    ]
+    matching = (
+        [p for p in fails if p[0].startswith(prefixes) and needle in p[2]] if prefixes else []
+    )
+    chosen = matching or fails
+    if not chosen:
+        return ""
+    check, _, detail = chosen[0]
+    return f"{check} {detail}".strip()
 
 
 def _health(mode: Mode, health_sh: Path, run: Runner, env: Mapping[str, str]) -> Preflight:
     code, out = run(("bash", str(health_sh), "--repair", "--mode", mode), env)
     if code == 0:
         return Preflight()
-    detail = _first_fail(out) or f"health.sh exit {code}"
+    detail = fail_row(out, code) or f"health.sh exit {code}"
     reason = REASONS.get(code, f"health.sh exit {code}")
     if code == DATA_ROOT_EXIT:
         return Preflight(reason, f"data_root_unavailable: {detail}")

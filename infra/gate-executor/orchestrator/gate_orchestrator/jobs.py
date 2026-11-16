@@ -97,7 +97,9 @@ def select_jobs(
     if not touches_gated(files, gated_paths):
         return []
     base_repo = _str_at(pr, "base", "repo", "full_name")
-    is_fork = _str_at(pr, "head", "repo", "full_name") != base_repo
+    head_repo = _str_at(pr, "head", "repo", "full_name")
+    # D1087: fail closed: a missing or null repo name (deleted fork, odd API data) is a fork
+    is_fork = head_repo is None or base_repo is None or head_repo != base_repo
     if is_fork and mirror_head != head:
         return [Job(kind="pending", sha=head, pr_number=dispatch.pr, tier="pr", reason=FORK_MOVED)]
     if not _image_ok(image_status):

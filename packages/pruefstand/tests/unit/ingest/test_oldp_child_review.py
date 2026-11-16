@@ -3,6 +3,8 @@
 import io
 import json
 import signal
+import subprocess
+import sys
 import tracemalloc
 from pathlib import Path
 
@@ -13,7 +15,7 @@ import pytest
 from pruefstand.ingest import records_child, records_proc
 from pruefstand.ingest.records_clean import RowRejectedError, clean_row
 from pruefstand.ingest.records_model import OldpLimits, Problem, RowBudget
-from pruefstand.ingest.records_proc import Watch, events, parquet_rows
+from pruefstand.ingest.records_proc import Watch, events
 from pruefstand.ingest.records_read import list_elements, parquet_rows_local
 from pruefstand.ingest.records_wire import encode
 
@@ -128,13 +130,47 @@ def test_how_a_dead_reader_is_reported(code: int, kind: str) -> None:
     assert [p.kind for p in problems] == [kind]
 
 
-def test_a_real_cpu_timeout_is_a_read_timeout(tmp_path: Path) -> None:
-    pq.write_table(pa.table({"id": [1], "content": ["x"]}), tmp_path / "a.parquet")
-    problems: list[Problem] = []
-    limits = OldpLimits(max_parquet_cpu_seconds=0)  # soft 0 s: SIGXCPU at the first tick
-    rows = list(
-        parquet_rows(tmp_path / "a.parquet", ["id", "content"], limits, problems, RowBudget(5))
+def test_the_reader_child_sets_the_configured_cpu_limit(tmp_path: Path) -> None:
+    # Was a real 0 s CPU limit on a real read: Linux treats RLIMIT_CPU 0 as 1 s, so a reader that
+    # finished in under 1 s of CPU (fast CI runner) got no SIGXCPU and the test flaked (#187).
+    # A separate interpreter applies the limits (never this process) and reports what the kernel
+    # holds.
+    code = (
+        "import json, resource\n"
+        "from pruefstand.ingest.records_child import limit_resources\n"
+        "from pruefstand.ingest.records_model import OldpLimits\n"
+        "warning = limit_resources(OldpLimits(max_parquet_cpu_seconds=7))\n"
+        "print(json.dumps([warning, list(resource.getrlimit(resource.RLIMIT_CPU))]))\n"
     )
+    done = subprocess.run(  # noqa: S603  (our interpreter, fixed code)
+        [sys.executable, "-c", code],
+        check=False,
+        cwd=tmp_path,
+        capture_output=True,
+        text=True,
+        timeout=60,
+    )
+    assert done.returncode == 0, done.stderr
+    assert json.loads(done.stdout) == [None, [7, 8]]
+
+
+def test_a_reader_killed_by_a_real_sigxcpu_is_a_read_timeout(tmp_path: Path) -> None:
+    # The kernel delivers SIGXCPU at the soft CPU limit; a real process killed by it must be
+    # reported as read_timeout ("CPU time"), independent of how fast the machine is.
+    # prctl(PR_SET_DUMPABLE, 0): no core dump, so a pipe core handler (apport) adds no delay
+    die = "import ctypes, os, signal; ctypes.CDLL(None).prctl(4, 0, 0, 0, 0); "
+    with subprocess.Popen(  # noqa: S603  (our interpreter, fixed code)
+        [sys.executable, "-I", "-S", "-c", die + "os.kill(os.getpid(), signal.SIGXCPU)"],
+        stdout=subprocess.PIPE,
+        cwd=tmp_path,
+    ) as child:
+        problems: list[Problem] = []
+        rows = list(
+            records_proc._child_rows(
+                child, Path("a.parquet"), OldpLimits(), problems, RowBudget(5), watch=Watch(10)
+            )
+        )
+    assert child.returncode == -signal.SIGXCPU
     assert rows == []
     assert [p.kind for p in problems] == ["read_timeout"]
     assert "CPU time" in problems[0].detail

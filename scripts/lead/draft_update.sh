@@ -1,0 +1,22 @@
+#!/usr/bin/env bash
+# usage: draft_update.sh [--dry-run] [--add <path>]... <worktree> <branch> <commit-msg-file>
+# ruff check + ruff format --check, commit (if anything is staged), push (plain, only this branch, never forced).
+# Same staging and message rules as draft_push.sh. Works from any cwd. --dry-run changes nothing.
+set -u -o pipefail
+. "$(dirname "${BASH_SOURCE[0]}")/lib.sh"
+parse_common "$@"
+set -- "${REST[@]}"
+[ "$#" -eq 3 ] || lead_die 2 "usage: draft_update.sh [--dry-run] [--add <path>]... <worktree> <branch> <commit-msg-file>"
+wt="$1"; branch="$2"
+msgfile="$(abspath "$3")" || lead_die 2 "no such file: $3"
+forbid_footer "$msgfile"
+cd "$wt" || lead_die 1 "cannot cd to $wt"
+require_branch "$branch"
+check_ruff
+if [ "$dry" = 1 ]; then
+  check_staging || exit $?
+  echo "DRY-RUN: checks passed; would commit and push $branch"; exit 0
+fi
+commit_all "$msgfile"
+push_branch "$branch"
+git log --oneline -1

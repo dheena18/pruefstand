@@ -25,6 +25,7 @@ OWNER_PREFIXES: tuple[str, ...] = (
     "infra/gate-executor",
     "infra/gpu/pruefstand-cluster",
     "scripts/hooks",
+    "scripts/lead",
 )
 OWNER_EXACT: frozenset[str] = frozenset(
     {

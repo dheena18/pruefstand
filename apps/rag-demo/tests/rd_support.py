@@ -4,8 +4,10 @@ import json
 import os
 import time
 from pathlib import Path
+from typing import Any
 
 import httpx
+import respx
 import yaml
 
 from rag_demo.analysis.sparse import SparseEncoder
@@ -178,3 +180,59 @@ def build_test_retriever(
         reranker=IdentityReranker(),
         guard=guard,
     )
+
+
+TEI = "http://embed.test:8090"
+QDRANT = "http://qdrant.test:6333"
+Call = tuple[str, str, dict[str, Any]]
+
+
+# --- Qdrant and TEI stand-ins for the indexer tests (respx records the calls) -----------------
+
+
+class Qdrant:
+    """Canned Qdrant answers with the little state a build needs; records (method, path, body)."""
+
+    def __init__(self, existing: set[str] | None = None, alias_to: str | None = None) -> None:
+        self.existing = set(existing or ())
+        self.alias_to = alias_to
+        self.calls: list[Call] = []
+        respx.route(host="qdrant.test").mock(side_effect=self._handle)
+
+    def _handle(self, request: httpx.Request) -> httpx.Response:
+        body = json.loads(request.content) if request.content else {}
+        path = request.url.path
+        self.calls.append((request.method, path, body))
+        if request.method == "GET" and path == "/aliases":
+            aliases = [{"alias_name": ALIAS, "collection_name": self.alias_to}]
+            return httpx.Response(
+                200, json={"result": {"aliases": aliases if self.alias_to else []}}
+            )
+        name = path.split("/")[2] if path.startswith("/collections/") else ""
+        if request.method == "GET":
+            if name not in self.existing:
+                return httpx.Response(404, json={"status": {"error": "not found"}})
+            return httpx.Response(200, json={"result": {}})
+        if request.method == "PUT" and path == f"/collections/{name}":
+            self.existing.add(name)
+        if request.method == "DELETE":
+            self.existing.discard(name)
+        if request.method == "POST" and path == "/collections/aliases":
+            self.alias_to = body["actions"][-1]["create_alias"]["collection_name"]
+        return httpx.Response(200, json={"result": True})
+
+    def steps(self) -> list[tuple[str, str]]:
+        """Non-GET calls as (method, last path segment)."""
+        return [(m, p.rsplit("/", 1)[-1]) for m, p, _ in self.calls if m != "GET"]
+
+
+def tei_replies(fail_on_call: int | None = None) -> None:
+    calls = {"n": 0}
+
+    def reply(req: httpx.Request) -> httpx.Response:
+        calls["n"] += 1
+        if calls["n"] == fail_on_call:
+            return httpx.Response(400)
+        return httpx.Response(200, json=[[0.6, 0.8]] * len(json.loads(req.content)["inputs"]))
+
+    respx.post(f"{TEI}/embed").mock(side_effect=reply)

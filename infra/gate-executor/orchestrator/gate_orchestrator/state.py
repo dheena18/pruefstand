@@ -16,8 +16,7 @@ from pydantic import ValidationError
 
 from gate_orchestrator.models import ProcessedEntry
 from gate_orchestrator.window import COMPLETED
-
-COUNTER_ENV = "PRUEFSTAND_NIGHTLY_COUNTER"
+from pruefstand.pipeline import select as pipeline_select
 
 
 def load_processed(path: Path) -> list[ProcessedEntry]:
@@ -60,34 +59,17 @@ def append_processed(path: Path, entry: ProcessedEntry) -> None:
 
 
 def nightly_counter_path(env: Mapping[str, str]) -> Path:
-    """``$PRUEFSTAND_NIGHTLY_COUNTER``, else ``$PRUEFSTAND_HOME/state/nightly_counter`` (D322).
-
-    Raises:
-        ValueError: neither variable is set.
-    """
-    named = env.get(COUNTER_ENV, "")
-    if named:
-        return Path(named)
-    home = env.get("PRUEFSTAND_HOME", "")
-    if not home:
-        msg = f"{COUNTER_ENV} and PRUEFSTAND_HOME are unset"
-        raise ValueError(msg)
-    return Path(home) / "state" / "nightly_counter"
+    """The counter file: the same rule as ``pruefstand run --block auto`` (D299, D322, D1087)."""
+    return pipeline_select.nightly_counter_path(env)
 
 
 def read_counter(path: Path) -> int:
-    """The counter value; a missing file is 0.
+    """The counter value with the pipeline's parser (missing file = 0, ASCII digits only; D1087).
 
     Raises:
-        ValueError: the file does not hold one non-negative integer.
+        ConfigError: the file does not hold one non-negative integer.
     """
-    if not path.exists():
-        return 0
-    text = path.read_text(encoding="utf-8").strip()
-    if not text.isdigit():
-        msg = f"{path}: nightly counter is not a non-negative integer"
-        raise ValueError(msg)
-    return int(text)
+    return pipeline_select.read_nightly_counter(path)
 
 
 def increment_counter(path: Path) -> int:

@@ -116,6 +116,7 @@ the private gate executor on the A40s (end P6, ~week 12–14) · **M5** experime
 | T3.4 | Indexer: dense encoder (BGE-M3 via Ollama `/api/embed` on GPU0, R10 D198), Qdrant collection, payload index, corpus reader; **R8:** ports T1.13's `tests/integration/test_index_retrieve.py` to `rag_demo.index` (D132); e5 prefixes + truncation with logged count (D121); **R9:** deleted-module check per D179; **R11:** `OllamaDenseEncoder` on native `/api/embed` sends the bearer header (D216, D219); **R12:** moves the embedding half of T1.13's `test_client_auth.py` into `tests/unit/index/test_encoders.py` (N6.2, D265) | T1.13, T2.5, T3.1a, T3.3, T0.7 | AI | 4 | Sonnet | DOCKER, GPU | core |
 | T3.5 | Retriever: hybrid prefetch with in-query tenant filter, RRF, reranker, top-k (tests catch M8/M9); **R8:** ports T1.13's `test_retrieve_filters.py` (all four cases) to `retrieval/` (D132); tier 1 has no reranker, tier 2 uses `bge-reranker-v2-m3` (D121) on the VM CPU via `RERANK_URL` (R10 D198); **R9:** deleted-module check per D179; `RagConfig.reranker` default stays `off`, `rag.gpu.yaml` sets `on`; **R11:** owns **`POST /v1/retrieve`** (contract interfaces §1.1, D218) incl. `HttpTargetAdapter.retrieve` and runner routing of `robust_pr` cases (D222); tier-2 rerank top 10, passages cut to 256 tokens, batched, no auth (D217); **R12:** `rerank.on_retrieve: bool = True` (false = `/v1/retrieve` skips the reranker; D222 fallback; `test_api_retrieve.py` asserts the `/v1/query` order only while it is true) (DEV12-09, D271) | T1.13, T3.4 | AI | 4 | Opus | DOCKER | core |
 | T3.5a | `rag-demo` retriever: re-record `packages/pruefstand/tests/contract/examples/retrieve_ok.json` (still `openapi-example`) from the real app with `make cassettes-contract` on the live stack (`record_contract.py` already records it, T3.5 D516) and run the new `live` test `test_retrieve_returns_only_chunks_and_makes_no_generator_call` | T3.5 | AI | 1 | Sonnet | DOCKER | core |
+| T3.4b | `rag-demo` indexer: fixed-token sub-chunking at index time (T3.4 follow-up, owner-approved; needed by T7.3's chunking axis and T7.1a M02). `RagConfig.chunking: ChunkingCfg = {strategy: per_section \| fixed_tokens, size}` (default `per_section`, every committed config and `config_hash` unchanged); pieces of at most `size` tokens including the citation key, no overlap, sentence-aware cut with a German legal abbreviation list, key excluded from the stored text (so `evidence_recall` cannot score on it); collection name, metadata and a retriever check on `chunking` (D1301) | T3.4, T3.5 | AI | 2 | Sonnet | DOCKER | core |
 | T3.6a | **From the T3.6 review (D624):** tier-2 gate config must make the runner `timeout_s` > 300 s (or `concurrency` <= 4) and not retry a read timeout, otherwise the runner times out first and rag-demo keeps the original request queued in Ollama (up to 4 duplicate generations); owner T6.2a (gate config), checked in T3.7. Also: cancel the upstream Ollama call when the client disconnects (rag-demo `/v1/query`) | T3.6 | AI | 1 | Sonnet | GPU | core |
 | T3.6b | **From the T3.6 review:** pin the generator tokenizer `source` to an HF commit in `infra/gpu/models.yaml` (T3.1b), and on the first GPU run calibrate the ChatML / empty-think wrapper of `generation/budget.py` for `ollama_family: qwen35` and the `prompt_overflow` counter (Ollama's `prompt_eval_count` counts only evaluated tokens) | T3.6, T3.1b | AI | 1 | Sonnet | GPU | core |
 | T3.6 | Generator: prompt files, citation formatting, refusal, injection guard, LLM client; **R8:** ports T1.13's `test_generate_guards.py` to `generation/` (D132); Qwen3 thinking off + `<think>` strip counted (D95); local generators only, never a hosted one (D126); **R9:** sets `used_in_prompt` on every returned chunk (D174); deleted-module check per D179; **R11:** generator client sends the bearer header to `LLM_PROXY_URL` on native `/api/chat` (D216, D219); **R12:** moves the generator half of T1.13's `test_client_auth.py` into `tests/unit/generation/test_generator.py`; sends `generation.temperature/seed/max_tokens` as Ollama sampling options within the catalogue bounds (N6.2, N2; D265, D252); **R13:** prompt budget counted with the baked generator tokenizer; `/v1/health.stats.prompt_overflow` (D307) | T1.13, T3.1b, T3.5 | AI | 4 | Sonnet | GPU | core |
@@ -258,12 +259,12 @@ follow `tasks/PARALLEL-PLAN.md` §2.
 
 | Wave | Tasks (`[x]` = merged and checkpoint green, `[~]` = partly merged) | Milestone |
 | --- | --- | --- |
-| 0 | [ ] T0.7 S1–S2 (human) · [ ] T0.0 | – |
+| 0 | [x] T0.7 S1–S2 (human, owner confirmed 2026-11-16; evidence `docs/ops/setup-log.md` §1–§9 and #28) · [x] T0.0 (owner confirmed 2026-11-16; `docs/ops/setup-log.md` §10) | – |
 | 1 | [x] T0.1 (2026-10-31, direct push e885fda) | – |
 | 2 | [x] T0.2 · [x] T0.3 · [x] T1.1 · [x] T2.1 · [x] T0.7 | – |
 | 3 | [x] T1.2 · [x] T1.5a · [x] T0.4 · [x] T0.6 (+ S7 quota follow-up) · [ ] T0.5 | – |
 | 4 | [x] T1.6 · [x] T1.5b · [x] T1.3 · [x] T1.4 · [x] T2.2 · [x] T3.1a | – |
-| 5 | [x] T1.7 · [x] T1.8 · [x] T2.3 · [x] T2.4 · [x] T1.13 · [~] T3.1b (phase 1 #46 and candidate pass #54 merged; rest open) | – |
+| 5 | [x] T1.7 · [x] T1.8 · [x] T2.3 · [x] T2.4 · [x] T1.13 · [~] T1.13b (probe limit recalibrated #183; moving the probe into the gating step is an owner-merge workflow PR, open) · [ ] T1.13c (#171 only added the row: the rag-demo 503 after its generator timeout is still retried) · [~] T3.1b (phase 1 #46 and candidate pass #54 merged; rest open) | – |
 | 6 | [x] T1.9 · [x] T4.4 · [x] T3.2 | – |
 | 7 | [x] T1.10 · [x] T3.3 | – |
 | 8 | [x] T1.11 · [x] T2.5 · [x] T5.1 | – |
@@ -272,11 +273,11 @@ follow `tasks/PARALLEL-PLAN.md` §2.
 | 11 | [x] T6.4 · [x] T4.3 · [x] T3.6 | – |
 | 12 | [x] T3.7 · [x] T4.7a · [x] T8.1 | [ ] M2 |
 | 13 | [~] T4.7b (offline parts #138, closed-book #140 merged; rest open) · [x] T8.2a | [ ] M3 |
-| 14 | [ ] T5.3 PR 2 (`legal_hard`) · [~] T6.2a (`llm-proxy` #137, runner timeout #171 merged; rest open) · [x] T8.2b | – |
-| 15 | [x] T5.4 · [ ] T6.2b | – |
-| 16 | [ ] T6.3 · [ ] T7.3 · [ ] T9.1a | – |
+| 14 | [ ] T5.3 PR 2 (`legal_hard`) · [~] T6.2a (merged: `llm-proxy` S4b #137 and #169, trusted-peer slots #176, GPU lock/preflight/infra retry S7 #170, runner timeout #171, rag-demo tier-2 profiles #175; open: orchestrator core S2 #139 and the rest of the prompt, S0, S1, S3-S6, S8-S12) · [x] T8.2b | – |
+| 15 | [x] T5.4 · [x] T5.4b2 (#181) · [ ] T6.2b | – |
+| 16 | [ ] T6.3 · [~] T7.3 (S0b offline part #180 merged; rest open) · [ ] T9.1a | – |
 | 17 | [ ] T6.5 · [ ] T9.1b | [ ] M4 (MVP) |
-| 18–19 | [ ] T7.1a · [ ] T8.3 · [ ] T7.1b · [ ] T8.4 (optional) | – |
+| 18–19 | [~] T7.1a (slice 1 #182, slice 2 #186 merged; rest open) · [~] T8.3 (harness, matrix, tier-2 fixtures, nightly layers #144 merged; flows #184 open) · [ ] T7.1b · [ ] T8.4 (optional) | – |
 | 20–21 | [ ] T7.2 · [ ] T7.4 · [ ] T8.5 | [ ] M5 · [ ] M6 |
 | 22–23 | [ ] T9.2 · [ ] T9.3 · [ ] T9.4 | [ ] M7 |
 | optional | [ ] T5.3-opt · [ ] T10.1 · [ ] T10.2 · [ ] T10.3 · [ ] T10.4 | – |

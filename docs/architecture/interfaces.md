@@ -291,6 +291,8 @@ llm-proxy (trusted, T6.2a; module infra/gate-executor/llm-proxy/llm_proxy.py; D2
     - keep_alive: removed from the body (Ollama keeps the preload's keep_alive),
     - load-time keys other than num_ctx (num_gpu, num_batch, num_thread, use_mmap, main_gpu, low_vram, any key not
       in {num_ctx, temperature, seed, top_p, num_predict}): dropped, so no request can force a reload;
+    - think: POST /api/chat is always forwarded with "think": false (absent or any other value is rewritten;
+      D1076, CLAUDE.md §5 / D95: the gate never depends on the candidate config for this); /api/embed unchanged;
     temperature, seed, top_p and num_predict pass through unchanged when inside the catalogue option_bounds of that
     tag; a missing key gets the catalogue default; a value outside the bounds -> 403 {"error": "option out of
     bounds: <key>"}. Catalogue values are defaults, not overrides (mutation M17 and the T6.3 churn arms work)
@@ -400,11 +402,16 @@ unattended operation (R11 Y5, D225-D229)
                     upstream_errors grew during the run) ->
                     RunManifest.stop_reason = "aborted" and RunManifest.infra_error = "<kind>: <detail>"
                     (str | None, §2; kind ollama_down|tunnel_lost|data_root_unavailable|proxy_upstream|model_reload|
-                    window_exceeded), commit status `error` (not `failure`), one automatic retry after
+                    executor|window_exceeded), commit status `error` (not `failure`), one automatic retry after
                     health.sh --repair. R12 (A12-M1, D274): the first failure is not recorded as processed (the
                     retry runs in the same job); after the SECOND infra failure the orchestrator writes a
                     processed.jsonl line with result "error", so it is not re-run automatically; the status text
-                    ends "re-dispatch to retry" (R13 P1.2, D288); only a new owner dispatch runs it again
+                    ends "re-dispatch to retry" (R13 P1.2, D288); only a new owner dispatch runs it again.
+                    Post-run probe (D1082/D1083, gate_orchestrator.post_run): tunnel inactive or health.sh exit
+                    11/12/13/15/16 -> infra error as above; exit 10 (free VRAM) and 14 (bin dir) only log a
+                    WARNING and keep the finished run's result, unless a resident-digest or placement FAIL row
+                    is also present (then model_reload); other exits -> kind executor. The status text keeps
+                    its ending within GitHub's 140 characters: the infra text is shortened first (D1086)
   data root         ADR-0019 (supersedes the R12 mount unit, D254): /mnt/pruefstand is a plain directory on the VM
                     disk; no mount unit, no service dependency. The preflight (health.sh exit 16) checks that it
                     exists, is writable by pruefstand and has >= 20 GB free; otherwise the job ends with
@@ -584,7 +591,8 @@ class RunManifest(BaseModel):    # (schema) -> run.json
     #   (no infra_error count: the infra failure is the field below, R11 integration D245)
     complete: bool; stop_reason: Literal["completed", "budget_exceeded", "aborted"]
     infra_error: str | None = None    # R11 D226/D245: "<kind>: <detail>" (kind ollama_down | tunnel_lost |
-                                      # data_root_unavailable (ADR-0019; was nas_unavailable) | proxy_upstream | model_reload | window_exceeded (R12 N4.3,
+                                      # data_root_unavailable (ADR-0019; was nas_unavailable) | proxy_upstream | model_reload |
+                                      # executor (D1080/D1083: health.sh or another executor subprocess failed) | window_exceeded (R12 N4.3,
                                       # D256: nightly stopped before 06:00 Berlin; no retry)); set only together with
                                       # stop_reason="aborted" (validator: infra_error set => stop_reason == "aborted")
     stack: Literal["live", "a40"]     # where it ran: live = tier 1 (GitHub-hosted CPU), a40 = tier 2 executor
@@ -1368,6 +1376,7 @@ Descriptions are truncated to GitHub's 140-character limit.
 | executor, `MAINTENANCE` present (T6.2a; no lock taken, D1064) | `pruefstand/gate` | `pending` | `"executor in maintenance; dispatch again later"` |
 | executor, lock wait timed out (T6.2a, D1064) | `pruefstand/gate` | `pending` | `"executor busy (GPU lock held); dispatch again"` |
 | executor, job start (T6.2a) | `pruefstand/gate` | `pending` | `"tier-2 run started"` |
+| executor, a non-infra exception during the retry after "retrying once" was posted (T6.2a, D1080) | `pruefstand/gate` | `error` | `"executor error: <ExceptionType>; re-dispatch to retry"` (never the infra wording; recorded as processed `error`) |
 | executor, preflight failure (T6.2a) | `pruefstand/gate` | `error` | `"executor unhealthy: <reason>"` (e.g. `"executor unhealthy: data root unavailable"`) |
 | nightly gate phase (T6.2b) | `pruefstand/nightly` | `success` / `failure` | `"<GateStatus>: <summary>"` (non-blocking, D91) |
 | nightly skipped (T6.2b) | `pruefstand/nightly` | `error` | `"skipped: <reason>"` (the §7 heartbeat vocabulary) |
@@ -1829,7 +1838,19 @@ class RagConfig(BaseModel)          # chosen by RAG_CONFIG: apps/rag-demo/config
                                     # apps/rag-demo/configs/rag.gpu.yaml = tier-2 A40 profile (T3.2), the file the executor
                                     # reads from the PR and the one T6.5 demos / T7.1a tier-2 mutations edit (R9 X3.15).
                                     # Fields: generator model/endpoint, embedding model, top_k, rerank on/off + top_n,
-                                    # hybrid on/off, compound_split on/off, chunking strategy, prompt file, fusion
+                                    # hybrid on/off, compound_split on/off, chunking (below), prompt file, fusion
+                                    # chunking: ChunkingCfg = {strategy: "per_section" | "fixed_tokens", size: int | None}
+                                    # (T3.4b, D1301). Default per_section = one point per corpus chunk (§/Absatz), every
+                                    # committed config and its config_hash unchanged. fixed_tokens needs size in [64, 4096]
+                                    # (forbidden with per_section): each chunk is cut into consecutive pieces of at most
+                                    # `size` tokens of the EMBEDDED text (citation key + piece; embedding-model tokenizer,
+                                    # word lower bound without one), no overlap, cut at the last sentence end in the second
+                                    # half of the window (German legal abbreviations and ordinals are no sentence ends),
+                                    # else hard. A piece keeps doc_id, tenant, citation_key, lang, section; chunk_id is
+                                    # <chunk_id>#p<n> (a chunk that fits keeps its id). The retrieved/stored `text` is the
+                                    # piece BODY only: the citation key is added at embedding time, so evidence_recall never
+                                    # sees it. Collection metadata records chunking; a collection name gets __ft<size>;
+                                    # a retriever refuses an index built with another chunking.
                                     # R11 D216: generator and embed each have api_key_env: str | None (default
                                     # "PRUEFSTAND_CANDIDATE_API_KEY"); when the variable is set and non-empty the client
                                     # sends Authorization: Bearer <value> to LLM_PROXY_URL; unset/empty -> no header (tier 1);

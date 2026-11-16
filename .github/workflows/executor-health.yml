@@ -1,0 +1,79 @@
+name: executor-health
+
+# Hourly check of the private gate executor's public heartbeat (T6.2b S8; W2.10, Y5.1, Y5.5, N4.3,
+# A12-M2, A13-M3..M5; docs/engineering/ci-cd.md section 1.1; D1092). Reads heartbeat.json anonymously
+# from branch `heartbeat` of dheena18/pruefstand-dashboard-data and opens, comments on or closes the
+# issues labelled executor-down, backup-stale, nightly-failed and nightly-skipped. No secrets: the
+# only token is this run's GITHUB_TOKEN (contents: read, issues: write). The decision logic is
+# scripts/ci/check_heartbeat.py (pure, unit-tested); this file only fetches and applies.
+on:
+  schedule:
+    - cron: "43 * * * *"
+  workflow_dispatch:
+
+permissions: {}
+
+concurrency:
+  group: executor-health
+  cancel-in-progress: false
+
+jobs:
+  check-heartbeat:
+    name: check-heartbeat
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      issues: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+      HEARTBEAT_URL: https://raw.githubusercontent.com/dheena18/pruefstand-dashboard-data/heartbeat/heartbeat.json
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          sparse-checkout: scripts/ci
+      - name: Fetch heartbeat (a missing or unreadable file counts as executor down)
+        run: |
+          curl -fsSL --retry 3 --retry-all-errors --retry-delay 5 --max-time 30 \
+            -o heartbeat.json "$HEARTBEAT_URL" || : > heartbeat.json
+      - name: Evaluate
+        run: |
+          labels=(executor-down backup-stale nightly-failed nightly-skipped)
+          args=()
+          for label in "${labels[@]}"; do
+            n=$(gh issue list --state open --label "$label" --limit 1 --json number --jq 'length')
+            if [ "$n" -gt 0 ]; then args+=(--open "$label"); fi
+          done
+          # drift markers already reported (A13-M5: once per release tag)
+          while IFS= read -r marker; do
+            [ -n "$marker" ] && args+=(--marker "$marker")
+          done < <(gh issue list --state all --label nightly-skipped --limit 50 --json body,comments \
+            --jq '.[] | .body, (.comments[].body)' | grep -oE 'drift-no-release:[A-Za-z0-9._-]+' | sort -u || true)
+          python3 scripts/ci/check_heartbeat.py --heartbeat heartbeat.json \
+            --now "$(date -u +%Y-%m-%dT%H:%M:%S+00:00)" "${args[@]}" > actions.json
+          cat actions.json
+      - name: Apply issue actions
+        run: |
+          jq -c '.[]' actions.json | while IFS= read -r action; do
+            label=$(jq -r .label <<<"$action")
+            op=$(jq -r .op <<<"$action")
+            title=$(jq -r .title <<<"$action")
+            body=$(jq -r .body <<<"$action")
+            number=$(gh issue list --state open --label "$label" --limit 1 --json number --jq '.[0].number // empty')
+            case "$op" in
+              open)
+                if [ -n "$number" ]; then
+                  gh issue comment "$number" --body "$body"
+                else
+                  gh label create "$label" --color B60205 --force >/dev/null
+                  gh issue create --title "$title" --label "$label" --body "$body"
+                fi ;;
+              comment)
+                if [ -n "$number" ]; then gh issue comment "$number" --body "$body"; fi ;;
+              close)
+                if [ -n "$number" ]; then gh issue close "$number" --comment "$body"; fi ;;
+              *) echo "unknown op $op" >&2; exit 1 ;;
+            esac
+          done

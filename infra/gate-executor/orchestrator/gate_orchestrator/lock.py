@@ -107,6 +107,9 @@ def run_locked[T](
         return None
     try:
         with gpu_lock(lock_path(lock_dir), timeout_s, clock=clock, sleep=sleep):
+            if maintenance_path(lock_dir).exists():  # D1079: set while we waited for the lock
+                poster.post_status(sha, "pending", MAINTENANCE)
+                return None
             return body(child_env(env))
     except LockTimeoutError:
         poster.post_status(sha, "pending", BUSY)

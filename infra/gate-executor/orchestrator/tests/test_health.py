@@ -5,7 +5,7 @@ from pathlib import Path
 from typing import Literal
 
 import pytest
-from gate_orchestrator.infra import infra_from_deltas, proxy_deltas, run_with_retry
+from gate_orchestrator.infra import InfraError, infra_from_deltas, proxy_deltas, run_with_retry
 from gate_orchestrator.lock import lock_path, run_locked
 from gate_orchestrator.preflight import Preflight, report_preflight, run_preflight
 from gate_orchestrator.status import infra_summary
@@ -91,16 +91,17 @@ def test_tunnel_still_inactive_is_unhealthy_tunnel(poster: SpyPoster) -> None:
 @pytest.mark.parametrize(
     ("code", "out", "description"),
     [
-        (10, "vram:gpu0,FAIL,512 MiB free\n", "executor unhealthy: gpu memory"),
+        (10, "vram:0,FAIL,free_mib=512 min_free_mib=1024\n", "executor unhealthy: gpu memory"),
         (11, "", "executor unhealthy: ollama endpoint"),
         (
             13,
-            "digest:gemma3:12b,FAIL,b92b != 0000\n",
-            "executor unhealthy: model digest mismatch (digest:gemma3:12b b92b != 0000)",
+            "resident:gemma3:12b,FAIL,digest b92b218582c5 differs from the catalogue\n",
+            "executor unhealthy: model digest mismatch "
+            "(resident:gemma3:12b digest b92b218582c5 differs from the catalogue)",
         ),
         (
             16,
-            "data_root,FAIL,/mnt/pruefstand not writable\n",
+            "data-root,FAIL,the data root is not writable by pruefstand\n",
             "executor unhealthy: data root unavailable",
         ),
         (15, "", "executor unhealthy: model not fully on the GPU"),
@@ -117,11 +118,14 @@ def test_health_exit_codes_post_error_via_post_status(
 
 def test_data_root_failure_feeds_the_heartbeat_last_result() -> None:
     result = run_preflight(
-        "day", HEALTH, Commands(health=(16, "data_root,FAIL,less than 20 GB free\n")), LOCKED
+        "day",
+        HEALTH,
+        Commands(health=(16, "data-root,FAIL,free_gb=12 is below min_free_gb=20\n")),
+        LOCKED,
     )
     assert result.infra_error is not None
     assert result.infra_error.startswith("data_root_unavailable: ")
-    assert "20 GB" in result.infra_error
+    assert "min_free_gb=20" in result.infra_error
 
 
 def test_healthy_preflight_posts_nothing(poster: SpyPoster) -> None:
@@ -145,7 +149,7 @@ def test_proxy_deltas_and_infra_kind() -> None:
     "after", [{"model_reloads": 0, "upstream_errors": 9}, {"upstream_errors": 9}]
 )
 def test_proxy_restart_or_missing_counter_is_an_error(after: dict[str, int]) -> None:
-    with pytest.raises(ValueError, match="model_reloads"):
+    with pytest.raises(InfraError, match="model_reloads"):
         proxy_deltas({"model_reloads": 2, "upstream_errors": 5}, after)
 
 

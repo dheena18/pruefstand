@@ -10,3 +10,5 @@ src/i18n
 fixtures
 pnpm-lock.yaml
 src/styles/tokens.css
+playwright-report
+test-results
