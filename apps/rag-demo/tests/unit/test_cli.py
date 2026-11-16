@@ -20,7 +20,7 @@ QDRANT = "http://qdrant.test:6333"
 def _env(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("QDRANT_URL", QDRANT)
     monkeypatch.setenv("EMBED_URL", "http://localhost:8090")
-    monkeypatch.setenv("OLLAMA_GPU0_URL", "http://localhost:11434")
+    monkeypatch.setenv("LLM_PROXY_URL", "http://localhost:11434")
     monkeypatch.setenv("RAG_MODEL_CATALOGUE", str(REPO / "infra" / "gpu" / "models.yaml"))
     monkeypatch.delenv("RAG_EMBED_TOKENIZER", raising=False)
     monkeypatch.delenv("QDRANT_API_KEY", raising=False)

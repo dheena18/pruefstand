@@ -20,6 +20,7 @@ import zstandard
 
 from pruefstand.core.errors import StoreError
 from pruefstand.core.logging import get_logger
+from pruefstand.core.models.baseline import PromotionOverride
 from pruefstand.core.models.run import RunArtifacts
 from pruefstand.store._baseline_dir import (
     HISTORY_FILES,
@@ -92,7 +93,14 @@ def safe_rollback(promotion: Promotion) -> None:
         _log.error("baseline_rollback_failed", fingerprint=promotion.fingerprint, error=str(exc))
 
 
-def promote_to_disk(root: Path, run: RunArtifacts, ref: str, clock: Clock) -> Promotion:
+def promote_to_disk(
+    root: Path,
+    run: RunArtifacts,
+    ref: str,
+    clock: Clock,
+    *,
+    override: PromotionOverride | None = None,
+) -> Promotion:
     """Write ``run`` as the current baseline of ``(its fingerprint, ref)`` and into ``history/``.
 
     Args:
@@ -100,6 +108,7 @@ def promote_to_disk(root: Path, run: RunArtifacts, ref: str, clock: Clock) -> Pr
         run: The run to store; refused when incomplete or flagged.
         ref: One of the refs; the run's block must fit it.
         clock: Source of ``promoted_at``.
+        override: The owner's recorded ``--allow-failed-gate`` (manifest and index, D1123).
 
     Returns:
         The open promotion; the caller publishes it, then ``commit`` or ``rollback``.
@@ -116,7 +125,7 @@ def promote_to_disk(root: Path, run: RunArtifacts, ref: str, clock: Clock) -> Pr
     check_promotable(manifest)
     check_ref_block(manifest, ref)
     try:
-        return _write(root, run, ref, clock())
+        return _write(root, run, ref, clock(), override)
     except (OSError, ValueError, zstandard.ZstdError) as exc:
         detail = str(exc) if isinstance(exc, OSError) else safe_error(exc)
         msg = f"cannot write the baseline {manifest.eval_fingerprint}/{ref}: {detail}"
@@ -133,7 +142,9 @@ class _Serialised:
     entry: IndexEntry
 
 
-def _serialise(run: RunArtifacts, ref: str, promoted_at: datetime) -> _Serialised:
+def _serialise(
+    run: RunArtifacts, ref: str, promoted_at: datetime, override: PromotionOverride | None
+) -> _Serialised:
     manifest = run.results.manifest
     plain = render_files(run.results)
     stored = {
@@ -151,6 +162,7 @@ def _serialise(run: RunArtifacts, ref: str, promoted_at: datetime) -> _Serialise
         promoted_at=promoted_at,
         git_sha=manifest.git_sha,
         files=shas,
+        override=override,
     )
     history = current.model_copy(update={"files": {n: shas[n] for n in HISTORY_FILES}})
     current_bytes = manifest_bytes(current)
@@ -159,6 +171,7 @@ def _serialise(run: RunArtifacts, ref: str, promoted_at: datetime) -> _Serialise
         manifest_sha256=hashlib.sha256(current_bytes).hexdigest(),
         promoted_at=promoted_at,
         git_sha=manifest.git_sha,
+        override=override,
     )
     return _Serialised(stored, current_bytes, manifest_bytes(history), entry)
 
@@ -169,12 +182,18 @@ def _ensure_dir(path: Path) -> Path:
     return path
 
 
-def _write(root: Path, run: RunArtifacts, ref: str, promoted_at: datetime) -> Promotion:
+def _write(
+    root: Path,
+    run: RunArtifacts,
+    ref: str,
+    promoted_at: datetime,
+    override: PromotionOverride | None,
+) -> Promotion:
     manifest = run.results.manifest
     real_dir(root)
     base = _ensure_dir(root / manifest.eval_fingerprint)
     _clean_leftovers(base, ref)
-    data = _serialise(run, ref, promoted_at)
+    data = _serialise(run, ref, promoted_at, override)
     token = secrets.token_hex(4)
     history_dir = _ensure_dir(base / "history")
     final_history = history_dir / manifest.run_id

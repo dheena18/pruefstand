@@ -16,7 +16,7 @@ fetch-tokenizer:
 
 index:
 	QDRANT_URL=http://127.0.0.1:$(QDRANT_HTTP_PORT) EMBED_URL=http://127.0.0.1:$(EMBED_HOST_PORT) \
-	    OLLAMA_GPU0_URL=$${OLLAMA_GPU0_URL:-http://127.0.0.1:11434} RAG_EMBED_TOKENIZER=$(EMBED_TOKENIZER) \
+	    LLM_PROXY_URL=$${OLLAMA_GPU0_URL:-http://127.0.0.1:11434} RAG_EMBED_TOKENIZER=$(EMBED_TOKENIZER) \
 	    uv run rag-demo index $(if $(CORPUS),--corpus $(CORPUS) --encoder $(ENCODER)) $(INDEX_ARGS)
 
 GENERATOR_TOKENIZER ?= $(HOME)/.cache/pruefstand/models/tokenizers/generator.json

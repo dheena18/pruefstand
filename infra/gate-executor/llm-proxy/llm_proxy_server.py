@@ -6,7 +6,9 @@ request (``Connection: close``) and must deliver its request line, headers and b
 ``deadline_s``, else its read side is shut down: a client trickling one byte per second cannot hold
 a slot (the per-read idle timeout alone restarts with every byte). The deadline is cancelled once
 the request is read, so a long upstream generation is never cut. Reserved slots get a much shorter
-deadline (2 s), so tricklers on them cannot starve ``/health`` either (D1077).
+deadline (2 s) and go only to trusted peers (loopback: the container healthcheck, ``docker exec``),
+and each untrusted peer may hold at most ``per_peer`` connections, so reconnecting tricklers on
+``gate-net`` can neither take the reserve nor every slot (D1077, D1078).
 """
 
 import logging
@@ -34,22 +36,58 @@ class BoundedServer(ThreadingHTTPServer):
         slots: int,
         deadline_s: float,
         reserve_deadline_s: float,
+        trusted_peers: frozenset[str],
+        per_peer: int,
     ) -> None:
         self._slots = threading.BoundedSemaphore(slots)
         self._reserve = threading.BoundedSemaphore(HEALTH_RESERVE)
         self._deadline_s = deadline_s
         self._reserve_deadline_s = reserve_deadline_s
         self._local = threading.local()
+        self._trusted = trusted_peers
+        self._per_peer = per_peer
+        self._peers: dict[str, int] = {}
+        self._peers_lock = threading.Lock()
         super().__init__(address, handler)
 
     def process_request(self, request: Request, client_address: tuple[str, int]) -> None:
-        """Serve on a normal slot, else on a health-only slot, else close unread."""
-        for slot, health_only in ((self._slots, False), (self._reserve, True)):
+        """Serve on a normal slot, else (trusted peers only) a health-only slot, else close."""
+        peer = str(client_address[0])
+        trusted = peer in self._trusted
+        if not self._admit_peer(peer, trusted=trusted):
+            self.shutdown_request(request)
+            return
+        options = (
+            ((self._slots, False), (self._reserve, True)) if trusted else ((self._slots, False),)
+        )
+        for slot, health_only in options:
             if slot.acquire(blocking=False):
                 args = (request, client_address, slot, health_only)
-                threading.Thread(target=self._serve, args=args, daemon=True).start()
+                try:
+                    threading.Thread(target=self._serve, args=args, daemon=True).start()
+                except BaseException:  # D1078: a failed start must not leak the slot or the count
+                    slot.release()
+                    self._release_peer(peer)
+                    raise
                 return
+        self._release_peer(peer)
         self.shutdown_request(request)
+
+    def _admit_peer(self, peer: str, *, trusted: bool) -> bool:
+        with self._peers_lock:
+            count = self._peers.get(peer, 0)
+            if not trusted and count >= self._per_peer:
+                return False
+            self._peers[peer] = count + 1
+            return True
+
+    def _release_peer(self, peer: str) -> None:
+        with self._peers_lock:
+            count = self._peers.get(peer, 1) - 1
+            if count > 0:
+                self._peers[peer] = count
+            else:
+                self._peers.pop(peer, None)
 
     def _serve(
         self,
@@ -71,6 +109,7 @@ class BoundedServer(ThreadingHTTPServer):
             timer.cancel()
             self.shutdown_request(request)
             slot.release()
+            self._release_peer(str(client_address[0]))
 
     def handle_error(self, request: Request, client_address: tuple[str, int]) -> None:  # noqa: ARG002
         """Log the error type only (no traceback, no request data)."""
