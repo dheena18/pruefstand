@@ -1,0 +1,15 @@
+id: N02
+title: Comment in the retriever code
+kind: code
+patch: patch.diff
+needs_reindex: false
+cache_invalidating: true
+tier: pr
+splits: [smoke, core, robust_pr]
+stratum: statistical
+tier1: false
+in_detection_rate: false
+expected:
+  status: PASS
+rationale: >-
+  A comment line only; the candidate image is rebuilt (new digest, cache miss), the behaviour is identical. One of the T6.3 rebuilt-image no-op kinds (D118).
