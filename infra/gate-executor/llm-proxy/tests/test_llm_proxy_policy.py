@@ -189,3 +189,11 @@ def test_policy_holds_exactly_the_run_tags() -> None:
 )
 def test_is_reload(payload: bytes, expected: bool) -> None:  # noqa: FBT001 - parametrized
     assert is_reload(payload) is expected
+
+
+@pytest.mark.parametrize("fields", [{"ollama_family": "gptoss"}, {"family": "gpt-oss"}])
+def test_generator_whose_thinking_cannot_be_disabled_is_refused(fields: dict[str, str]) -> None:
+    # D1076 note: Ollama's ResolveThinking replaces think false for Harmony models (gpt-oss)
+    entry = {"tag": "gpt-oss:20b", "role": "generator", "options": {"num_ctx": 8192}, **fields}
+    with pytest.raises(PolicyError, match="thinking"):
+        build_policy([entry], ["gpt-oss:20b"])
