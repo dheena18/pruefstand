@@ -100,5 +100,5 @@ const passShard0 = (
   }
 ).cases;
 /** A refused case and an `en` case of the tier-1 PASS run (shard 0), shown in the cases panel. */
-export const REFUSED_CASE = passShard0.find((c) => c.refused)?.case_id as string;
-export const EN_CASE = passShard0.find((c) => c.lang === "en")?.case_id as string;
+export const REFUSED_CASE = passShard0.find((c) => c.refused)?.case_id ?? fail("refused case");
+export const EN_CASE = passShard0.find((c) => c.lang === "en")?.case_id ?? fail("en case");

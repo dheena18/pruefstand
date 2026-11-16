@@ -13,7 +13,10 @@ const panel = (state: string, id: string, expect: Row["expect"]): Row =>
   });
 
 export const caseRows: Row[] = [
-  panel("refused case in the panel", REFUSED_CASE, { present: ["p.case-text"] }),
+  panel("refused case in the panel", REFUSED_CASE, {
+    keys: ["case.refused"],
+    present: [".badge.badge--neutral"],
+  }),
   // question and answers carry the case language (ui-spec 9): the only `lang="en"` text on a de page
   panel("en case in the panel", EN_CASE, { present: ['p.case-text[lang="en"]'] }),
 ];
