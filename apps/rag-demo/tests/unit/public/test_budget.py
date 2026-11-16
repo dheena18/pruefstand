@@ -31,8 +31,8 @@ class _SlowBudget(DailyBudget):
 
     _stored = 0
 
-    @property  # type: ignore[override]  # replaces the dataclass field in this test subclass
-    def _used(self) -> int:  # type: ignore[override]
+    @property
+    def _used(self) -> int:
         time.sleep(0.003)
         return self._stored
 
