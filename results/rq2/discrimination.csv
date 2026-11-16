@@ -1,5 +1,5 @@
-judge,label_set,metric,edit,n,discrimination,base_top_share
-ollama/gemma3:12b,correctness,answer_correctness,negate,21,0.6190476190476191,0.7142857142857143
-ollama/gemma3:12b,correctness,answer_correctness,swap_first_number,50,0.82,0.84
-ollama/gemma3:12b,faithfulness_constructed,faithfulness,negate,50,0.5,1.0
-ollama/gemma3:12b,faithfulness_constructed,faithfulness,swap_first_number,50,0.62,1.0
+judge,label_set,metric,edit,n,discrimination,discrimination_ci_low,discrimination_ci_high,base_top_share
+ollama/gemma3:12b,correctness,answer_correctness,negate,42,0.7142857142857143,0.5643279073180463,0.8283297537395091,0.7619047619047619
+ollama/gemma3:12b,correctness,answer_correctness,swap_first_number,50,0.82,0.6920394632569922,0.9022980732976582,0.84
+ollama/gemma3:12b,faithfulness_constructed,faithfulness,negate,50,0.5,0.3664451431682858,0.6335548568317142,1.0
+ollama/gemma3:12b,faithfulness_constructed,faithfulness,swap_first_number,50,0.62,0.4815044693099298,0.7413721068980641,1.0

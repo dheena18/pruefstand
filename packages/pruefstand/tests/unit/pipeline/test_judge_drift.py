@@ -13,7 +13,7 @@ from pruefstand.cli import judge_drift as cli_module
 from pruefstand.core.models.llm import LLMRequest, LLMResponse
 from pruefstand.judges.anchors import AnchorItem, anchor_file, load_anchors
 from pruefstand.judges.output import output_model
-from pruefstand.judges.status import read_status
+from pruefstand.judges.status import drift_threshold_of, read_status
 from pruefstand.llm.cache_epochs import current_epoch, read_drift
 from pruefstand.llm.cassettes import CassetteRecorder
 from pruefstand.llm.client import cache_key
@@ -110,6 +110,22 @@ def test_five_changed_anchors_flag_drift_and_invalidate_the_cache(tmp_path: Path
         cache_key(req, None, current_epoch(cache, JUDGE)) != before_key
     )  # a cached verdict misses
     assert calibration_epoch() == epoch_before  # judge_epoch (and eval_fingerprint) unchanged
+
+
+@needs_cassettes
+def test_the_committed_majority_anchors_pass_on_the_recorded_answers(tmp_path: Path) -> None:
+    # T5.4d (D1250): stored verdict = majority of 5 runs; the recorded real answers of one
+    # further run stay below the threshold the status file derives from the counted runs
+    anchors = load_anchors(anchor_file(JUDGE))
+    assert {a.majority_runs for a in anchors} == {5}
+    threshold = drift_threshold_of(JUDGE)
+    assert threshold is not None
+    result = run_judge_drift(
+        JUDGE, anchor_file(JUDGE), Spy(), tmp_path / "cache", threshold=threshold, now=NOW
+    )
+    assert result.status == "ok"
+    assert result.changed is not None
+    assert result.changed < threshold
 
 
 def test_a_missing_anchor_file_is_skipped(tmp_path: Path) -> None:

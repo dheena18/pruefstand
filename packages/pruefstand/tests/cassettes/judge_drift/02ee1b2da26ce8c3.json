@@ -1,5 +1,5 @@
 {
-  "recorded_at": "2026-11-10T01:20:13+00:00",
+  "recorded_at": "2026-11-15T15:33:33+00:00",
   "model_id": "ollama/gemma3:12b",
   "model_version": null,
   "request": {
@@ -47,14 +47,14 @@
     }
   },
   "response": {
-    "text": "{\"reason\": \"Die Antworten nennen verschiedene Jahreszahlen f\\u00fcr die Schlie\\u00dfung der Kupferproduktion.\", \"score\": 0}",
+    "text": "{\"reason\": \"Die Antworten nennen verschiedene Jahreszahlen f\\u00fcr das Schlie\\u00dfungsdatum.\", \"score\": 0}",
     "model": "ollama/gemma3:12b",
     "usage": {
       "prompt_tokens": 673,
-      "completion_tokens": 37
+      "completion_tokens": 35
     },
     "cost_usd": 0.0,
-    "latency_ms": 3721.137017942965,
+    "latency_ms": 3115.8829949999927,
     "cached": false,
     "provider": "ollama",
     "fallback": false,

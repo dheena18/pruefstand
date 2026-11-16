@@ -139,7 +139,7 @@ Symptoms: issue `executor-down` opened by `executor-health.yml` (heartbeat older
 flag false for more than 2 h by its `<field>_false_since`; health-field alerts are suppressed while the heartbeat
 says `maintenance: true`, e.g. a model swap, A13-M4), issue `nightly skipped` (no nightly for
 > 26 h, or `last_nightly_status` = `skipped: …` / `aborted: window_exceeded`), gated PRs stuck at
-`pending` (incl. "executor busy (GPU lock held); re-dispatch"), or `pruefstand/gate` = `error` "executor unhealthy:
+`pending` (incl. "executor busy (GPU lock held); dispatch again"), or `pruefstand/gate` = `error` "executor unhealthy:
 <reason>" / "executor infra error: <summary>; retrying once" (an infra failure mid-run, Y5.2), or
 "executor infra error: <summary>; re-dispatch to retry" (the retry failed too, A12-M1).
 Non-gated PRs are not affected: `gate-router.yml` posts their status on a hosted
@@ -295,9 +295,9 @@ new Ollama model digest, D103). In the browser (or the GitHub mobile app) run `b
 knowingly accepted drop the new `main` run never becomes the baseline and every later PR gates against the old one.
 Decide first that the drop is accepted (and that it is no leak: hard fails are never an accepted drop). Then, on the VM
 as the owner and **by hand, never from a workflow**: `pruefstand baseline promote --run <run dir of main's run> --ref main
---allow-failed-gate --config <pruefstand.yaml>` (under `pruefstand-lock` if it touches the data root while a job runs).
-Note the run id and the reason in `docs/ops/bypass-log.md`. A missing or invalid `gate.json` (exit 1 / 3) is not waived:
-run `pruefstand gate` for the run first.
+--allow-failed-gate --reason "<why the drop is accepted>" --config <pruefstand.yaml>` (the stored `override.by` is `GITHUB_ACTOR` or your OS user name: a label for the audit trail, not authentication) (under `pruefstand-lock` if it touches the data root while a job runs).
+Note the run id and the reason in `docs/ops/bypass-log.md`. A missing or invalid `gate.json` (exit 1 / 3) is not waived,
+nor is one decided against another run than the stored baseline (D1120): run `pruefstand gate` for the run first.
 
 ## 4. Fork PR
 

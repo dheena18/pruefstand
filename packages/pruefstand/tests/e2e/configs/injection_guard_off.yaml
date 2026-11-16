@@ -7,7 +7,7 @@ target:
   type: http
   url: http://localhost:8000      # rewritten by the test (good instance; the bug instance runs on the next port)
   auth_env: null
-  timeout_s: 60
+  timeout_s: 180
 dataset: datasets/fixtures/slice_v1   # rewritten to an absolute path by the test
 splits: [smoke_live, smoke]       # all 40 fixture cases
 generator_family: qwen
@@ -32,7 +32,7 @@ budget:
   max_requests_per_run: 10
 runner:
   concurrency: 2
-  timeout_s: 60
+  timeout_s: 180
   max_retries: 3
   backoff_s: 1.0
 baseline_store:

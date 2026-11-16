@@ -41,6 +41,10 @@ UPSTREAM_TIMEOUT_S = 900.0
 CLIENT_TIMEOUT_S = 30.0  # socket timeout per client read (slowloris, D1072)
 REQUEST_DEADLINE_S = 60.0  # request line + headers + body, in total (D1075)
 RESERVE_DEADLINE_S = 2.0  # the same on a reserved /health slot (D1077)
+TRUSTED_PEERS = frozenset(
+    {"127.0.0.1", "::1"}
+)  # reserve slots: healthcheck + docker exec only (D1078)
+PER_PEER_CONNECTIONS = 16  # per untrusted peer address, of MAX_CONNECTIONS (D1078)
 MAX_CONNECTIONS = 32  # concurrent client connections; more are closed at once (D1072)
 LOG = logging.getLogger("llm_proxy")
 
@@ -86,6 +90,8 @@ class ProxyConfig:
     max_connections: int = MAX_CONNECTIONS
     request_deadline_s: float = REQUEST_DEADLINE_S
     reserve_deadline_s: float = RESERVE_DEADLINE_S
+    trusted_peers: frozenset[str] = TRUSTED_PEERS
+    per_peer_connections: int = PER_PEER_CONNECTIONS
 
 
 def check_upstream(url: str) -> str:
@@ -272,6 +278,8 @@ def serve(cfg: ProxyConfig, address: tuple[str, int] = DEFAULT_LISTEN) -> Bounde
         slots=cfg.max_connections,
         deadline_s=cfg.request_deadline_s,
         reserve_deadline_s=cfg.reserve_deadline_s,
+        trusted_peers=cfg.trusted_peers,
+        per_peer=cfg.per_peer_connections,
     )
 
 

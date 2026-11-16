@@ -38,6 +38,9 @@ from merge_reviewed_testenv import SCRIPTS
         "scripts/merge_reviewed.sh",
         "scripts/merge_paths.py",
         "scripts/hooks/format_edited.py",
+        "scripts/lead/draft_push.sh",
+        "scripts/lead/tests/test_drafts.py",
+        "Scripts/Lead/lib.sh",
         "./infra/vm/a",
         "/infra/vm/a",
         "docs/../infra/vm/a",
@@ -61,6 +64,7 @@ def test_matcher_hits(path: str) -> None:
         "docs/ops/secrets.md.bak",
         "docs/ops/lead-handoff.md",
         "scripts/merge_reviewed_notes.md",
+        "scripts/leadership.md",
     ],
 )
 def test_matcher_misses(path: str) -> None:

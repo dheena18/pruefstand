@@ -37,7 +37,8 @@ services:
     environment:
       RAG_DEMO_HOST_PORT: ${RAG_DEMO_HOST_PORT:-8000}
       RAG_CONFIG: ${RAG_DEMO_GPU_CONFIG:-/app/configs/rag.gpu.yaml}
-      OLLAMA_GPU0_URL: ${OLLAMA_GPU0_URL:?set OLLAMA_GPU0_URL in .env (the VM tunnel, http://127.0.0.1:11434)}
+      # rag.gpu.yaml reads LLM_PROXY_URL (D1081); the dev stack has no llm-proxy and points it at the tunnel
+      LLM_PROXY_URL: ${OLLAMA_GPU0_URL:?set OLLAMA_GPU0_URL in .env (the VM tunnel, http://127.0.0.1:11434)}
       RERANK_URL: http://127.0.0.1:${RERANK_HOST_PORT:?use make up (it exports the dev ports)}
       QDRANT_URL: http://127.0.0.1:${QDRANT_HTTP_PORT:?use make up (it exports the dev ports)}
       SERVING_ENGINE_VERSION: ${SERVING_ENGINE_VERSION:-unknown}

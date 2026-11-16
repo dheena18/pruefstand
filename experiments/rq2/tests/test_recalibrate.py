@@ -2,7 +2,7 @@
 
 from pathlib import Path
 
-from rq2.recalibrate import after_anchor_rerun, apply_recalibration
+from rq2.recalibrate import after_anchor_rerun, apply_recalibration, bump_epoch
 from rq2.status_file import read_document, write_document
 
 from pruefstand.core.enums import Split
@@ -61,3 +61,15 @@ def test_a_failing_recalibration_keeps_epoch_and_flag(tmp_path: Path) -> None:
     )
     assert epoch == 1
     assert read_drift(tmp_path / "cache") is not None
+
+
+def test_an_owner_bump_changes_only_the_epoch_and_the_fingerprint(tmp_path: Path) -> None:
+    # D1251: the drift anchors of the judge changed; no pass, the flag stays
+    status = tmp_path / "status.yaml"
+    write_document({"epoch": 1, "passed": False, "status": "failed"}, status)
+    _flag(tmp_path / "cache")
+    assert bump_epoch(status) == 2
+    doc = read_document(status)
+    assert (doc["epoch"], doc["passed"], doc["status"]) == (2, False, "failed")
+    assert read_drift(tmp_path / "cache") is not None
+    assert _fingerprint(2) != _fingerprint(1)

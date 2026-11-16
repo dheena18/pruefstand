@@ -140,6 +140,7 @@ async def judge_pairs(
             "pair_id": p["pair_id"],
             "label_set": p["label_set"],
             "edit": p["edit"],
+            "form": p.get("form", "span"),
             "metric": metric,
             "cluster_id": p["cluster_id"],
             "judge": judge.model,

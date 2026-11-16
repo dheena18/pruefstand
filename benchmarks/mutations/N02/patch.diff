@@ -1,0 +1,12 @@
+diff --git a/apps/rag-demo/src/rag_demo/retrieval/retriever.py b/apps/rag-demo/src/rag_demo/retrieval/retriever.py
+index c74c708..28848dd 100644
+--- a/apps/rag-demo/src/rag_demo/retrieval/retriever.py
++++ b/apps/rag-demo/src/rag_demo/retrieval/retriever.py
+@@ -75,6 +75,7 @@ class QdrantRetriever:
+             guard=self._guard,
+         )
+ 
++    # No-op N02: a comment only; the image is rebuilt, the behaviour is unchanged.
+     def retrieve(self, tenant_id: str, query: str, top_k: int) -> list[Hit]:
+         """Return the top ``top_k`` chunks for ``tenant_id`` in rank order.
+ 

@@ -140,12 +140,17 @@ def make_runner(  # noqa: PLR0913
     concurrency: int = 4,
     timeout_s: float = 5,
     max_retries: int = 3,
+    max_consecutive_timeouts: int | None = None,
     backoff_s: float = 0.001,
     hard_fail: tuple[str, ...] | None = None,
     judge_scope: JudgeScope | None = None,
 ) -> Runner:
     cfg = RunnerConfig(
-        concurrency=concurrency, timeout_s=timeout_s, max_retries=max_retries, backoff_s=backoff_s
+        concurrency=concurrency,
+        timeout_s=timeout_s,
+        max_retries=max_retries,
+        backoff_s=backoff_s,
+        max_consecutive_timeouts=max_consecutive_timeouts,
     )
     extra: dict[str, Any] = {} if hard_fail is None else {"hard_fail": hard_fail}
     extra["judge_scope"] = judge_scope

@@ -73,7 +73,7 @@ jobs:
         with:
           version: "0.13.6"
       - name: Install
-        run: uv sync --all-packages --all-extras
+        run: uv sync --frozen --all-packages --all-extras
       - name: Quota day
         id: day
         run: |
