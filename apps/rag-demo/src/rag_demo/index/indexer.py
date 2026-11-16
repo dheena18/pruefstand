@@ -2,7 +2,7 @@
 
 import logging
 import uuid
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
@@ -13,9 +13,18 @@ from rag_demo.analysis.fingerprint import index_metadata
 from rag_demo.analysis.sparse import SparseEncoder
 from rag_demo.errors import RetrievalError
 from rag_demo.index.corpus_reader import index_text, point_id, read_corpus
-from rag_demo.index.naming import ALIAS, analyzer_hash, build_name, collection_name
+from rag_demo.index.naming import (
+    ALIAS,
+    analyzer_hash,
+    build_name,
+    chunking_metadata,
+    chunking_slug,
+    collection_name,
+)
 from rag_demo.index.qdrant_admin import QdrantAdmin
-from rag_demo.models import SparseVector
+from rag_demo.index.subchunk import split_rows
+from rag_demo.index.tokens import TokenCounter, approx_token_count
+from rag_demo.models import ChunkingCfg, SparseVector
 from rag_demo.protocols import DenseEncoder
 
 _log = logging.getLogger(__name__)
@@ -34,12 +43,16 @@ class IndexTarget:
         alias: Alias to switch to the new collection after the full build; ``None`` = never
             touch aliases (``--no-alias``; PR jobs never write ``chunks_active``).
         build_id: Suffix of a derived collection name (default: 8 random hex).
+        chunking: ``RagConfig.chunking``; ``fixed_tokens`` renames the collection (T3.4b).
+        count_tokens: Token counter of the embedding model for ``fixed_tokens`` (default: words).
     """
 
     embed_model: str
     collection: str | None = None
     alias: str | None = ALIAS
     build_id: str | None = None
+    chunking: ChunkingCfg = field(default_factory=ChunkingCfg)
+    count_tokens: TokenCounter | None = None
 
 
 @dataclass(frozen=True)
@@ -135,7 +148,10 @@ class Indexer:
             EncoderError: The embedding service failed.
             RetrievalError: Qdrant refused a request, or the explicit collection is the served one.
         """
-        manifest, rows = read_corpus(corpus_dir)
+        manifest, corpus_rows = read_corpus(corpus_dir)
+        rows = split_rows(
+            corpus_rows, self._target.chunking, self._target.count_tokens or approx_token_count
+        )
         tokens = [self._analyzer.tokens(index_text(r)) for r in rows]
         avgdl = sum(map(len, tokens)) / max(len(rows), 1)
         sparse = self._sparse.with_avg_len(avgdl)
@@ -146,6 +162,7 @@ class Indexer:
             **index_metadata(manifest, self._analyzer, sparse, avgdl),
             "embed_model": self._target.embed_model,
             "dim": dim,
+            "chunking": chunking_metadata(self._target.chunking),
             "truncated_chunks": 0,
             "complete": False,
         }
@@ -175,6 +192,7 @@ class Indexer:
             manifest["corpus_version"],
             analyzer_hash(self._analyzer, sparse),
             self._target.embed_model,
+            chunking_slug(self._target.chunking),
         )
         return build_name(base, self._target.build_id or uuid.uuid4().hex[:8])
 

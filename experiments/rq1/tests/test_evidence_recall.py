@@ -113,3 +113,20 @@ def test_normalise_span_is_idempotent(text: str) -> None:
 @pytest.mark.parametrize("text", ["", "   ", "\n "])
 def test_blank_text_normalises_to_empty(text: str) -> None:
     assert normalise_span(text) == ""
+
+
+def test_a_span_that_is_only_the_citation_prefix_scores_zero_on_a_subchunk_piece() -> None:
+    """T3.4b: the prefix of a fixed-token piece is embedded but never part of the retrieved text.
+
+    rag-demo stores and returns the piece body only (``index_text`` prepends the citation key at
+    embedding time), so a gold span consisting of the key alone matches nothing, and a span in the
+    body still matches.
+    """
+    body = "(1) Das Arbeitsverhältnis kann mit einer Frist von vier Wochen gekündigt werden."
+    piece = RetrievedChunk(
+        chunk_id="gii-bgb-622#0#p0", doc_id="gii-bgb-622", text=body, score=0.9, rank=1
+    )
+    prefix_only = TestCase.model_validate({**_BASE, "evidence_span": "§ 622 BGB"})
+    in_body = TestCase.model_validate({**_BASE, "evidence_span": "mit einer Frist von vier Wochen"})
+    assert evidence_recall(prefix_only, [piece]).value == 0.0
+    assert evidence_recall(in_body, [piece]).value == 1.0

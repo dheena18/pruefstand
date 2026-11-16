@@ -130,6 +130,28 @@ class AnalyzerCfg(_Frozen):
     stemmer: Literal["snowball_de", "none"] = "snowball_de"
 
 
+class ChunkingCfg(_Frozen):
+    """How the indexer cuts corpus chunks (T3.4b); the default keeps every committed config as is.
+
+    ``per_section`` embeds each corpus chunk (one per § or Absatz) as one point. ``fixed_tokens``
+    cuts each chunk into consecutive pieces of at most ``size`` tokens (citation key included, no
+    overlap, sentence-aware, see ``rag_demo.index.subchunk``).
+    """
+
+    strategy: Literal["per_section", "fixed_tokens"] = "per_section"
+    size: int | None = Field(default=None, ge=64, le=4096)
+
+    @model_validator(mode="after")
+    def _size_matches_strategy(self) -> Self:
+        if self.strategy == "fixed_tokens" and self.size is None:
+            msg = "chunking.size is required for fixed_tokens"
+            raise ValueError(msg)
+        if self.strategy == "per_section" and self.size is not None:
+            msg = "chunking.size is only allowed with fixed_tokens"
+            raise ValueError(msg)
+        return self
+
+
 class RagConfig(_Frozen):
     """``configs/rag.yaml``; the bug switches default to the correct behaviour (interfaces §16)."""
 
@@ -139,6 +161,7 @@ class RagConfig(_Frozen):
     rerank: RerankCfg = Field(default_factory=RerankCfg)
     retrieval: RetrievalCfg = Field(default_factory=RetrievalCfg)
     analyzer: AnalyzerCfg = Field(default_factory=AnalyzerCfg)
+    chunking: ChunkingCfg = Field(default_factory=ChunkingCfg)
     generation: GenerationCfg | None = None
     top_k: int = Field(default=8, ge=1, le=50)
     chunk_prompt_tokens: int = Field(default=256, ge=16)

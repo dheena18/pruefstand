@@ -5,8 +5,10 @@ from collections.abc import Callable
 from typing import Any
 
 from rag_demo.analysis.fingerprint import check_fingerprint
-from rag_demo.errors import IndexUnavailableError, RetrievalError
+from rag_demo.errors import IndexMismatchError, IndexUnavailableError, RetrievalError
 from rag_demo.retrieval.store import QdrantStore
+
+PER_SECTION: dict[str, Any] = {"strategy": "per_section", "size": None}
 
 
 class CorpusMeta:
@@ -21,6 +23,8 @@ class CorpusMeta:
         store: The Qdrant client of the served collection or alias.
         expected: The app's own index fingerprint (``wiring.expected_fingerprint``).
         clock: Monotonic clock in seconds (tests).
+        expected_chunking: ``chunking_metadata`` of the app's config; an index built with another
+            chunking is refused like another analyzer (T3.4b). ``None`` skips the check.
     """
 
     TTL_S = 10.0
@@ -31,7 +35,9 @@ class CorpusMeta:
         expected: dict[str, Any],
         *,
         clock: Callable[[], float] | None = None,
+        expected_chunking: dict[str, Any] | None = None,
     ) -> None:
+        self._expected_chunking = expected_chunking
         self._store = store
         self._expected = expected
         self._clock = clock or (lambda: time.monotonic())  # noqa: PLW0108  (looked up per call)
@@ -64,4 +70,12 @@ class CorpusMeta:
             msg = "index build is not complete; re-index"
             raise IndexUnavailableError(msg)
         check_fingerprint(meta.get("analyzer"), self._expected)
+        if self._expected_chunking is not None:
+            stored = meta.get("chunking") or PER_SECTION  # an index from before T3.4b
+            if stored != self._expected_chunking:
+                msg = (
+                    f"index was built with chunking {stored}, the app expects "
+                    f"{self._expected_chunking}; re-index"
+                )
+                raise IndexMismatchError(msg)
         return meta
