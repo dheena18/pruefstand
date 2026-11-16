@@ -6,17 +6,18 @@
 # like any other ref.
 #
 # Synced: infra/gate-executor/{orchestrator,llm-proxy,host} (same paths), infra/gate-executor/workflows/*.yml
-# (to .github/workflows/ in the private repo, where they run) and the files of
+# (replacing .github/workflows/ of the private repo as a whole, where they run; a tag without any *.yml is
+# refused when the private repo has workflows) and the files of
 # infra/gate-executor/private-repo-template/ (to the private repo root: README.md, .gitignore). Everything
 # else in the private repo (canaries, state, baselines index) is left alone. `SYNCED_FROM` records
-# "<tag> <commit>".
+# "<tag> <commit>" and one "workflow <file>" line per synced workflow.
 #
 # --init: first fill of the EMPTY private repo: commits on `main` and pushes it directly (there is no base
 # branch for a PR yet); refused when the private repo already has any branch.
 #
 # Env: PRIVATE_REPO (default dheena18/pruefstand-gate), PRIVATE_REMOTE (clone URL, default
 # https://github.com/$PRIVATE_REPO.git), MAIN_REF (default origin/main).
-# Exit: 0 ok, 1 git/gh failure, 2 refused (tag name, lightweight tag, not on main, --init on a non-empty
+# Exit: 0 ok, 1 git/gh failure (incl. an unreachable private repo), 2 refused (tag name, lightweight tag, not on main, --init on a non-empty
 # repo), 64 usage.
 set -euo pipefail
 
@@ -44,8 +45,9 @@ main_ref="${MAIN_REF:-origin/main}"
 commit="$(git rev-parse "${tag}^{commit}")"
 git merge-base --is-ancestor "$commit" "$main_ref" || die "refused: $tag ($commit) is not on main ($main_ref)" 2
 
-if [ "$init" -eq 1 ] && [ -n "$(git ls-remote --heads "$private_remote")" ]; then
-  die "refused: --init needs an empty private repo, $private_repo is not empty (sync without --init)" 2
+if [ "$init" -eq 1 ]; then
+  heads="$(git ls-remote --heads "$private_remote")" || die "cannot reach $private_remote (--init needs it)" 1
+  [ -z "$heads" ] || die "refused: --init needs an empty private repo, $private_repo is not empty (sync without --init)" 2
 fi
 
 work="$(mktemp -d)"
@@ -73,14 +75,21 @@ for part in workflows private-repo-template; do
     git archive "$commit" "infra/gate-executor/$part" | tar -x -C "$work/src"
   fi
 done
+# .github/workflows is replaced as a WHOLE, so a workflow retired in the public repo stops running here;
+# a source without any *.yml never wipes the private workflows (refused) and is skipped on a first fill.
+listing=""
 if compgen -G "$work/src/infra/gate-executor/workflows/*.yml" >/dev/null; then
+  rm -rf -- "${dest:?}/.github/workflows"
   mkdir -p "$dest/.github/workflows"
   cp "$work"/src/infra/gate-executor/workflows/*.yml "$dest/.github/workflows/"
+  for wf in "$dest"/.github/workflows/*.yml; do listing+="workflow ${wf##*/}"$'\n'; done
+elif compgen -G "$dest/.github/workflows/*" >/dev/null; then
+  die "refused: $tag has no *.yml in infra/gate-executor/workflows; the private workflows would all be removed" 2
 fi
 if [ -d "$work/src/infra/gate-executor/private-repo-template" ]; then
   cp -R "$work/src/infra/gate-executor/private-repo-template/." "$dest/"
 fi
-printf '%s %s\n' "$tag" "$commit" > "$dest/SYNCED_FROM"
+printf '%s %s\n%s' "$tag" "$commit" "$listing" > "$dest/SYNCED_FROM"
 
 git -C "$dest" add -A
 if git -C "$dest" diff --cached --quiet; then

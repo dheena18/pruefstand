@@ -58,6 +58,7 @@ class Sandbox:
         _init(seed)
         _write(seed, "infra/gate-executor/orchestrator/old.py", "OLD = 1\n")
         _write(seed, "canaries/heldout/README.md", "private\n")
+        _write(seed, ".github/workflows/retired.yml", "name: retired\n")
         _git(seed, "add", "-A")
         _git(seed, "commit", "-q", "-m", "seed")
         _git(tmp, "clone", "-q", "--bare", str(seed), str(self.private))
@@ -111,7 +112,7 @@ def test_sync_copies_the_executor_dirs_at_the_tag_and_opens_a_pr(box: Sandbox) -
     assert "apps/rag-demo/not_synced.py" not in tree
     assert tree["canaries/heldout/README.md"] == "private"  # private content untouched
     commit = _git(box.public, "rev-parse", f"{TAG}^{{commit}}")
-    assert tree["SYNCED_FROM"] == f"{TAG} {commit}"
+    assert tree["SYNCED_FROM"] == f"{TAG} {commit}\nworkflow gate-executor.yml"
     gh_log = (box.tmp / "gh.log").read_text(encoding="utf-8")
     assert "pr create" in gh_log
     assert "--repo dheena18/pruefstand-gate" in gh_log
@@ -202,3 +203,32 @@ def test_init_dry_run_pushes_nothing(box: Sandbox) -> None:
     res = box.run(TAG, "--init", "--dry-run")
     assert res.returncode == 0, res.stderr
     assert _git(box.private, "branch", "--list") == ""
+
+
+def test_a_workflow_retired_in_the_public_repo_disappears_from_the_private_repo(
+    box: Sandbox,
+) -> None:
+    box.tag()
+    assert box.run(TAG).returncode == 0
+    tree = box.private_tree(f"sync/{TAG}")
+    assert ".github/workflows/retired.yml" not in tree  # the directory is replaced as a whole
+    assert tree[".github/workflows/gate-executor.yml"] == "name: gate-executor"
+    assert "workflow gate-executor.yml" in tree["SYNCED_FROM"]
+
+
+def test_no_yml_in_the_source_never_wipes_the_private_workflows(box: Sandbox) -> None:
+    _git(box.public, "rm", "-q", "infra/gate-executor/workflows/gate-executor.yml")
+    _git(box.public, "commit", "-q", "-m", "no workflows")
+    box.tag()
+    res = box.run(TAG)
+    assert res.returncode == 2
+    assert "no *.yml" in res.stderr
+    assert _git(box.private, "branch", "--list", f"sync/{TAG}") == ""
+
+
+def test_init_with_an_unreachable_private_repo_fails(box: Sandbox) -> None:
+    box.private = box.tmp / "does-not-exist.git"
+    box.tag()
+    res = box.run(TAG, "--init", "--dry-run")
+    assert res.returncode == 1
+    assert "cannot reach" in res.stderr
