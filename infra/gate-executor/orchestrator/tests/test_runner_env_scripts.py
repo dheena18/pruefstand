@@ -224,3 +224,61 @@ def _scanner(script: Path) -> str:
 
 def test_both_scripts_carry_the_same_quote_scanner() -> None:
     assert _scanner(NAMES) == _scanner(KEYS)
+
+
+@pytest.mark.parametrize(
+    "line",
+    [
+        'PRUEFSTAND_NONCE_KEY="" # note',
+        "PRUEFSTAND_NONCE_KEY= # note",
+        "PRUEFSTAND_NONCE_KEY=''  #x",
+    ],
+)
+def test_keys_refuses_an_empty_value_before_a_comment(tmp_path: Path, line: str) -> None:
+    path = tmp_path / "runner.env"
+    path.write_text(line + "\n", encoding="utf-8")
+    path.chmod(0o600)
+    done = run(KEYS, str(path))
+    assert done.returncode == 2
+    assert "empty" in done.stderr
+    assert path.read_text(encoding="utf-8") == line + "\n"
+
+
+def test_keys_keep_a_value_with_a_comment_and_an_apostrophe(tmp_path: Path) -> None:
+    path = tmp_path / "runner.env"
+    text = "PRUEFSTAND_NONCE_KEY=x # note\nPRUEFSTAND_CANDIDATE_API_KEY=it's\nOTHER=1\n"
+    path.write_text(text, encoding="utf-8")
+    path.chmod(0o600)
+    done = run(KEYS, str(path))
+    assert done.returncode == 0, done.stderr
+    assert path.read_text(encoding="utf-8") == text  # no duplicate key appended
+    assert done.stdout.count("present, kept") == 2
+
+
+def test_names_unquoted_quotes_are_literal_and_ansi_c_values_are_quoted(tmp_path: Path) -> None:
+    path = tmp_path / "runner.env"
+    path.write_text(
+        "A=it's\nB=1\nC=$'line\\'\nSECRET_LINE=x\nend'\nD=2\nE=a\"b\nF=3\n", encoding="utf-8"
+    )
+    done = run(NAMES, str(path))
+    assert done.returncode == 0, done.stderr
+    assert done.stdout.splitlines() == ["A", "B", "C", "D", "E", "F"]
+
+
+@pytest.mark.parametrize("script", [NAMES, KEYS])
+def test_a_very_long_line_is_refused_fast(tmp_path: Path, script: Path) -> None:
+    path = tmp_path / "runner.env"
+    path.write_text("A=" + "x" * 40_000 + "\n", encoding="utf-8")
+    path.chmod(0o600)
+    done = run(script, str(path))
+    assert done.returncode == 2
+    assert "longer than" in done.stderr
+    assert path.read_text(encoding="utf-8").count("\n") == 1
+
+
+def test_a_long_quoted_line_within_the_limit_is_read(tmp_path: Path) -> None:
+    path = tmp_path / "runner.env"
+    path.write_text('A="' + "y" * 8000 + '"\nB=1\n', encoding="utf-8")
+    done = run(NAMES, str(path))
+    assert done.returncode == 0, done.stderr
+    assert done.stdout.splitlines() == ["A", "B"]
