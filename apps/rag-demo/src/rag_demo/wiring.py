@@ -14,6 +14,7 @@ from rag_demo.endpoints import check_endpoint, resolve_endpoint
 from rag_demo.errors import ConfigError
 from rag_demo.generation import OllamaChatGenerator, OpenAICompatGenerator
 from rag_demo.index.encoders import OllamaDenseEncoder, TeiDenseEncoder
+from rag_demo.index.naming import chunking_metadata
 from rag_demo.index.tokens import load_token_counter
 from rag_demo.models import RagConfig, Stats
 from rag_demo.protocols import DenseEncoder, Generator, Reranker
@@ -204,7 +205,11 @@ def build_corpus(
     cfg: RagConfig, settings: Settings, store: QdrantStore | None = None
 ) -> CorpusMeta:
     """The checked collection metadata (complete index, same analyzer fingerprint as the app)."""
-    return CorpusMeta(store or build_store(settings), expected_fingerprint(cfg))
+    return CorpusMeta(
+        store or build_store(settings),
+        expected_fingerprint(cfg),
+        expected_chunking=chunking_metadata(cfg.chunking),
+    )
 
 
 def build_retriever(
