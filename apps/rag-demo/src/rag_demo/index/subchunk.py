@@ -32,6 +32,7 @@ ABBREVIATIONS = frozenset(
         "dr", "prof", "nr.", "ggü", "vorbem", "str", "tel", "bsp", "geb", "gez", "hrsg", "jh",
     }
 )  # fmt: skip
+LOOKBACK = 40  # characters before a stop that can belong to its abbreviation
 _WORD_BEFORE = re.compile(r"([\wäöüÄÖÜß.]+)$")
 _STOP = re.compile(r"[.!?](?=\s)")
 _NEXT = re.compile(r"\s+(\S)")
@@ -44,7 +45,7 @@ def _is_sentence_end(text: str, stop: int) -> bool:
         return True
     if text[stop] != ".":
         return True
-    before = _WORD_BEFORE.search(text[:stop])
+    before = _WORD_BEFORE.search(text, max(0, stop - LOOKBACK), stop)  # bounded: no quadratic scan
     word = before.group(1) if before else ""
     if word.lower().strip(".") in ABBREVIATIONS or word.lower() in ABBREVIATIONS:
         return False

@@ -10,6 +10,7 @@ from rd_support import CONFIGS, FIXTURE_CORPUS
 
 from rag_demo.config import config_hash, load_config, prompt_path
 from rag_demo.errors import ConfigError
+from rag_demo.index import subchunk
 from rag_demo.index.corpus_reader import index_text
 from rag_demo.index.subchunk import ABBREVIATIONS, sentence_ends, split_rows, split_text
 from rag_demo.index.tokens import approx_token_count
@@ -139,3 +140,21 @@ def test_the_default_chunking_leaves_every_config_hash_unchanged() -> None:
     digest.update(prompt_path(cfg.prompt_file).read_bytes())
     assert config_hash(cfg) == digest.hexdigest()[:16]  # = the hash before the field existed
     assert legacy is not None
+
+
+def test_a_long_chunk_is_split_in_linear_steps(monkeypatch: pytest.MonkeyPatch) -> None:
+    """No quadratic lookback: every abbreviation search sees a bounded window (no wall clock)."""
+    seen: list[int] = []
+    real = subchunk._WORD_BEFORE
+
+    class Spy:
+        def search(self, text: str, pos: int = 0, endpos: int = 10**9) -> re.Match[str] | None:
+            seen.append(min(endpos, len(text)) - pos)
+            return real.search(text, pos, endpos)
+
+    monkeypatch.setattr(subchunk, "_WORD_BEFORE", Spy())
+    long_text = " ".join([str(KSCHG["text"])] * 20)  # about 37 000 characters of real law text
+    pieces = split_text(long_text, 128, count)
+    assert len(pieces) > 30
+    assert seen
+    assert max(seen) <= subchunk.LOOKBACK
