@@ -1,0 +1,37 @@
+# RQ1 configuration grid (T7.3 S1, SPEC §8 RQ1; reduced grid D162, embedders D1263, chunking T3.4b).
+# Every config is rag.gpu.yaml plus overrides (X3.15): the `embed` section is replaced as a whole, the other
+# sections are merged. 2 embedders x (dense: 2 chunkings + hybrid: 2 chunkings x compound split on/off) = 12
+# effective configs; `extended` adds a third embedder (18). Compound split only matters for the sparse leg.
+embedders:
+  bge_m3:  # production, Ollama on the cluster (D219-D221)
+    model: bge-m3
+    engine: ollama
+    catalogue_id: ollama/bge-m3
+    endpoint_env: OLLAMA_GPU0_URL
+    query_prefix: ""
+    doc_prefix: ""
+    max_input_tokens: 1024
+    dim: 1024
+    options: {num_ctx: 1024}
+  e5_large_instruct:  # VM CPU TEI service, never the cluster (D1263; revision 274baa43b0e1)
+    model: intfloat/multilingual-e5-large-instruct
+    engine: tei
+    endpoint_env: EMBED_URL
+    query_prefix: "Instruct: Given a German legal question, retrieve the statute passage that answers it\nQuery: "
+    doc_prefix: ""
+    max_input_tokens: 512
+    dim: 1024
+extended_embedders:
+  german_third:  # optional third embedder (--extended); pinned by T7.3 only if it is run
+    model: pending-german-embedder
+    engine: tei
+    endpoint_env: EMBED_URL
+    query_prefix: ""
+    doc_prefix: ""
+    max_input_tokens: 512
+    dim: 1024
+retrieval: [dense, hybrid]
+chunking:
+  per_section: {strategy: per_section}
+  fixed_512: {strategy: fixed_tokens, size: 512}
+compound_split: [true, false]
