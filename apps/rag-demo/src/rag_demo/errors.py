@@ -51,3 +51,12 @@ class UnknownTenantError(RagDemoError, ValueError):
 
 class GenerationError(RagDemoError):
     """The generator failed; the message never contains credentials or response bodies."""
+
+
+class GenerationTimeoutError(GenerationError):
+    """The generator did not answer within the read or write timeout (answered as HTTP 504).
+
+    The API reports it with the code ``generator_timeout`` so a client does not retry it: the
+    generator serialises requests, so a retry would only queue a duplicate generation
+    (D624, T1.13c).
+    """
