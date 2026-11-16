@@ -144,3 +144,23 @@ def test_the_heatmap_is_written(tmp_path: Path) -> None:
 def test_the_table_is_identical_for_the_same_seed() -> None:
     frame = results({("c1", "typos", "context_recall"): -0.2}, noise=0.05)
     assert table(frame).equals(table(frame))
+
+
+def test_a_significant_improvement_is_never_on_the_fix_first_list() -> None:
+    # The bootstrap p is one-sided ("no drop"), so an improvement normally has a large p; fix_first
+    # still keeps only drops, also for a table whose p-values come from elsewhere.
+    t = pl.DataFrame(
+        {
+            "config": ["c1", "c2", "c3"],
+            "perturbation": ["typos", "typos", "typos"],
+            "metric": ["context_recall"] * 3,
+            "drop": [-0.2, 0.25, -0.01],
+            "ci_low": [-0.3, 0.15, -0.05],
+            "ci_high": [-0.1, 0.35, 0.03],
+            "p": [0.001, 0.001, 0.6],
+            "n_cases": [40, 40, 40],
+            "n_clusters": [40, 40, 40],
+        }
+    )
+    first = fix_first(t, q=0.10, top=5)
+    assert first["config"].to_list() == ["c1"]
