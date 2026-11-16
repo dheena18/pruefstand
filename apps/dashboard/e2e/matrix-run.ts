@@ -52,6 +52,8 @@ async function assertRow(page: Page, row: Row, locale: Locale): Promise<void> {
     await expect(page.locator(`[data-state="${state}"]`).first()).toBeAttached();
   for (const state of e.absentStates ?? [])
     await expect(page.locator(`[data-state="${state}"]`)).toHaveCount(0);
+  for (const selector of e.present ?? [])
+    await expect(page.locator(selector).first()).toBeAttached();
   for (const selector of e.absent ?? []) await expect(page.locator(selector)).toHaveCount(0);
   if (e.noindex)
     await expect(page.locator('meta[name="robots"][content="noindex"]')).toHaveCount(1);

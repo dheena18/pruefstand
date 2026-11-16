@@ -1,0 +1,10 @@
+apps/rag-demo/**
+uv.lock
+pyproject.toml
+infra/docker/**
+infra/gpu/**
+packages/pruefstand/src/pruefstand/gate/**
+packages/pruefstand/src/pruefstand/metrics/**
+packages/pruefstand/src/pruefstand/judges/**
+packages/pruefstand/src/pruefstand/runner/**
+datasets/**
