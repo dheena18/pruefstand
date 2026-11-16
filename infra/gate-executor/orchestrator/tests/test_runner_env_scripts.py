@@ -144,3 +144,83 @@ def test_no_value_reaches_a_trace(env_file: Path) -> None:
     for line in env_file.read_text(encoding="utf-8").splitlines():
         if line.startswith(("PRUEFSTAND_NONCE_KEY=", "PRUEFSTAND_CANDIDATE_API_KEY=")):
             assert line.split("=", 1)[1] not in done.stderr
+
+
+TRICKY = """A="x\\"
+U0VDUkVUPQ==
+tail"
+M="first
+LEAKY_NAME=value
+end"
+S='a
+INNER="x
+b'
+C=abc\\
+HIDDEN=1
+D='it''s' # it's a comment
+E="q" # comment with ' quote
+B=1
+"""
+
+
+def test_names_never_print_a_continuation_line(tmp_path: Path) -> None:
+    path = tmp_path / "runner.env"
+    path.write_text(TRICKY, encoding="utf-8")
+    done = run(NAMES, str(path))
+    assert done.returncode == 0, done.stderr
+    assert done.stdout.splitlines() == ["A", "M", "S", "C", "D", "E", "B"]
+    for leak in ("U0VDUkVUPQ", "LEAKY_NAME", "INNER", "HIDDEN", "tail", "end", "first"):
+        assert leak not in done.stdout
+
+
+@pytest.mark.parametrize(
+    "line",
+    [
+        'PRUEFSTAND_NONCE_KEY=""',
+        "PRUEFSTAND_NONCE_KEY=   ",
+        "PRUEFSTAND_NONCE_KEY=''",
+        "export PRUEFSTAND_NONCE_KEY= ",
+    ],
+)
+def test_keys_refuses_an_empty_or_blank_quoted_value(tmp_path: Path, line: str) -> None:
+    path = tmp_path / "runner.env"
+    path.write_text(line + "\n", encoding="utf-8")
+    path.chmod(0o600)
+    done = run(KEYS, str(path))
+    assert done.returncode == 2
+    assert "empty" in done.stderr
+    assert path.read_text(encoding="utf-8") == line + "\n"
+
+
+def test_keys_ignore_a_key_like_line_inside_a_quoted_value(tmp_path: Path) -> None:
+    path = tmp_path / "runner.env"
+    text = 'NOTE="see\nPRUEFSTAND_NONCE_KEY=not-a-key\nend"\n'
+    path.write_text(text, encoding="utf-8")
+    path.chmod(0o600)
+    done = run(KEYS, str(path))
+    assert done.returncode == 0, done.stderr
+    added = path.read_text(encoding="utf-8")[len(text) :].splitlines()
+    assert [line.split("=", 1)[0] for line in added] == [
+        "PRUEFSTAND_NONCE_KEY",
+        "PRUEFSTAND_CANDIDATE_API_KEY",
+    ]
+
+
+def test_keys_refuses_a_read_only_file_with_a_clear_message(tmp_path: Path) -> None:
+    path = tmp_path / "runner.env"
+    path.write_text("", encoding="utf-8")
+    path.chmod(0o400)
+    done = run(KEYS, str(path))
+    assert done.returncode == 2
+    assert "not writable" in done.stderr
+    assert path.read_text(encoding="utf-8") == ""
+
+
+def _scanner(script: Path) -> str:
+    text = script.read_text(encoding="utf-8")
+    start = text.index("# --- quote scanner")
+    return text[start : text.index("# --- end of quote scanner", start)]
+
+
+def test_both_scripts_carry_the_same_quote_scanner() -> None:
+    assert _scanner(NAMES) == _scanner(KEYS)
