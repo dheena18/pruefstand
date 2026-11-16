@@ -45,6 +45,9 @@ class Sandbox:
             "infra/gate-executor/llm-proxy/llm_proxy.py": "P = 1\n",
             "infra/gate-executor/host/job_started.sh": "#!/usr/bin/env bash\n",
             "infra/gate-executor/workflows/gate-executor.yml": "name: gate-executor\n",
+            "infra/gate-executor/workflows/README.md": "source of the private workflows\n",
+            "infra/gate-executor/private-repo-template/README.md": "# pruefstand-gate\n",
+            "infra/gate-executor/private-repo-template/.gitignore": "*.partial\n",
             "apps/rag-demo/not_synced.py": "N = 1\n",
         }.items():
             _write(self.public, rel, text)
@@ -74,6 +77,10 @@ class Sandbox:
             "PATH": f"{self.bin}:{os.environ['PATH']}",
             "PRIVATE_REMOTE": str(self.private),
             "MAIN_REF": "main",
+            "GIT_AUTHOR_NAME": "test",
+            "GIT_AUTHOR_EMAIL": "test@example.invalid",
+            "GIT_COMMITTER_NAME": "test",
+            "GIT_COMMITTER_EMAIL": "test@example.invalid",
         }
         return subprocess.run(  # noqa: S603 - fixed argv
             ["bash", str(SCRIPT), *args], cwd=self.public, env=env, capture_output=True, text=True,  # noqa: S607 - bash from PATH
@@ -150,3 +157,48 @@ def test_tag_off_main_is_refused(box: Sandbox) -> None:
 def test_numbered_same_day_tag_is_accepted(box: Sandbox) -> None:
     box.tag(f"{TAG}.2")
     assert box.run(f"{TAG}.2", "--dry-run").returncode == 0
+
+
+def test_the_template_lands_at_the_root_and_only_yml_reaches_the_workflows(box: Sandbox) -> None:
+    box.tag()
+    assert box.run(TAG).returncode == 0
+    tree = box.private_tree(f"sync/{TAG}")
+    assert tree["README.md"] == "# pruefstand-gate"
+    assert tree[".gitignore"] == "*.partial"
+    assert ".github/workflows/README.md" not in tree
+    assert not any(n.startswith("infra/gate-executor/private-repo-template") for n in tree)
+
+
+def _empty_remote(box: Sandbox) -> Path:
+    empty = box.tmp / "empty.git"
+    _git(box.tmp, "init", "-q", "--bare", "-b", "main", str(empty))
+    return empty
+
+
+def test_init_pushes_main_of_an_empty_private_repo_without_a_pr(box: Sandbox) -> None:
+    box.private = _empty_remote(box)
+    box.tag()
+    res = box.run(TAG, "--init")
+    assert res.returncode == 0, res.stderr
+    tree = box.private_tree("main")
+    assert tree["README.md"] == "# pruefstand-gate"
+    assert tree[".github/workflows/gate-executor.yml"] == "name: gate-executor"
+    assert tree["infra/gate-executor/llm-proxy/llm_proxy.py"] == "P = 1"
+    assert tree["SYNCED_FROM"].startswith(f"{TAG} ")
+    assert not (box.tmp / "gh.log").exists()
+
+
+def test_init_is_refused_when_the_private_repo_has_a_branch(box: Sandbox) -> None:
+    box.tag()
+    res = box.run(TAG, "--init")
+    assert res.returncode == 2
+    assert "not empty" in res.stderr
+    assert _git(box.private, "log", "--format=%s", "main") == "seed"
+
+
+def test_init_dry_run_pushes_nothing(box: Sandbox) -> None:
+    box.private = _empty_remote(box)
+    box.tag()
+    res = box.run(TAG, "--init", "--dry-run")
+    assert res.returncode == 0, res.stderr
+    assert _git(box.private, "branch", "--list") == ""
