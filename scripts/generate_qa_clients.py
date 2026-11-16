@@ -1,4 +1,9 @@
-"""Model clients of ``scripts/generate_qa.py``: the datagen client and the pass-2 judge (T4.2)."""
+"""Model clients of ``scripts/generate_qa.py``: the datagen client and the pass-2 judge (T4.2).
+
+The datagen client is the VM CPU model (``PRUEFSTAND_DATAGEN_BACKEND=vm``, D1201; checked to
+be the model served at ``PRUEFSTAND_DATAGEN_BASE_URL`` before any call) or GitHub Models
+(``github``: retired on 2026-07-30, D1202; refused with that message unless a token is set).
+"""
 
 import os
 from collections.abc import Callable
@@ -10,10 +15,11 @@ from pruefstand.core.errors import ConfigError, StoreError
 from pruefstand.core.models.attacks import CanaryRegistry
 from pruefstand.core.settings import PruefstandSettings
 from pruefstand.dataset.datagen_guard import build_datagen_client
+from pruefstand.dataset.vm_datagen import check_vm_served
 from pruefstand.llm.budget import Budget
 from pruefstand.llm.client import LLMClient
 from pruefstand.llm.factory import build_backend
-from pruefstand.llm.policy import LLMPolicy
+from pruefstand.llm.policy import LLMPolicy, provider_of
 from pruefstand.llm.recorder import CallRecorder
 from pruefstand.store.canary_source import load_canary_registry
 from pruefstand.store.kv import DiskKVCache
@@ -33,10 +39,16 @@ def _canaries() -> CanaryRegistry:
 
 
 def default_client(ref: ModelRef, max_requests: int | None, recorder: CallRecorder) -> LLMClient:
-    """The datagen client: GitHub Models, cached on disk, public-text datagen policy."""
-    if not os.environ.get(TOKEN_ENV):
-        msg = f"{TOKEN_ENV} is not set (a GitHub token with Models: read, D333)"
-        raise ConfigError(msg)
+    """The datagen client: VM model or GitHub Models, cached on disk, public-text datagen policy."""
+    if provider_of(ref.id) == "github":
+        if not os.environ.get(TOKEN_ENV):
+            msg = (
+                f"GitHub Models is retired (2026-07-30, D1202): use PRUEFSTAND_DATAGEN_BACKEND=vm; "
+                f"{TOKEN_ENV} is not set (a GitHub token with Models: read, D333)"
+            )
+            raise ConfigError(msg)
+    else:
+        check_vm_served(ref.id, PruefstandSettings().datagen_base_url)
     cache = DiskKVCache(PruefstandSettings().cache_dir, "llm")
     return build_datagen_client(
         ref, cache=cache, max_requests=max_requests, recorder=recorder, canaries=_canaries()

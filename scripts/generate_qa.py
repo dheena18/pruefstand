@@ -1,16 +1,17 @@
-"""Generate QA candidates from PUBLIC corpus chunks with the GitHub Models datagen model (T4.2).
+"""Generate QA candidates from PUBLIC corpus chunks with the pinned datagen model (T4.2, D1201).
 
-Pass 1 (network, no GPU; resumable, quota-aware)::
+Pass 1 (the VM CPU model, default ``PRUEFSTAND_DATAGEN_BACKEND=vm``; resumable)::
 
-    uv run python scripts/generate_qa.py --pass generate --tenant kanzlei_mueller --n 30 \
-        --model github/openai/gpt-4.1-mini --cross-check 0.1 --seed 7
+    bash scripts/models/vm_llm.sh start   # serves PRUEFSTAND_DATAGEN_BASE_URL (default port 18091)
+    uv run python scripts/generate_qa.py --pass generate --tenant kanzlei_mueller --n 30 --seed 7
+    bash scripts/models/vm_llm.sh stop
 
 Pass 2 (day mode on the VM, local judge model, no datagen call)::
 
     pruefstand-lock uv run python scripts/generate_qa.py --pass validate --tenant kanzlei_mueller \
         --n 30 --seed 7
 
-The credential is ``PRUEFSTAND_GH_MODELS_TOKEN`` (Models: read, D333); it is never printed. Output
+A ``github/`` model (retired) needs ``PRUEFSTAND_GH_MODELS_TOKEN`` (D333), never printed. Output
 goes to ``datasets/_work/<run>/`` (git-ignored): ``candidates.jsonl``, ``cross_check.jsonl``,
 ``ledger.jsonl`` (the resume record), ``validation.jsonl``, ``summary.json``. Only public text is
 sampled (attack and private chunks are skipped); chunks of the in-domain dev set are excluded.
@@ -32,7 +33,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 import numpy as np
-from generate_qa_args import DEFAULT_CATALOGUE, build_parser
+from generate_qa_args import DEFAULT_CATALOGUE, build_parser, effective_concurrency
 from generate_qa_clients import ClientFactory, JudgeFactory, default_client, default_judge
 from generate_qa_ledger import (
     CANDIDATES,
@@ -233,8 +234,7 @@ async def _run(args: argparse.Namespace, make: ClientFactory, make_judge: JudgeF
     check_datagen_model(args.model)
     if args.cross_check > 0:
         check_second_model(args.cross_check_model, args.model)
-    if args.max_requests is not None:
-        args.concurrency = 1  # the cap is exact only when requests are sent one at a time
+    args.concurrency = effective_concurrency(args.concurrency, args.max_requests, args.model)
     job = Job(args, _run_dir(args), load_chunks(args.corpus_dir), make, GenStats(), CallRecorder())
     stopped = False
     if args.phase in {"generate", "both"}:
