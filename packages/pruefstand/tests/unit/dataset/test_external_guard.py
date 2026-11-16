@@ -17,6 +17,7 @@ from pruefstand.core.ids import DocId, TenantId
 from pruefstand.core.models.attacks import Canary, CanaryRegistry
 from pruefstand.core.models.llm import LLMRequest, LLMRole, Message
 from pruefstand.dataset.datagen_guard import check_datagen_model, datagen_policy
+from pruefstand.dataset.datagen_pins import VM_DATAGEN_MODEL, VM_DATAGEN_MODELS, datagen_model
 from pruefstand.dataset.generate import GenStats, generate_qa
 from pruefstand.llm.policy import LLMPolicy, provider_of
 
@@ -68,11 +69,35 @@ def test_a_declared_family_that_contradicts_the_id_is_refused() -> None:
         check_datagen_model(ModelRef(id=DATAGEN, family="llama"))
 
 
-def test_a_local_datagen_model_is_refused() -> None:
-    with pytest.raises(ConfigError, match=r"no local datagen model \(ADR-0019\)"):
+def test_a_local_datagen_model_that_is_not_a_vm_pin_is_refused() -> None:
+    with pytest.raises(ConfigError, match=r"not a pinned local datagen model \(D1201\)"):
         check_datagen_model("ollama/llama3.3:70b")
-    with pytest.raises(ConfigError, match="GitHub Models"):
+    with pytest.raises(ConfigError, match="not a pinned local datagen model"):
+        check_datagen_model("openai_compatible_local/qwen2.5-0.5b-instruct")
+    with pytest.raises(ConfigError, match="VM pin or a GitHub Models id"):
         check_datagen_model("mistral/mistral-large")
+
+
+@pytest.mark.parametrize("model", sorted(VM_DATAGEN_MODELS))
+def test_the_pinned_vm_models_are_allowed_as_mistral(model: str) -> None:
+    assert check_datagen_model(model) == "mistral"
+    with pytest.raises(ConfigError, match="family"):
+        check_datagen_model(ModelRef(id=model, family="gpt"))
+
+
+def test_the_vm_datagen_policy_allows_the_local_provider_only() -> None:
+    policy = datagen_policy(None, "openai_compatible_local")
+    vm = _request().model_copy(update={"model": VM_DATAGEN_MODEL})
+    policy.check(vm, "openai_compatible_local")
+    with pytest.raises(PolicyViolation, match="allowed_providers"):
+        policy.check(_request(), "github")
+    with pytest.raises(ConfigError, match="datagen provider"):
+        datagen_policy(None, "ollama")
+
+
+def test_the_backend_switch_picks_the_pin() -> None:
+    assert datagen_model("vm") == VM_DATAGEN_MODEL
+    assert datagen_model("github") == DATAGEN
 
 
 async def test_generate_refuses_a_forbidden_model_before_any_call() -> None:
