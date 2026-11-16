@@ -6,7 +6,8 @@
 # like any other ref.
 #
 # Synced: infra/gate-executor/{orchestrator,llm-proxy,host} (same paths), infra/gate-executor/workflows/*.yml
-# (replacing .github/workflows/ of the private repo as a whole, where they run; a tag without any *.yml is
+# and *.yaml (replacing .github/workflows/ of the private repo as a whole, where they run; a tag without any
+# workflow file is
 # refused when the private repo has workflows) and the files of
 # infra/gate-executor/private-repo-template/ (to the private repo root: README.md, .gitignore). Everything
 # else in the private repo (canaries, state, baselines index) is left alone. `SYNCED_FROM` records
@@ -76,15 +77,18 @@ for part in workflows private-repo-template; do
   fi
 done
 # .github/workflows is replaced as a WHOLE, so a workflow retired in the public repo stops running here;
-# a source without any *.yml never wipes the private workflows (refused) and is skipped on a first fill.
+# a source without any *.yml / *.yaml never wipes the private workflows (refused) and is skipped on a first fill.
+shopt -s nullglob
+sources=("$work"/src/infra/gate-executor/workflows/*.yml "$work"/src/infra/gate-executor/workflows/*.yaml)
+shopt -u nullglob
 listing=""
-if compgen -G "$work/src/infra/gate-executor/workflows/*.yml" >/dev/null; then
+if [ "${#sources[@]}" -gt 0 ]; then
   rm -rf -- "${dest:?}/.github/workflows"
   mkdir -p "$dest/.github/workflows"
-  cp "$work"/src/infra/gate-executor/workflows/*.yml "$dest/.github/workflows/"
-  for wf in "$dest"/.github/workflows/*.yml; do listing+="workflow ${wf##*/}"$'\n'; done
+  cp "${sources[@]}" "$dest/.github/workflows/"
+  for wf in "${sources[@]}"; do listing+="workflow ${wf##*/}"$'\n'; done
 elif compgen -G "$dest/.github/workflows/*" >/dev/null; then
-  die "refused: $tag has no *.yml in infra/gate-executor/workflows; the private workflows would all be removed" 2
+  die "refused: $tag has no *.yml or *.yaml in infra/gate-executor/workflows; the private workflows would all be removed" 2
 fi
 if [ -d "$work/src/infra/gate-executor/private-repo-template" ]; then
   cp -R "$work/src/infra/gate-executor/private-repo-template/." "$dest/"
@@ -104,7 +108,7 @@ if [ "$dry_run" -eq 1 ]; then
 fi
 git -C "$dest" push -q origin "$branch"
 if [ "$init" -eq 1 ]; then
-  echo "sync_executor: initial executor code pushed to $private_repo main"
+  echo "sync_executor: initial executor code pushed to main of $private_remote"
   exit 0
 fi
 gh pr create --repo "$private_repo" --base main --head "$branch" \
