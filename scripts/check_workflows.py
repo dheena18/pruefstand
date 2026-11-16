@@ -13,6 +13,7 @@ from pathlib import Path
 
 import yaml
 from workflow_curl import curl_retries
+from workflow_executor_health import executor_health
 from workflow_hardening import check_action_text, hardening, pins
 from workflow_model import Doc, environment, jobs, steps, strings, triggers
 from workflow_no_repo_code import no_repo_code
@@ -211,6 +212,7 @@ def check_text(name: str, text: str) -> list[str]:
         _injection(doc),
         _build_images(name, doc),
         _gate_router(name, doc),
+        executor_health(name, doc),
         no_repo_code(name, doc),
         curl_retries(doc),
         hardening(name, doc),

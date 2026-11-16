@@ -1,0 +1,7 @@
+# Private executor repo (synced from the public repo, infra/gate-executor/private-repo-template/).
+# Never committed here: runner values, partial baseline writes, local caches.
+.env
+runner.env
+*.partial
+__pycache__/
+*.pyc

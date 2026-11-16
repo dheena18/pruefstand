@@ -28,7 +28,8 @@ PAGES_WRITE: dict[tuple[str, str], str] = {
 }
 
 # Files that may grant ``models: read`` (security.md X2); ``models: write`` is never allowed.
-MODELS_READ_FILES = frozenset({"live-e2e.yml", "cassettes.yml", "cassettes-models.yml"})
+# Empty since GitHub Models was retired (2026-07-30, D1202): no workflow calls models.github.ai.
+MODELS_READ_FILES: frozenset[str] = frozenset()
 
 # (file, job) -> reason, for ``actions: read`` (R13 P5.2).
 ACTIONS_READ: dict[tuple[str, str], str] = {
@@ -109,6 +110,11 @@ OTHER_WRITE: dict[tuple[str, str, str], str] = {
         "comment",
         "pull-requests",
     ): "upserts the one bot comment on same-repo PRs; checks out the BASE sha only",
+    (
+        "executor-health.yml",
+        "check-heartbeat",
+        "issues",
+    ): "T6.2b S8 (D1092): opens/comments/closes the executor alert issues; no secrets",
 }
 
 # (file, trigger) -> reason. Triggers that run with base-repo rights on attacker-influenced input.

@@ -61,7 +61,7 @@ def test_security_scan_needs_every_job_except_scorecard() -> None:
 def test_skeleton_workflows() -> None:
     live = _jobs("live-e2e.yml")["live"]
     assert live["timeout-minutes"] == 30
-    assert live["permissions"] == {"contents": "read", "actions": "read", "models": "read"}
+    assert live["permissions"] == {"contents": "read", "actions": "read"}  # no models: read (D1202)
     record = _jobs("cassettes.yml")["record"]
     assert record["permissions"] == {"contents": "read"}
     assert _jobs("cassettes.yml")["push"]["permissions"] == {"contents": "write"}
