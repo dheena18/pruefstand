@@ -8,6 +8,6 @@ embedder on the cluster disk and the rag-demo fixed-token chunking option.
 | `evidence_recall.py` | `normalise_span`, `evidence_recall`: span-level retrieval metric (X3.2), experiment only, never gated | done |
 | `volume.py` | `take_until_budget`: equal retrieved text volume (4 096 tokens) for the chunking arms (P3.2) | done |
 | `grid.yaml`, `run_grid.py` | 12-config grid (2 embedders x dense/hybrid x 2 chunkings x compound split) | open |
-| `analyze.py` | drops per config x perturbation with cluster bootstrap CI, heatmaps, BH fix-first list | open |
+| `analyze.py` | `paired_diffs`, `drop_table` (cluster-mean drop, gate bootstrap CI), `fix_first` (BH q 0.10), `write_heatmap` (D1265) | done; the CLI and the e5 <= 512-token / top_k 8 sensitivity rows wait for run data |
 
 Tests: `uv run pytest experiments/rq1/tests -q` (offline, no network, no GPU).

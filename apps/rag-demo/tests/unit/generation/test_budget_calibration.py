@@ -12,7 +12,14 @@ from pathlib import Path
 
 import pytest
 import yaml
-from budget_cases import CASES, FIXTURE, case_messages, gpu_config, messages_sha256
+from budget_cases import (
+    CASES,
+    FIXTURE,
+    case_messages,
+    gpu_config,
+    messages_sha256,
+    portable_path,
+)
 from rd_support import MODEL_DIR, REPO
 
 from rag_demo.generation.budget import count_prompt_tokens, is_overflow, prompt_budget
@@ -95,3 +102,16 @@ def test_the_wrapper_without_the_empty_think_block_would_undercount_by_four_toke
     bare = "".join(f"<|im_start|>{m['role']}\n{m['content']}<|im_end|>\n" for m in messages)
     plain = count(bare + "<|im_start|>assistant\n")
     assert ROWS["one_hit"]["prompt_eval_count"] - plain == 4
+
+
+def test_the_fixture_names_the_tokenizer_without_an_absolute_home_path() -> None:
+    # The recorder wrote str(TOKENIZER), i.e. the recording user's home directory (found in #189).
+    assert DATA["tokenizer"]["path"].startswith("~/")
+
+
+def test_a_path_under_home_is_written_with_a_tilde(tmp_path: Path) -> None:
+    home = tmp_path / "home" / "someone"
+    inside = home / ".cache" / "pruefstand" / "models" / "tokenizers" / "generator.json"
+    assert portable_path(inside, home) == "~/.cache/pruefstand/models/tokenizers/generator.json"
+    outside = tmp_path / "models" / "generator.json"
+    assert portable_path(outside, home) == outside.as_posix()
