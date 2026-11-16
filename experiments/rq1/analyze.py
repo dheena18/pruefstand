@@ -95,27 +95,31 @@ def drop_table(
         .agg(pl.col("diff").mean(), pl.len().alias("cases"))
         .sort([*KEYS, "cluster_id"])
     )
-    rows = []
-    for key, clusters in per_cluster.partition_by(KEYS, as_dict=True, maintain_order=True).items():
-        result = paired_cluster_bootstrap(
-            clusters["diff"].to_numpy().astype(np.float64),
-            clusters["cluster_id"].to_numpy().astype(np.str_),
-            n_resamples=n_resamples,
-            confidence=0.95,
-            rng=rng,
-        )
-        rows.append(
-            {
-                **dict(zip(KEYS, key, strict=True)),
-                "drop": result.mean_diff,
-                "ci_low": result.ci_low,
-                "ci_high": result.ci_high,
-                "p": result.p_value,
-                "n_cases": int(clusters["cases"].sum()),
-                "n_clusters": clusters.height,
-            }
-        )
+    cells = per_cluster.partition_by(KEYS, as_dict=True, maintain_order=True).items()
+    rows = [_cell(key, clusters, n_resamples, rng) for key, clusters in cells]
     return pl.DataFrame(rows).sort(KEYS)
+
+
+def _cell(
+    key: tuple[object, ...], clusters: pl.DataFrame, n_resamples: int, rng: np.random.Generator
+) -> dict[str, object]:
+    """One row of :func:`drop_table`: the bootstrap of one cell's cluster-mean differences."""
+    result = paired_cluster_bootstrap(
+        clusters["diff"].to_numpy().astype(np.float64),
+        clusters["cluster_id"].to_numpy().astype(np.str_),
+        n_resamples=n_resamples,
+        confidence=0.95,
+        rng=rng,
+    )
+    return {
+        **dict(zip(KEYS, key, strict=True)),
+        "drop": result.mean_diff,
+        "ci_low": result.ci_low,
+        "ci_high": result.ci_high,
+        "p": result.p_value,
+        "n_cases": int(clusters["cases"].sum()),
+        "n_clusters": clusters.height,
+    }
 
 
 def fix_first(table: pl.DataFrame, *, q: float = FIX_FIRST_Q, top: int = 5) -> pl.DataFrame:
