@@ -99,3 +99,23 @@ def test_encrypted_bundle_round_trip_and_keep(tmp_path: Path) -> None:
         names = tar.getnames()
     assert "pruefstand-gate.bundle" in names
     assert "baselines/fp/index.json" in names
+
+
+def test_dry_run_prints_one_encrypting_pipeline_and_writes_nothing(tmp_path: Path) -> None:
+    root = tmp_path / "root"
+    root.mkdir()
+    proc = _run(
+        tmp_path,
+        "--repo",
+        "r",
+        "--dry-run",
+        AGE_RECIPIENT=RECIPIENT,
+        PRUEFSTAND_DATA_ROOT=str(root),
+    )
+    assert proc.returncode == 0, proc.stderr
+    lines = proc.stdout.splitlines()
+    (pipeline,) = [line for line in lines if "|" in line]
+    assert pipeline.endswith(".partial")
+    assert f"| age -r {RECIPIENT} -o {root}/backups/" in pipeline
+    assert any(line.startswith("mv -f -- ") and line.endswith(".tar.age") for line in lines)
+    assert list(root.iterdir()) == []
