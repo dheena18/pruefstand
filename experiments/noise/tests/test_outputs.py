@@ -19,6 +19,7 @@ from noise.outputs import (
     write_sigma,
 )
 from noise.replay import ReplayResult
+from rq3.replay_cli import load_sigma
 from testsupport.builders import fixture_f0, make_case, make_run
 from testsupport.gate_helpers import DIRECTIONS, POLICY
 
@@ -119,3 +120,21 @@ def test_sigma_replay_timings_and_parquet(tmp_path: Path, monkeypatch: pytest.Mo
 def test_slice_labels() -> None:
     assert slice_label("perturbed_all", "perturbed_all") == "perturbed_all"
     assert slice_label("lang", "de") == "lang=de"
+
+
+def test_mde_csv_is_what_the_rq3_replay_reads(tmp_path: Path) -> None:
+    """#226 contract: load_sigma reads the core / overall rows of the written mde.csv."""
+    rng = np.random.default_rng(3)
+    arms = [("noop", 0.30), ("churn", 0.35), ("repeat", 0.05)]
+    core = pl.concat([synthetic(a, s, 60, rng) for a, s in arms])
+    block = core.with_columns(pl.lit("full_b0").alias("split"), pl.col("diff") * 3)
+    policy = GatePolicy(metrics={"context_recall": MetricPolicy(max_drop=0.05)})
+    rows = mde_rows(core, policy, "core") + mde_rows(block, policy, "full_b0")
+    write_mde(tmp_path / "mde.csv", rows)
+    by_split = {r["split"]: r for r in rows}
+    assert load_sigma(tmp_path / "mde.csv", "noop") == {
+        "context_recall": pytest.approx(by_split["core"]["sigma_d_noop"])
+    }
+    assert load_sigma(tmp_path / "mde.csv", "churn") == {
+        "context_recall": pytest.approx(by_split["core"]["sigma_d_churn"])
+    }
