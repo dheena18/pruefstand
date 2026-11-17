@@ -32,7 +32,10 @@ def _cpus(service: dict[str, Any]) -> float:
 def test_every_service_is_on_the_internal_network() -> None:
     doc = _load()
     assert doc["networks"]["demo-net"]["internal"] is True
-    assert doc["networks"]["demo-net"]["ipam"]["config"] == [{"subnet": "10.232.0.0/24"}]
+    # the production default stays 10.232.0.0/24; the e2e project overrides it (no shared pool)
+    assert doc["networks"]["demo-net"]["ipam"]["config"] == [
+        {"subnet": "${DEMO_NET_SUBNET:-10.232.0.0/24}"}
+    ]
     for name, service in doc["services"].items():
         assert "demo-net" in service["networks"], name
 
@@ -79,13 +82,20 @@ def test_the_app_containers_drop_capabilities_and_have_a_read_only_root() -> Non
         assert service["read_only"] is True, name
 
 
-def test_the_demo_profile_fits_the_adr_budget() -> None:
+def test_the_demo_profile_fits_the_adr_budget_and_the_e2e_project_is_its_own() -> None:
     steady = {n: s for n, s in _services("demo").items() if n != "index"}  # index is a one-shot
-    assert sum(_cpus(s) for s in steady.values()) <= 4.0
-    assert sum(_gb(s["mem_limit"]) for s in steady.values()) <= 8.0
-    with_e2e = {**steady, "rag-demo-e2e": _load()["services"]["rag-demo-e2e"]}
-    assert sum(_cpus(s) for s in with_e2e.values()) <= 4.5
-    assert sum(_gb(s["mem_limit"]) for s in with_e2e.values()) <= 8.0
+    cpus = sum(_cpus(s) for s in steady.values())
+    mem = sum(_gb(s["mem_limit"]) for s in steady.values())
+    assert (cpus, mem) == (4.0, 7.0)  # ADR-0012: 4 vCPU / 8 GB
+    e2e = {n: s for n, s in _services("e2e").items() if n != "index"}
+    assert (
+        sum(_cpus(s) for s in e2e.values()),
+        sum(_gb(s["mem_limit"]) for s in e2e.values()),
+    ) == (4.0, 7.0)
+    assert (2 * cpus, 2 * mem) == (
+        8.0,
+        14.0,
+    )  # demo + e2e together: within the VM's 24 GB, over ADR-0012
 
 
 def test_the_demo_profile_publishes_no_port_and_uses_the_public_config() -> None:

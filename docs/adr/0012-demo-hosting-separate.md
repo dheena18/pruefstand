@@ -21,7 +21,7 @@ server, and the VM has spare CPU for one small demo instance, so no paid host is
   `cloudflared` (`10.232.0.2`) is also on the egress network `demo-egress` (`10.233.0.0/24`), `DOCKER-USER` drops
   `demo-egress` → `10.0.0.0/8`, `172.16.0.0/12`, `192.168.0.0/16` and `PRUEFSTAND-INPUT` drops both subnets → the
   VM's own addresses (round 13 P2.2, `security.md` D4) with its own Qdrant (demo corpus snapshot), CPU embeddings and
-  llama.cpp, limited to **4 vCPU / 8 GB** (`cpus`, `mem_limit`; the compose file sums to 4 vCPU / 7 GB in steady state and 4.5 vCPU / 8 GB with the nightly e2e instance, D1309) inside the VM CPU-model budget (≤ 24 GB
+  llama.cpp, limited to **4 vCPU / 8 GB** (`cpus`, `mem_limit`; the compose file sums to 4 vCPU / 7 GB; the nightly e2e is its own project of the same size, so 8 vCPU / 14 GB together with the demo, which is why it does not run next to the public demo unless the VM budget allows it, D1309) inside the VM CPU-model budget (≤ 24 GB
   in total). T8.4's `abuse_test.py` records p95 latency and RSS with these limits. The demo pulls only
   release digests marked **demo-ready** by the separate public workflow `demo-ready.yml` (`workflow_run` of
   `release.yml`; its job `release-demo-ready` uploads the release asset **`demo-ready.json`** after clean leak

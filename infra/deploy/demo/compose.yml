@@ -3,11 +3,13 @@
 # Profiles: `demo` (qdrant, llm, embed, one-shot index, rag-demo, no host port) and `e2e`
 # (the same backing services plus rag-demo-e2e on 127.0.0.1:${E2E_PORT:-8091}, used only by
 # scripts/demo/try_e2e.sh). These profiles live only in this file, never in the root docker-compose.yml (UI12-10).
-# Every demo service sits ONLY on the internal network `demo-net` (D320, ADR-0012, P2.2): no egress, no host port. The
-# production `rag-demo` publishes nothing (cloudflared of T8.5 reaches rag-demo:8000 over demo-net; the smoke runs
+# Every demo service sits ONLY on the internal network `demo-net` (D320, ADR-0012, P2.2): no egress, no host port. Its
+# subnet is 10.232.0.0/24, overridable by DEMO_NET_SUBNET (the e2e project of try_e2e.sh uses 10.234.0.0/24, so that it
+# can be created next to the production demo). The production `rag-demo` publishes nothing (cloudflared of T8.5 reaches rag-demo:8000 over demo-net; the smoke runs
 # `docker compose exec`). Only the test instance `rag-demo-e2e` (profile e2e, nightly) also joins `e2e-edge`, because Docker
 # cannot publish a port from an internal network; it listens on 127.0.0.1 only. Limits: the demo profile sums to
-# 4 vCPU / 7 GB (ADR-0012 allows 4 vCPU / 8 GB); with the e2e instance 4.5 vCPU / 8 GB. The DEMO_* and TRUSTED_PROXY_HOPS
+# 4 vCPU / 7 GB (ADR-0012 allows 4 vCPU / 8 GB). The e2e run is its own project with its own backing services, again
+# 4 vCPU / 7 GB; both together are 8 vCPU / 14 GB (see D1309). The DEMO_* and TRUSTED_PROXY_HOPS
 # variables are passed through from the calling shell only when set (an empty value would fail the settings parse).
 # T8.5 adds the cloudflared service and the nightly deploy. No secrets here.
 
@@ -196,7 +198,7 @@ networks:
     internal: true
     ipam:
       config:
-        - subnet: 10.232.0.0/24
+        - subnet: ${DEMO_NET_SUBNET:-10.232.0.0/24}
   # Test instance only (profile e2e): a plain bridge so that 127.0.0.1:${E2E_PORT} can be published.
   e2e-edge: {}
 
