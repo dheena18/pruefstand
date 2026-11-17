@@ -654,7 +654,7 @@ Cases (790) · 3 failing            Search id/question [______]  [☑ Failing on
 **Hosting (Y7.5, UI11-06):** the demo API runs on the TrueNAS VM `pruefstand-exec` as the compose
 project `pruefstand-demo` (profile `demo`: Qdrant, llama.cpp CPU generator ≤ 2B Q4, `embed`, rag-demo,
 plus a one-shot `index` service on the slice corpus with `canaries.public.json` only). Every service
-runs on the VM CPU; none uses the A40 cluster. Only rag-demo publishes a port, on `127.0.0.1:8090`. A
+runs on the VM CPU; none uses the A40 cluster. No demo service publishes a host port (cloudflared reaches `rag-demo:8000` over `demo-net`); only the e2e test instance `rag-demo-e2e` publishes `127.0.0.1:$E2E_PORT`, on its own network `e2e-edge`. A
 free **Cloudflare Tunnel** (`cloudflared` container on the `--internal` `demo-net` and on `demo-egress`, the only demo container with internet, P2.2; token from `/home/pruefstand/demo.env`)
 maps `https://demo.<domain>` to `http://rag-demo:8000`, so the VM opens no inbound port. The image is
 deployed only as a **demo-ready** digest by the private nightly job `demo-deploy` (D244): it pulls the
@@ -1742,8 +1742,8 @@ It is **never** a `ui.yml` job or a PR check (no `try-it` job exists in `ui.yml`
   Node, pnpm or browsers (UI12-12).
 - **Ports:** `E2E_PORT = 8091 + ${PORT_OFFSET:-0}` (`PORT_OFFSET=10000` on an agent dev stack → 18091);
   the script uses it for the compose port and for `NEXT_PUBLIC_DEMO_API_URL=http://127.0.0.1:$E2E_PORT`.
-  The site is served on 4175. The public demo `rag-demo` stays on `127.0.0.1:8090`; `embed` has no
-  host port (UI12-11).
+  The site is served on 4175. The public demo `rag-demo` publishes no host port and is never touched; `embed`
+  has no host port (UI12-11).
 - **Builds:** `build_set.sh populated --out populated-try` with `NEXT_PUBLIC_DEMO_API_URL` as above, and
   `build_set.sh populated --out populated-try-timeout` with the same URL and `NEXT_PUBLIC_DEMO_TIMEOUT_S=1`.
   `populated-try` is served on 4175 for every group; for `T-TIMEOUT` (run last) the script stops it and
