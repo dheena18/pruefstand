@@ -11,6 +11,7 @@ completed night and posts ``pruefstand/nightly`` on main's head. Env as for ``di
 
 import argparse
 import os
+import sys
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
@@ -22,6 +23,7 @@ from gate_orchestrator.dispatch_flow import IMAGE_CONTEXT
 from gate_orchestrator.gate_run import digest_from_status
 from gate_orchestrator.github_read import PUBLIC_REPO, PublicRepo, status_of
 from gate_orchestrator.heartbeat import nightly_fields
+from gate_orchestrator.housekeeping import prune_runs, repo_size_line
 from gate_orchestrator.image import ImageVerificationError
 from gate_orchestrator.infra import InfraError, run_with_retry
 from gate_orchestrator.lock import LOCK_DIR, maintenance_path, run_locked
@@ -31,9 +33,11 @@ from gate_orchestrator.preflight import run_preflight
 from gate_orchestrator.state import finish_nightly, nightly_counter_path, read_counter
 from gate_orchestrator.window import late_start, phase_check
 from pruefstand.core.enums import GateStatus
+from pruefstand.core.errors import PruefstandError
 from pruefstand.report.github import GitHubPublisher, truncate
 
 CONTEXT = "pruefstand/nightly"
+PRIVATE_REPO = "dheena18/pruefstand-gate"
 STATE = {"ok": "success", "failed": "failure"}
 
 
@@ -108,6 +112,25 @@ def _must(argv: list[str], child: dict[str, str]) -> None:
         raise InfraError(msg)
 
 
+def _report(step: Callable[[], str]) -> None:
+    """An informational housekeeping phase: one summary line, never fails the night (D1028)."""
+    try:
+        line = step()
+    except (OSError, ValueError, PruefstandError) as exc:
+        line = f"housekeeping not run: {exc}"
+    sys.stdout.write(line + "\n")
+
+
+def _prune(child: dict[str, str]) -> str:
+    removed = prune_runs(Path(child["PRUEFSTAND_HOME"]) / "runs", datetime.now(UTC))
+    return f"runs-prune: removed {len(removed)} run directories"
+
+
+def _repo_size(child: dict[str, str]) -> str:
+    size = PublicRepo(child["STATE_TOKEN"], repo=PRIVATE_REPO).size_kb()
+    return repo_size_line(size)[1]
+
+
 def locked_night(
     attempt: NightlyRun, child: dict[str, str], main_dir: Path, deadline: datetime
 ) -> str:
@@ -121,6 +144,8 @@ def locked_night(
         ("switch-mode", lambda: _must([str(gpu / "switch-mode.sh"), "night"], child)),
         ("judge-drift", lambda: _must(["pruefstand", "judge-drift", "--judge", JUDGE], child)),
         ("nightly-gate", lambda: _gate(attempt, child, main_dir)),
+        ("runs-prune", lambda: _report(lambda: _prune(child))),
+        ("repo-size", lambda: _report(lambda: _repo_size(child))),
     ]
     try:
         exceeded = phases(lambda: datetime.now(UTC), deadline, steps)

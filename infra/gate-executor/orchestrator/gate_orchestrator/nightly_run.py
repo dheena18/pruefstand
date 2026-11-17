@@ -18,7 +18,14 @@ from gate_orchestrator.gate_run import run_config
 from gate_orchestrator.infra import InfraError
 from gate_orchestrator.window import baseline_refs
 
-PLANNED_MINUTES = {"switch-mode": 5.0, "judge-drift": 5.0, "nightly-gate": 360.0, "drift": 15.0}
+PLANNED_MINUTES = {
+    "switch-mode": 5.0,
+    "judge-drift": 5.0,
+    "nightly-gate": 360.0,
+    "drift": 15.0,
+    "runs-prune": 2.0,
+    "repo-size": 1.0,
+}
 JUDGE = "ollama/gemma3:12b"  # the one judge for PR and nightly (ADR-0019)
 
 

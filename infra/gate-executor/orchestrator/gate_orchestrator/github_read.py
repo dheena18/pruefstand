@@ -113,6 +113,18 @@ class PublicRepo:
         data = self._get(f"/branches/{branch}")
         return str(data["commit"]["sha"]) if isinstance(data, dict) else None
 
+    def size_kb(self) -> int:
+        """``GET /repos/{repo}`` ``size`` (KB).
+
+        Raises:
+            GitHubReadError: the repo is not readable with this token.
+        """
+        data = self._get("")
+        if not isinstance(data, dict) or not isinstance(data.get("size"), int):
+            msg = f"repo {self._repo} size not readable"
+            raise GitHubReadError(msg)
+        return int(data["size"])
+
     def file_at(self, path: str, ref: str) -> str | None:
         """Text of ``path`` at ``ref`` (``None`` when absent)."""
         data = self._get(f"/contents/{path}", {"ref": ref})
