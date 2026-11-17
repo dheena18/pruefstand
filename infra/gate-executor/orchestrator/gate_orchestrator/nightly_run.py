@@ -45,6 +45,35 @@ def nightly_gate_argvs(run_dir: Path, config: Path, block: int) -> list[list[str
     return [[*base, "--ref", gate_ref], [*base, "--ref", drift_ref]]
 
 
+def read_manifest(run_dir: Path) -> dict[str, object]:
+    """``run.json`` of a run; a missing or corrupt file is the infra error ``run_failed``.
+
+    Raises:
+        InfraError: ``run.json`` is missing, unreadable or not a JSON object.
+    """
+    try:
+        data = json.loads((run_dir / "run.json").read_text(encoding="utf-8"))
+    except (OSError, ValueError) as exc:
+        msg = f"run_failed: no readable run.json in {run_dir.name}"
+        raise InfraError(msg) from exc
+    if not isinstance(data, dict):
+        msg = f"run_failed: {run_dir.name}/run.json is not an object"
+        raise InfraError(msg)
+    return data
+
+
+def gate_failed(code: int) -> bool:
+    """``pruefstand gate`` exit: 0 → passed (incl. INSUFFICIENT_DATA), 1 → FAIL (review #236).
+
+    Raises:
+        InfraError: any other exit (2 config/usage, 3 runtime error): no gate decision was made.
+    """
+    if code in (0, 1):
+        return code == 1
+    msg = f"gate_failed: pruefstand gate exit {code}"
+    raise InfraError(msg)
+
+
 @dataclass
 class NightlyRun(Attempt):
     """A gate attempt that runs the nightly split against main's image; result = run status."""
@@ -62,14 +91,14 @@ class NightlyRun(Attempt):
             msg = f"run_failed: pruefstand run exit {code}"
             raise InfraError(msg)
         self.run_dir = Path(lines[-1])
-        manifest = json.loads((self.run_dir / "run.json").read_text(encoding="utf-8"))
+        manifest = read_manifest(self.run_dir)
         if manifest.get("infra_error"):
             return str(manifest["infra_error"])
         block = manifest.get("block")
         failed = False
         if isinstance(block, int):
             gate, drift = nightly_gate_argvs(self.run_dir, config, block)
-            failed = self.run(gate, env)[0] == 1  # exit 1 = FAIL; INSUFFICIENT_DATA exits 0
+            failed = gate_failed(self.run(gate, env)[0])
             self.run(drift, env)  # drift is reported in gate.json of the drift run, never gating
         self.result = "failed" if failed else "ok"
         return None

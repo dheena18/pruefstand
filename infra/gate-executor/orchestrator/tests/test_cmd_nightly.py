@@ -6,9 +6,9 @@ from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 import pytest
-from gate_orchestrator.cmd_nightly import final_status, lock_budget_s, night_status, phases
 from gate_orchestrator.heartbeat import check_nightly_status
 from gate_orchestrator.models import Job
+from gate_orchestrator.nightly_flow import final_status, lock_budget_s, night_status, phases
 from gate_orchestrator.nightly_run import NightlyRun, nightly_gate_argvs, nightly_run_argv
 from orch_testkit import SpyPoster
 
