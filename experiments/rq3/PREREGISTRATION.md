@@ -112,4 +112,15 @@ All results are reported, whatever they show, including if the naive gate detect
 
 ## Amendments
 
-None yet.
+**A1 (2026-11-17, before any RQ3 run; review of #219): how every gate status is scored.**
+
+- `UNSUPPORTED_CONFIG` counts as `WARN` (as `GateStatus` defines it).
+  - A no-op deciding it is a false warn.
+  - A mutation deciding it is a WARN: in its own row, never a detection.
+- `INSUFFICIENT_DATA` (too few applicable clusters to decide) is **neither a detection nor an alarm**, and it
+  is not re-run, because it is the gate's answer and not an infra failure.
+  - For mutations it stays in the denominator as "not detected", so an undecided variant gains nothing.
+  - For no-ops it counts as neither a false block nor a false warn.
+  - Every table carries an `insufficient_data` row: the count of such decisions per variant and tier.
+- `PASS`, `WARN` and `FAIL` are scored as in §5.
+- Pending entries of `index.yaml` are refused by the scorer itself, not only left out by its caller.
