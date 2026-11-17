@@ -27,7 +27,9 @@ E2E_PORT="${E2E_PORT:-$((8091 + ${PORT_OFFSET:-0}))}"
 SITE_PORT=4175
 PW_IMAGE="${PW_IMAGE:-mcr.microsoft.com/playwright:v1.56.1-noble}"
 pw="try-e2e-pw-$$"
-export E2E_PORT DEMO_ALLOWED_ORIGIN="http://localhost:${SITE_PORT}"
+# demo-net of this project must not overlap the production one (10.232.0.0/24; proxy-egress 10.231, demo-egress 10.233)
+DEMO_NET_SUBNET="${DEMO_NET_SUBNET:-10.234.0.0/24}"
+export E2E_PORT DEMO_NET_SUBNET DEMO_ALLOWED_ORIGIN="http://localhost:${SITE_PORT}"
 # The e2e run has its OWN compose project (own containers, network and volumes), so its teardown (`down -v`) can never
 # touch the production demo project `pruefstand-demo` (its qdrant_data index, llm, embed, rag-demo).
 project="${E2E_PROJECT:-pruefstand-demo-e2e}"
