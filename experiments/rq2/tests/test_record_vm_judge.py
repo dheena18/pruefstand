@@ -5,6 +5,7 @@ model (it holds the host lock). Without ``PRUEFSTAND_RECORD_RQ2_VM_JUDGE=1`` it 
 publishable sets are recorded (``cassette_items``): no MEMERAG text ever reaches a cassette.
 """
 
+import asyncio
 import os
 from pathlib import Path
 
@@ -26,7 +27,12 @@ from pruefstand.llm.policy import LLMPolicy
 from pruefstand.llm.prompts import PromptRegistry
 from pruefstand.llm.recorder import CallRecorder
 
-CASSETTES = Path(__file__).parent / "cassettes" / "vm_judge"
+# record_cassettes.sh records into a temp dir (PRUEFSTAND_RQ2_VM_CASSETTES) and replaces the
+# committed cassettes only on success, so a failed recording never loses them
+CASSETTES = Path(
+    os.environ.get("PRUEFSTAND_RQ2_VM_CASSETTES")
+    or Path(__file__).parent / "cassettes" / "vm_judge"
+)
 pytestmark = [
     pytest.mark.live,
     pytest.mark.skipif(
@@ -36,7 +42,7 @@ pytestmark = [
 ]
 
 
-async def test_record_the_vm_judge_cassettes() -> None:
+def test_record_the_vm_judge_cassettes() -> None:
     real = build_vm_backend(
         ModelRef(id=VM_JUDGE, family=VM_FAMILY), PruefstandSettings().datagen_base_url
     )
@@ -46,6 +52,6 @@ async def test_record_the_vm_judge_cassettes() -> None:
     judge = Judge(client, VM_JUDGE, PromptRegistry([PROMPT_ROOT]), nonce_key=CALIBRATION_NONCE)
     items = cassette_items(load_config(REPO / "experiments/rq2/configs/rq2_judges.yaml"))
     for item in items:
-        verdict = await judge.score(make_task(item.metric, **item.inputs))
+        verdict = asyncio.run(judge.score(make_task(item.metric, **item.inputs)))
         assert verdict.raw_score is not None
     assert len(list(CASSETTES.glob("*.json"))) >= len(items)
