@@ -80,3 +80,12 @@ def test_every_service_has_a_healthcheck_and_no_privileges() -> None:
         assert "healthcheck" in svc, name
         assert svc.get("privileged") is not True, name
         assert "no-new-privileges:true" in svc.get("security_opt", []), name
+
+
+def test_qdrant_drops_every_capability_but_its_three_file_ones() -> None:
+    qdrant = SERVICES["qdrant"]
+    assert qdrant["cap_drop"] == ["ALL"]
+    assert qdrant["cap_add"] == ["CHOWN", "DAC_OVERRIDE", "FOWNER"]  # storage writes (review #233)
+    for name in ("rerank-cpu", "llm-proxy"):
+        assert SERVICES[name]["cap_drop"] == ["ALL"], name
+        assert "cap_add" not in SERVICES[name], name

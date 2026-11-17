@@ -27,6 +27,10 @@ services:
       # $PRUEFSTAND_HOME/qdrant on the VM disk, never the data root (prompt "Constraints")
       - ${PRUEFSTAND_HOME:?set PRUEFSTAND_HOME (runner.env)}/qdrant:/qdrant/storage
     security_opt: ["no-new-privileges:true"]
+    # The image runs as root; it keeps only the three file capabilities it needs to write a storage dir it does not
+    # own (cap_drop ALL alone: the server exits on a non-root-owned bind mount; checked on the VM, review #233).
+    cap_drop: [ALL]
+    cap_add: [CHOWN, DAC_OVERRIDE, FOWNER]
     mem_limit: 4g
     healthcheck:
       # The image has neither curl nor wget: plain HTTP over bash's /dev/tcp (/readyz needs no key).
