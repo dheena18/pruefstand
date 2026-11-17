@@ -69,3 +69,12 @@ def test_bench_requests_are_seeded_and_ten_passages_each() -> None:
     assert all(len(texts) == 10 and len(set(texts)) == 10 for _, texts in first)
     with pytest.raises(ValueError, match="at least 10"):
         rb.requests(queries, passages[:9], 1)
+
+
+def test_the_report_and_the_d655_scenarios_use_the_same_generator_inputs() -> None:
+    """D1289: report() and scenarios() agree on the full-core PR minutes at the 256 cap."""
+    from model_selection import scenarios as sc  # noqa: PLC0415
+
+    full256 = next(full for out, full, _ in sc.scenarios() if out == 256)
+    line = next(x for x in b.report().splitlines() if x.startswith("PR full core"))
+    assert f"gpu0 {full256.gpu0_min:.1f}" in line  # 89.4, not the stale 98.8
