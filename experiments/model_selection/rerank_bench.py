@@ -74,7 +74,7 @@ def append_rows(rows: list[dict[str, object]], path: Path = RERANK_CSV) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     new = not path.exists()
     with path.open("a", encoding="utf-8", newline="") as handle:
-        writer = csv.DictWriter(handle, fieldnames=COLUMNS)
+        writer = csv.DictWriter(handle, fieldnames=COLUMNS, lineterminator="\n")
         if new:
             writer.writeheader()
         writer.writerows(rows)
