@@ -5,10 +5,11 @@ Usage::
     uv run python experiments/rq3/replay_cli.py --baseline <run dir> --n 500 --seed 1234 --arm noop
 
 Reads the measured sigma_d of the arm (``noop`` = the primary false-alarm arm, ``churn``) from
-T6.3's ``results/noise/mde.csv`` (columns ``metric``, ``slice``, ``sigma_d_noop``,
-``sigma_d_churn``; the ``overall`` rows), draws ``n`` mean-zero A/A pairs from the baseline run with
-``noise.replay.aa_pair``, decides each with the three variants and appends one row per variant to
-``results/rq3/replay.csv``, with the commit SHA of ``PREREGISTRATION.md`` (§ "Pre-registration").
+T6.3's ``results/noise/mde.csv`` (columns ``metric``, ``slice``, ``split``, ``sigma_d_noop``,
+``sigma_d_churn``; the ``core`` / ``overall`` rows), draws ``n`` mean-zero A/A pairs from the
+baseline run with ``noise.replay.aa_pair``, decides each with the three variants and appends one
+row per variant to ``results/rq3/replay.csv``, with the commit SHA of ``PREREGISTRATION.md``
+(§ "Pre-registration").
 """
 
 import argparse
@@ -36,26 +37,39 @@ from pruefstand.store.artifacts import ArtifactStore
 
 REPO = Path(__file__).resolve().parents[2]
 PREREG = "experiments/rq3/PREREGISTRATION.md"
+SPLIT = "core"  # the PR-tier split the replay pairs stand for
 Arm = Literal["noop", "churn"]
 COLUMNS = ["prereg_sha", "arm", "variant", "n", "fail", "fail_ci_low", "fail_ci_high",
            "warn_or_fail", "warn_or_fail_ci_low", "warn_or_fail_ci_high"]  # fmt: skip
 
 
 def load_sigma(path: Path, arm: Arm) -> dict[str, float]:
-    """The ``overall`` sigma_d of every metric for ``arm`` from T6.3's ``mde.csv``.
+    """The ``core`` / ``overall`` sigma_d of every metric for ``arm`` from T6.3's ``mde.csv``.
+
+    ``mde.csv`` holds one row per metric x slice x split (``core`` plus the nightly blocks); the
+    replay uses the PR-tier ``core`` rows only.
 
     Raises:
-        ConfigError: the file has no ``sigma_d_<arm>`` column or no ``overall`` row.
+        ConfigError: no ``split`` or ``sigma_d_<arm>`` column, no ``core`` / ``overall`` row, or a
+            metric with more than one such row.
     """
     column = f"sigma_d_{arm}"
     with path.open(encoding="utf-8", newline="") as handle:
         rows = list(csv.DictReader(handle))
-    if not rows or column not in rows[0]:
-        msg = f"{path}: no column {column}"
+    missing = [c for c in ("metric", "slice", "split", column) if not rows or c not in rows[0]]
+    if missing:
+        msg = f"{path}: no column {', '.join(missing)}"
         raise ConfigError(msg)
-    sigma = {r["metric"]: float(r[column]) for r in rows if r.get("slice") == "overall"}
+    sigma: dict[str, float] = {}
+    for row in rows:
+        if row["slice"] != "overall" or row["split"] != SPLIT:
+            continue
+        if row["metric"] in sigma:
+            msg = f"{path}: more than one {SPLIT}/overall row for {row['metric']}"
+            raise ConfigError(msg)
+        sigma[row["metric"]] = float(row[column])
     if not sigma:
-        msg = f"{path}: no overall rows"
+        msg = f"{path}: no {SPLIT}/overall rows"
         raise ConfigError(msg)
     return sigma
 

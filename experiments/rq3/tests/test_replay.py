@@ -1,7 +1,9 @@
 """T7.2 S3b (runner core): three variants decide the same synthetic pairs; alarms are counted."""
 
 import numpy as np
-from rq3.replay import VARIANTS, decide_all, replay_arm
+import pytest
+from rq3 import replay
+from rq3.replay import VARIANTS, alarm_counts, decide_all, replay_arm
 from testsupport.builders import fixture_f0, make_run
 from testsupport.gate_helpers import DIRECTIONS
 from testsupport.gate_helpers import POLICY as GATE_POLICY
@@ -54,3 +56,31 @@ def test_decide_all_uses_the_production_gate_for_variant_one() -> None:
 def test_the_seed_fixes_the_counts() -> None:
     first = replay_arm(tenant_drop, POLICY, directions=DIRECTIONS, n=2, seed=4)
     assert first == replay_arm(tenant_drop, POLICY, directions=DIRECTIONS, n=2, seed=4)
+
+
+@pytest.mark.parametrize(
+    ("status", "expected"),
+    [
+        (GateStatus.PASS, (0, 0)),
+        (GateStatus.WARN, (0, 1)),
+        (GateStatus.UNSUPPORTED_CONFIG, (0, 1)),
+        (GateStatus.FAIL, (1, 1)),
+        (GateStatus.INSUFFICIENT_DATA, (0, 0)),
+    ],
+)
+def test_alarm_counts_follow_amendment_a1(status: GateStatus, expected: tuple[int, int]) -> None:
+    assert alarm_counts(status) == expected
+
+
+def test_replay_arm_counts_each_variant_as_in_a1(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Fixed statuses: WARN is never a FAIL, UNSUPPORTED is a WARN, INSUFFICIENT is neither."""
+    fixed = {
+        "pruefstand": GateStatus.UNSUPPORTED_CONFIG,
+        "naive": GateStatus.WARN,
+        "no_slices": GateStatus.INSUFFICIENT_DATA,
+    }
+    monkeypatch.setattr(replay, "decide_all", lambda *_a, **_k: dict(fixed))
+    got = {r.variant: (r.fail, r.warn_or_fail) for r in replay_arm(
+        identical, GATE_POLICY, directions=DIRECTIONS, n=4, seed=1
+    )}  # fmt: skip
+    assert got == {"pruefstand": (0, 4), "naive": (0, 4), "no_slices": (0, 0)}

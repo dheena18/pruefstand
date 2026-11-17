@@ -58,6 +58,17 @@ def decide_all(
     }
 
 
+def alarm_counts(status: GateStatus) -> tuple[int, int]:
+    """``(fail, warn_or_fail)`` increments of one decision, counted as in amendment A1.
+
+    Examples:
+        >>> alarm_counts(GateStatus.UNSUPPORTED_CONFIG), alarm_counts(GateStatus.INSUFFICIENT_DATA)
+        ((0, 1), (0, 0))
+    """
+    counted = counted_status(status)
+    return int(counted is GateStatus.FAIL), int(counted in ALARM)
+
+
 def replay_arm(
     pairs: PairFactory,
     policy: GatePolicy,
@@ -73,9 +84,9 @@ def replay_arm(
     for _ in range(n):
         left, right = pairs(rng)
         for variant, status in decide_all(left, right, policy, rng, directions=directions).items():
-            counted = counted_status(status)
-            fails[variant] += counted is GateStatus.FAIL
-            alarms[variant] += counted in ALARM
+            fail, alarm = alarm_counts(status)
+            fails[variant] += fail
+            alarms[variant] += alarm
     return [
         ArmResult(
             variant=v,

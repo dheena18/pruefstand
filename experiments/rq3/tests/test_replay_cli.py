@@ -14,14 +14,16 @@ from testsupport.gate_helpers import DIRECTIONS, POLICY
 from pruefstand.core.errors import ConfigError
 from pruefstand.core.models.run import RunResults
 
-MDE_CSV = """metric,slice,sigma_d_noop,sigma_d_churn
-context_recall,overall,0.05,0.12
-context_recall,tenant=a,0.07,0.15
-faithfulness,overall,0.04,0.10
+MDE_CSV = """metric,slice,split,sigma_d_noop,sigma_d_churn
+context_recall,overall,core,0.05,0.12
+context_recall,tenant=a,core,0.07,0.15
+context_recall,overall,full_b0,0.30,0.30
+faithfulness,overall,full_b1,0.30,0.30
+faithfulness,overall,core,0.04,0.10
 """
 
 
-def test_load_sigma_reads_the_overall_rows_of_the_arm(tmp_path: Path) -> None:
+def test_load_sigma_reads_the_core_overall_rows_of_the_arm(tmp_path: Path) -> None:
     path = tmp_path / "mde.csv"
     path.write_text(MDE_CSV, encoding="utf-8")
     assert load_sigma(path, "noop") == {"context_recall": 0.05, "faithfulness": 0.04}
@@ -30,8 +32,33 @@ def test_load_sigma_reads_the_overall_rows_of_the_arm(tmp_path: Path) -> None:
 
 def test_load_sigma_refuses_a_file_without_the_arm(tmp_path: Path) -> None:
     path = tmp_path / "mde.csv"
-    path.write_text("metric,slice,sigma_d\ncontext_recall,overall,0.1\n", encoding="utf-8")
+    path.write_text(
+        "metric,slice,split,sigma_d\ncontext_recall,overall,core,0.1\n", encoding="utf-8"
+    )
     with pytest.raises(ConfigError, match="sigma_d_noop"):
+        load_sigma(path, "noop")
+
+
+@pytest.mark.parametrize(
+    ("text", "match"),
+    [
+        ("metric,slice,sigma_d_noop\ncontext_recall,overall,0.1\n", "no column split"),
+        (
+            "metric,slice,split,sigma_d_noop\ncontext_recall,overall,full_b0,0.1\n",
+            "no core/overall",
+        ),
+        (
+            "metric,slice,split,sigma_d_noop\nc,overall,core,0.1\nc,overall,core,0.3\n",
+            "more than one core/overall row for c",
+        ),
+    ],
+)
+def test_load_sigma_refuses_a_missing_split_a_missing_core_row_and_duplicates(
+    tmp_path: Path, text: str, match: str
+) -> None:
+    path = tmp_path / "mde.csv"
+    path.write_text(text, encoding="utf-8")
+    with pytest.raises(ConfigError, match=match):
         load_sigma(path, "noop")
 
 
