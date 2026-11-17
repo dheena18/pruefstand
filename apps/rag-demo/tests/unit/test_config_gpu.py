@@ -68,7 +68,8 @@ def test_gpu_profile_loads_with_the_catalogue() -> None:
     assert cfg.embed.catalogue_id == "ollama/bge-m3"
     assert cfg.reranker == "on"
     assert cfg.rerank.endpoint_env == "RERANK_URL"
-    assert (cfg.rerank.top_n, cfg.rerank.on_retrieve) == (10, True)
+    # D1287: T3.1b recorded the D222 fallback, /v1/retrieve skips the reranker (D271)
+    assert (cfg.rerank.top_n, cfg.rerank.on_retrieve) == (10, False)
 
 
 def test_gpu_profile_loads_with_the_endpoint_variables_unset(
