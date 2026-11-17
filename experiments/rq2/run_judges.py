@@ -34,6 +34,9 @@ from rq2.subsample import stratified_subsample
 from pruefstand.core.config import JudgeConfig, LLMPolicyConfig, ModelRef
 from pruefstand.core.errors import PruefstandError
 from pruefstand.core.models.target import TargetInfo
+from pruefstand.core.protocols import LLMBackend
+from pruefstand.core.settings import PruefstandSettings
+from pruefstand.dataset.vm_datagen import VM_PROVIDER, build_vm_backend
 from pruefstand.judges.factory import PROMPT_ROOT
 from pruefstand.judges.family_guard import check_judge_families
 from pruefstand.judges.judge import Judge
@@ -76,10 +79,32 @@ def check_families(cfg: RQ2Config, judges: list[JudgeEntry]) -> None:
         check_judge_families(JudgeConfig(pr=ref, nightly=ref), [info])
 
 
+def is_vm(judge_id: str) -> bool:
+    """Whether ``judge_id`` is the VM CPU model (``openai_compatible_local/``, T5.4e)."""
+    return judge_id.startswith(f"{VM_PROVIDER}/")
+
+
+def judge_concurrency(cfg: RQ2Config, entry: JudgeEntry) -> int:
+    """Concurrent calls for ``entry``: 1 for the VM model (one server slot), else the config's."""
+    return 1 if is_vm(entry.id) else cfg.concurrency
+
+
 def make_judge(entry: JudgeEntry, cache_dir: Path | None, recorder: CallRecorder) -> Judge:
-    """Build a real judge (catalogue options, native Ollama API) with an optional disk cache."""
+    """Build a real judge with an optional disk cache.
+
+    Ollama judges use the catalogue options and the native API; the VM model is checked once at
+    ``PRUEFSTAND_DATAGEN_BASE_URL`` (loopback, ``check_vm_served``) and never at the judge URL.
+
+    Raises:
+        ConfigError: the VM model is not served there.
+    """
     policy = LLMPolicyConfig()
-    backend = build_backend(ModelRef(id=entry.id, family=entry.family), policy=policy)
+    ref = ModelRef(id=entry.id, family=entry.family)
+    backend: LLMBackend
+    if is_vm(entry.id):
+        backend = build_vm_backend(ref, PruefstandSettings().datagen_base_url)
+    else:
+        backend = build_backend(ref, policy=policy)
     cache = DiskKVCache(cache_dir, "llm") if cache_dir is not None else None
     client = LLMClient(backend, cache, Budget(None, None), recorder, LLMPolicy(policy))
     return Judge(client, entry.id, PromptRegistry([PROMPT_ROOT]), nonce_key=CALIBRATION_NONCE)
@@ -194,14 +219,14 @@ def run(cfg: RQ2Config, args: argparse.Namespace) -> int:
         if prompts and args.split != "dev":
             sys.stderr.write("--prompt is for dev-split prompt work only (AI13-12)\n")
             return new_calls
-        rows = asyncio.run(judge_items(judge, items, cfg.concurrency, prompts))
+        rows = asyncio.run(judge_items(judge, items, judge_concurrency(cfg, entry), prompts))
         frame = pl.DataFrame(rows, schema=ROW_SCHEMA)
         suffix = "".join(f"_{m}-{v}" for m, v in sorted(prompts.items()))
         name = f"{slug(entry.id)}_{args.split}{suffix}"
         frame.write_parquet(out_dir / f"verdicts_{name}.parquet")
         pairs = load_pairs() if args.pairs else []
         if pairs:
-            scored = asyncio.run(judge_pairs(judge, pairs, cfg.concurrency))
+            scored = asyncio.run(judge_pairs(judge, pairs, judge_concurrency(cfg, entry)))
             pl.DataFrame(scored, infer_schema_length=None).write_parquet(
                 out_dir / f"pairs_{slug(entry.id)}.parquet"
             )

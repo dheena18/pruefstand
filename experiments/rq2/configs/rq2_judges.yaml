@@ -15,7 +15,10 @@ judges:
   - {id: github/openai/gpt-4.1-mini, family: gpt, arm: c, enabled: false, subsample: 300}
   - {id: github/mistral-ai/mistral-small-2503, family: mistral, arm: c, enabled: false, subsample: 300}
   - {id: github/microsoft/phi-4, family: phi, arm: c, enabled: false, subsample: 300}
-datagen_family: gpt                     # public-text datagen family (D330, model_families.yaml plan.datagen)
+  # (b', c) on the VM CPU model instead of GitHub Models (T5.4e, D1242, D1283): local, loopback only, one slot;
+  # scored only while scripts/models/vm_llm.sh serves it; subsample provisional until the pilot measures s/call
+  - {id: openai_compatible_local/ministral-3-14b-instruct-2512, family: mistral, arm: c, enabled: true, subsample: 300}
+datagen_family: mistral                 # public-text datagen: the VM Ministral since D1201 (the default backend), D1283
 sets:
   - {name: memerag, path: data/derived/memerag_de/faithfulness_memerag.jsonl, origin: human, local_only: true}
   - {name: faithfulness_constructed, path: datasets/calibration/v1/faithfulness_constructed.jsonl, origin: construction}
