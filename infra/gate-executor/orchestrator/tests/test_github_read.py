@@ -77,3 +77,11 @@ def test_statuses_file_at_and_pull() -> None:
 def test_bad_token_is_refused(token: str) -> None:
     with pytest.raises(ValueError, match="invalid token"):
         PublicRepo(token)
+
+
+def test_anonymous_reads_send_no_authorization_header() -> None:
+    def handle(request: httpx.Request) -> httpx.Response:
+        assert "Authorization" not in request.headers
+        return httpx.Response(200, json={"commit": {"sha": "a" * 40}})
+
+    assert PublicRepo(None, transport=httpx.MockTransport(handle)).branch_head("main") == "a" * 40
