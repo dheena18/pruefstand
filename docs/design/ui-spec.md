@@ -654,7 +654,7 @@ Cases (790) · 3 failing            Search id/question [______]  [☑ Failing on
 **Hosting (Y7.5, UI11-06):** the demo API runs on the TrueNAS VM `pruefstand-exec` as the compose
 project `pruefstand-demo` (profile `demo`: Qdrant, llama.cpp CPU generator ≤ 2B Q4, `embed`, rag-demo,
 plus a one-shot `index` service on the slice corpus with `canaries.public.json` only). Every service
-runs on the VM CPU; none uses the A40 cluster. Only rag-demo publishes a port, on `127.0.0.1:8090`. A
+runs on the VM CPU; none uses the A40 cluster. No demo service publishes a host port (cloudflared reaches `rag-demo:8000` over `demo-net`); only the e2e test instance `rag-demo-e2e` publishes `127.0.0.1:$E2E_PORT`, on its own network `e2e-edge`. A
 free **Cloudflare Tunnel** (`cloudflared` container on the `--internal` `demo-net` and on `demo-egress`, the only demo container with internet, P2.2; token from `/home/pruefstand/demo.env`)
 maps `https://demo.<domain>` to `http://rag-demo:8000`, so the VM opens no inbound port. The image is
 deployed only as a **demo-ready** digest by the private nightly job `demo-deploy` (D244): it pulls the
@@ -1740,18 +1740,19 @@ It is **never** a `ui.yml` job or a PR check (no `try-it` job exists in `ui.yml`
   the pinned Playwright image (the one used for visual baselines) with `--network host`, mounting the
   job's disposable checkout of trusted `main`. The service user `pruefstand` needs only Docker, no
   Node, pnpm or browsers (UI12-12).
-- **Ports:** `E2E_PORT = 8091 + ${PORT_OFFSET:-0}` (`PORT_OFFSET=10000` on an agent dev stack → 18091);
+- **Ports:** `E2E_PORT = 8092 + ${PORT_OFFSET:-0}` (`PORT_OFFSET=10000` on an agent dev stack → 18092; 8091 / 18091 belong to `vm_llm.sh`, D1311);
   the script uses it for the compose port and for `NEXT_PUBLIC_DEMO_API_URL=http://127.0.0.1:$E2E_PORT`.
-  The site is served on 4175. The public demo `rag-demo` stays on `127.0.0.1:8090`; `embed` has no
-  host port (UI12-11).
+  The site is served on 4175. The public demo `rag-demo` publishes no host port and is never touched; `embed`
+  has no host port (UI12-11).
 - **Builds:** `build_set.sh populated --out populated-try` with `NEXT_PUBLIC_DEMO_API_URL` as above, and
   `build_set.sh populated --out populated-try-timeout` with the same URL and `NEXT_PUBLIC_DEMO_TIMEOUT_S=1`.
   `populated-try` is served on 4175 for every group; for `T-TIMEOUT` (run last) the script stops it and
   serves `populated-try-timeout` on 4175, so both have the one CORS origin
   `DEMO_ALLOWED_ORIGIN=http://localhost:4175`.
-- **One demo instance:** `rag-demo-e2e` (compose project `pruefstand-demo`, profile `e2e` in
-  `infra/deploy/demo/compose.yml`, published only on `127.0.0.1:$E2E_PORT`) shares the demo's Qdrant,
-  `llm` and `embed`; the public `rag-demo` is never touched. Its env adds `TRUSTED_PROXY_HOPS=0` (the
+- **One demo instance:** `rag-demo-e2e` (own compose project `pruefstand-demo-e2e`, profile `e2e` in
+  `infra/deploy/demo/compose.yml`, published only on `127.0.0.1:$E2E_PORT`) with its own Qdrant,
+  `llm`, `embed` and `index` (`demo-net` subnet `DEMO_NET_SUBNET=10.234.0.0/24`); the public demo project
+  `pruefstand-demo` is never touched, and the script's `down -v` only removes this project (D1310). Its env adds `TRUSTED_PROXY_HOPS=0` (the
   browser and the test call it directly, so the client key is the peer address rag-demo sees, which for
   host connections through the published port is the Docker bridge gateway, stable for the run;
   UI13-04) and `DEMO_TEST_RESET=1`.
@@ -1762,7 +1763,7 @@ It is **never** a `ui.yml` job or a PR check (no `try-it` job exists in `ui.yml`
   `demo` profile never sets the env. While a generation is in flight it returns **409** and changes
   nothing (UI13-15). A host request to the published port is never loopback inside the container, so
   **`try_e2e.sh` calls it from inside the container** before each test (row × combination):
-  `docker compose -p pruefstand-demo exec -T rag-demo-e2e curl -fsS -X POST http://localhost:8000/v1/_test/reset`
+  `docker compose -p pruefstand-demo-e2e exec -T rag-demo-e2e python -c '<urllib POST http://localhost:8000/v1/_test/reset>'` (the image has no `curl`)
   (retry on 409 for ≤ 60 s), then runs that one test with `docker exec` in a long-lived Playwright
   container (`-g '<exact title>' --project <p>`). `try.spec.ts` itself never calls the reset. So **each
   of the 8 combinations** of a row starts from empty limits.
