@@ -65,6 +65,25 @@ def _time(value: object) -> datetime | None:
     return moment if moment.tzinfo is not None else None
 
 
+def _flag(value: object) -> bool | None:
+    """A payload flag: push_heartbeat writes ``"true"``/``"false"`` strings (bools accepted)."""
+    if isinstance(value, bool):
+        return value
+    return {"true": True, "false": False}.get(value) if isinstance(value, str) else None
+
+
+def _number(value: object) -> float | None:
+    """A numeric payload value (``"9"``, ``"8.5"`` or a number); anything else is ``None``."""
+    if isinstance(value, bool):
+        return None
+    if isinstance(value, int | float):
+        return float(value)
+    try:
+        return float(value) if isinstance(value, str) else None
+    except ValueError:
+        return None
+
+
 def _tag(value: object) -> str:
     return value if isinstance(value, str) and TAG.fullmatch(value) else INVALID_TAG
 
@@ -85,7 +104,7 @@ def _down_reasons(hb: Heartbeat | None, now: datetime) -> list[str]:
     if ts is None:
         return ["heartbeat.json is missing or has no valid ts"]
     reasons = [f"heartbeat is {_age(now - ts)} old"] if now - ts > STALE else []
-    if hb is not None and hb.get("maintenance") is not True:  # A13-M4: field alerts paused
+    if hb is not None and _flag(hb.get("maintenance")) is not True:  # A13-M4: field alerts paused
         for field in HEALTH_FIELDS:
             since = _time(hb.get(f"{field}_false_since"))
             if since is not None and now - since > STALE:
@@ -111,9 +130,9 @@ def _conditions(hb: Heartbeat | None, now: datetime) -> dict[str, str]:
         out["executor-down"] = "; ".join(down)
     if hb is None or _time(hb.get("ts")) is None:
         return out  # an unusable heartbeat says nothing about the other alerts
-    age = hb.get("laptop_backup_age_days")
-    if isinstance(age, int | float) and age > BACKUP_DAYS:
-        out["backup-stale"] = f"laptop_backup_age_days = {age} (> {BACKUP_DAYS})"
+    age = _number(hb.get("laptop_backup_age_days"))
+    if age is not None and age > BACKUP_DAYS:
+        out["backup-stale"] = f"laptop_backup_age_days = {age:g} (> {BACKUP_DAYS})"
     if hb.get("last_nightly_result") == "failure":
         out["nightly-failed"] = "last_nightly_result = failure"
     skipped = _nightly_skipped(hb, now)
@@ -145,7 +164,7 @@ def evaluate(
         elif may_close and label in open_labels and _may_close(label, hb):
             actions.append(Action(label, "close", title, "healthy again"))
             closed.add(label)
-    if hb is not None and hb.get("drift_no_release_baseline") is True:
+    if hb is not None and _flag(hb.get("drift_no_release_baseline")) is True:
         tag = _tag(hb.get("release_tag"))
         marker = f"drift-no-release:{tag}"
         if marker not in markers:
@@ -158,7 +177,7 @@ def evaluate(
 
 
 def _complete(hb: Heartbeat | None) -> bool:
-    return hb is not None and all(isinstance(hb.get(f), bool) for f in HEALTH_FIELDS)
+    return hb is not None and all(_flag(hb.get(f)) is not None for f in HEALTH_FIELDS)
 
 
 def _may_close(label: str, hb: Heartbeat | None) -> bool:
@@ -168,8 +187,7 @@ def _may_close(label: str, hb: Heartbeat | None) -> bool:
     if label == "nightly-skipped":  # closed only by the next completed nightly (N4.3)
         return hb.get("last_nightly_status") == "ok"
     if label == "backup-stale":
-        age = hb.get("laptop_backup_age_days")
-        return isinstance(age, int | float) and not isinstance(age, bool)
+        return _number(hb.get("laptop_backup_age_days")) is not None
     if label == "nightly-failed":
         result = hb.get("last_nightly_result")
         return isinstance(result, str) and bool(result)
