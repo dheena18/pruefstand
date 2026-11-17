@@ -314,3 +314,24 @@ def test_the_printed_instructions_end_with_the_vm_pull(box: Sandbox, mode: str) 
     res = box.run(TAG, *args)
     assert res.returncode == 0, res.stderr
     assert res.stdout.rstrip().splitlines()[-1].endswith(VM_STEP)
+
+
+@pytest.mark.parametrize(
+    "step",
+    [
+        "      - run: gate-orchestrator  nightly --deadline x\n",
+        "      - run: |\n          gate-orchestrator \\\n            nightly --deadline x\n",
+        "      - run: >-\n          python3 -m gate_orchestrator\n"
+        "          night-guard --event x\n",
+    ],
+)
+def test_odd_spacing_does_not_hide_a_missing_subcommand(box: Sandbox, step: str) -> None:
+    _write(
+        box.public, "infra/gate-executor/workflows/nightly.yml", f"jobs:\n  n:\n    steps:\n{step}"
+    )
+    _git(box.public, "add", "-A")
+    _git(box.public, "commit", "-q", "-m", "workflows")
+    box.tag()
+    done = box.run(TAG)
+    assert done.returncode == 2, done.stdout
+    assert "D1095" in done.stderr

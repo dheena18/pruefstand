@@ -197,6 +197,18 @@ def test_backup_reads_the_recipient_from_an_actions_variable_and_fetches_nothing
             "runs-on: [self-hosted, a40]",
             "[self-hosted, linux, a40]",
         ),
+        (
+            "backup.yml",
+            "run: gate-orchestrator backup-check",
+            "run: echo secrets.DASHBOARD_DATA_PAT; gate-orchestrator backup-check",
+            "secrets.* inside run:",
+        ),
+        (
+            "gate-executor.yml",
+            "      contents: write  #",
+            "      contents: none  #",
+            "exactly {contents: read|write}",
+        ),
         # finding 6: rules that had no mutant test
         (
             "gate-executor.yml",
@@ -228,3 +240,17 @@ def test_findings_name_the_file_once() -> None:
     )
     (finding,) = [f for f in check_private_text("gate-executor.yml", text) if "required" in f]
     assert finding.count("gate-executor.yml") == 1
+
+
+def test_any_token_output_on_a_command_line_fails() -> None:
+    # review #214 minor: TOKEN_VALUE must know more than `outputs.token`
+    text = (
+        _text("gate-executor.yml")
+        .replace(
+            "          STATE_TOKEN: ${{ github.token }}\n",
+            "          STATE_TOKEN: ${{ github.token }}\n"
+            "          TOK: ${{ steps.app.outputs.app-token }}\n",
+        )
+        .replace('--pr "$PR"', '--pr "$PR" --token "$TOK"')
+    )
+    assert any("$TOK on a command line" in f for f in check_private_text("gate-executor.yml", text))

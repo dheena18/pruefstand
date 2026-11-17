@@ -3,9 +3,9 @@
 Per job: no ``${{`` inside a ``run:`` script (values reach the shell only through ``env:``); the
 permissions mapping is exactly ``{contents: read}`` for the hosted ``guard`` and only ``contents``
 (``read`` or ``write``) elsewhere; every ``actions/checkout`` sets ``persist-credentials: false``;
-no token or secret is expanded on a command line (an ``env:`` value from ``secrets.*``, a token
-output or ``github.token`` is never named as ``$NAME`` in a ``run:``); the A40 jobs run on
-``[self-hosted, linux, a40]``.
+no token or secret is expanded on a command line (an ``env:`` value from ``secrets.*``, a
+token output ``outputs.*token`` or ``github.token`` is never named as ``$NAME`` in a ``run:``);
+the A40 jobs run on ``[self-hosted, linux, a40]``.
 """
 
 import re
@@ -13,7 +13,7 @@ import re
 from workflow_model import Doc, steps
 
 RUNNER = ("self-hosted", "linux", "a40")
-TOKEN_VALUE = re.compile(r"secrets\s*[.\[]|github\.token|outputs\.token", re.IGNORECASE)
+TOKEN_VALUE = re.compile(r"secrets\s*[.\[]|github\.token|outputs\.[\w-]*token", re.IGNORECASE)
 SECRET_ON_LINE = re.compile(r"secrets\s*[.\[]", re.IGNORECASE)
 
 

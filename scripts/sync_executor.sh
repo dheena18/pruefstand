@@ -96,7 +96,9 @@ if [ "${#sources[@]}" -gt 0 ]; then
   for wf in "${sources[@]}"; do listing+="workflow ${wf##*/}"$'\n'; done
   # D1095: a workflow that calls a gate-orchestrator subcommand the tag's CLI does not define is refused
   cli="$dest/infra/gate-executor/orchestrator/gate_orchestrator/cli.py"
-  wanted="$(grep -ohE '(gate-orchestrator|-m gate_orchestrator) [a-z][a-z-]*' "${sources[@]}" | awk '{print $NF}' | sort -u || true)"
+  # whitespace runs and backslash continuations are squeezed first, so neither hides a call (review #214)
+  wanted="$(cat "${sources[@]}" | tr -s '\\[:space:]' ' ' \
+    | grep -oE '(gate-orchestrator|-m gate_orchestrator) [a-z][a-z-]*' | awk '{print $NF}' | sort -u || true)"
   for sub in $wanted; do
     grep -qF "add_parser(\"$sub\"" "$cli" 2>/dev/null \
       || die "refused: the workflows call gate-orchestrator $sub, which $tag does not provide (D1095)" 2
