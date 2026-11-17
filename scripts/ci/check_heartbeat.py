@@ -10,6 +10,7 @@ Usage: ``check_heartbeat.py --heartbeat <file|-> --now <iso> [--open <label>]...
 
 import argparse
 import json
+import math
 import re
 import sys
 from collections.abc import Mapping, Sequence
@@ -65,6 +66,24 @@ def _time(value: object) -> datetime | None:
     return moment if moment.tzinfo is not None else None
 
 
+def _flag(value: object) -> bool | None:
+    """A payload flag: push_heartbeat writes ``"true"``/``"false"`` strings (bools accepted)."""
+    if isinstance(value, bool):
+        return value
+    return {"true": True, "false": False}.get(value) if isinstance(value, str) else None
+
+
+def _number(value: object) -> float | None:
+    """A finite, non-negative number (``"9"``, ``"8.5"``, a number); else ``None`` (review #215)."""
+    if isinstance(value, bool) or not isinstance(value, int | float | str):
+        return None
+    try:
+        number = float(value)
+    except ValueError:
+        return None
+    return number if math.isfinite(number) and number >= 0 else None
+
+
 def _tag(value: object) -> str:
     return value if isinstance(value, str) and TAG.fullmatch(value) else INVALID_TAG
 
@@ -85,7 +104,7 @@ def _down_reasons(hb: Heartbeat | None, now: datetime) -> list[str]:
     if ts is None:
         return ["heartbeat.json is missing or has no valid ts"]
     reasons = [f"heartbeat is {_age(now - ts)} old"] if now - ts > STALE else []
-    if hb is not None and hb.get("maintenance") is not True:  # A13-M4: field alerts paused
+    if hb is not None and _flag(hb.get("maintenance")) is not True:  # A13-M4: field alerts paused
         for field in HEALTH_FIELDS:
             since = _time(hb.get(f"{field}_false_since"))
             if since is not None and now - since > STALE:
@@ -111,9 +130,9 @@ def _conditions(hb: Heartbeat | None, now: datetime) -> dict[str, str]:
         out["executor-down"] = "; ".join(down)
     if hb is None or _time(hb.get("ts")) is None:
         return out  # an unusable heartbeat says nothing about the other alerts
-    age = hb.get("laptop_backup_age_days")
-    if isinstance(age, int | float) and age > BACKUP_DAYS:
-        out["backup-stale"] = f"laptop_backup_age_days = {age} (> {BACKUP_DAYS})"
+    age = _number(hb.get("laptop_backup_age_days"))
+    if age is not None and age > BACKUP_DAYS:
+        out["backup-stale"] = f"laptop_backup_age_days = {age:g} (> {BACKUP_DAYS})"
     if hb.get("last_nightly_result") == "failure":
         out["nightly-failed"] = "last_nightly_result = failure"
     skipped = _nightly_skipped(hb, now)
@@ -133,8 +152,10 @@ def evaluate(
     conditions = _conditions(hb, now)
     # review #198: an unknown, empty or stale heartbeat (or a failing health field) is no evidence
     # that anything recovered, so nothing is closed while executor-down holds.
-    may_close = "executor-down" not in conditions
+    # review #198 minor 1: a partial heartbeat (health field missing or not a bool) is unknown.
+    may_close = "executor-down" not in conditions and _complete(hb)
     actions: list[Action] = []
+    closed: set[str] = set()
     for label, title in TITLES.items():
         reason = conditions.get(label)
         if reason:
@@ -142,24 +163,37 @@ def evaluate(
             actions.append(Action(label, op, title, reason))
         elif may_close and label in open_labels and _may_close(label, hb):
             actions.append(Action(label, "close", title, "healthy again"))
-    if hb is not None and hb.get("drift_no_release_baseline") is True:
+            closed.add(label)
+    if hb is not None and _flag(hb.get("drift_no_release_baseline")) is True:
         tag = _tag(hb.get("release_tag"))
         marker = f"drift-no-release:{tag}"
         if marker not in markers:
-            op = (
-                "comment"
-                if "nightly-skipped" in open_labels or "nightly-skipped" in conditions
-                else "open"
-            )
+            # minor 2: never a comment on an issue this run closes (the note would be lost)
+            still_open = "nightly-skipped" in open_labels and "nightly-skipped" not in closed
+            op = "comment" if still_open or "nightly-skipped" in conditions else "open"
             body = f"drift: no release baseline for `{tag}` (`{marker}`)"
             actions.append(Action("nightly-skipped", op, TITLES["nightly-skipped"], body, marker))
     return actions
 
 
+def _complete(hb: Heartbeat | None) -> bool:
+    return hb is not None and all(_flag(hb.get(f)) is not None for f in HEALTH_FIELDS)
+
+
 def _may_close(label: str, hb: Heartbeat | None) -> bool:
+    """Close only on positive evidence in the label's own field (missing = unknown)."""
+    if hb is None:
+        return False
     if label == "nightly-skipped":  # closed only by the next completed nightly (N4.3)
-        return hb is not None and hb.get("last_nightly_status") == "ok"
-    return True
+        return hb.get("last_nightly_status") == "ok"
+    if label == "backup-stale":
+        return _number(hb.get("laptop_backup_age_days")) is not None
+    if label == "nightly-failed":
+        result = hb.get("last_nightly_result")
+        return isinstance(result, str) and bool(result)
+    # executor-down (review #215): only when every health field is "true"; a field false for less
+    # than 2 h raises no alert, but it is no recovery either
+    return all(_flag(hb.get(f)) is True for f in HEALTH_FIELDS)
 
 
 def main(argv: Sequence[str] | None = None) -> int:
