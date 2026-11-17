@@ -1,11 +1,11 @@
 diff --git a/apps/rag-demo/configs/rag.gpu.yaml b/apps/rag-demo/configs/rag.gpu.yaml
-index 2d3dfad..bf1c435 100644
+index 7233e87b..c06765b3 100644
 --- a/apps/rag-demo/configs/rag.gpu.yaml
 +++ b/apps/rag-demo/configs/rag.gpu.yaml
 @@ -31,11 +31,12 @@ rerank:
    endpoint_env: RERANK_URL
    top_n: 10
-   on_retrieve: true
+   on_retrieve: false
 +
  generation:
    temperature: 0.0
