@@ -30,3 +30,15 @@ fetch-generator-tokenizer:
 # variable of the existing test-gpu target only. Default: the public registry of the indexed slice; set CANARY_REGISTRY
 # to datasets/canaries/<corpus_version>/canaries.json once the T2.6 corpus is the indexed one.
 test-gpu: export CANARY_REGISTRY ?= $(CURDIR)/corpus/slice_v1/canaries.public.json
+
+# T8.4 slice 4: the public demo stack (compose project pruefstand-demo, infra/deploy/demo/compose.yml; profiles demo and
+# e2e live only there, UI12-10). Both targets use their own project and no default host port.
+.PHONY: rag-demo-up try-e2e
+# Starts the public rag-demo (127.0.0.1:$(DEMO_PORT), default 8090) with qdrant, llm, embed and the one-shot index.
+# PUBLIC=1 is the only mode of this stack: rag.public.yaml (public_mode, reranker off) is baked into the service.
+rag-demo-up:
+	docker compose -p pruefstand-demo -f infra/deploy/demo/compose.yml --profile demo up -d --build --wait rag-demo
+
+# The Try-it e2e against the real e2e instance (VM only, holds stack.lock; PORT_OFFSET=10000 on an agent dev stack).
+try-e2e:
+	bash scripts/demo/try_e2e.sh

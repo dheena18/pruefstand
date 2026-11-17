@@ -162,9 +162,9 @@ const ROWS: Row[] = [
     id: "T-BUSY",
     failing: true,
     body: async ({ page, request, locale, firstStatus }) => {
+      await type(page, QUESTION); // the form is ready first: a generation of the 0.5B model lasts only ~1-3 s
       background = preRequest(request);
-      await page.waitForTimeout(1500);
-      await type(page, QUESTION);
+      await page.waitForTimeout(300); // the server has accepted it (retrieval has started) and holds the only slot
       await ask(page).click();
       await expect(state(page, "T-BUSY")).toBeAttached({ timeout: 20_000 });
       expect(firstStatus()).toBe(429);
