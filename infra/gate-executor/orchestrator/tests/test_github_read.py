@@ -85,3 +85,13 @@ def test_anonymous_reads_send_no_authorization_header() -> None:
         return httpx.Response(200, json={"commit": {"sha": "a" * 40}})
 
     assert PublicRepo(None, transport=httpx.MockTransport(handle)).branch_head("main") == "a" * 40
+
+
+def test_redirects_are_not_followed() -> None:
+    # review #224: a redirect would carry the reader elsewhere; it is an error instead
+    def handle(request: httpx.Request) -> httpx.Response:
+        assert request.url.host == "api.github.com"
+        return httpx.Response(302, headers={"Location": "https://example.invalid/x"})
+
+    with pytest.raises(GitHubReadError, match="HTTP 302"):
+        _repo(httpx.MockTransport(handle)).statuses("a" * 40)

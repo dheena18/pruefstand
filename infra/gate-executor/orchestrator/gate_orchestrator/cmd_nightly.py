@@ -1,4 +1,4 @@
-"""``gate-orchestrator nightly --deadline ISO`` (N4.3, P2.1, P4.4, A13-M3, D1095, D1098).
+"""``gate-orchestrator nightly --deadline ISO`` (N4.3, P2.1, P4.4, A13-M3, D1095, D1099).
 
 Before the lock: a start at or after the deadline → ``aborted: window_exceeded``;
 ``MAINTENANCE`` → ``skipped: maintenance``; no signed image on main → ``skipped: preflight ...``.
@@ -179,7 +179,7 @@ def night_status(result: str) -> str:
     """A13-M3 value for the gate phase's result: ``ok``/``failed``, else a preflight-type skip.
 
     An infra failure or a refused image is not a completed night (the counter stays, the block
-    repeats) and is reported as ``skipped: preflight <reason>`` (D1098).
+    repeats) and is reported as ``skipped: preflight <reason>`` (D1099).
 
     >>> night_status("infra error: ollama_down: x")
     'skipped: preflight infra error: ollama_down: x'

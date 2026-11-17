@@ -14,8 +14,10 @@ from pathlib import Path
 from gate_orchestrator.candidate import candidate_argv
 from gate_orchestrator.gate_run import (
     CANDIDATE_PORT,
+    DIGEST,
     Runner,
     candidate_env,
+    docker_run_env,
     gate_argv,
     ip_argv,
     pruefstand_run_argv,
@@ -86,6 +88,9 @@ class Attempt:
     def __call__(self, number: int) -> str | None:
         """Run attempt ``number``; returns the run's ``infra_error`` or ``None`` (result posted)."""
         name = f"candidate-{self.job.pr_number}-{self.job.sha[:7]}-{number}"
+        if not DIGEST.fullmatch(self.digest):  # review #224: refuse up front, never retried
+            msg = "image verification failed: image status has no digest"
+            raise ImageVerificationError(msg)
         self._must(
             ["docker", "pull", "--quiet", f"ghcr.io/dheena18/rag-demo@{self.digest}"], "pull"
         )
@@ -93,7 +98,10 @@ class Attempt:
         cenv = candidate_env(self.env)
         argv = candidate_argv(ref, name=name, job_label=name, env=cenv)
         try:
-            self._must(argv, "docker run")
+            code, _ = self.run(argv, docker_run_env(self.env, cenv))
+            if code != 0:
+                msg = f"candidate_down: docker run exit {code}"
+                raise InfraError(msg)
             ip = self._must(ip_argv(name), "inspect").strip()
             return self._run_and_gate(f"http://{ip}:{CANDIDATE_PORT}")
         finally:
@@ -120,7 +128,7 @@ def run_gate_job(
             return "error"
 
         def repair() -> None:
-            code, _ = attempt.run([str(health_sh), "--repair", "--mode", "day"], child)
+            code, _ = attempt.run(["bash", str(health_sh), "--repair", "--mode", "day"], child)
             if code != 0:
                 msg = f"repair_failed: health.sh exit {code}"
                 raise InfraError(msg)

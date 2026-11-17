@@ -1,4 +1,4 @@
-"""The nightly phases on the A40 runner (N4.3, P2.1, P4.4, AI13-08, D298, D299, D305, D1095, D1098).
+"""The nightly phases on the A40 runner (N4.3, P2.1, P4.4, AI13-08, D298, D299, D305, D1095, D1099).
 
 Order (each phase deadline-checked with :func:`phase_check`): ``switch-mode.sh night`` →
 ``judge-drift`` of the one judge → the gate phase (main's image as candidate, ``pruefstand run
@@ -6,7 +6,7 @@ Order (each phase deadline-checked with :func:`phase_check`): ``switch-mode.sh n
 against ``nightly-b<k>``, drift against ``release-b<k>``) → ``switch-mode.sh day`` (also in
 ``finally``). A start at or after the deadline is ``aborted: window_exceeded`` (no phase runs); a
 phase that does not fit stops the night the same way. The weekly cause-switches, the contamination
-probe and the prune phases come in a later slice (D1098).
+probe and the prune phases come in a later slice (D1099).
 """
 
 import json
