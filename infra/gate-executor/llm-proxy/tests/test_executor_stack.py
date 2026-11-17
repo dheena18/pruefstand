@@ -89,3 +89,8 @@ def test_qdrant_drops_every_capability_but_its_three_file_ones() -> None:
     for name in ("rerank-cpu", "llm-proxy"):
         assert SERVICES[name]["cap_drop"] == ["ALL"], name
         assert "cap_add" not in SERVICES[name], name
+
+
+def test_qdrant_sends_no_telemetry() -> None:
+    # on by default; the exec-host bridge would let it leave the VM (review #233)
+    assert SERVICES["qdrant"]["environment"]["QDRANT__TELEMETRY_DISABLED"] == "true"

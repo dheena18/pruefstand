@@ -12,8 +12,8 @@ services:
     # gate-net: the candidate reads it by name; exec-host: a plain bridge, needed only so the loopback port
     # (the trusted orchestrator and `pruefstand run` on the VM) can be published: Docker publishes no port of a
     # container that is on internal networks only.
-    # exec-host gives qdrant itself egress; only snapshot recover-from-URL uses it, a write op that needs the
-    # read-write key the candidate never gets (security.md C2, D1098).
+    # exec-host gives qdrant itself egress (security.md C2): telemetry is switched off below, and snapshot
+    # recover-from-URL is a write op behind the read-write key the candidate never gets (D1098).
     networks: [gate-net, exec-host]
     ports:
       - "127.0.0.1:${QDRANT_HTTP_PORT:-6333}:6333"
@@ -23,6 +23,8 @@ services:
       # QDRANT_API_KEY (D1098), so it can never wipe or poison chunks_active. Both from runner.env, both required.
       QDRANT__SERVICE__API_KEY: ${QDRANT_API_KEY:?set QDRANT_API_KEY in runner.env (the executor's Qdrant admin key)}
       QDRANT__SERVICE__READ_ONLY_API_KEY: ${QDRANT_READ_ONLY_API_KEY:?set QDRANT_READ_ONLY_API_KEY in runner.env}
+      # no anonymous usage reports to telemetry.qdrant.io (on by default; exec-host would let them out)
+      QDRANT__TELEMETRY_DISABLED: "true"
     volumes:
       # $PRUEFSTAND_HOME/qdrant on the VM disk, never the data root (prompt "Constraints")
       - ${PRUEFSTAND_HOME:?set PRUEFSTAND_HOME (runner.env)}/qdrant:/qdrant/storage
