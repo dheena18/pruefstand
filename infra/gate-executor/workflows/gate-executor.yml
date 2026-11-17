@@ -1,0 +1,69 @@
+name: gate-executor
+
+# Tier 2 for one PR (private repo dheena18/pruefstand-gate; source of truth in the public repo under
+# infra/gate-executor/workflows/, synced by scripts/sync_executor.sh; T6.2b, ci-cd.md section 1.2).
+# Started ONLY by the owner's workflow_dispatch (browser or GitHub mobile app; R13 P1.2, D288): no
+# schedule, no label, no poll. Job order inside the orchestrator (X2.1): MAINTENANCE -> select_jobs
+# (actor in maintainers.txt, gated paths, image status, fork SHA rule) -> GPU lock once -> preflight ->
+# serve -> run -> gate -> report. No step here calls flock or the infra/gpu scripts.
+on:
+  workflow_dispatch:
+    inputs:
+      pr:
+        description: "PR number of dheena18/pruefstand to gate (its current head)"
+        required: true
+        type: number
+
+permissions: {}
+
+# One group per PR (R9-05); `inputs.sha` is added by T7.2 and is empty until then.
+concurrency:
+  group: ${{ github.workflow }}-${{ inputs.pr || inputs.sha }}
+  cancel-in-progress: false
+
+jobs:
+  run:
+    name: run
+    runs-on: [self-hosted, linux, a40]
+    # 120 lock wait + 2 x 90 run (incl. the one infra retry) + 15 setup/cleanup (A12-M1)
+    timeout-minutes: 315
+    permissions:
+      contents: write  # state/processed.jsonl on the private branch executor-state
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: pruefstand-bot token for the public repo (statuses, PR read)
+        id: app
+        uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
+        with:
+          app-id: ${{ secrets.BOT_APP_ID }}
+          private-key: ${{ secrets.BOT_APP_KEY }}
+          owner: dheena18
+          repositories: pruefstand
+          permission-statuses: write
+          permission-pull-requests: read
+          permission-contents: read
+      - name: Gate the PR
+        env:
+          PR: ${{ inputs.pr }}
+          ACTOR: ${{ github.triggering_actor }}
+          DISPATCH_RUN_ID: ${{ github.run_id }}
+          PUBLIC_TOKEN: ${{ steps.app.outputs.token }}
+          STATE_TOKEN: ${{ github.token }}
+          DASHBOARD_DATA_PAT: ${{ secrets.DASHBOARD_DATA_PAT }}
+          REPORT_DIR: ${{ runner.temp }}/gate-report
+        run: |
+          [[ "$PR" =~ ^[1-9][0-9]{0,6}$ ]] || { echo "input pr must be a PR number" >&2; exit 2; }
+          gate-orchestrator dispatch --pr "$PR" --actor "$ACTOR" --run-id "$DISPATCH_RUN_ID" --report-dir "$REPORT_DIR"
+      - name: Upload run.json, gate.json, comment.md
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: gate-pr-${{ inputs.pr }}
+          path: |
+            ${{ runner.temp }}/gate-report/run.json
+            ${{ runner.temp }}/gate-report/gate.json
+            ${{ runner.temp }}/gate-report/comment.md
+          if-no-files-found: ignore
+          retention-days: 14

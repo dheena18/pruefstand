@@ -63,15 +63,13 @@ jobs:
             body=$(jq -r .body <<<"$action")
             number=$(gh issue list --state open --label "$label" --limit 1 --json number --jq '.[0].number // empty')
             case "$op" in
-              open)
+              open|comment)
                 if [ -n "$number" ]; then
                   gh issue comment "$number" --body "$body"
                 else
                   gh label create "$label" --color B60205 --force >/dev/null
                   gh issue create --title "$title" --label "$label" --body "$body"
                 fi ;;
-              comment)
-                if [ -n "$number" ]; then gh issue comment "$number" --body "$body"; fi ;;
               close)
                 if [ -n "$number" ]; then gh issue close "$number" --comment "$body"; fi ;;
               *) echo "unknown op $op" >&2; exit 1 ;;
