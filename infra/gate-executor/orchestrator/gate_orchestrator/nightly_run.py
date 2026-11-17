@@ -51,11 +51,12 @@ class NightlyRun(Attempt):
 
     counter: int = 0
     run_dir: Path | None = None
+    runs_dir: Path | None = None  # $PRUEFSTAND_HOME/runs: promote-poll finds the night there
 
     def _run_and_gate(self, url: str) -> str | None:
         config = run_config(self.main_config, self.work / "pruefstand.yaml", url)
         env = {**self.env, "PRUEFSTAND_NIGHTLY_COUNTER": str(self.counter)}
-        code, out = self.run(nightly_run_argv(config, self.work / "runs"), env)
+        code, out = self.run(nightly_run_argv(config, self.runs_dir or self.work / "runs"), env)
         lines = out.strip().splitlines()
         if code != 0 or not lines:
             msg = f"run_failed: pruefstand run exit {code}"

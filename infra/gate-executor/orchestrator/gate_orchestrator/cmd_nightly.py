@@ -163,6 +163,7 @@ def nightly(args: argparse.Namespace) -> int:
         work=work,
         env=env,
         counter=read_counter(nightly_counter_path(env)),
+        runs_dir=Path(env["PRUEFSTAND_HOME"]) / "runs",
     )
     budget = lock_budget_s(datetime.now(UTC), deadline)
     done = run_locked(

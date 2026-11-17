@@ -123,3 +123,12 @@ def test_an_infra_error_of_the_run_is_returned_and_nothing_is_gated(tmp_path: Pa
     attempt, calls, _ = _nightly(tmp_path, 0, infra="ollama_down: gpu0")
     assert attempt._run_and_gate("http://10.0.0.5:8000") == "ollama_down: gpu0"
     assert not any(c[:2] == ["pruefstand", "gate"] for c in calls)
+
+
+def test_the_night_is_written_where_promote_poll_looks(tmp_path: Path) -> None:
+    # promote-poll scans $PRUEFSTAND_HOME/runs/; a night written to the job's temp dir is lost
+    attempt, calls, _ = _nightly(tmp_path, 0)
+    attempt.runs_dir = tmp_path / "home" / "runs"
+    attempt._run_and_gate("http://10.0.0.5:8000")
+    run = next(c for c in calls if c[:2] == ["pruefstand", "run"])
+    assert run[run.index("--out") + 1] == str(tmp_path / "home" / "runs")
