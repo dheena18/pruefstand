@@ -152,6 +152,18 @@ class ChunkingCfg(_Frozen):
         return self
 
 
+class PublicLimits(_Frozen):
+    """Limits of the public demo (T8.4, ADR-0012); every ``DEMO_*`` env variable overrides one."""
+
+    rate_per_min: int = Field(default=10, ge=1)
+    daily_per_key: int = Field(default=100, ge=1)
+    daily_requests: int = Field(default=2000, ge=0)
+    daily_tokens: int = Field(default=200_000, ge=0)
+    max_concurrency: int = Field(default=2, ge=1)
+    timeout_s: float = Field(default=75.0, gt=0)
+    allowed_origin: str | None = None
+
+
 class RagConfig(_Frozen):
     """``configs/rag.yaml``; the bug switches default to the correct behaviour (interfaces §16)."""
 
@@ -172,7 +184,19 @@ class RagConfig(_Frozen):
     answer_language: Literal["auto", "en"] = "auto"
     prompt_file: str = "prompts/answer_de_v1.txt"
     injection_guard: Literal["on", "off"] = "on"
+    public_mode: bool = False
+    public: PublicLimits | None = None
     system_prompt_guard: Literal["on", "off"] = "on"
+
+    @model_validator(mode="after")
+    def _public_limits(self) -> Self:
+        if self.public_mode and self.public is None:
+            msg = "public_mode needs a public section (the limits)"
+            raise ValueError(msg)
+        if self.public is not None and not self.public_mode:
+            msg = "public limits are only allowed with public_mode: true"
+            raise ValueError(msg)
+        return self
 
     @model_validator(mode="after")
     def _gpu_reranker_explicit(self) -> Self:

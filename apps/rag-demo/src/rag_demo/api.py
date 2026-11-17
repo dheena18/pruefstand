@@ -25,6 +25,7 @@ from rag_demo.generation import prompt_hits
 from rag_demo.info import build_info, cpu_model
 from rag_demo.models import GenOutput, Hit, RagConfig, Stats
 from rag_demo.protocols import Generator
+from rag_demo.public.setup import install_public
 from rag_demo.retrieval.corpus_meta import CorpusMeta
 from rag_demo.retrieval.rerank import IdentityReranker
 from rag_demo.retrieval.retriever import QdrantRetriever
@@ -262,7 +263,10 @@ def create_app(cfg: RagConfig, *, settings: Settings | None = None) -> FastAPI:
     """
     app = FastAPI(title="Prüfstand Target API", version="1")
     _add_guards(app)
-    _add_routes(app, cfg, _build_parts(cfg, settings or Settings()))
+    resolved = settings or Settings()
+    _add_routes(app, cfg, _build_parts(cfg, resolved))
+    if cfg.public_mode:
+        install_public(app, cfg, resolved)
     return app
 
 

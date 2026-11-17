@@ -1919,7 +1919,10 @@ the body and never relies on the `Retry-After` header (still sent; exposed via C
 | 503 | `demo_disabled` | `DEMO_ENABLED=false` or file flag `/run/demo/disabled` (checked per request) |
 | 422 | `invalid_request` | validation error (unknown tenant, question > 500 chars, …) |
 | 413 | `body_too_large` | request body over the size limit (8 KB) |
-| 504 | `timeout` | generation exceeds the server timeout `DEMO_TIMEOUT_S` (default 75, always < `NEXT_PUBLIC_DEMO_TIMEOUT_S`) |
+| 504 | `timeout` | generation exceeds the server timeout `DEMO_TIMEOUT_S` (default 75, always < `NEXT_PUBLIC_DEMO_TIMEOUT_S`), or the generator's own timeout (`generator_timeout`, D1302) |
+| 503 | `server_error` | any other backend failure (T8.4 slice 2, D1304): a fixed message, never a stack trace; the UI treats an unknown code as `T-SERVER-ERROR` anyway |
+
+Test-only (N5.4, P5.4, D1304): `POST /v1/_test/reset` exists only with `DEMO_TEST_RESET=1`; it answers 204 only to a loopback TCP peer (`127.0.0.1`/`::1`, `X-Forwarded-For` ignored) and only when no generation is in flight (409 `busy` otherwise), clearing buckets, daily counters, the budget and the slots; any other peer gets 404; it is not in the OpenAPI schema. It is called from inside the container, because a host request through the published port never has a loopback peer (UI13-04).
 
 Other demo env vars: `DEMO_ALLOWED_ORIGIN` (the only CORS origin), `TRUSTED_PROXY_HOPS` (trusted
 `X-Forwarded-For` hops). Dashboard build env: `NEXT_PUBLIC_DEMO_API_URL` (unset → no Try-it nav link),

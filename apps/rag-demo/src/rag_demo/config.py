@@ -18,7 +18,9 @@ PACKAGE_DIR = Path(__file__).resolve().parent
 class Settings(BaseSettings):
     """Deployment settings from environment variables; none of them is part of ``config_hash``."""
 
-    model_config = SettingsConfigDict(populate_by_name=True, extra="ignore")
+    model_config = SettingsConfigDict(
+        populate_by_name=True, extra="ignore", env_ignore_empty=True
+    )  # `.env.example` leaves the DEMO_* values empty
 
     rag_config: Path = Path("configs/rag.yaml")
     qdrant_url: str = "http://localhost:6333"
@@ -44,6 +46,17 @@ class Settings(BaseSettings):
     )
     serving_engine_version: str = "unknown"
     serving_gpu: str = "unknown"
+    # Public demo (T8.4): environment overrides of `public` in rag.public.yaml; none is hashed.
+    demo_rate_per_min: int | None = None
+    demo_daily_per_key: int | None = None
+    demo_daily_requests: int | None = None
+    demo_daily_tokens: int | None = None
+    demo_max_concurrency: int | None = None
+    demo_timeout_s: float | None = None
+    demo_allowed_origin: str | None = None
+    demo_flag_file: str | None = None
+    demo_test_reset: str | None = None
+    trusted_proxy_hops: int = 1
 
 
 def resolve_model_sha(settings: Settings) -> str:
@@ -123,6 +136,8 @@ def config_hash(cfg: RagConfig, prompts_root: Path | None = None) -> str:
     dump = cfg.model_dump(mode="json")
     if cfg.chunking == ChunkingCfg():  # the default must not move any committed config hash (T3.4b)
         del dump["chunking"]
+    if not cfg.public_mode:  # nor must the public-demo fields (T8.4)
+        del dump["public_mode"], dump["public"]
     canonical = json.dumps(dump, sort_keys=True, separators=(",", ":"))
     digest = hashlib.sha256(canonical.encode("utf-8"))
     digest.update(b"\0")
