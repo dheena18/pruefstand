@@ -7,6 +7,6 @@
 | `replay.py` | A/A replay of the full gate with a measured sigma_d, Wilson CIs (S2b core, D1275) | core done |
 | `noop.py`, `run_noise.py` | no-op (`reindex`, `reorder`, `rebuild`), churn (`prompt_synonym` = N04, `quant_swap` = N09, `temp03`) and repeat variants of `rag.gpu.yaml`, and the per-arm run plan (`runs/noise/<arm>/plan.json`, D1277, D1279) | plan done; running needs T6.2b |
 | `cause_switches.py`, `configs/scenario_*.yaml` | the five tier-2 cause switches: run plan (judge plan AI12-10), scenario gate configs (target metric alone on `overall`), MDE pre-check, offline check of a recorded pair (D1278) | plan and check done; runs need T6.2b |
-| outputs | `results/noise/*.csv`, `paired_diffs.parquet` | open (need the runs) |
+| `outputs.py` | paired diffs with the gate's pairing and slices, `mde.csv` rows (one per metric x slice x split), writers for `results/noise/{sigma,mde,replay,timings}.csv` and `paired_diffs.parquet` (< 1 MB) (S5, D1280) | writers done; the files need the runs |
 
 Tests: `uv run pytest experiments/noise/tests -q` (offline).
