@@ -257,30 +257,37 @@ Ticked only by the wave checkpoint PR (`chore/wave-<N>-checkpoint`, `tasks/PARAL
 task's PR is merged and the checkpoint is green; nothing else in this file changes in that PR. Wave numbers
 follow `tasks/PARALLEL-PLAN.md` §2.
 
-| Wave | Tasks (`[x]` = merged and checkpoint green, `[~]` = partly merged) | Milestone |
+| Wave | Tasks (`[x]` = every slice merged, `[~]` = partly merged: merged / open slices named, `[ ]` = not started) | Milestone |
 | --- | --- | --- |
-| 0 | [x] T0.7 S1–S2 (human, owner confirmed 2026-11-16; evidence `docs/ops/setup-log.md` §1–§9 and #28) · [x] T0.0 (owner confirmed 2026-11-16; `docs/ops/setup-log.md` §10) | – |
+| 0 | [x] T0.7 S1–S2 (human, owner confirmed 2026-11-16; `docs/ops/setup-log.md` §1–§9 and #28) · [x] T0.0 (owner confirmed 2026-11-16; setup log §10) | – |
 | 1 | [x] T0.1 (2026-10-31, direct push e885fda) | – |
 | 2 | [x] T0.2 · [x] T0.3 · [x] T1.1 · [x] T2.1 · [x] T0.7 | – |
-| 3 | [x] T1.2 · [x] T1.5a · [x] T0.4 · [x] T0.6 (+ S7 quota follow-up) · [ ] T0.5 | – |
+| 3 | [x] T1.2 · [x] T1.5a · [x] T0.4 · [x] T0.6 (+ S7 quota follow-up) · [~] T0.5 (done: ruleset with PRs required and 0 approvals, required checks, environment `gate-router` with the `pruefstand-bot` key (used by #196); open: `pruefstand/gate` pinned to the App in the ruleset, after T6.2b) | – |
 | 4 | [x] T1.6 · [x] T1.5b · [x] T1.3 · [x] T1.4 · [x] T2.2 · [x] T3.1a | – |
-| 5 | [x] T1.7 · [x] T1.8 · [x] T2.3 · [x] T2.4 · [x] T1.13 · [~] T1.13b (probe limit recalibrated #183; moving the probe into the gating step is an owner-merge workflow PR, open) · [ ] T1.13c (#171 only added the row: the rag-demo 503 after its generator timeout is still retried) · [~] T3.1b (phase 1 #46 and candidate pass #54 merged; rest open) | – |
+| 5 | [x] T1.7 · [x] T1.8 · [x] T2.3 · [x] T2.4 · [x] T1.13 · [x] T1.13b (#183, #187) · [x] T1.13c (#203) · [~] T3.1b (merged: phase 1 #46, candidate pass #54; open: S2–S5 benchmarks, S6 swaps, S7 pins) | – |
 | 6 | [x] T1.9 · [x] T4.4 · [x] T3.2 | – |
 | 7 | [x] T1.10 · [x] T3.3 | – |
 | 8 | [x] T1.11 · [x] T2.5 · [x] T5.1 | – |
-| 9 | [x] T6.1 · [x] T1.12 · [x] T4.1 · [x] T5.2a · [x] T3.4 · [x] T2.6 | [ ] M1 |
+| 9 | [x] T6.1 · [x] T1.12 · [x] T4.1 · [x] T5.2a · [x] T3.4 · [x] T3.4b (#194) · [x] T2.6 | [ ] M1 |
 | 10 | [x] T3.5 · [x] T4.6 · [x] T4.5 · [x] T5.2b · [x] T5.3 PR 1 · [x] T4.2 | – |
 | 11 | [x] T6.4 · [x] T4.3 · [x] T3.6 | – |
 | 12 | [x] T3.7 · [x] T4.7a · [x] T8.1 | [ ] M2 |
-| 13 | [~] T4.7b (offline parts #138, closed-book #140 merged; rest open) · [x] T8.2a | [ ] M3 |
-| 14 | [ ] T5.3 PR 2 (`legal_hard`) · [~] T6.2a (merged: `llm-proxy` S4b #137 and #169, trusted-peer slots #176, GPU lock/preflight/infra retry S7 #170, runner timeout #171, rag-demo tier-2 profiles #175; open: orchestrator core S2 #139 and the rest of the prompt, S0, S1, S3-S6, S8-S12) · [x] T8.2b | – |
-| 15 | [x] T5.4 · [x] T5.4b2 (#181) · [ ] T6.2b | – |
-| 16 | [ ] T6.3 · [~] T7.3 (S0b offline part #180 merged; rest open) · [ ] T9.1a | – |
+| 13 | [~] T4.7b (merged: S6 `hf://` resolution #138, S4 closed-book #140; open: S1 real build, S2 model review, S2b human spot-check, S3, S4b re-index, S5 release `v1`) · [x] T8.2a | [ ] M3 |
+| 14 | [ ] T5.3 PR 2 (`legal_hard`) · [~] T6.2a (merged: S4b `llm-proxy` #137, #169, #176; rag-demo tier-2 profiles #175; runner timeout #171; S7 lock/preflight/infra retry #170; S2 orchestrator core #139; S1/S3/S6/S8/S9 #202; runner.env tools #195; S10 sync + private-repo template #197, #205; open: S0 re-index, S4 `serve`, S5 `index`, S11 runbook completion, S12 human setup) · [x] T8.2b | – |
+| 15 | [~] T5.4 (merged: calibration #134, negate pairs T5.4b #173, drift anchors T5.4d #174, T5.4b2 #181, T5.4e plan #177; open: T5.4e arms b′/c on the VM CPU model) · [x] T5.4b2 (#181) · [~] T6.2b (merged: S1b `gate-router.yml` #196, S8 `executor-health.yml` #198; open: S1 `build-images` head SHA, S2 fork mirror, S3/S3a private workflows, S4 nightly helpers, S5 workflow guard rules, S6/S7/S9 human steps) | – |
+| 16 | [ ] T6.3 · [~] T7.3 (merged: S0b `evidence_recall` + equal volume #180, S3 analysis #201 + #204, S1 grid expander + run plan #210; open: S0 embedder services, S2 `run_grid.py`, the GPU grid run, S4 outputs, S5 cleanup) · [ ] T9.1a | – |
 | 17 | [ ] T6.5 · [ ] T9.1b | [ ] M4 (MVP) |
-| 18–19 | [~] T7.1a (slice 1 #182, slice 2 #186 merged; rest open) · [~] T8.3 (harness, matrix, tier-2 fixtures, nightly layers #144 merged; flows #184 open) · [ ] T7.1b · [ ] T8.4 (optional) | – |
+| 18–19 | [~] T7.1a (merged: schema/apply #182, no-ops #186, N04 re-record #189, M02 #212; open: M03 (VM CPU e5 service, D1263), the [DOCKER] M08 isolation evidence) · [~] T8.3 (merged: matrix/tier-2 fixtures/nightly layers #144, flows #184, tier-1 slices #206, citation chips #209; open: the fixture snapshot from real tier-2 runs, which needs T6.5) · [~] T7.1b (merged: M12–M20, precondition, data entries #207, #208; open: M11 and N09 (pending, need models the cluster does not hold); N10 dropped (D1269), M16b dropped (D1273, #217)) · [~] T8.4 (optional; slice 1 #211) | – |
 | 20–21 | [ ] T7.2 · [ ] T7.4 · [ ] T8.5 | [ ] M5 · [ ] M6 |
 | 22–23 | [ ] T9.2 · [ ] T9.3 · [ ] T9.4 | [ ] M7 |
 | optional | [ ] T5.3-opt · [ ] T10.1 · [ ] T10.2 · [ ] T10.3 · [ ] T10.4 | – |
+
+**Checkpoint wave 17 (2026-11-17, main `ef93d3f`).** A task counts as done only when every slice is merged.
+The 72 core wave tasks of `tasks/PARALLEL-PLAN.md` §2: **51 done, 10 partly done** (T0.5, T3.1b, T4.7b, T6.2a,
+T5.4, T6.2b, T7.3, T7.1a, T8.3, T7.1b), **11 not started** (T5.3 PR 2, T6.3, T9.1a, T6.5, T9.1b, T7.2, T7.4,
+T8.5, T9.2, T9.3, T9.4). The four follow-up rows in the table (T1.13b, T1.13c, T3.4b, T5.4b2) are done.
+Merged since the wave-16 checkpoint (#188): #139, #166, #167, #184, #187, #190, #191, #193, #194, #195, #196,
+#197, #198, #199, #200, #201, #202, #203, #204, #205, #206, #207, #208, #209, #210, #211, #212.
 
 ## Optional scope (Tier = optional)
 
