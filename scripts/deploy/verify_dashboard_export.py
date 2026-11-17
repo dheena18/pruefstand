@@ -1,4 +1,4 @@
-"""Verify a checked-out ``pruefstand-dashboard-data`` tree before the dashboard build (T8.5 S3, N5.1).
+"""Verify a checked-out dashboard-data tree before the dashboard build (T8.5 S3, N5.1).
 
 ``deploy.yml`` (``fetch-data``) runs this on the tree it fetched at the pinned SHA; on any finding
 nothing is built or uploaded. The tree is judged as it is (never pruned or filtered here, UI13-20):
@@ -77,7 +77,7 @@ def _texts(value: object) -> Iterator[str]:
 
 
 def load_chunk_texts(paths: Iterable[Path]) -> list[str]:
-    """Every ``text`` string (>= 40 chars) of JSON or JSONL files: raw chunk text, never published."""
+    """Every ``text`` string (>= 40 chars) of JSON or JSONL files: raw chunk text."""
     out: list[str] = []
     for path in paths:
         raw = path.read_text(encoding="utf-8")
