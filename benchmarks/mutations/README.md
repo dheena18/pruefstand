@@ -12,6 +12,7 @@ one entry on a fresh worktree with
 | ID | Title | Kind | Change | Tier | Splits | Stratum | tier1 | Expected | Metrics |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | M01 | Remove the reranker | config | overrides | pr | smoke, core, robust_pr | statistical | no | FAIL | `ndcg_at_k` |
+| M02 | Fixed 256-token sub-chunks instead of per-paragraph chunks | config | overrides | pr | smoke, core, robust_pr | statistical | no | FAIL | `answer_correctness`, `faithfulness` |
 | M04 | Compound splitting off in the BM25 analyzer | config | overrides | pr | smoke, core, robust_pr | statistical | no | FAIL | `context_recall` |
 | M05 | Delete the "cite the paragraph" instruction | config | overrides | pr | smoke, core, robust_pr | statistical | no | FAIL | `citation_recall` |
 | M06 | Delete the "say when you don't know" instruction | config | overrides | nightly | full | statistical | no | FAIL | `refusal_correct` |
@@ -19,6 +20,15 @@ one entry on a fresh worktree with
 | M08 | Tenant filter applied after retrieval with the top-k cut | config | overrides | pr | smoke, core, robust_pr | deterministic | yes | FAIL (hard fail) | `tenant_leak`, `canary_leak` |
 | M09 | Tenant filter missing on the shared_public merge path | config | overrides | pr | smoke, core, robust_pr | deterministic | yes | FAIL (hard fail) | `tenant_leak` |
 | M10 | top_k 8 to 3 | config | overrides | pr | smoke, core, robust_pr | statistical | no | FAIL | `context_recall` |
+| M12 | Prompt bug: answer in English | config | overrides | pr | smoke, core, robust_pr | deterministic | no | FAIL | `language_match` |
+| M13 | Reranker top_n 10 to 2 | config | overrides | pr | smoke, core, robust_pr | statistical | no | FAIL | `ndcg_at_k` |
+| M14 | Embedding input truncated to 128 tokens | code | patch | pr | core | statistical | no | FAIL | `ndcg_at_k` |
+| M15 | RRF k 60 to 1 | config | overrides | pr | core | statistical | no | FAIL | `ndcg_at_k` |
+| M16 | Stale index (previous corpus_version) | data | data | pr | smoke, core, robust_pr | deterministic | yes | FAIL | – |
+| M17 | Generation temperature 0 to 0.7 | config | overrides | pr | smoke, core, robust_pr | statistical | no | FAIL | `faithfulness` |
+| M18 | Analyzer lowercasing off | code | patch | pr | smoke, core, robust_pr | statistical | no | FAIL | `context_recall` |
+| M19 | Eszett folding off | code | patch | pr | smoke, core, robust_pr | statistical | no | FAIL | `context_recall` |
+| M20 | App writes "Paragraph 622 BGB" instead of "§ 622 BGB" | code | patch | pr | core | normaliser | no | PASS | – |
 | N01 | Whitespace in rag.gpu.yaml | config | patch | pr | smoke, core, robust_pr | statistical | no | PASS | – |
 | N02 | Comment in the retriever code | code | patch | pr | smoke, core, robust_pr | statistical | no | PASS | – |
 | N03 | Re-run the identical config with production cache settings | config | overrides | pr | smoke, core, robust_pr | statistical | no | PASS | – |
@@ -27,3 +37,8 @@ one entry on a fresh worktree with
 | N06 | Rename an internal Python variable | code | patch | pr | smoke, core, robust_pr | statistical | no | PASS | – |
 | N07 | Bump an unrelated dependency's lower bound | code | patch | pr | smoke, core, robust_pr | statistical | no | PASS | – |
 | N08 | Change the server log level | code | patch | pr | smoke, core, robust_pr | statistical | no | PASS | – |
+
+## Pending (neither applied nor scored)
+
+- `M11`: needs a second, smaller Qwen generator in the catalogue and on the cluster disk (T3.1b pins it); nothing is pulled for the benchmark (D451, ADR-0019)
+- `N09`: needs a second quantisation tag of the generator in the catalogue and on the cluster disk (T3.1b follow-up); nothing is pulled for the benchmark (D451, ADR-0019)

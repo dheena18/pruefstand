@@ -184,8 +184,9 @@ def apply_mutation(
     check_pristine(worktree, ref)
     if spec.patch is not None:
         _git("apply", str((root / spec.id / spec.patch).resolve()), cwd=worktree)
-    else:
+    elif spec.rag_overrides is not None:
         _apply_overrides(spec, worktree)
+    # kind data (data_ref): no file changes; the executor indexes the referenced corpus (T7.2)
 
 
 def revert(worktree: Path) -> None:

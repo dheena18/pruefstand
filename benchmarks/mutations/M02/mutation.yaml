@@ -1,0 +1,24 @@
+id: M02
+title: Fixed 256-token sub-chunks instead of per-paragraph chunks
+kind: config
+rag_overrides: {chunking: {strategy: fixed_tokens, size: 256}}
+needs_reindex: true
+cache_invalidating: true
+tier: pr
+splits: [smoke, core, robust_pr]
+stratum: statistical
+tier1: false
+in_detection_rate: true
+expected:
+  status: FAIL
+  metrics: [answer_correctness, faithfulness]
+  secondary_metrics: [evidence_recall]
+  gated_slices: [overall]
+  informational_slices: [category=multi_hop]
+  likely_cause: retrieval
+rationale: >-
+  The indexer cuts every corpus chunk into pieces of at most 256 tokens (rag-demo chunking option, T3.4b;
+  corpus_version unchanged, so gold doc ids hold). Pieces inherit the paragraph's doc id, so doc-level
+  context_recall cannot see a split-off Absatz; the gated effect is on the judged answer metrics (tier-2 PR
+  judge) and evidence_recall (span level, T7.3) is reported as secondary. 256 is this mutation's size; the RQ1
+  grid compares 512 (AI9-23).

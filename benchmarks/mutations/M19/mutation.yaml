@@ -1,0 +1,20 @@
+id: M19
+title: Eszett folding off
+kind: code
+patch: patch.diff
+needs_reindex: true
+cache_invalidating: true
+tier: pr
+splits: [smoke, core, robust_pr]
+stratum: statistical
+tier1: false
+in_detection_rate: true
+expected:
+  status: FAIL
+  metrics: [context_recall]
+  gated_slices: [perturbed_all]
+  informational_slices: [perturbation=eszett]
+  likely_cause: retrieval
+rationale: >-
+  The fold table no longer maps the eszett to "ss", so "Straße" and "Strasse" are different sparse tokens. The
+  effect may be small: if it is not large enough the gate reports WARN or PASS, which T7.2 documents.

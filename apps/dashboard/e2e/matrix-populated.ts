@@ -146,7 +146,10 @@ export const populatedRows: Row[] = [
     set: "populated",
     fixtureRunId: PASS_RUN,
     path: `${run(PASS_RUN)}slices/`,
-    expect: { keys: ["subnav.slices"], hydrated: true },
+    expect: {
+      keys: ["subnav.slices", "tier1.checks", "tier1.reported", "slices.informational"],
+      hydrated: true,
+    },
   }),
   row({
     page: "Slices",

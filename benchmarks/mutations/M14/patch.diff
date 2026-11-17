@@ -1,0 +1,14 @@
+diff --git a/apps/rag-demo/src/rag_demo/index/encoders.py b/apps/rag-demo/src/rag_demo/index/encoders.py
+index d122367..c5add79 100644
+--- a/apps/rag-demo/src/rag_demo/index/encoders.py
++++ b/apps/rag-demo/src/rag_demo/index/encoders.py
+@@ -34,7 +34,8 @@ def build_embed_request(texts: Sequence[str], cfg: EmbedCfg, kind: Kind) -> list
+         ['query: Frist']
+     """
+     prefix = cfg.query_prefix if kind == "query" else cfg.doc_prefix
+-    return [prefix + text for text in texts]
++    # Mutation M14: every embedding input (query and passage) is cut to its first 128 tokens.
++    return [prefix + " ".join(text.split()[:128]) for text in texts]
+ 
+ 
+ class _HttpEncoder:

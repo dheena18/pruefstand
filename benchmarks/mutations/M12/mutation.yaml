@@ -1,0 +1,19 @@
+id: M12
+title: "Prompt bug: answer in English"
+kind: config
+rag_overrides: {answer_language: en}
+needs_reindex: false
+cache_invalidating: true
+tier: pr
+splits: [smoke, core, robust_pr]
+stratum: deterministic
+tier1: false
+in_detection_rate: true
+expected:
+  status: FAIL
+  metrics: [language_match]
+  gated_slices: [lang]
+  likely_cause: language
+rationale: >-
+  The real rag-demo switch answer_language en; language_match drops on lang=de. Tier 1 only reports the
+  language check (X5.6, D188), so tier1 is false.

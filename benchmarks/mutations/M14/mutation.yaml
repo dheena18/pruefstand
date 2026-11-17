@@ -1,0 +1,20 @@
+id: M14
+title: Embedding input truncated to 128 tokens
+kind: code
+patch: patch.diff
+needs_reindex: true
+cache_invalidating: true
+tier: pr
+splits: [core]
+stratum: statistical
+tier1: false
+in_detection_rate: true
+expected:
+  status: FAIL
+  metrics: [ndcg_at_k]
+  gated_slices: [overall]
+  likely_cause: retrieval
+rationale: >-
+  Replaces "normalisation off" (a no-op: Ollama returns unit vectors and the collection is cosine, P3.3).
+  build_embed_request cuts every query and passage to its first 128 tokens (whitespace-separated) before the
+  prefix is added, on the index and the query side; vector normalisation is untouched. Also reported in the nightly table (block 0).
