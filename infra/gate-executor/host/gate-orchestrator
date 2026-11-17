@@ -25,4 +25,6 @@ cleanup() {
 }
 trap cleanup EXIT
 export PYTHONPATH="$ws/infra/gate-executor/orchestrator"
+# The Python code reads pruefstand.yaml and infra/gpu/*.sh from PRUEFSTAND_MAIN_DIR: point it at the pinned worktree
+export PRUEFSTAND_MAIN_DIR="$work"
 uv run --project "$work" --all-packages --frozen python -m gate_orchestrator "$@"

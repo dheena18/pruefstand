@@ -85,7 +85,8 @@ def _sandbox(tmp: Path) -> tuple[dict[str, str], Path, str]:
     uv = bin_dir / "uv"
     log = tmp / "uv.log"
     uv.write_text(
-        f'#!/bin/sh\necho "$PYTHONPATH $*" >> {log}\nls "$3/new.txt" >> {log}\nsleep 1\n',
+        f'#!/bin/sh\necho "$PYTHONPATH $*" >> {log}\necho "main=$PRUEFSTAND_MAIN_DIR" >> {log}\n'
+        f'ls "$3/new.txt" >> {log}\nsleep 1\n',
         encoding="utf-8",
     )
     uv.chmod(0o755)
@@ -119,5 +120,8 @@ def test_overlapping_calls_run_from_their_own_worktree_and_never_move_the_shared
     )
     assert len({line.split()[3] for line in runs}) == 2  # two different worktrees
     assert sum(line.endswith("new.txt") for line in log) == 2  # both at the fetched main
+    worktrees = sorted(line.split()[3] for line in runs)
+    mains = sorted(line.removeprefix("main=") for line in log if line.startswith("main="))
+    assert mains == worktrees  # the Python side reads config and health.sh from the worktree
     assert _git(shared, "worktree", "list").count("\n") == 0  # both removed again
     assert list((tmp_path / "runner").iterdir()) == []
