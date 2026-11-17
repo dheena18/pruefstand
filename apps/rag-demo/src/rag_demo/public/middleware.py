@@ -7,6 +7,7 @@ kill switch and rate limit for ``/v1/retrieve``) it answers every refusal with t
 
 import asyncio
 import json
+import logging
 from collections.abc import Callable
 from dataclasses import dataclass
 
@@ -18,6 +19,7 @@ from rag_demo.public.limits import Limiter, client_key
 
 MAX_BODY = 8 * 1024
 MAX_QUESTION = 500
+_log = logging.getLogger(__name__)
 GUARDED = frozenset({"/v1/query", "/v1/retrieve"})
 
 
@@ -81,11 +83,14 @@ def checked_body(raw: bytes, cfg: GuardConfig, request_id: str) -> bytes | None:
         "request_id",
     }:
         return None
-    question = data.get("question")
-    if data.get("tenant_id") not in cfg.tenants or not isinstance(question, str):
+    tenant, question = data.get("tenant_id"), data.get("question")
+    if not isinstance(tenant, str) or not isinstance(question, str) or tenant not in cfg.tenants:
         return None
     if not 1 <= len(question) <= MAX_QUESTION:
         return None
+    top_k, client_id = data.get("top_k"), data.get("request_id", "")
+    if not (top_k is None or type(top_k) is int) or not isinstance(client_id, str):
+        return None  # the values are replaced below, but a wrong type is still a bad request
     clean = {
         "tenant_id": data["tenant_id"],
         "question": question,
@@ -117,15 +122,30 @@ class PublicGuard:
         self._new_id = new_id
 
     async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
-        """Answer a refusal, or pass the (rewritten) request on."""
+        """Answer a refusal or pass the (rewritten) request on; a crash is a ``server_error``."""
+        started = False
+
+        async def watching(message: Message) -> None:
+            nonlocal started
+            started = started or message["type"] == "http.response.start"
+            await send(message)
+
+        try:
+            await self._guarded(scope, receive, watching)
+        except Exception:
+            _log.exception("public guard failed")  # the traceback holds no question text
+            if not started:
+                await _send_rejection(send, Rejection("server_error"))
+
+    async def _guarded(self, scope: Scope, receive: Receive, send: Send) -> None:
         if scope["type"] != "http" or scope["path"] not in GUARDED or scope["method"] != "POST":
             await self._app(scope, receive, send)
             return
         if self._disabled():
             await _send_rejection(send, Rejection("demo_disabled"))
             return
-        headers = dict(scope["headers"])
-        forwarded = headers.get(b"x-forwarded-for", b"").decode("latin-1") or None
+        lines = [v.decode("latin-1") for k, v in scope["headers"] if k == b"x-forwarded-for"]
+        forwarded = ", ".join(lines) or None  # every header line, in order (RFC 7230 combining)
         peer = scope["client"][0] if scope.get("client") else None
         refused = self._limiter.admit(client_key(peer, forwarded, self._cfg.hops))
         if refused is not None:

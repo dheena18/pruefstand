@@ -3,10 +3,10 @@
 import uuid
 from pathlib import Path
 
-from fastapi import FastAPI, HTTPException, Request
+from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse, Response
+from fastapi.responses import JSONResponse
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from rag_demo.config import Settings
@@ -16,9 +16,9 @@ from rag_demo.public.errors import Code, Rejection
 from rag_demo.public.killswitch import DEFAULT_FLAG, demo_disabled
 from rag_demo.public.limits import Limiter
 from rag_demo.public.middleware import GuardConfig, PublicGuard
+from rag_demo.public.reset import add_reset
 
 TENANTS = frozenset({"kanzlei_mueller", "versicherung_nord", "stadtwerke_sued"})
-LOOPBACK = frozenset({"127.0.0.1", "::1"})
 GENERATOR_TIMEOUT = "generator_timeout"
 
 
@@ -104,19 +104,4 @@ def install_public(app: FastAPI, cfg: RagConfig, settings: Settings) -> None:
         return _error_response(Rejection("invalid_request"))
 
     if settings.demo_test_reset == "1":
-        _add_reset(app, limiter, budget)
-
-
-def _add_reset(app: FastAPI, limiter: Limiter, budget: DailyBudget) -> None:
-    """``POST /v1/_test/reset`` (N5.4): loopback peers only, 409 while a generation runs."""
-
-    async def reset(request: Request) -> Response:
-        peer = request.client.host if request.client else None
-        if peer not in LOOPBACK:  # X-Forwarded-For is ignored: this is the TCP peer
-            raise HTTPException(404)
-        if not limiter.reset():
-            return _error_response(Rejection("busy", 2), 409)  # a generation is in flight (UI13-15)
-        budget.reset()
-        return Response(status_code=204)
-
-    app.add_api_route("/v1/_test/reset", reset, methods=["POST"], include_in_schema=False)
+        add_reset(app, limiter, budget)

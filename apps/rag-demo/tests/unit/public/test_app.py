@@ -2,6 +2,7 @@
 
 import asyncio
 import json
+import re
 import threading
 from collections.abc import Callable
 from pathlib import Path
@@ -15,6 +16,7 @@ from rd_support import CONFIGS, qdrant_point
 
 from rag_demo.api import create_app
 from rag_demo.config import Settings, load_config
+from rag_demo.retrieval.retriever import QdrantRetriever
 from rag_demo.wiring import expected_fingerprint
 
 QDRANT = "http://qdrant.test:6333/collections/chunks_active"
@@ -279,3 +281,162 @@ def test_the_public_profile_never_sets_the_test_reset() -> None:
     text = (CONFIGS / "rag.public.yaml").read_text(encoding="utf-8")
     assert "DEMO_TEST_RESET" not in text.upper()
     assert "test_reset" not in text
+
+
+# --- Opus review of #218: malformed input, order of the controls, mutants -------------------
+
+
+@respx.mock
+@pytest.mark.parametrize(
+    "body",
+    [
+        {"tenant_id": ["kanzlei_mueller"], "question": "Frage?"},
+        {"tenant_id": {"a": 1}, "question": "Frage?"},
+        {"tenant_id": None, "question": "Frage?"},
+        {"tenant_id": 7, "question": "Frage?"},
+        {"tenant_id": "kanzlei_mueller", "question": ["Frage?"]},
+        {"tenant_id": "kanzlei_mueller", "question": 5},
+        {"tenant_id": "kanzlei_mueller", "question": "Frage?", "top_k": "viele"},
+        {"tenant_id": "kanzlei_mueller", "question": "Frage?", "top_k": [1]},
+        {"tenant_id": "kanzlei_mueller", "question": "Frage?", "request_id": {"x": 1}},
+        [1, 2],
+        "text",
+        None,
+    ],
+)
+def test_malformed_field_types_are_public_422_with_cors_never_a_500(
+    tmp_path: Path, body: object
+) -> None:
+    _mock()
+    client = _client(tmp_path, demo_allowed_origin="http://localhost:4175")
+    resp = client.post("/v1/query", json=body, headers={"Origin": "http://localhost:4175"})
+    _assert_public_error(resp, 422, "invalid_request")
+    assert resp.headers["access-control-allow-origin"] == "http://localhost:4175"
+
+
+@respx.mock
+def test_invalid_json_and_an_unexpected_crash_are_public_bodies(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _mock()
+    client = _client(tmp_path, demo_allowed_origin="http://localhost:4175")
+    garbage = client.post(
+        "/v1/query", content=b"{not json", headers={"Origin": "http://localhost:4175"}
+    )
+    _assert_public_error(garbage, 422, "invalid_request")
+    monkeypatch.setattr(
+        "rag_demo.public.middleware.checked_body",
+        lambda *_: (_ for _ in ()).throw(RuntimeError("x")),
+    )
+    crashed = client.post("/v1/query", json=_query(), headers={"Origin": "http://localhost:4175"})
+    _assert_public_error(crashed, 503, "server_error")
+    assert crashed.headers["access-control-allow-origin"] == "http://localhost:4175"
+
+
+@respx.mock
+def test_the_server_makes_the_request_id_and_the_top_k(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    _mock()
+    seen: list[int] = []
+    original = QdrantRetriever.retrieve
+
+    def spy(self: QdrantRetriever, tenant: str, question: str, top_k: int) -> object:
+        seen.append(top_k)
+        return original(self, tenant, question, top_k)
+
+    monkeypatch.setattr(QdrantRetriever, "retrieve", spy)
+    caplog.set_level("DEBUG")
+    resp = _client(tmp_path).post("/v1/query", json=_query(request_id="client-chosen-id", top_k=50))
+    assert resp.status_code == 200
+    assert seen == [CFG.top_k]  # the client's top_k 50 is ignored
+    assert "client-chosen-id" not in caplog.text
+    assert re.search(r"request_id=[0-9a-f]{32} ", caplog.text)  # the server's own id
+
+
+@respx.mock
+def test_the_kill_switch_comes_before_the_rate_limit(tmp_path: Path) -> None:
+    _mock()
+    client = _client(tmp_path, demo_rate_per_min=1)
+    (tmp_path / "disabled").write_text("", encoding="utf-8")
+    _assert_public_error(client.post("/v1/query", json=_query()), 503, "demo_disabled")
+    (tmp_path / "disabled").unlink()
+    assert client.post("/v1/query", json=_query()).status_code == 200  # no token was spent
+
+
+@respx.mock
+def test_a_budget_refusal_releases_the_concurrency_slot(tmp_path: Path) -> None:
+    _mock()
+    client = _client(tmp_path, demo_daily_tokens=10, demo_max_concurrency=1, demo_rate_per_min=100)
+    for _ in range(3):  # a leaked slot would turn the second answer into `busy`
+        _assert_public_error(client.post("/v1/query", json=_query()), 503, "budget_exhausted")
+
+
+@respx.mock
+def test_the_concurrency_slot_is_taken_before_the_budget(tmp_path: Path) -> None:
+    started, release = threading.Event(), threading.Event()
+
+    async def held(_: httpx.Request) -> httpx.Response:
+        started.set()
+        await asyncio.to_thread(release.wait, 10)
+        return httpx.Response(200, json=REPLY)
+
+    _mock(held)
+    client = _client(tmp_path, demo_daily_tokens=300, demo_max_concurrency=1, demo_rate_per_min=100)
+    worker = threading.Thread(target=lambda: client.post("/v1/query", json=_query()))
+    worker.start()
+    assert started.wait(5)
+    # the budget is also nearly used (256 reserved of 300), but the answer must be `busy`
+    _assert_public_error(client.post("/v1/query", json=_query()), 429, "busy")
+    release.set()
+    worker.join(5)
+
+
+@respx.mock
+def test_a_timed_out_generation_keeps_its_worst_case_reserved(tmp_path: Path) -> None:
+    async def slow(_: httpx.Request) -> httpx.Response:
+        await asyncio.sleep(1.0)
+        return httpx.Response(200, json=REPLY)
+
+    _mock(slow)
+    client = _client(tmp_path, demo_timeout_s=0.05, demo_daily_tokens=300, demo_rate_per_min=100)
+    _assert_public_error(client.post("/v1/query", json=_query()), 504, "timeout")
+    # 256 tokens stay charged (the generator may have run to its limit): 512 > 300
+    _assert_public_error(client.post("/v1/query", json=_query()), 503, "budget_exhausted")
+
+
+@respx.mock
+def test_retrieve_has_the_kill_switch_the_rate_limit_and_public_errors(tmp_path: Path) -> None:
+    _mock()
+    client = _client(tmp_path, demo_rate_per_min=2)
+    ok = client.post("/v1/retrieve", json=_query(request_id="r1"))
+    assert ok.status_code == 200
+    unknown = client.post("/v1/retrieve", json=_query(tenant_id="evil_corp", request_id="r2"))
+    _assert_public_error(unknown, 422, "invalid_request")
+    _assert_public_error(
+        client.post("/v1/retrieve", json=_query(request_id="r3")), 429, "rate_limited"
+    )
+    (tmp_path / "disabled").write_text("", encoding="utf-8")
+    _assert_public_error(
+        client.post("/v1/retrieve", json=_query(request_id="r4")), 503, "demo_disabled"
+    )
+
+
+@respx.mock
+def test_every_forwarded_for_header_line_counts_not_only_the_last(tmp_path: Path) -> None:
+    _mock()
+    client = _client(tmp_path, demo_rate_per_min=1, trusted_proxy_hops=2)
+    first = client.post(
+        "/v1/query",
+        json=_query(),
+        headers=[("X-Forwarded-For", "5.5.5.5, 1.1.1.1"), ("X-Forwarded-For", "2.2.2.2")],
+    )
+    assert (
+        first.status_code == 200
+    )  # the key is 1.1.1.1 (second hop from the right over both lines)
+    again = client.post(
+        "/v1/query",
+        json=_query(),
+        headers=[("X-Forwarded-For", "6.6.6.6, 1.1.1.1"), ("X-Forwarded-For", "3.3.3.3")],
+    )
+    _assert_public_error(again, 429, "rate_limited")

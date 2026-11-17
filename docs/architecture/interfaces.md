@@ -1843,6 +1843,9 @@ class RagConfig(BaseModel)          # chosen by RAG_CONFIG: apps/rag-demo/config
                                     # reads from the PR and the one T6.5 demos / T7.1a tier-2 mutations edit (R9 X3.15).
                                     # Fields: generator model/endpoint, embedding model, top_k, rerank on/off + top_n,
                                     # hybrid on/off, compound_split on/off, chunking (below), prompt file, fusion
+                                    # public_mode: bool = False, public: PublicLimits | None (T8.4, D1304): rate_per_min,
+                                    # daily_per_key, daily_requests, daily_tokens, max_concurrency, timeout_s, allowed_origin;
+                                    # public requires public_mode and vice versa; neither enters config_hash while public_mode is off
                                     # chunking: ChunkingCfg = {strategy: "per_section" | "fixed_tokens", size: int | None}
                                     # (T3.4b, D1301). Default per_section = one point per corpus chunk (§/Absatz), every
                                     # committed config and its config_hash unchanged. fixed_tokens needs size in [64, 4096]
