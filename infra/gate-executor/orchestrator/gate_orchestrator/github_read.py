@@ -27,11 +27,18 @@ class GitHubReadError(PruefstandError):
 class PublicRepo:
     """Read-only view of the public repo for one dispatch."""
 
-    def __init__(self, token: str, repo: str = PUBLIC_REPO, *, transport: Any = None) -> None:  # noqa: ANN401  (httpx transport, tests only)
-        """Args: ``token`` (sent only to api.github.com), ``repo`` ``owner/name``."""
-        if not token or any(c.isspace() for c in token):
+    def __init__(
+        self,
+        token: str | None,
+        repo: str = PUBLIC_REPO,
+        *,
+        transport: httpx.BaseTransport | None = None,
+    ) -> None:
+        """Args: ``token`` (sent only to api.github.com; ``None`` = anonymous), ``repo``."""
+        if token is not None and (not token or any(c.isspace() for c in token)):
             msg = "invalid token"
             raise ValueError(msg)
+        auth = {} if token is None else {"Authorization": f"Bearer {token}"}  # None: anonymous
         self._repo = repo
         self._client = httpx.Client(
             base_url=API,
@@ -39,7 +46,7 @@ class PublicRepo:
             follow_redirects=False,
             transport=transport,
             headers={
-                "Authorization": f"Bearer {token}",
+                **auth,
                 "Accept": "application/vnd.github+json",
                 "X-GitHub-Api-Version": "2022-11-28",
                 "User-Agent": "pruefstand-executor",
