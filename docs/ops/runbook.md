@@ -106,8 +106,18 @@ half). Re-run those steps only to rebuild the VM.
    `pruefstand/gate` **with source = App `pruefstand-bot`** (pinned). Environment `testpypi`: deployment branches
    `main` only (A13-M2).
 6. Persistent runner registered **once** on the VM under `/home/pruefstand/pruefstand/runner` (label
-   `a40`), hook scripts in its `.env`, **system** service `pruefstand-runner.service` (`User=pruefstand`,
-   no storage dependency, ADR-0019) (D100, Y1.1). Never on the cluster.
+   `a40`; `infra/gate-executor/host/install_runner.sh`), hook scripts in its `.env`, **system** service
+   `pruefstand-runner.service` (`User=pruefstand`, no storage dependency, ADR-0019) (D100, Y1.1). Never on the
+   cluster. The unit loads the executor settings and secrets from `/home/pruefstand/runner.env` with systemd's
+   `EnvironmentFile=` (D1091), **not** with bash `source`: one `KEY=VALUE` per line, no `export`, no `$VAR`
+   expansion or `$(...)`, quotes only around a whole value (a value that works when sourced in bash can arrive
+   differently in the runner); after an edit, `sudo systemctl restart pruefstand-runner` between jobs.
+   **Hook scripts** (`ACTIONS_RUNNER_HOOK_JOB_STARTED` / `_COMPLETED` in the runner's `.env`, copied from
+   `infra/gate-executor/host/runner.env.example`) run from a separate, stable clone of the private repo at
+   `/home/pruefstand/pruefstand-gate` (you clone it once as `pruefstand`; after each `sync_executor.sh` merge,
+   `git -C /home/pruefstand/pruefstand-gate pull --ff-only` between jobs), never from a job workspace under
+   `runner/_work/`, which the hooks themselves wipe (D1096). The unit sets no `NoNewPrivileges=`: the preflight's
+   tunnel repair needs `sudo -n` (D1096).
 7. `llm-proxy` (`gate-net` + `proxy-egress`, `http://llm-proxy:11500`, D242), `rerank-cpu` and Qdrant (profile `gpu`) on the VM as
    `pruefstand` (T3.1a, T6.2a); ports in `docker.md` §3. Your dev stack uses `PORT_OFFSET=10000`; run
    `make ports-env` once so even a raw `docker compose … up` binds the dev ports, and `make check-ports`
