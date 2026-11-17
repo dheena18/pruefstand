@@ -1,0 +1,195 @@
+# Public demo stack (T8.4 S6b, ADR-0012). Project `pruefstand-demo`, started from the repository root:
+#   docker compose -p pruefstand-demo -f infra/deploy/demo/compose.yml --profile demo up -d --wait
+# Profiles: `demo` (qdrant, llm, embed, one-shot index, rag-demo on 127.0.0.1:${DEMO_PORT:-8090}) and `e2e`
+# (the same backing services plus rag-demo-e2e on 127.0.0.1:${E2E_PORT:-8091}, used only by
+# scripts/demo/try_e2e.sh). These profiles live only in this file, never in the root docker-compose.yml (UI12-10).
+# qdrant, llm and embed publish no host port and sit on the internal network `demo-net` (D320); only rag-demo and
+# rag-demo-e2e also join `demo-edge`, which Docker needs to publish a port. The DEMO_* and TRUSTED_PROXY_HOPS
+# variables are passed through from the calling shell only when set (an empty value would fail the settings parse).
+# T8.5 adds the cloudflared service and the nightly deploy. No secrets here.
+
+name: pruefstand-demo
+
+x-service-defaults: &service-defaults
+  restart: unless-stopped
+  security_opt:
+    - no-new-privileges:true
+  logging:
+    driver: json-file
+    options:
+      max-size: 10m
+      max-file: "3"
+
+x-rag-demo: &rag-demo
+  <<: *service-defaults
+  image: pruefstand-demo-rag-demo:local
+  pull_policy: build
+  build:
+    context: ../../..
+    dockerfile: apps/rag-demo/Dockerfile
+    args:
+      GIT_SHA: ${GIT_SHA:-unknown}
+  depends_on:
+    qdrant:
+      condition: service_healthy
+    llm:
+      condition: service_healthy
+    embed:
+      condition: service_healthy
+    index:
+      condition: service_completed_successfully
+  networks: [demo-net, demo-edge]
+  mem_limit: 1g
+  cpus: 2
+  healthcheck:
+    test: ["CMD", "python", "-c", "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8000/v1/health', timeout=2).status==200 else 1)"]
+    interval: 10s
+    timeout: 3s
+    retries: 6
+    start_period: 10s
+
+x-rag-demo-env: &rag-demo-env
+  RAG_CONFIG: /app/configs/rag.public.yaml
+  QDRANT_URL: http://qdrant:6333
+  LLM_URL: http://llm:8080
+  EMBED_URL: http://embed:80
+  LLAMA_CPP_VERSION: ${LIVE_LLAMA_CPP_VERSION:-b12019}
+  MODEL_FILE: ${LIVE_LLM_GGUF:-qwen2.5-0.5b-instruct-q4_k_m.gguf}
+  MODEL_PIN: qwen2.5-0.5b-instruct-q4_k_m.gguf=74a4da8c9fdbcd15bd1f6d01d621410d31c6fc00986f5eb687824e7b93d7a9db
+
+services:
+  qdrant:
+    <<: *service-defaults
+    image: qdrant/qdrant:v1.20.0@sha256:9bfc89f9914fc14876a88c05270685921a55b8877b254a98bcc1cc2f0a424cd2
+    profiles: [demo, e2e]
+    networks: [demo-net]
+    volumes:
+      - qdrant_data:/qdrant/storage
+    mem_limit: 2g
+    cpus: 2
+    healthcheck:
+      test:
+        - CMD
+        - bash
+        - -c
+        - >-
+          exec 3<>/dev/tcp/127.0.0.1/6333
+          && printf 'GET /readyz HTTP/1.0\r\n\r\n' >&3
+          && grep -q '200 OK' <&3
+      interval: 5s
+      timeout: 3s
+      retries: 12
+      start_period: 5s
+
+  llm:
+    <<: *service-defaults
+    image: ghcr.io/ggml-org/llama.cpp:server@sha256:c7d58273d753d33a352e5c41ab300c5ae040a16fa4b202231bb606478065c124
+    profiles: [demo, e2e]
+    networks: [demo-net]
+    command: >-
+      --model /models/${LIVE_LLM_GGUF:-qwen2.5-0.5b-instruct-q4_k_m.gguf}
+      --host 0.0.0.0 --port 8080
+      --ctx-size 4096
+      --threads ${LIVE_LLM_THREADS:-4}
+      --parallel 1 --seed 0 --jinja
+    volumes:
+      - ${LIVE_MODEL_DIR:-${HOME}/.cache/pruefstand/models}:/models:ro
+    mem_limit: 6g
+    cpus: ${LIVE_LLM_CPUS:-4}
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:8080/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+      start_period: 20s
+
+  embed:
+    <<: *service-defaults
+    image: ghcr.io/huggingface/text-embeddings-inference:cpu-1.9@sha256:2538ea1c9640d3763b15af668039d24172d063b42337b0c27796fc2be180c78d
+    profiles: [demo, e2e]
+    networks: [demo-net]
+    command: >-
+      --model-id intfloat/multilingual-e5-small
+      --revision 614241f622f53c4eeff9890bdc4f31cfecc418b3
+      --port 80
+      --tokenization-workers 2
+    environment:
+      OMP_NUM_THREADS: ${LIVE_EMBED_THREADS:-4}
+      MKL_NUM_THREADS: ${LIVE_EMBED_THREADS:-4}
+    volumes:
+      - ${LIVE_MODEL_DIR:-${HOME}/.cache/pruefstand/models}/tei:/data
+    mem_limit: 2g
+    cpus: ${LIVE_EMBED_CPUS:-4}
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:80/health"]
+      interval: 5s
+      timeout: 3s
+      retries: 60
+      start_period: 20s
+
+  # One-shot: builds the collection from the slice corpus (with canaries.public.json) and exits.
+  index:
+    <<: *rag-demo
+    restart: "no"
+    profiles: [demo, e2e]
+    networks: [demo-net]
+    depends_on:
+      qdrant:
+        condition: service_healthy
+      embed:
+        condition: service_healthy
+    entrypoint: ["rag-demo", "index", "--corpus", "/corpus/slice_v1", "--encoder", "tei"]
+    environment:
+      <<: *rag-demo-env
+    volumes:
+      - ../../../corpus/slice_v1:/corpus/slice_v1:ro
+    healthcheck:
+      disable: true
+
+  rag-demo:
+    <<: *rag-demo
+    profiles: [demo]
+    environment:
+      <<: *rag-demo-env
+      TRUSTED_PROXY_HOPS: "1"
+      DEMO_ENABLED:
+      DEMO_RATE_PER_MIN:
+      DEMO_DAILY_PER_KEY:
+      DEMO_DAILY_TOKENS:
+      DEMO_DAILY_REQUESTS:
+      DEMO_MAX_CONCURRENCY:
+      DEMO_TIMEOUT_S:
+      DEMO_ALLOWED_ORIGIN:
+    ports:
+      - "127.0.0.1:${DEMO_PORT:-8090}:8000"
+
+  # Only for scripts/demo/try_e2e.sh: the browser and the test call it directly (hops 0: the key is the peer
+  # address), and DEMO_TEST_RESET=1 registers the loopback-only reset route. Never set on `rag-demo`.
+  rag-demo-e2e:
+    <<: *rag-demo
+    profiles: [e2e]
+    environment:
+      <<: *rag-demo-env
+      TRUSTED_PROXY_HOPS: "0"
+      DEMO_TEST_RESET: "1"
+      DEMO_ENABLED:
+      DEMO_RATE_PER_MIN:
+      DEMO_DAILY_PER_KEY:
+      DEMO_DAILY_TOKENS:
+      DEMO_DAILY_REQUESTS:
+      DEMO_MAX_CONCURRENCY:
+      DEMO_TIMEOUT_S:
+      DEMO_ALLOWED_ORIGIN:
+    ports:
+      - "127.0.0.1:${E2E_PORT:-8091}:8000"
+
+networks:
+  demo-net:
+    internal: true
+    ipam:
+      config:
+        - subnet: 10.232.0.0/24
+  demo-edge: {}
+
+volumes:
+  qdrant_data:
