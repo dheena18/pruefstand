@@ -15,7 +15,8 @@ from rq1.grid_state import (
 
 from pruefstand.core.errors import ConfigError
 
-HASHES = ["0047799c55b54988", "3e4db71fff8e7e64", "5795dfc18d0ed45f"]
+# grid order on purpose NOT sorted, so a sorted() in resume_plan would show
+HASHES = ["5795dfc18d0ed45f", "0047799c55b54988", "3e4db71fff8e7e64"]
 
 
 def grid(tmp_path: Path) -> Path:
@@ -61,4 +62,25 @@ def test_collection_names_are_rq1_scoped_and_checked() -> None:
 
 def test_a_missing_grid_json_is_refused(tmp_path: Path) -> None:
     with pytest.raises(ConfigError, match=r"run_grid\.py first"):
+        load_cells(tmp_path)
+
+
+def test_resume_keeps_the_grid_order(tmp_path: Path) -> None:
+    out = grid(tmp_path)
+    assert sorted(HASHES) != HASHES
+    assert resume_plan(out) == HASHES
+
+
+@pytest.mark.parametrize("flag", [1, "true", "True"])
+def test_only_a_literal_true_marks_a_run_complete(tmp_path: Path, flag: object) -> None:
+    out = grid(tmp_path)
+    run(out / HASHES[0], "r1", complete=flag, infra_error=None)
+    assert cell_status(out / HASHES[0]) == "partial"
+
+
+@pytest.mark.parametrize("bad", ["../x", "../../etc", "0047799c55b5498/", "chunks_active"])
+def test_grid_json_with_a_path_or_bad_hash_is_refused(tmp_path: Path, bad: str) -> None:
+    rows = [{"name": "c0", "rag_config_hash": HASHES[0]}, {"name": "evil", "rag_config_hash": bad}]
+    (tmp_path / "grid.json").write_text(json.dumps({"seed": 1, "cells": rows}), "utf-8")
+    with pytest.raises(ConfigError, match="config hash"):
         load_cells(tmp_path)

@@ -58,14 +58,18 @@ def load_cells(out: Path) -> list[str]:
     """The cell hashes of ``<out>/grid.json``, in grid order.
 
     Raises:
-        ConfigError: no ``grid.json`` (run ``run_grid.py`` first).
+        ConfigError: no ``grid.json`` (run ``run_grid.py`` first), or a cell hash that is not a
+            16-hex rag-demo config hash (e.g. a ``../`` path).
     """
     manifest = out / "grid.json"
     if not manifest.is_file():
         msg = f"{manifest} is missing: run experiments/rq1/run_grid.py first"
         raise ConfigError(msg)
     rows = json.loads(manifest.read_text(encoding="utf-8"))["cells"]
-    return [str(row["rag_config_hash"]) for row in rows]
+    hashes = [str(row["rag_config_hash"]) for row in rows]
+    for h in hashes:
+        collection_name(h)  # a 16-hex hash only: never a path such as ../x from grid.json
+    return hashes
 
 
 def resume_plan(out: Path) -> list[str]:
