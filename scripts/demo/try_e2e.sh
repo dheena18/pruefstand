@@ -23,7 +23,7 @@ if [ "${TRY_E2E_LOCKED:-0}" != "1" ]; then
   TRY_E2E_LOCKED=1 exec flock -w "${STACK_LOCK_WAIT:-3600}" "$stack_lock" "${BASH_SOURCE[0]}" "$@"
 fi
 
-E2E_PORT="${E2E_PORT:-$((8091 + ${PORT_OFFSET:-0}))}"
+E2E_PORT="${E2E_PORT:-$((8092 + ${PORT_OFFSET:-0}))}"
 SITE_PORT=4175
 PW_IMAGE="${PW_IMAGE:-mcr.microsoft.com/playwright:v1.56.1-noble}"
 pw="try-e2e-pw-$$"
