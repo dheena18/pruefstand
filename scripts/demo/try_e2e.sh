@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
 # scripts/demo/try_e2e.sh: the Try-it e2e of ui-spec §14.2 against the REAL demo stack (T8.4, Y7.5, N5.4, P5.4).
 # Runs on the VM only (never a hosted runner, never a PR check). One demo instance, `rag-demo-e2e` of compose project
-# `pruefstand-demo` (infra/deploy/demo/compose.yml, profile e2e; own qdrant/llm/embed, no default host port), and one
+# `pruefstand-demo-e2e` (infra/deploy/demo/compose.yml, profile e2e; own qdrant/llm/embed, no default host port), and one
 # long-lived Playwright container (pinned image, --network host, the checkout mounted) that installs, builds and runs
 # the specs, so the service user needs only Docker. The whole run holds stack.lock (one stack session, A13-M8).
 #
-# Per group (rows that need the same env): restart rag-demo-e2e with the group's env and wait for /v1/health; per
+# Own project: never the production `pruefstand-demo` (E2E_PROJECT). Per group (rows that need the same env): restart rag-demo-e2e with the group's env and wait for /v1/health; per
 # combination (row x project x theme x locale, from `playwright --list`): the in-container reset (POST
 # /v1/_test/reset, expects 204, retries on 409 for up to 60 s), then ONE `docker exec` Playwright call with the exact
 # title. try.spec.ts never calls the reset. Exit code = the first failing Playwright call's (all combinations run).
@@ -28,7 +28,14 @@ SITE_PORT=4175
 PW_IMAGE="${PW_IMAGE:-mcr.microsoft.com/playwright:v1.56.1-noble}"
 pw="try-e2e-pw-$$"
 export E2E_PORT DEMO_ALLOWED_ORIGIN="http://localhost:${SITE_PORT}"
-compose=(docker compose -p pruefstand-demo -f infra/deploy/demo/compose.yml --profile e2e)
+# The e2e run has its OWN compose project (own containers, network and volumes), so its teardown (`down -v`) can never
+# touch the production demo project `pruefstand-demo` (its qdrant_data index, llm, embed, rag-demo).
+project="${E2E_PROJECT:-pruefstand-demo-e2e}"
+if [ "$project" = "pruefstand-demo" ]; then
+  printf 'try_e2e: E2E_PROJECT must not be the production project pruefstand-demo\n' >&2
+  exit 2
+fi
+compose=(docker compose -p "$project" -f infra/deploy/demo/compose.yml --profile e2e)
 pw_path="/tmp/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
 config="playwright.try.config.ts"
 reset_py='import urllib.request as u, urllib.error as e
@@ -141,7 +148,7 @@ combos_total="$(wc -l <<<"$titles")"
 
 # --- stack ---------------------------------------------------------------------------------------------------
 log "stack up (qdrant, llm, embed, index, rag-demo-e2e)"
-"${compose[@]}" up -d --build --wait >/dev/null
+"${compose[@]}" up -d --build --wait rag-demo-e2e >/dev/null
 curl -fsS "$api/v1/health" >/dev/null
 
 # --- groups ---------------------------------------------------------------------------------------------------

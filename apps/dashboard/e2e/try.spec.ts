@@ -8,7 +8,16 @@ import path from "node:path";
 
 import { expect, test, type APIRequestContext, type Page } from "@playwright/test";
 
-import { axe, csp, footer, htmlLang, noHorizontalScroll, prepare, type Locale, type Theme } from "./checks";
+import {
+  axe,
+  csp,
+  footer,
+  htmlLang,
+  noHorizontalScroll,
+  prepare,
+  type Locale,
+  type Theme,
+} from "./checks";
 import { delayRequests } from "./delay";
 import { textOf } from "./i18n-text";
 
@@ -54,7 +63,10 @@ const type = async (page: Page, question: string, tenant = TENANT) => {
 
 /** One real generation from the test side (same client key as the page); returns when the server answered. */
 const preRequest = (request: APIRequestContext) =>
-  request.post(`${API}/v1/query`, { data: { tenant_id: TENANT, question: QUESTION }, timeout: GENERATION_MS });
+  request.post(`${API}/v1/query`, {
+    data: { tenant_id: TENANT, question: QUESTION },
+    timeout: GENERATION_MS,
+  });
 
 let background: Promise<unknown> | null = null;
 
@@ -103,7 +115,9 @@ const ROWS: Row[] = [
       await expect(state(page, "T-LOADING")).toBeAttached();
       await page.getByRole("button", { name: textOf(locale, "try.cancel") }).click();
       await expect(state(page, "T-CANCELLED")).toBeAttached();
-      await expect(page.locator("[aria-live=polite]").first()).toHaveText(textOf(locale, "try.cancelled"));
+      await expect(page.locator("[aria-live=polite]").first()).toHaveText(
+        textOf(locale, "try.cancelled"),
+      );
       await expect(ask(page)).toBeEnabled();
       expect(hold.held()).toBeLessThanOrEqual(1);
     },
@@ -126,7 +140,9 @@ const ROWS: Row[] = [
       await type(page, content.refusal_example.question, content.refusal_example.tenant);
       await ask(page).click();
       await expect(state(page, "T-REFUSED")).toBeAttached({ timeout: GENERATION_MS });
-      await expect(page.locator(".try-answer [data-state=refused]")).toHaveText(textOf(locale, "try.refused"));
+      await expect(page.locator(".try-answer [data-state=refused]")).toHaveText(
+        textOf(locale, "try.refused"),
+      );
     },
   },
   {
@@ -152,7 +168,9 @@ const ROWS: Row[] = [
       await expect(state(page, "T-RATE-LIMITED")).toBeAttached({ timeout: 20_000 });
       expect(firstStatus()).toBe(429);
       await expect(page.locator("[data-countdown]")).toBeVisible();
-      await expect(page.locator(".panel--error p").first()).toContainText(textOf(locale, "try.error.rate_limited"));
+      await expect(page.locator(".panel--error p").first()).toContainText(
+        textOf(locale, "try.error.rate_limited"),
+      );
       await expect(ask(page)).toBeDisabled();
     },
   },
@@ -168,7 +186,9 @@ const ROWS: Row[] = [
       await ask(page).click();
       await expect(state(page, "T-BUSY")).toBeAttached({ timeout: 20_000 });
       expect(firstStatus()).toBe(429);
-      await expect(page.locator(".panel--error p").first()).toContainText(textOf(locale, "try.error.busy"));
+      await expect(page.locator(".panel--error p").first()).toContainText(
+        textOf(locale, "try.error.busy"),
+      );
     },
   },
   {
@@ -180,7 +200,9 @@ const ROWS: Row[] = [
       await ask(page).click();
       await expect(state(page, "T-DAILY-LIMIT")).toBeAttached({ timeout: 20_000 });
       expect(firstStatus()).toBe(429);
-      await expect(page.locator(".panel--error")).toHaveText(textOf(locale, "try.error.daily_limit"));
+      await expect(page.locator(".panel--error")).toHaveText(
+        textOf(locale, "try.error.daily_limit"),
+      );
       await page.locator("#try-question").fill(`${QUESTION} `);
       await expect(ask(page)).toBeDisabled();
     },
@@ -216,12 +238,13 @@ const ROWS: Row[] = [
       await type(page, QUESTION);
       await ask(page).click();
       await expect(state(page, "T-NETWORK")).toBeAttached({ timeout: 20_000 });
-      await expect(page.locator(".panel--error")).toContainText(textOf(locale, "try.error.network"));
+      await expect(page.locator(".panel--error")).toContainText(
+        textOf(locale, "try.error.network"),
+      );
       await expect(page.getByRole("button", { name: textOf(locale, "try.retry") })).toBeVisible();
     },
   },
 ];
-
 
 test.afterEach(async () => {
   if (background !== null) await background.catch(() => undefined);
@@ -245,7 +268,9 @@ for (const row of ROWS) {
         await row.body({ page, request, locale, errors: guards.errors, firstStatus: () => first });
         await footer(page);
         await noHorizontalScroll(page);
-        const errors = row.failing ? guards.errors.filter((e) => !FETCH_NOISE.test(e)) : guards.errors;
+        const errors = row.failing
+          ? guards.errors.filter((e) => !FETCH_NOISE.test(e))
+          : guards.errors;
         await csp(page, response, errors);
         await axe(page);
       });

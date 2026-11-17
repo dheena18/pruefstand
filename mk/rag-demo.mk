@@ -34,7 +34,7 @@ test-gpu: export CANARY_REGISTRY ?= $(CURDIR)/corpus/slice_v1/canaries.public.js
 # T8.4 slice 4: the public demo stack (compose project pruefstand-demo, infra/deploy/demo/compose.yml; profiles demo and
 # e2e live only there, UI12-10). Both targets use their own project and no default host port.
 .PHONY: rag-demo-up try-e2e
-# Starts the public rag-demo (127.0.0.1:$(DEMO_PORT), default 8090) with qdrant, llm, embed and the one-shot index.
+# Starts the public rag-demo (no host port; reached over demo-net) with qdrant, llm, embed and the one-shot index.
 # PUBLIC=1 is the only mode of this stack: rag.public.yaml (public_mode, reranker off) is baked into the service.
 rag-demo-up:
 	docker compose -p pruefstand-demo -f infra/deploy/demo/compose.yml --profile demo up -d --build --wait rag-demo
