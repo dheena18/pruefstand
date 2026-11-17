@@ -97,7 +97,11 @@ def select_cases(
     return chosen
 
 
-def _counter_path(env: Mapping[str, str]) -> Path:
+def nightly_counter_path(env: Mapping[str, str]) -> Path:
+    """``$PRUEFSTAND_NIGHTLY_COUNTER``, else ``$PRUEFSTAND_HOME/state/nightly_counter`` (D322).
+
+    Shared with the executor, which writes the file (D1087).
+    """
     named = env.get("PRUEFSTAND_NIGHTLY_COUNTER")
     if named:
         return Path(named)
@@ -105,7 +109,12 @@ def _counter_path(env: Mapping[str, str]) -> Path:
     return Path(home).expanduser() / "state" / "nightly_counter"
 
 
-def _read_counter(path: Path) -> int:
+def read_nightly_counter(path: Path) -> int:
+    """The counter in ``path`` (ASCII digits only); a missing file is 0. Shared with the executor.
+
+    Raises:
+        ConfigError: unreadable, not a regular file, or not a non-negative integer.
+    """
     try:
         raw = read_regular(path, _COUNTER_BYTES)
     except FileNotFoundError:
@@ -146,8 +155,8 @@ def resolve_block(spec: str | None, env: Mapping[str, str] | None = None) -> int
     if spec is None:
         return None
     if spec == "auto":
-        path = _counter_path(os.environ if env is None else env)
-        block = _read_counter(path) % len(BLOCKS)
+        path = nightly_counter_path(os.environ if env is None else env)
+        block = read_nightly_counter(path) % len(BLOCKS)
         _log.info("nightly_block_resolved", block=block, counter_file=str(path))
         return block
     if spec in {"0", "1", "2"}:

@@ -18,7 +18,9 @@ export function ChunkCard({ locale, rank, chunkId, caseTenant, chunkTenant }: Ch
   return (
     <li className="chunk" data-kind={kind}>
       <span className="chunk__rank">#{rank}</span>
-      <span className="mono chunk__id">{chunkId}</span>
+      <span className="mono chunk__id" lang="de">
+        {chunkId}
+      </span>
       {chunkTenant === undefined ? null : (
         <TenantBadge locale={locale} tenant={chunkTenant} caseTenant={caseTenant} />
       )}

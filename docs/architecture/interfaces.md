@@ -115,6 +115,10 @@ GET  /v1/health -> {"status": "ok",
                                                               # num_predict; the runner shows > 0 as an informational
                                                               # report warning (absent key = 0)
 ```
+  errors  : 4xx permanent; 5xx transient (the runner may retry), EXCEPT HTTP 504 with body
+            {"detail": {"code": "generator_timeout", "message": ...}} = the target's own generator read/write
+            timeout: HttpTargetAdapter maps it to TargetError(transient=False) because a retry would only queue
+            a duplicate generation behind the first (D624, T1.13c, D1302); any other 504 stays transient.
 
 Tolerance (T1.3, D352): the core target models stay `extra="forbid"` and requests stay strict, but `HttpTargetAdapter` normalises the response before validating it: unknown keys are dropped at each known level, null optionals and a `usage` lacking either token count are treated as absent, and integer citation ids are stringified; type errors in known fields remain permanent `TargetError`s.
 
@@ -291,6 +295,8 @@ llm-proxy (trusted, T6.2a; module infra/gate-executor/llm-proxy/llm_proxy.py; D2
     - keep_alive: removed from the body (Ollama keeps the preload's keep_alive),
     - load-time keys other than num_ctx (num_gpu, num_batch, num_thread, use_mmap, main_gpu, low_vram, any key not
       in {num_ctx, temperature, seed, top_p, num_predict}): dropped, so no request can force a reload;
+    - think: POST /api/chat is always forwarded with "think": false (absent or any other value is rewritten;
+      D1076, CLAUDE.md §5 / D95: the gate never depends on the candidate config for this); /api/embed unchanged;
     temperature, seed, top_p and num_predict pass through unchanged when inside the catalogue option_bounds of that
     tag; a missing key gets the catalogue default; a value outside the bounds -> 403 {"error": "option out of
     bounds: <key>"}. Catalogue values are defaults, not overrides (mutation M17 and the T6.3 churn arms work)
@@ -400,11 +406,16 @@ unattended operation (R11 Y5, D225-D229)
                     upstream_errors grew during the run) ->
                     RunManifest.stop_reason = "aborted" and RunManifest.infra_error = "<kind>: <detail>"
                     (str | None, §2; kind ollama_down|tunnel_lost|data_root_unavailable|proxy_upstream|model_reload|
-                    window_exceeded), commit status `error` (not `failure`), one automatic retry after
+                    executor|window_exceeded), commit status `error` (not `failure`), one automatic retry after
                     health.sh --repair. R12 (A12-M1, D274): the first failure is not recorded as processed (the
                     retry runs in the same job); after the SECOND infra failure the orchestrator writes a
                     processed.jsonl line with result "error", so it is not re-run automatically; the status text
-                    ends "re-dispatch to retry" (R13 P1.2, D288); only a new owner dispatch runs it again
+                    ends "re-dispatch to retry" (R13 P1.2, D288); only a new owner dispatch runs it again.
+                    Post-run probe (D1082/D1083, gate_orchestrator.post_run): tunnel inactive or health.sh exit
+                    11/12/13/15/16 -> infra error as above; exit 10 (free VRAM) and 14 (bin dir) only log a
+                    WARNING and keep the finished run's result, unless a resident-digest or placement FAIL row
+                    is also present (then model_reload); other exits -> kind executor. The status text keeps
+                    its ending within GitHub's 140 characters: the infra text is shortened first (D1086)
   data root         ADR-0019 (supersedes the R12 mount unit, D254): /mnt/pruefstand is a plain directory on the VM
                     disk; no mount unit, no service dependency. The preflight (health.sh exit 16) checks that it
                     exists, is writable by pruefstand and has >= 20 GB free; otherwise the job ends with
@@ -584,7 +595,8 @@ class RunManifest(BaseModel):    # (schema) -> run.json
     #   (no infra_error count: the infra failure is the field below, R11 integration D245)
     complete: bool; stop_reason: Literal["completed", "budget_exceeded", "aborted"]
     infra_error: str | None = None    # R11 D226/D245: "<kind>: <detail>" (kind ollama_down | tunnel_lost |
-                                      # data_root_unavailable (ADR-0019; was nas_unavailable) | proxy_upstream | model_reload | window_exceeded (R12 N4.3,
+                                      # data_root_unavailable (ADR-0019; was nas_unavailable) | proxy_upstream | model_reload |
+                                      # executor (D1080/D1083: health.sh or another executor subprocess failed) | window_exceeded (R12 N4.3,
                                       # D256: nightly stopped before 06:00 Berlin; no retry)); set only together with
                                       # stop_reason="aborted" (validator: infra_error set => stop_reason == "aborted")
     stack: Literal["live", "a40"]     # where it ran: live = tier 1 (GitHub-hosted CPU), a40 = tier 2 executor
@@ -1337,7 +1349,7 @@ class GitHubPublisher:
                     context: str = "pruefstand/gate") -> None
     # R13 P4.2 (D297; owner T1.9 = function + test_github.py, T6.2a = call sites): the single low-level commit-status
     # POST (`POST /repos/{repo}/statuses/{sha}`); description truncated to 140 chars, sent verbatim otherwise. The
-    # only path for non-gate-result states: the executor posts `pending` "executor busy (GPU lock held)" /
+    # only path for non-gate-result states: the executor posts `pending` "executor busy (GPU lock held); dispatch again" /
     # "tier-2 run started", `error` "executor unhealthy: <reason>" (preflight failure under the lock), and the
     # nightly result with context "pruefstand/nightly" (T6.2b). "not gated" (incl. "not gated (release version
     # bump)") is posted ONLY by gate-router.yml (§1.5), never through GitHubPublisher by the executor
@@ -1365,8 +1377,10 @@ Descriptions are truncated to GitHub's 140-character limit.
 
 | Caller | Context | State | `description` |
 | --- | --- | --- | --- |
-| executor, lock wait (T6.2a) | `pruefstand/gate` | `pending` | `"executor busy (GPU lock held)"` |
+| executor, `MAINTENANCE` present (T6.2a; no lock taken, D1064) | `pruefstand/gate` | `pending` | `"executor in maintenance; dispatch again later"` |
+| executor, lock wait timed out (T6.2a, D1064) | `pruefstand/gate` | `pending` | `"executor busy (GPU lock held); dispatch again"` |
 | executor, job start (T6.2a) | `pruefstand/gate` | `pending` | `"tier-2 run started"` |
+| executor, a non-infra exception during the retry after "retrying once" was posted (T6.2a, D1080) | `pruefstand/gate` | `error` | `"executor error: <ExceptionType>; re-dispatch to retry"` (never the infra wording; recorded as processed `error`) |
 | executor, preflight failure (T6.2a) | `pruefstand/gate` | `error` | `"executor unhealthy: <reason>"` (e.g. `"executor unhealthy: data root unavailable"`) |
 | nightly gate phase (T6.2b) | `pruefstand/nightly` | `success` / `failure` | `"<GateStatus>: <summary>"` (non-blocking, D91) |
 | nightly skipped (T6.2b) | `pruefstand/nightly` | `error` | `"skipped: <reason>"` (the §7 heartbeat vocabulary) |
@@ -1828,7 +1842,22 @@ class RagConfig(BaseModel)          # chosen by RAG_CONFIG: apps/rag-demo/config
                                     # apps/rag-demo/configs/rag.gpu.yaml = tier-2 A40 profile (T3.2), the file the executor
                                     # reads from the PR and the one T6.5 demos / T7.1a tier-2 mutations edit (R9 X3.15).
                                     # Fields: generator model/endpoint, embedding model, top_k, rerank on/off + top_n,
-                                    # hybrid on/off, compound_split on/off, chunking strategy, prompt file, fusion
+                                    # hybrid on/off, compound_split on/off, chunking (below), prompt file, fusion
+                                    # public_mode: bool = False, public: PublicLimits | None (T8.4, D1304): rate_per_min,
+                                    # daily_per_key, daily_requests, daily_tokens, max_concurrency, timeout_s, allowed_origin;
+                                    # public requires public_mode and vice versa; neither enters config_hash while public_mode is off
+                                    # chunking: ChunkingCfg = {strategy: "per_section" | "fixed_tokens", size: int | None}
+                                    # (T3.4b, D1301). Default per_section = one point per corpus chunk (§/Absatz), every
+                                    # committed config and its config_hash unchanged. fixed_tokens needs size in [64, 4096]
+                                    # (forbidden with per_section): each chunk is cut into consecutive pieces of at most
+                                    # `size` tokens of the EMBEDDED text (citation key + piece; embedding-model tokenizer,
+                                    # word lower bound without one), no overlap, cut at the last sentence end in the second
+                                    # half of the window (German legal abbreviations and ordinals are no sentence ends),
+                                    # else hard. A piece keeps doc_id, tenant, citation_key, lang, section; chunk_id is
+                                    # <chunk_id>#p<n> (a chunk that fits keeps its id). The retrieved/stored `text` is the
+                                    # piece BODY only: the citation key is added at embedding time, so evidence_recall never
+                                    # sees it. Collection metadata records chunking; a collection name gets __ft<size>;
+                                    # a retriever refuses an index built with another chunking.
                                     # R11 D216: generator and embed each have api_key_env: str | None (default
                                     # "PRUEFSTAND_CANDIDATE_API_KEY"); when the variable is set and non-empty the client
                                     # sends Authorization: Bearer <value> to LLM_PROXY_URL; unset/empty -> no header (tier 1);
@@ -1893,7 +1922,10 @@ the body and never relies on the `Retry-After` header (still sent; exposed via C
 | 503 | `demo_disabled` | `DEMO_ENABLED=false` or file flag `/run/demo/disabled` (checked per request) |
 | 422 | `invalid_request` | validation error (unknown tenant, question > 500 chars, …) |
 | 413 | `body_too_large` | request body over the size limit (8 KB) |
-| 504 | `timeout` | generation exceeds the server timeout `DEMO_TIMEOUT_S` (default 75, always < `NEXT_PUBLIC_DEMO_TIMEOUT_S`) |
+| 504 | `timeout` | generation exceeds the server timeout `DEMO_TIMEOUT_S` (default 75, always < `NEXT_PUBLIC_DEMO_TIMEOUT_S`), or the generator's own timeout (`generator_timeout`, D1302) |
+| 503 | `server_error` | any other backend failure (T8.4 slice 2, D1304): a fixed message, never a stack trace; the UI treats an unknown code as `T-SERVER-ERROR` anyway |
+
+Test-only (N5.4, P5.4, D1304): `POST /v1/_test/reset` exists only with `DEMO_TEST_RESET=1`; it answers 204 only to a loopback TCP peer (`127.0.0.1`/`::1`, `X-Forwarded-For` ignored) and only when no generation is in flight (409 `busy` otherwise), clearing buckets, daily counters, the budget and the slots; any other peer gets 404; it is not in the OpenAPI schema. It is called from inside the container, because a host request through the published port never has a loopback peer (UI13-04).
 
 Other demo env vars: `DEMO_ALLOWED_ORIGIN` (the only CORS origin), `TRUSTED_PROXY_HOPS` (trusted
 `X-Forwarded-For` hops). Dashboard build env: `NEXT_PUBLIC_DEMO_API_URL` (unset → no Try-it nav link),

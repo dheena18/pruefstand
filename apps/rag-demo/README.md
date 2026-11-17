@@ -62,7 +62,7 @@ The same app runs two profiles, chosen by `RAG_CONFIG` (`profile:` in the file).
 | Generator | `qwen2.5-0.5b` on llama.cpp (CPU), OpenAI-compatible `/v1` | `ollama/qwen3.8:27b-q8_0` on the A40s, native `/api/chat`, `think: false` |
 | Embeddings | TEI CPU, e5-small | `ollama/bge-m3` via `/api/embed` (`OllamaDenseEncoder`, T3.4) |
 | Models | pinned in `infra/models/live-models.yaml` | resolved from `infra/gpu/models.yaml` (`RAG_MODEL_CATALOGUE`), checked at config load |
-| URLs | `LLM_URL`, `EMBED_URL` | env named by `endpoint_env` (`OLLAMA_GPU0_URL` on the dev stack, `LLM_PROXY_URL` in gate runs), checked at app start |
+| URLs | `LLM_URL`, `EMBED_URL` | env named by `endpoint_env`: `LLM_PROXY_URL` in every tier-2 profile (D1081; the gate sets it to `http://llm-proxy:11500`, the dev stack and `make index` point it at the tunnel `OLLAMA_GPU0_URL`), checked at app start |
 | Bug configs | `configs/bugs/*.yaml` | `configs/bugs/gpu/*.yaml` (the same eight switches on top of `rag.gpu.yaml`) |
 
 `/v1/info.serving` is static: tier 2 reports the catalogue engine, quantisation and manifest digest plus
@@ -109,7 +109,7 @@ no answer, no generator call); `rerank.on_retrieve: false` makes it skip the rer
 uv run rag-demo index --corpus corpus/slice_v1 --encoder tei            # tier 1 (live stack: QDRANT_URL, EMBED_URL)
 make fetch-tokenizer                                                     # once: pinned bge-m3 tokenizer.json (truncation count)
 RAG_EMBED_TOKENIZER=$HOME/.cache/pruefstand/models/tokenizers/bge-m3.json \
-  pruefstand-lock uv run rag-demo index --corpus <corpus dir> --encoder ollama   # tier 2 (OLLAMA_GPU0_URL, dev Qdrant)
+  pruefstand-lock uv run rag-demo index --corpus <corpus dir> --encoder ollama   # tier 2 (LLM_PROXY_URL = the tunnel, dev Qdrant)
 uv run rag-demo index --corpus <dir> --collection pr_7_abc1234 --no-alias        # PR-scoped build, alias untouched
 uv run rag-demo index --drop pr_7_abc1234                                        # executor cleanup
 ```
@@ -131,7 +131,7 @@ llama.cpp and TEI servers by `make cassettes` and from `rerank-cpu` by `make cas
 - Build and Trivy-scan the rag-demo image in `build-images.yml`, push and sign it: T6.2b (`push-sign`).
 - Check the TEI weights SHA-256 (`live-models.yaml` `weights_sha256`) in the live stack, not only in the integration fixture: T1.12.
 - Measure the p95 margin (14.2 s against 15 s on the VM) and the guard-on injection result on the hosted runner: T1.12.
-  T1.13b (D1262) recalibrated the smoke probe's p95 limit to 20 s from 12 hosted-runner runs (p95 10.2-16.8 s).
+  T1.13b (D1262, D1264) recalibrated the smoke probe's p95 limit to 25 s (owner) from 12 hosted-runner runs (p95 10.2-16.8 s).
 
 ## Analyzer (T3.3)
 
@@ -150,3 +150,8 @@ collection with a missing or different fingerprint (503, "re-index"). The served
 `uv run python -m rag_demo.analysis.analyzer "Kündigungsschutzgesetz"` prints the token list.
 Benchmark (`uv run pytest -m slow apps/rag-demo/tests/unit/analysis/test_benchmark.py -s`): 10 000 chunks
 tokenised and encoded in well under the 20 s limit on CPU.
+
+## Public demo mode (T8.4)
+
+`RAG_CONFIG=apps/rag-demo/configs/rag.public.yaml` switches on `public_mode`: kill switch, per-client rate limit, daily request and token budget, concurrency cap, server timeout, fixed tenants and CORS for one origin. Limits come from the `public` section and the `DEMO_*` / `TRUSTED_PROXY_HOPS` variables (`.env.example`). Every error is `{"code", "message", "retry_after_s"}` with `code` one of `rate_limited`, `daily_limit`, `busy`, `budget_exhausted`, `demo_disabled`, `invalid_request`, `body_too_large`, `timeout`, `server_error` (interfaces section 16). With `DEMO_TEST_RESET=1` (the e2e instance only) `POST /v1/_test/reset` clears the in-process state; it answers only loopback peers and only when idle.
+

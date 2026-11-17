@@ -45,7 +45,7 @@ def _row(spec: MutationSpec) -> str:
         spec.id,
         spec.title,
         spec.kind,
-        "patch" if spec.patch is not None else "overrides",
+        "patch" if spec.patch else "overrides" if spec.rag_overrides is not None else "data",
         spec.tier,
         ", ".join(spec.splits),
         spec.stratum,

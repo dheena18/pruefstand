@@ -31,6 +31,25 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/QueryResponse"
+        "504":
+          description: |
+            The target gave up on its own generator after the read or write timeout. Not transient: the
+            gate does not retry it (a retry would only queue a duplicate generation, D624, D1302). Any
+            other 5xx is transient.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [detail]
+                properties:
+                  detail:
+                    type: object
+                    required: [code]
+                    properties:
+                      code:
+                        const: generator_timeout
+                      message:
+                        type: string
       security:
         - bearer: []
         - {}

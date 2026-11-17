@@ -1,0 +1,20 @@
+id: M15
+title: RRF k 60 to 1
+kind: config
+rag_overrides: {retrieval: {rrf_k: 1}}
+needs_reindex: false
+cache_invalidating: true
+tier: pr
+splits: [core]
+stratum: statistical
+tier1: false
+in_detection_rate: true
+expected:
+  status: FAIL
+  metrics: [ndcg_at_k]
+  gated_slices: [overall]
+  informational_slices: [perturbation=typos]
+  likely_cause: retrieval
+rationale: >-
+  retrieval.rrf_k 60 (default) becomes 1, so the fusion is dominated by the top ranks of each leg. ndcg_at_k is
+  gated (X3.10); the typo effect is read on the nightly table run's perturbation=typos slice (block 0).

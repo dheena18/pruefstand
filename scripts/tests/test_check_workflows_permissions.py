@@ -97,13 +97,11 @@ def test_id_token_at_workflow_level_in_ci_fails() -> None:
     assert _fails(_check(_perm("workflow", "id-token", "write")), "id-token")
 
 
-@pytest.mark.parametrize("name", ["live-e2e.yml", "cassettes.yml", "cassettes-models.yml"])
-def test_models_read_allowed_files_pass(name: str) -> None:
-    assert _check(_perm("job", "models", "read"), name) == []
-
-
-@pytest.mark.parametrize("name", ["security.yml", "action-selftest.yml", "ci.yml"])
-def test_models_read_elsewhere_fails(name: str) -> None:
+@pytest.mark.parametrize(
+    "name",
+    ["live-e2e.yml", "cassettes.yml", "cassettes-models.yml", "security.yml", "ci.yml"],
+)
+def test_models_read_fails_everywhere_since_github_models_retired(name: str) -> None:
     assert _fails(_check(_perm("job", "models", "read"), name), "models")
 
 

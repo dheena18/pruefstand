@@ -116,6 +116,7 @@ the private gate executor on the A40s (end P6, ~week 12–14) · **M5** experime
 | T3.4 | Indexer: dense encoder (BGE-M3 via Ollama `/api/embed` on GPU0, R10 D198), Qdrant collection, payload index, corpus reader; **R8:** ports T1.13's `tests/integration/test_index_retrieve.py` to `rag_demo.index` (D132); e5 prefixes + truncation with logged count (D121); **R9:** deleted-module check per D179; **R11:** `OllamaDenseEncoder` on native `/api/embed` sends the bearer header (D216, D219); **R12:** moves the embedding half of T1.13's `test_client_auth.py` into `tests/unit/index/test_encoders.py` (N6.2, D265) | T1.13, T2.5, T3.1a, T3.3, T0.7 | AI | 4 | Sonnet | DOCKER, GPU | core |
 | T3.5 | Retriever: hybrid prefetch with in-query tenant filter, RRF, reranker, top-k (tests catch M8/M9); **R8:** ports T1.13's `test_retrieve_filters.py` (all four cases) to `retrieval/` (D132); tier 1 has no reranker, tier 2 uses `bge-reranker-v2-m3` (D121) on the VM CPU via `RERANK_URL` (R10 D198); **R9:** deleted-module check per D179; `RagConfig.reranker` default stays `off`, `rag.gpu.yaml` sets `on`; **R11:** owns **`POST /v1/retrieve`** (contract interfaces §1.1, D218) incl. `HttpTargetAdapter.retrieve` and runner routing of `robust_pr` cases (D222); tier-2 rerank top 10, passages cut to 256 tokens, batched, no auth (D217); **R12:** `rerank.on_retrieve: bool = True` (false = `/v1/retrieve` skips the reranker; D222 fallback; `test_api_retrieve.py` asserts the `/v1/query` order only while it is true) (DEV12-09, D271) | T1.13, T3.4 | AI | 4 | Opus | DOCKER | core |
 | T3.5a | `rag-demo` retriever: re-record `packages/pruefstand/tests/contract/examples/retrieve_ok.json` (still `openapi-example`) from the real app with `make cassettes-contract` on the live stack (`record_contract.py` already records it, T3.5 D516) and run the new `live` test `test_retrieve_returns_only_chunks_and_makes_no_generator_call` | T3.5 | AI | 1 | Sonnet | DOCKER | core |
+| T3.4b | `rag-demo` indexer: fixed-token sub-chunking at index time (T3.4 follow-up, owner-approved; needed by T7.3's chunking axis and T7.1a M02). `RagConfig.chunking: ChunkingCfg = {strategy: per_section \| fixed_tokens, size}` (default `per_section`, every committed config and `config_hash` unchanged); pieces of at most `size` tokens including the citation key, no overlap, sentence-aware cut with a German legal abbreviation list, key excluded from the stored text (so `evidence_recall` cannot score on it); collection name, metadata and a retriever check on `chunking` (D1301) | T3.4, T3.5 | AI | 2 | Sonnet | DOCKER | core |
 | T3.6a | **From the T3.6 review (D624):** tier-2 gate config must make the runner `timeout_s` > 300 s (or `concurrency` <= 4) and not retry a read timeout, otherwise the runner times out first and rag-demo keeps the original request queued in Ollama (up to 4 duplicate generations); owner T6.2a (gate config), checked in T3.7. Also: cancel the upstream Ollama call when the client disconnects (rag-demo `/v1/query`) | T3.6 | AI | 1 | Sonnet | GPU | core |
 | T3.6b | **From the T3.6 review:** pin the generator tokenizer `source` to an HF commit in `infra/gpu/models.yaml` (T3.1b), and on the first GPU run calibrate the ChatML / empty-think wrapper of `generation/budget.py` for `ollama_family: qwen35` and the `prompt_overflow` counter (Ollama's `prompt_eval_count` counts only evaluated tokens) | T3.6, T3.1b | AI | 1 | Sonnet | GPU | core |
 | T3.6 | Generator: prompt files, citation formatting, refusal, injection guard, LLM client; **R8:** ports T1.13's `test_generate_guards.py` to `generation/` (D132); Qwen3 thinking off + `<think>` strip counted (D95); local generators only, never a hosted one (D126); **R9:** sets `used_in_prompt` on every returned chunk (D174); deleted-module check per D179; **R11:** generator client sends the bearer header to `LLM_PROXY_URL` on native `/api/chat` (D216, D219); **R12:** moves the generator half of T1.13's `test_client_auth.py` into `tests/unit/generation/test_generator.py`; sends `generation.temperature/seed/max_tokens` as Ollama sampling options within the catalogue bounds (N6.2, N2; D265, D252); **R13:** prompt budget counted with the baked generator tokenizer; `/v1/health.stats.prompt_overflow` (D307) | T1.13, T3.1b, T3.5 | AI | 4 | Sonnet | GPU | core |
@@ -256,30 +257,37 @@ Ticked only by the wave checkpoint PR (`chore/wave-<N>-checkpoint`, `tasks/PARAL
 task's PR is merged and the checkpoint is green; nothing else in this file changes in that PR. Wave numbers
 follow `tasks/PARALLEL-PLAN.md` §2.
 
-| Wave | Tasks (`[x]` = merged and checkpoint green, `[~]` = partly merged) | Milestone |
+| Wave | Tasks (`[x]` = every slice merged, `[~]` = partly merged: merged / open slices named, `[ ]` = not started) | Milestone |
 | --- | --- | --- |
-| 0 | [ ] T0.7 S1–S2 (human) · [ ] T0.0 | – |
+| 0 | [x] T0.7 S1–S2 (human, owner confirmed 2026-11-16; `docs/ops/setup-log.md` §1–§9 and #28) · [x] T0.0 (owner confirmed 2026-11-16; setup log §10) | – |
 | 1 | [x] T0.1 (2026-10-31, direct push e885fda) | – |
 | 2 | [x] T0.2 · [x] T0.3 · [x] T1.1 · [x] T2.1 · [x] T0.7 | – |
-| 3 | [x] T1.2 · [x] T1.5a · [x] T0.4 · [x] T0.6 (+ S7 quota follow-up) · [ ] T0.5 | – |
+| 3 | [x] T1.2 · [x] T1.5a · [x] T0.4 · [x] T0.6 (+ S7 quota follow-up) · [~] T0.5 (done: ruleset with PRs required and 0 approvals, required checks, environment `gate-router` with the `pruefstand-bot` key (used by #196); open: `pruefstand/gate` pinned to the App in the ruleset, after T6.2b) | – |
 | 4 | [x] T1.6 · [x] T1.5b · [x] T1.3 · [x] T1.4 · [x] T2.2 · [x] T3.1a | – |
-| 5 | [x] T1.7 · [x] T1.8 · [x] T2.3 · [x] T2.4 · [x] T1.13 · [~] T3.1b (phase 1 #46 and candidate pass #54 merged; rest open) | – |
+| 5 | [x] T1.7 · [x] T1.8 · [x] T2.3 · [x] T2.4 · [x] T1.13 · [x] T1.13b (#183, #187) · [x] T1.13c (#203) · [~] T3.1b (merged: phase 1 #46, candidate pass #54; open: S2–S5 benchmarks, S6 swaps, S7 pins) | – |
 | 6 | [x] T1.9 · [x] T4.4 · [x] T3.2 | – |
 | 7 | [x] T1.10 · [x] T3.3 | – |
 | 8 | [x] T1.11 · [x] T2.5 · [x] T5.1 | – |
-| 9 | [x] T6.1 · [x] T1.12 · [x] T4.1 · [x] T5.2a · [x] T3.4 · [x] T2.6 | [ ] M1 |
+| 9 | [x] T6.1 · [x] T1.12 · [x] T4.1 · [x] T5.2a · [x] T3.4 · [x] T3.4b (#194) · [x] T2.6 | [ ] M1 |
 | 10 | [x] T3.5 · [x] T4.6 · [x] T4.5 · [x] T5.2b · [x] T5.3 PR 1 · [x] T4.2 | – |
 | 11 | [x] T6.4 · [x] T4.3 · [x] T3.6 | – |
 | 12 | [x] T3.7 · [x] T4.7a · [x] T8.1 | [ ] M2 |
-| 13 | [~] T4.7b (offline parts #138, closed-book #140 merged; rest open) · [x] T8.2a | [ ] M3 |
-| 14 | [ ] T5.3 PR 2 (`legal_hard`) · [~] T6.2a (`llm-proxy` #137, runner timeout #171 merged; rest open) · [x] T8.2b | – |
-| 15 | [x] T5.4 · [ ] T6.2b | – |
-| 16 | [ ] T6.3 · [ ] T7.3 · [ ] T9.1a | – |
+| 13 | [~] T4.7b (merged: S6 `hf://` resolution #138, S4 closed-book #140; open: S1 real build, S2 model review, S2b human spot-check, S3, S4b re-index, S5 release `v1`) · [x] T8.2a | [ ] M3 |
+| 14 | [ ] T5.3 PR 2 (`legal_hard`) · [~] T6.2a (merged: S4b `llm-proxy` #137, #169, #176; rag-demo tier-2 profiles #175; runner timeout #171; S7 lock/preflight/infra retry #170; S2 orchestrator core #139; S1/S3/S6/S8/S9 #202; runner.env tools #195; S10 sync + private-repo template #197, #205; open: S0 re-index, S4 `serve`, S5 `index`, S11 runbook completion, S12 human setup) · [x] T8.2b | – |
+| 15 | [~] T5.4 (merged: calibration #134, negate pairs T5.4b #173, drift anchors T5.4d #174, T5.4b2 #181, T5.4e plan #177; open: T5.4e arms b′/c on the VM CPU model) · [x] T5.4b2 (#181) · [~] T6.2b (merged: S1b `gate-router.yml` #196, S8 `executor-health.yml` #198; open: S1 `build-images` head SHA, S2 fork mirror, S3/S3a private workflows, S4 nightly helpers, S5 workflow guard rules, S6/S7/S9 human steps) | – |
+| 16 | [ ] T6.3 · [~] T7.3 (merged: S0b `evidence_recall` + equal volume #180, S3 analysis #201 + #204, S1 grid expander + run plan #210; open: S0 embedder services, S2 `run_grid.py`, the GPU grid run, S4 outputs, S5 cleanup) · [ ] T9.1a | – |
 | 17 | [ ] T6.5 · [ ] T9.1b | [ ] M4 (MVP) |
-| 18–19 | [ ] T7.1a · [ ] T8.3 · [ ] T7.1b · [ ] T8.4 (optional) | – |
+| 18–19 | [~] T7.1a (merged: schema/apply #182, no-ops #186, N04 re-record #189, M02 #212; open: M03 (VM CPU e5 service, D1263), the [DOCKER] M08 isolation evidence) · [~] T8.3 (merged: matrix/tier-2 fixtures/nightly layers #144, flows #184, tier-1 slices #206, citation chips #209; open: the fixture snapshot from real tier-2 runs, which needs T6.5) · [~] T7.1b (merged: M12–M20, precondition, data entries #207, #208; open: M11 and N09 (pending, need models the cluster does not hold); N10 dropped (D1269), M16b dropped (D1273, #217)) · [~] T8.4 (optional; slice 1 #211) | – |
 | 20–21 | [ ] T7.2 · [ ] T7.4 · [ ] T8.5 | [ ] M5 · [ ] M6 |
 | 22–23 | [ ] T9.2 · [ ] T9.3 · [ ] T9.4 | [ ] M7 |
 | optional | [ ] T5.3-opt · [ ] T10.1 · [ ] T10.2 · [ ] T10.3 · [ ] T10.4 | – |
+
+**Checkpoint wave 17 (2026-11-17, main `ef93d3f`).** A task counts as done only when every slice is merged.
+The 72 core wave tasks of `tasks/PARALLEL-PLAN.md` §2: **51 done, 10 partly done** (T0.5, T3.1b, T4.7b, T6.2a,
+T5.4, T6.2b, T7.3, T7.1a, T8.3, T7.1b), **11 not started** (T5.3 PR 2, T6.3, T9.1a, T6.5, T9.1b, T7.2, T7.4,
+T8.5, T9.2, T9.3, T9.4). The four follow-up rows in the table (T1.13b, T1.13c, T3.4b, T5.4b2) are done.
+Merged since the wave-16 checkpoint (#188): #139, #166, #167, #184, #187, #190, #191, #193, #194, #195, #196,
+#197, #198, #199, #200, #201, #202, #203, #204, #205, #206, #207, #208, #209, #210, #211, #212.
 
 ## Optional scope (Tier = optional)
 

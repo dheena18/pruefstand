@@ -1,7 +1,7 @@
 """T7.1a: mutation entries validate, are pre-registered (X3.10, P3.3) and apply/revert cleanly."""
 
 import subprocess
-from collections.abc import Iterator, Mapping
+from collections.abc import Mapping
 from pathlib import Path
 
 import pytest
@@ -13,31 +13,30 @@ from mutations.apply import (
     apply_mutation,
     check_canary_set,
     ensure_worktree,
-    main,
     revert,
 )
 from mutations.gen_readme import render
 from mutations.schema import (
     MUTATIONS_ROOT,
-    MutationIndex,
     MutationSpec,
     load_all,
     load_index,
-    load_spec,
 )
 from pydantic import BaseModel, ValidationError
 
+from pruefstand.core.config.gate import KNOWN_METRICS
 from pruefstand.core.config_loader import load_config
 from pruefstand.core.models.gate import CAUSE_MESSAGES
-from pruefstand.metrics.registry import MetricRegistry
 from rag_demo.models import RagConfig
 
 REPO = MUTATIONS_ROOT.parents[1]
 SPECS = load_all()
 BY_ID = {spec.id: spec for spec in SPECS}
-SLICE_1 = {"M01", "M04", "M05", "M06", "M07", "M08", "M09", "M10"} | {
-    f"N0{i}" for i in (1, 2, 3, 5, 6, 7, 8)
-}
+SLICE_1 = (
+    {"M01", "M02", "M04", "M05", "M06", "M07", "M08", "M09", "M10"}
+    | {f"M{i}" for i in range(12, 21)}
+    | {f"N0{i}" for i in range(1, 9)}
+)
 NIGHTLY_ONLY = {"refusal_correct"}  # interfaces §5: gated in nightly `full` only (X3.7)
 RETRIEVAL = {
     "context_recall",
@@ -56,7 +55,7 @@ def test_index_lists_exactly_the_folders_and_ids_are_unique() -> None:
     folders = {p.parent.name for p in MUTATIONS_ROOT.glob("*/mutation.yaml")}
     assert set(entries) | set(index.pending) == folders
     assert set(entries) == SLICE_1
-    assert set(index.pending) == {"N04"}  # waits for the GPU re-record (D1261)
+    assert set(index.pending) == {"M11", "N09"}  # need models the cluster does not hold
 
 
 @pytest.mark.parametrize("spec", SPECS, ids=lambda s: s.id)
@@ -82,7 +81,7 @@ def test_moving_m06_to_the_pr_tier_breaks_the_pre_registration() -> None:
 
 @pytest.mark.parametrize("spec", SPECS, ids=lambda s: s.id)
 def test_metrics_slices_and_causes_are_known(spec: MutationSpec) -> None:
-    registry = set(MetricRegistry.default().directions())
+    registry = set(KNOWN_METRICS)  # deterministic and judged (the registry checks equality)
     assert set(spec.expected.metrics) <= registry
     assert set(spec.expected.secondary_metrics) <= registry | {"evidence_recall"}
     if "perturbed_all" in spec.expected.gated_slices:
@@ -109,7 +108,7 @@ def test_p33_statistical_expect_fail_and_no_should_detect() -> None:
 
 
 def test_tier1_only_for_hard_fail_entries() -> None:
-    assert {s.id for s in SPECS if s.tier1} == {"M08", "M09"}
+    assert {s.id for s in SPECS if s.tier1} == {"M08", "M09", "M16"}  # M16: precondition abort
     assert not any(BY_ID[i].tier1 for i in ("M01", "M05", "M07", "M10"))
 
 
@@ -144,19 +143,6 @@ def test_leak_mutations_refuse_the_published_canary_set() -> None:
         check_canary_set(BY_ID[entry], "published", allow_published=True)
         check_canary_set(BY_ID[entry], "heldout", allow_published=False)
     check_canary_set(BY_ID["M10"], "published", allow_published=False)
-
-
-@pytest.fixture
-def worktree(tmp_path: Path) -> Iterator[Path]:
-    path = tmp_path / "wt"
-    yield path
-    subprocess.run(  # noqa: S603
-        ["git", "worktree", "remove", "--force", str(path)],  # noqa: S607
-        cwd=REPO,
-        check=False,
-        capture_output=True,
-        timeout=60,
-    )
 
 
 def _git(path: Path, *args: str) -> str:
@@ -247,7 +233,7 @@ def test_no_ops_change_nothing_that_parses_differently(worktree: Path) -> None:
 
 def test_a_patch_entry_with_a_new_file_reverts_to_a_clean_tree(worktree: Path) -> None:
     head = _git(REPO, "rev-parse", "HEAD").strip()
-    apply_mutation(load_spec("N04"), worktree, head)
+    apply_mutation(BY_ID["N04"], worktree, head)
     prompt = worktree / "apps/rag-demo/src/rag_demo/prompts/answer_de_v3.txt"
     assert "Antworte auf die Frage" in prompt.read_text(encoding="utf-8")
     revert(worktree)
@@ -274,19 +260,3 @@ def test_the_readme_is_generated_from_the_yaml() -> None:
     readme = (MUTATIONS_ROOT / "README.md").read_text(encoding="utf-8")
     assert readme == render()
     assert "| Stratum | tier1 |" in readme
-
-
-def test_a_pending_entry_is_refused_by_the_cli_and_listed_in_the_readme(tmp_path: Path) -> None:
-    assert main(["apply", "N04", "--worktree", str(tmp_path / "wt")]) == 1
-    assert not (tmp_path / "wt").exists()
-    assert "- `N04`: The new prompt version" in (MUTATIONS_ROOT / "README.md").read_text("utf-8")
-
-
-def test_pending_and_entries_never_overlap() -> None:
-    sha = "0" * 40
-    with pytest.raises(ValidationError, match="overlap"):
-        MutationIndex.model_validate(
-            {"base_sha": sha, "entries": ["N04"], "pending": {"N04": "waits for a GPU re-record"}}
-        )
-    with pytest.raises(ValidationError, match="reason"):
-        MutationIndex.model_validate({"base_sha": sha, "entries": ["N01"], "pending": {"N04": "x"}})

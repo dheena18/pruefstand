@@ -1,5 +1,7 @@
 /* Tables, lists, filters and pagination of the runs list and run summary (ui-spec §4.1, §5). Tokens only. */
 .table-wrap {
+  /* Containing block for the absolutely positioned `sr-only` status words, so they scroll with the table. */
+  position: relative;
   overflow-x: auto;
   margin: var(--space-4) 0;
   border: 1px solid var(--border);
@@ -37,6 +39,10 @@ table.data tbody th {
 .sort-btn {
   all: unset;
   cursor: pointer;
+  /* WCAG 2.5.8: a target of at least 24 x 24 px */
+  display: inline-flex;
+  align-items: center;
+  min-height: 24px;
   font-weight: inherit;
   border-radius: var(--radius-sm);
 }

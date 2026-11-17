@@ -1,0 +1,183 @@
+{
+ "model": "openai_compatible_local/ministral-3-14b-instruct-2512",
+ "server": {
+  "build_info": "b12199-372dc5ca1",
+  "model_file": "Ministral-3-14B-Instruct-2512-Q4_K_M.gguf"
+ },
+ "items": [
+  {
+   "passage": {
+    "id": "gii-betrvg-121",
+    "law": "BetrVG",
+    "citation": "§ 121 BetrVG",
+    "title": "Bußgeldvorschriften",
+    "text": "(1) Ordnungswidrig handelt, wer eine der in § 90 Abs. 1, 2 Satz 1, § 92 Abs. 1 Satz 1 auch in Verbindung mit Absatz 3, § 99 Abs. 1, § 106 Abs. 2, § 108 Abs. 5, § 110 oder § 111 bezeichneten Aufklärungs- oder Auskunftspflichten nicht, wahrheitswidrig, unvollständig oder verspätet erfüllt.\n(2) Die Ordnungswidrigkeit kann mit einer Geldbuße bis zu zehntausend Euro geahndet werden."
+   },
+   "attempts": [
+    {
+     "recorded_at": "2026-11-15T04:56:47+00:00",
+     "latency_s": 58.84,
+     "request": {
+      "model": "ministral-3-14b-instruct-2512",
+      "messages": [
+       {
+        "role": "user",
+        "content": "Du schreibst Testfragen für ein Frage-Antwort-System über deutsche Gesetze. Unten steht ein einzelner Gesetzesabschnitt (§ 121 BetrVG, Bußgeldvorschriften). Schreibe genau EINE Frage auf Deutsch, die ein Laie stellen könnte und die sich allein mit diesem Abschnitt vollständig beantworten lässt.\n\nRegeln:\n- Die Frage ist eine eigenständige, vollständige Frage in natürlichem Deutsch und endet mit einem Fragezeichen.\n- Nenne weder \"Text\", \"Absatz\", \"Abschnitt\", \"Auszug\" noch \"Kontext\"; nenne die Paragrafennummer nicht, wenn die Frage auch ohne sie verständlich ist.\n- Die Antwort steht ausdrücklich im Abschnitt. Erfinde nichts hinzu.\n- \"evidence_span\" ist ein wörtlicher, zusammenhängender Ausschnitt des Abschnitts (20 bis 400 Zeichen, unverändert kopiert), der die Antwort enthält.\n- \"reference_answer\" ist die Antwort in ein bis drei deutschen Sätzen.\n\nAntworte ausschließlich mit einem JSON-Objekt der Form {\"question\": str, \"evidence_span\": str, \"reference_answer\": str}.\n\nAbschnitt:\n(1) Ordnungswidrig handelt, wer eine der in § 90 Abs. 1, 2 Satz 1, § 92 Abs. 1 Satz 1 auch in Verbindung mit Absatz 3, § 99 Abs. 1, § 106 Abs. 2, § 108 Abs. 5, § 110 oder § 111 bezeichneten Aufklärungs- oder Auskunftspflichten nicht, wahrheitswidrig, unvollständig oder verspätet erfüllt.\n(2) Die Ordnungswidrigkeit kann mit einer Geldbuße bis zu zehntausend Euro geahndet werden."
+       }
+      ],
+      "temperature": 0.0,
+      "seed": 42,
+      "max_tokens": 700,
+      "response_format": {
+       "type": "json_schema",
+       "json_schema": {
+        "name": "answer",
+        "schema": {
+         "type": "object",
+         "properties": {
+          "question": {
+           "type": "string"
+          },
+          "evidence_span": {
+           "type": "string",
+           "minLength": 20,
+           "maxLength": 400
+          },
+          "reference_answer": {
+           "type": "string"
+          }
+         },
+         "required": [
+          "question",
+          "evidence_span",
+          "reference_answer"
+         ]
+        },
+        "strict": true
+       }
+      }
+     },
+     "response": {
+      "choices": [
+       {
+        "finish_reason": "stop",
+        "index": 0,
+        "message": {
+         "role": "assistant",
+         "content": "{\n  \"question\": \"Was passiert, wenn ich als Arbeitnehmer oder Betriebsrat einer gesetzlichen Auskunftspflicht nicht nachkomme oder falsche Angaben mache?\",\n  \"evidence_span\": \"Ordnungswidrig handelt, wer eine der [...] bezeichneten Aufklärungs- oder Auskunftspflichten nicht, wahrheitswidrig, unvollständig oder verspätet erfüllt.\",\n  \"reference_answer\": \"Es handelt sich um eine Ordnungswidrigkeit, die mit einer Geldbuße geahndet werden kann. Die Pflichtverletzung umfasst sowohl das Unterlassen als auch falsche, unvollständige oder verspätete Angaben.\"\n}"
+        }
+       }
+      ],
+      "created": 1794718607,
+      "model": "ministral-3-14b-instruct-2512",
+      "system_fingerprint": "b12199-372dc5ca1",
+      "object": "chat.completion",
+      "usage": {
+       "completion_tokens": 144,
+       "prompt_tokens": 930,
+       "total_tokens": 1074,
+       "prompt_tokens_details": {
+        "cached_tokens": 565
+       }
+      },
+      "id": "chatcmpl-SCB0WkIy3OFWUAWIW95XFKOPV8qwlGeO",
+      "timings": {
+       "cache_n": 565,
+       "prompt_n": 365,
+       "prompt_ms": 12795.011,
+       "prompt_per_token_ms": 35.05482465753425,
+       "prompt_per_second": 28.526743744104635,
+       "predicted_n": 144,
+       "predicted_ms": 46032.706,
+       "predicted_per_token_ms": 321.90703496503494,
+       "predicted_per_second": 3.1064869399596016
+      }
+     },
+     "verdict": "span_not_verbatim"
+    },
+    {
+     "recorded_at": "2026-11-15T04:58:02+00:00",
+     "latency_s": 75.21,
+     "request": {
+      "model": "ministral-3-14b-instruct-2512",
+      "messages": [
+       {
+        "role": "user",
+        "content": "Du schreibst Testfragen für ein Frage-Antwort-System über deutsche Gesetze. Unten steht ein einzelner Gesetzesabschnitt (§ 121 BetrVG, Bußgeldvorschriften). Schreibe genau EINE Frage auf Deutsch, die ein Laie stellen könnte und die sich allein mit diesem Abschnitt vollständig beantworten lässt.\n\nRegeln:\n- Die Frage ist eine eigenständige, vollständige Frage in natürlichem Deutsch und endet mit einem Fragezeichen.\n- Nenne weder \"Text\", \"Absatz\", \"Abschnitt\", \"Auszug\" noch \"Kontext\"; nenne die Paragrafennummer nicht, wenn die Frage auch ohne sie verständlich ist.\n- Die Antwort steht ausdrücklich im Abschnitt. Erfinde nichts hinzu.\n- \"evidence_span\" ist ein wörtlicher, zusammenhängender Ausschnitt des Abschnitts (20 bis 400 Zeichen, unverändert kopiert), der die Antwort enthält.\n- \"reference_answer\" ist die Antwort in ein bis drei deutschen Sätzen.\n\nAntworte ausschließlich mit einem JSON-Objekt der Form {\"question\": str, \"evidence_span\": str, \"reference_answer\": str}.\n\nAbschnitt:\n(1) Ordnungswidrig handelt, wer eine der in § 90 Abs. 1, 2 Satz 1, § 92 Abs. 1 Satz 1 auch in Verbindung mit Absatz 3, § 99 Abs. 1, § 106 Abs. 2, § 108 Abs. 5, § 110 oder § 111 bezeichneten Aufklärungs- oder Auskunftspflichten nicht, wahrheitswidrig, unvollständig oder verspätet erfüllt.\n(2) Die Ordnungswidrigkeit kann mit einer Geldbuße bis zu zehntausend Euro geahndet werden."
+       }
+      ],
+      "temperature": 0.7,
+      "seed": 43,
+      "max_tokens": 700,
+      "response_format": {
+       "type": "json_schema",
+       "json_schema": {
+        "name": "answer",
+        "schema": {
+         "type": "object",
+         "properties": {
+          "question": {
+           "type": "string"
+          },
+          "evidence_span": {
+           "type": "string",
+           "minLength": 20,
+           "maxLength": 400
+          },
+          "reference_answer": {
+           "type": "string"
+          }
+         },
+         "required": [
+          "question",
+          "evidence_span",
+          "reference_answer"
+         ]
+        },
+        "strict": true
+       }
+      }
+     },
+     "response": {
+      "choices": [
+       {
+        "finish_reason": "stop",
+        "index": 0,
+        "message": {
+         "role": "assistant",
+         "content": "{\n  \"question\": \"Was passiert, wenn jemand einer gesetzlich vorgeschriebenen Auskunftspflicht nicht nachkommt oder falsche Angaben macht?\",\n  \"evidence_span\": \"Ordnungswidrig handelt, wer eine der in § 90 Abs. 1, 2 Satz 1, § 92 Abs. 1 Satz 1 auch in Verbindung mit Absatz 3, § 99 Abs. 1, § 106 Abs. 2, § 108 Abs. 5, § 110 oder § 111 bezeichneten Aufklärungs- oder Auskunftspflichten nicht, wahrheitswidrig, unvollständig oder verspätet erfüllt.\",\n  \"reference_answer\": \"Wer solche Pflichten nicht, unwahr, unvollständig oder zu spät erfüllt, begeht eine Ordnungswidrigkeit. Diese kann mit einer Geldbuße geahndet werden.\"\n}"
+        }
+       }
+      ],
+      "created": 1794718682,
+      "model": "ministral-3-14b-instruct-2512",
+      "system_fingerprint": "b12199-372dc5ca1",
+      "object": "chat.completion",
+      "usage": {
+       "completion_tokens": 206,
+       "prompt_tokens": 930,
+       "total_tokens": 1136,
+       "prompt_tokens_details": {
+        "cached_tokens": 929
+       }
+      },
+      "id": "chatcmpl-HlVxFzBkEe671keP7sjlDxxwRHENNVTI",
+      "timings": {
+       "cache_n": 929,
+       "prompt_n": 1,
+       "prompt_ms": 319.161,
+       "prompt_per_token_ms": 319.161,
+       "prompt_per_second": 3.133214897810196,
+       "predicted_n": 206,
+       "predicted_ms": 74858.806,
+       "predicted_per_token_ms": 365.16490731707313,
+       "predicted_per_second": 2.738488775789451
+      }
+     },
+     "verdict": "valid"
+    }
+   ]
+  }
+ ],
+ "source": "real exchanges recorded by record_retry.py"
+}

@@ -28,7 +28,8 @@ PAGES_WRITE: dict[tuple[str, str], str] = {
 }
 
 # Files that may grant ``models: read`` (security.md X2); ``models: write`` is never allowed.
-MODELS_READ_FILES = frozenset({"live-e2e.yml", "cassettes.yml", "cassettes-models.yml"})
+# Empty since GitHub Models was retired (2026-07-30, D1202): no workflow calls models.github.ai.
+MODELS_READ_FILES: frozenset[str] = frozenset()
 
 # (file, job) -> reason, for ``actions: read`` (R13 P5.2).
 ACTIONS_READ: dict[tuple[str, str], str] = {
@@ -94,3 +95,53 @@ REPO_CODE_RUN = re.compile(
     r"|(?:bash|sh)\s+\S*scripts/|\./\S+)",
     re.MULTILINE,
 )
+
+
+# Review F3 (D1121) ---------------------------------------------------------------------------
+
+# (file, job, scope) -> reason, for every ``<scope>: write`` without a table above (deny by
+# default: packages, pull-requests, checks, issues, deployments, attestations, actions, ...).
+OTHER_WRITE: dict[tuple[str, str, str], str] = {
+    ("build-images.yml", "trivy", "security-events"): "uploads the Trivy SARIF to code scanning",
+    ("security.yml", "codeql", "security-events"): "CodeQL SARIF upload",
+    ("security.yml", "scorecard", "security-events"): "OpenSSF Scorecard SARIF upload",
+    (
+        "live-e2e.yml",
+        "comment",
+        "pull-requests",
+    ): "upserts the one bot comment on same-repo PRs; checks out the BASE sha only",
+    (
+        "executor-health.yml",
+        "check-heartbeat",
+        "issues",
+    ): "T6.2b S8 (D1092): opens/comments/closes the executor alert issues; no secrets",
+}
+
+# (file, trigger) -> reason. Triggers that run with base-repo rights on attacker-influenced input.
+DANGEROUS_TRIGGERS: dict[tuple[str, str], str] = {
+    (
+        "docs.yml",
+        "workflow_run",
+    ): "N5.2: deploys the dashboard site after deploy.yml; provenance check first, main code only",
+}
+
+# ``github.event.*`` values that may be interpolated into run: / with: (numbers, SHAs, ids and the
+# repository names: GitHub allows only [A-Za-z0-9._-] in owner/repo, so no shell syntax);
+# everything else, also ``toJSON(github.event...)``, is refused.
+EVENT_VALUES = re.compile(
+    r"github\.event\.("
+    r"number|(pull_request|issue)\.number"
+    r"|pull_request\.(head|base)\.sha|workflow_run\.(id|head_sha)"
+    r"|repository\.full_name|pull_request\.(head|base)\.repo\.full_name|after|before"
+    r")"
+)
+
+# (file, job, step id) -> reason: steps whose run block writes $GITHUB_ENV / $GITHUB_PATH next to an
+# env var from a step output (reviewed by hand; the taint rule cannot prove such a value safe).
+ENV_FILE_STEPS: dict[tuple[str, str, str], str] = {
+    (
+        "cassettes-models.yml",
+        "record",
+        "header",
+    ): "MATCHED is actions/cache's matched key, built by this job; PR #167 deletes the workflow",
+}

@@ -37,6 +37,18 @@ class Expected(_Frozen):
     gated_slices: tuple[GatedSlice, ...] = ()
     informational_slices: tuple[str, ...] = ()
     likely_cause: CauseCode | None = None
+    precondition: Literal["corpus_mismatch"] | None = (
+        None  # a run precondition, never a metric (T7.1b)
+    )
+
+    @model_validator(mode="after")
+    def _check_precondition(self) -> Self:
+        if self.precondition is not None and (
+            self.metrics or self.status != "FAIL" or self.likely_cause is not None
+        ):
+            msg = "a precondition entry expects FAIL with no metrics and no likely_cause"
+            raise ValueError(msg)
+        return self
 
 
 class MutationSpec(_Frozen):
@@ -51,6 +63,7 @@ class MutationSpec(_Frozen):
     kind: Literal["config", "code", "data"]
     patch: str | None = None
     rag_overrides: dict[str, JsonValue] | None = None
+    data_ref: str | None = Field(default=None, pattern=r"^(previous|[A-Za-z0-9._-]{1,80})$")
     needs_reindex: bool
     cache_invalidating: bool
     tier: Literal["pr", "nightly"]
@@ -83,8 +96,11 @@ class MutationSpec(_Frozen):
 
 def _shape_problems(spec: MutationSpec) -> list[str]:
     problems = []
-    if (spec.patch is None) == (spec.rag_overrides is None):
-        problems.append("exactly one of patch and rag_overrides")
+    given = [x is not None for x in (spec.patch, spec.rag_overrides, spec.data_ref)]
+    if sum(given) != 1:
+        problems.append("exactly one of patch, rag_overrides and data_ref")
+    if (spec.kind == "data") != (spec.data_ref is not None):
+        problems.append("data_ref exactly for kind data")
     if spec.silent and not spec.silent_reason:
         problems.append("silent needs silent_reason")
     if spec.is_noop and (spec.expected.status != "PASS" or spec.expected.hard_fail):
@@ -106,8 +122,8 @@ def _tier_problems(spec: MutationSpec) -> list[str]:
         problems.append("a statistical entry expects FAIL (round 13 P3.3)")
     if (spec.stratum == "normaliser") == spec.in_detection_rate:
         problems.append("in_detection_rate is false exactly for the normaliser stratum")
-    if spec.tier1 and not spec.expected.hard_fail:
-        problems.append("tier1 only for hard-fail entries (X5.6)")
+    if spec.tier1 and not (spec.expected.hard_fail or spec.expected.precondition):
+        problems.append("tier1 only for hard-fail or precondition entries (X5.6)")
     return problems
 
 

@@ -1,9 +1,13 @@
-"""GitHub Models client with a resumable disk cache (T3.1b S4, ADR-0019).
+"""Datagen clients with a resumable disk cache (T3.1b S4, ADR-0019, D1201).
 
-Credential: ``PRUEFSTAND_GH_MODELS_TOKEN`` (Models: read; never ``GITHUB_TOKEN``), read from the
-environment or from ``--env-file`` (only that one variable), never printed or stored. Every model
-answer is cached under ``data/raw/indomain_dev_cache`` (git-ignored), so a run is resumable across
-days; a 429 raises ``QuotaStop``. Used by ``indomain_cli.py`` (public law text only).
+Two backends: the VM CPU model (ids ``openai_compatible_local/<alias>``, the default since D1201;
+``scripts/models/vm_llm.sh start``, URL ``PRUEFSTAND_DATAGEN_BASE_URL``, no credential; the served
+alias is checked once per run by ``indomain_cli.vm_check``) and GitHub Models (bare catalogue ids,
+retired 2026-07-30). The GitHub credential is ``PRUEFSTAND_GH_MODELS_TOKEN`` (Models: read; never
+``GITHUB_TOKEN``), read from the environment or from ``--env-file`` (only that one variable),
+never printed or stored. Every model answer is cached under ``data/raw/indomain_dev_cache``
+(git-ignored), so a run is resumable across days; a 429 raises ``QuotaStop``. Used by
+``indomain_cli.py`` (public law text only).
 """
 
 import hashlib
@@ -19,6 +23,19 @@ from model_selection import indomain_data as data
 CACHE = data.REPO / "data" / "raw" / "indomain_dev_cache"
 ENDPOINT = "https://models.github.ai/inference/chat/completions"
 TOKEN_VAR = "PRUEFSTAND_GH_MODELS_TOKEN"  # noqa: S105  # reason: the variable NAME, not a secret
+VM_PREFIX = "openai_compatible_local/"
+RETRY_TEMPERATURE = 0.7  # retries must differ from the greedy first answer (D1201)
+# The answer shape of indomain_gen_v1 as a llama-server json_schema grammar (D1201): no code fences,
+# and the evidence span within the 20..400 characters that indomain_data.validate_item accepts.
+GEN_SCHEMA: dict[str, Any] = {
+    "type": "object",
+    "properties": {
+        "question": {"type": "string"},
+        "evidence_span": {"type": "string", "minLength": 20, "maxLength": 400},
+        "reference_answer": {"type": "string"},
+    },
+    "required": ["question", "evidence_span", "reference_answer"],
+}
 
 
 class GenError(RuntimeError):
@@ -108,6 +125,75 @@ def call_model(token: str, model: str, content: str, timeout_s: float = 90.0) ->
     return str(resp.json()["choices"][0]["message"]["content"])
 
 
+def is_vm(model: str) -> bool:
+    """True for a VM CPU model id (``openai_compatible_local/<alias>``)."""
+    return model.startswith(VM_PREFIX)
+
+
+def vm_body(
+    model: str, content: str, schema: dict[str, Any] | None, attempt: int = 0
+) -> dict[str, Any]:
+    """The ``/chat/completions`` body for the VM model; ``schema`` = constrained JSON output.
+
+    Attempt 0 is greedy (temperature 0, seed 42). A retry at temperature 0 would return the
+    same answer (seen live, 2026-11-15), so attempt k > 0 samples at ``RETRY_TEMPERATURE`` with
+    seed 42 + k: different, still reproducible.
+
+    >>> b = vm_body(VM_PREFIX + "ministral-3-14b-instruct-2512", "Frage?", GEN_SCHEMA)
+    >>> b["model"], b["response_format"]["type"], b["temperature"], b["seed"]
+    ('ministral-3-14b-instruct-2512', 'json_schema', 0.0, 42)
+    >>> r = vm_body(VM_PREFIX + "x", "Frage?", None, attempt=2)
+    >>> r["temperature"], r["seed"], "response_format" in r
+    (0.7, 44, False)
+    """
+    body: dict[str, Any] = {
+        "model": model.removeprefix(VM_PREFIX),
+        "messages": [{"role": "user", "content": content}],
+        "temperature": 0.0 if attempt == 0 else RETRY_TEMPERATURE,
+        "seed": 42 + attempt,
+        "max_tokens": 700,
+    }
+    if schema is not None:
+        body["response_format"] = {
+            "type": "json_schema",
+            "json_schema": {"name": "answer", "schema": schema, "strict": True},
+        }
+    return body
+
+
+def call_vm(
+    model: str,
+    content: str,
+    base_url: str | None,
+    *,
+    timeout_s: float = 900.0,
+    schema: dict[str, Any] | None = None,
+    attempt: int = 0,
+) -> str:
+    """One chat call to the VM model (``vm_body``); the answer must name the served alias.
+
+    ``schema`` constrains the output (llama-server ``response_format`` json_schema); fenced
+    answers are still parsed (``parse_json_object``) in case a build ignores it.
+    Raises ``GenError`` when no URL is set, the call fails, or another model answered.
+    """
+    if not base_url:
+        msg = "no PRUEFSTAND_DATAGEN_BASE_URL: start the model with scripts/models/vm_llm.sh start"
+        raise GenError(msg)
+    body = vm_body(model, content, schema, attempt)
+    alias = body["model"]
+    try:
+        resp = httpx.post(f"{base_url.rstrip('/')}/chat/completions", json=body, timeout=timeout_s)
+        resp.raise_for_status()
+        data = resp.json()
+    except (httpx.HTTPError, ValueError) as exc:
+        msg = f"VM model call failed: {type(exc).__name__}"
+        raise GenError(msg) from exc
+    if data.get("model") != alias:
+        msg = f"the VM server answered as {data.get('model')!r}, not {alias!r}"
+        raise GenError(msg)
+    return str(data["choices"][0]["message"]["content"] or "")
+
+
 def cache_path(model: str, prompt: str, passage_id: str) -> Path:
     """File of one (model, prompt version, passage) answer."""
     return CACHE / f"{cache_key(model, prompt, passage_id)}.json"
@@ -121,11 +207,24 @@ def cached_response(model: str, prompt: str, passage_id: str) -> str | None:
     return str(json.loads(path.read_text(encoding="utf-8"))["response"])
 
 
-def ask(token: str, model: str, prompt: str, passage_id: str, content: str) -> str:
-    """One new call; the raw answer is stored (no secrets) before it is returned."""
+def ask(
+    token: str,
+    model: str,
+    prompt: str,
+    passage_id: str,
+    content: str,
+    *,
+    base_url: str | None = None,
+    attempt: int = 0,
+) -> str:
+    """One new call (VM model or GitHub Models); the raw answer is stored (no secrets) first."""
     rejected = ""
     try:
-        text = call_model(token, model, content)
+        if is_vm(model):
+            schema = GEN_SCHEMA if prompt == data.GEN_PROMPT else None
+            text = call_vm(model, content, base_url, schema=schema, attempt=attempt)
+        else:
+            text = call_model(token, model, content)
     except RejectedError as exc:  # recorded: not asked again
         text, rejected = "", str(exc)
     CACHE.mkdir(parents=True, exist_ok=True)

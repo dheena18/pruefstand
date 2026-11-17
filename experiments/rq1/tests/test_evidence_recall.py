@@ -1,6 +1,8 @@
 """T7.3 S0b: ``evidence_recall`` and ``normalise_span`` on real law text (X3.2, D122)."""
 
+import json
 import unicodedata
+from pathlib import Path
 from typing import Any
 
 import pytest
@@ -14,6 +16,10 @@ from pruefstand.core.models.metric import MetricStatus
 from pruefstand.core.models.target import RetrievedChunk
 from pruefstand.core.models.testcase import TestCase
 from pruefstand.metrics.registry import MetricRegistry
+from rag_demo.index.corpus_reader import index_text
+from rag_demo.index.subchunk import split_rows
+from rag_demo.index.tokens import approx_token_count
+from rag_demo.models import ChunkingCfg
 
 SPAN = "Die Kündigungsfrist beträgt vier Wochen."
 # § 622 Abs. 1 BGB plus the span sentence, with a line-break hyphenation as a PDF export has it.
@@ -113,3 +119,31 @@ def test_normalise_span_is_idempotent(text: str) -> None:
 @pytest.mark.parametrize("text", ["", "   ", "\n "])
 def test_blank_text_normalises_to_empty(text: str) -> None:
     assert normalise_span(text) == ""
+
+
+def test_a_span_that_is_only_the_citation_prefix_scores_zero_on_a_subchunk_piece() -> None:
+    """T3.4b: the prefix of a fixed-token piece is embedded but never part of the retrieved text.
+
+    The pieces come from the real ``split_rows`` on real KSchG text. rag-demo stores and returns the
+    piece body only (``index_text`` prepends the citation key at embedding time), so a gold span
+    consisting of the key alone matches nothing, and a span in the body still matches.
+    """
+    path = Path(__file__).resolve().parents[3] / "corpus/slice_v1/kanzlei_mueller.chunks.jsonl"
+    rows = [json.loads(line) for line in path.read_text(encoding="utf-8").splitlines()]
+    row = next(r for r in rows if r["chunk_id"] == "gii-kschg-1#1")
+    pieces = split_rows([row], ChunkingCfg(strategy="fixed_tokens", size=96), approx_token_count)
+    assert len(pieces) > 1
+    piece = pieces[1]
+    assert index_text(piece).startswith(f"{row['citation_key']}\n")  # embedded with the key
+    chunk = RetrievedChunk(
+        chunk_id=ChunkId(piece["chunk_id"]),
+        doc_id=DocId(piece["doc_id"]),
+        text=piece["text"],
+        score=0.9,
+        rank=1,
+    )
+    prefix_only = TestCase.model_validate({**_BASE, "evidence_span": row["citation_key"]})
+    body_span = " ".join(piece["text"].split()[3:9])
+    in_body = TestCase.model_validate({**_BASE, "evidence_span": body_span})
+    assert evidence_recall(prefix_only, [chunk]).value == 0.0
+    assert evidence_recall(in_body, [chunk]).value == 1.0

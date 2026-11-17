@@ -1,0 +1,19 @@
+id: M16
+title: Stale index (previous corpus_version)
+kind: data
+data_ref: previous
+needs_reindex: true
+cache_invalidating: true
+tier: pr
+splits: [smoke, core, robust_pr]
+stratum: deterministic
+tier1: true
+in_detection_rate: true
+expected:
+  status: FAIL
+  precondition: corpus_mismatch
+rationale: >-
+  The candidate is indexed from the corpus version before the one the dataset pins (resolved by the executor
+  from the corpus registry; no corpus file is committed). run_eval's precondition aborts the run with
+  counts.corpus_mismatch = 1, exit 1, in both tiers. Variant M16b (the target misreports its version) is
+  dropped (D1273).

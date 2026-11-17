@@ -60,16 +60,27 @@ def test_empty_retrieval_is_refused_with_no_generator_call() -> None:
 
 
 @respx.mock
-def test_a_generator_timeout_is_a_503_without_stack_trace_or_key(
+def test_a_generator_timeout_is_a_504_with_the_non_retryable_code(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    """T1.13c contract: pairs with ``test_http_generator_timeout.py`` of the gate package."""
     monkeypatch.setenv("PRUEFSTAND_CANDIDATE_API_KEY", "k1-secret-value")
     _mock(CHUNKS, httpx.ReadTimeout("slow"))
     resp = TestClient(create_app(CFG, settings=SETTINGS)).post("/v1/query", json=_query())
-    assert resp.status_code == 503
-    assert resp.json() == {"detail": "backend unavailable"}
+    assert resp.status_code == 504
+    assert resp.json() == {
+        "detail": {"code": "generator_timeout", "message": "generator timed out"}
+    }
     assert "k1-secret-value" not in resp.text
     assert "Traceback" not in resp.text
+
+
+@respx.mock
+def test_another_generator_failure_stays_a_503_without_details() -> None:
+    _mock(CHUNKS, httpx.ConnectError("down"))
+    resp = TestClient(create_app(CFG, settings=SETTINGS)).post("/v1/query", json=_query())
+    assert resp.status_code == 503
+    assert resp.json() == {"detail": "backend unavailable"}
 
 
 @respx.mock

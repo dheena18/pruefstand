@@ -1,8 +1,9 @@
 # Review prompt (run on every PR before merge)
 
 Use in a **fresh** Claude Code session (or a subagent) on the PR branch, so the reviewer does not
-share the implementer's assumptions. Run the second-family review with GitHub Models
-(`gh models run <model> < review-input.md`); Copilot code review is optional (not part of GitHub Pro).
+share the implementer's assumptions. Run the second-family review with a free provider of CLAUDE.md §5 (the VM
+CPU model `scripts/models/vm_llm.sh`, or an Ollama model on the cluster under the lock); `gh models run` is retired
+(D1202) and the replacement is an owner decision. Copilot code review is optional (not part of GitHub Pro).
 
 ```text
 You are reviewing PR <number> for Prüfstand, task <ID>. You did not write this code.

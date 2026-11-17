@@ -130,6 +130,40 @@ class AnalyzerCfg(_Frozen):
     stemmer: Literal["snowball_de", "none"] = "snowball_de"
 
 
+class ChunkingCfg(_Frozen):
+    """How the indexer cuts corpus chunks (T3.4b); the default keeps every committed config as is.
+
+    ``per_section`` embeds each corpus chunk (one per § or Absatz) as one point. ``fixed_tokens``
+    cuts each chunk into consecutive pieces of at most ``size`` tokens (citation key included, no
+    overlap, sentence-aware, see ``rag_demo.index.subchunk``).
+    """
+
+    strategy: Literal["per_section", "fixed_tokens"] = "per_section"
+    size: int | None = Field(default=None, ge=64, le=4096)
+
+    @model_validator(mode="after")
+    def _size_matches_strategy(self) -> Self:
+        if self.strategy == "fixed_tokens" and self.size is None:
+            msg = "chunking.size is required for fixed_tokens"
+            raise ValueError(msg)
+        if self.strategy == "per_section" and self.size is not None:
+            msg = "chunking.size is only allowed with fixed_tokens"
+            raise ValueError(msg)
+        return self
+
+
+class PublicLimits(_Frozen):
+    """Limits of the public demo (T8.4, ADR-0012); every ``DEMO_*`` env variable overrides one."""
+
+    rate_per_min: int = Field(default=10, ge=1)
+    daily_per_key: int = Field(default=100, ge=1)
+    daily_requests: int = Field(default=2000, ge=0)
+    daily_tokens: int = Field(default=200_000, ge=0)
+    max_concurrency: int = Field(default=2, ge=1)
+    timeout_s: float = Field(default=75.0, gt=0)
+    allowed_origin: str | None = None
+
+
 class RagConfig(_Frozen):
     """``configs/rag.yaml``; the bug switches default to the correct behaviour (interfaces §16)."""
 
@@ -139,6 +173,7 @@ class RagConfig(_Frozen):
     rerank: RerankCfg = Field(default_factory=RerankCfg)
     retrieval: RetrievalCfg = Field(default_factory=RetrievalCfg)
     analyzer: AnalyzerCfg = Field(default_factory=AnalyzerCfg)
+    chunking: ChunkingCfg = Field(default_factory=ChunkingCfg)
     generation: GenerationCfg | None = None
     top_k: int = Field(default=8, ge=1, le=50)
     chunk_prompt_tokens: int = Field(default=256, ge=16)
@@ -149,7 +184,19 @@ class RagConfig(_Frozen):
     answer_language: Literal["auto", "en"] = "auto"
     prompt_file: str = "prompts/answer_de_v1.txt"
     injection_guard: Literal["on", "off"] = "on"
+    public_mode: bool = False
+    public: PublicLimits | None = None
     system_prompt_guard: Literal["on", "off"] = "on"
+
+    @model_validator(mode="after")
+    def _public_limits(self) -> Self:
+        if self.public_mode and self.public is None:
+            msg = "public_mode needs a public section (the limits)"
+            raise ValueError(msg)
+        if self.public is not None and not self.public_mode:
+            msg = "public limits are only allowed with public_mode: true"
+            raise ValueError(msg)
+        return self
 
     @model_validator(mode="after")
     def _gpu_reranker_explicit(self) -> Self:

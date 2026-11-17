@@ -15,6 +15,7 @@ from rag_demo.config import Settings, load_config
 from rag_demo.disconnect import cancel_on_disconnect
 from rag_demo.errors import (
     ClientDisconnectedError,
+    GenerationTimeoutError,
     IndexMismatchError,
     IndexUnavailableError,
     RagDemoError,
@@ -24,6 +25,7 @@ from rag_demo.generation import prompt_hits
 from rag_demo.info import build_info, cpu_model
 from rag_demo.models import GenOutput, Hit, RagConfig, Stats
 from rag_demo.protocols import Generator
+from rag_demo.public.setup import install_public
 from rag_demo.retrieval.corpus_meta import CorpusMeta
 from rag_demo.retrieval.rerank import IdentityReranker
 from rag_demo.retrieval.retriever import QdrantRetriever
@@ -150,11 +152,16 @@ async def _meta(parts: _Parts) -> dict[str, Any]:
         raise HTTPException(503, str(err)) from None
 
 
+GENERATOR_TIMEOUT = "generator_timeout"
+
+
 def _http_error(err: RagDemoError, what: str) -> HTTPException:
-    """422 for a malformed tenant of the index, else 503 without details."""
+    """422 for a malformed tenant, 504 ``generator_timeout`` for a generator timeout, else 503."""
     if isinstance(err, UnknownTenantError):
         return HTTPException(422, "unknown tenant")
     _log.warning("%s failed: %s", what, err)
+    if isinstance(err, GenerationTimeoutError):  # T1.13c: a client must not retry this
+        return HTTPException(504, {"code": GENERATOR_TIMEOUT, "message": "generator timed out"})
     return HTTPException(503, "backend unavailable")
 
 
@@ -256,7 +263,10 @@ def create_app(cfg: RagConfig, *, settings: Settings | None = None) -> FastAPI:
     """
     app = FastAPI(title="Prüfstand Target API", version="1")
     _add_guards(app)
-    _add_routes(app, cfg, _build_parts(cfg, settings or Settings()))
+    resolved = settings or Settings()
+    _add_routes(app, cfg, _build_parts(cfg, resolved))
+    if cfg.public_mode:
+        install_public(app, cfg, resolved)
     return app
 
 
