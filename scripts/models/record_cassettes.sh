@@ -196,6 +196,15 @@ if [ "${1:-}" = "--private-docs" ]; then
   uv run pytest scripts/tests/test_generate_private_docs_cassette.py -q -p no:cacheprovider
   exit $?
 fi
+if [ "${1:-}" = "--rq2-vm-judge" ]; then
+  # T5.4e: real answers of the VM CPU judge (Ministral 3 14B) for experiments/rq2/tests/test_vm_arm.py.
+  # Needs the server running: scripts/models/vm_llm.sh start 14b (it holds the host lock), then stop it after.
+  scripts/models/vm_llm.sh status >/dev/null || { echo "record_cassettes: start scripts/models/vm_llm.sh first" >&2; exit 75; }
+  rm -f experiments/rq2/tests/cassettes/vm_judge/*.json
+  PRUEFSTAND_RECORD_RQ2_VM_JUDGE=1 uv run pytest experiments/rq2/tests/test_record_vm_judge.py -m live -q -p no:cacheprovider
+  uv run pytest experiments/rq2/tests/test_vm_arm.py -q -p no:cacheprovider
+  exit $?
+fi
 if [ "${1:-}" = "--inner" ]; then
   inner
   exit $?
