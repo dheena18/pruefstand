@@ -1,0 +1,353 @@
+# Release (T9.1a, ADR-0017). A tag vX.Y.Z (created by the pruefstand-release App, so it triggers this run)
+# publishes the pruefstand dists to PyPI (Trusted Publishing, environment `pypi`, no token) and builds the Action
+# and rag-demo images ONCE at the tag: the tag must not exist on GHCR yet (never overwritten), push :vX.Y.Z,
+# Trivy gate, keyless cosign signature of the digest with this workflow's tag identity, syft SPDX SBOM attached
+# with cosign attest, build provenance, and image-digests.json as a release asset (+ artefact). A
+# workflow_dispatch with prerelease=true is a release candidate: build-dist + publish-testpypi only; every other
+# job requires a v* tag. No docs-deploy job: docs.yml is the single Pages writer. Release assets written here
+# are exactly image-digests.json, the SBOMs and the dists (never demo-ready.json, never --clobber).
+name: release
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      prerelease:
+        description: "release candidate: build and publish to TestPyPI only"
+        type: boolean
+        required: true
+        default: true
+
+permissions: {}
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  OWNER_IMAGES: ghcr.io/dheena18
+
+jobs:
+  build-dist:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
+        with:
+          version: "0.13.6"
+          enable-cache: false
+      - name: Build and check the dists
+        run: |
+          uv build --package pruefstand --out-dir dist
+          uvx twine check --strict dist/*
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: dist
+          path: dist/
+          if-no-files-found: error
+
+  publish-testpypi:
+    if: github.event_name == 'workflow_dispatch' && inputs.prerelease
+    needs: build-dist
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    environment: testpypi
+    permissions:
+      id-token: write
+    steps:
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: dist
+          path: dist/
+      - uses: pypa/gh-action-pypi-publish@7245906fb61fa33a13554f9d5fb856fe61758086 # v1.14.3
+        with:
+          repository-url: https://test.pypi.org/legacy/
+
+  publish-pypi:
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
+    needs: build-dist
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    environment: pypi
+    permissions:
+      id-token: write
+    steps:
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: dist
+          path: dist/
+      - uses: pypa/gh-action-pypi-publish@7245906fb61fa33a13554f9d5fb856fe61758086 # v1.14.3
+
+  image-action:
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      packages: write
+    outputs:
+      digest: ${{ steps.push.outputs.digest }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: docker/login-action@8aa5831fb8d48d8f76594c7ddde61ae58019f550 # v4.8.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: The tag must not exist yet (never overwrite)
+        env:
+          IMAGE: ${{ env.OWNER_IMAGES }}/pruefstand-action:${{ github.ref_name }}
+          PACKAGE: pruefstand-action
+          OWNER: ${{ github.repository_owner }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        # fail closed. The registry decides: a manifest that exists is never overwritten. Absent is
+        # only (a) a definite "manifest unknown" / "no such manifest" of the tag, or (b) for a package
+        # that does not exist yet (Packages API answers exactly "(HTTP 404)") the registry's `denied`
+        # of the first release. Any other answer (auth, 5xx, network, timeout) stops the release.
+        run: |
+          pkg_absent=false
+          if pkg="$(gh api "/users/$OWNER/packages/container/$PACKAGE" 2>&1)"; then
+            echo "package $PACKAGE exists"
+          elif printf '%s' "$pkg" | grep -qE '\(HTTP 404\)$'; then
+            pkg_absent=true
+            echo "package $PACKAGE not found by the Packages API"
+          else
+            echo "::error::cannot read package $PACKAGE (details below)"
+            printf '%s\n' "$pkg"
+            exit 1
+          fi
+          if out="$(docker manifest inspect "$IMAGE" 2>&1)"; then
+            echo "::error::$IMAGE already exists; a release image is built once and never overwritten"
+            exit 1
+          fi
+          if printf '%s' "$out" | grep -qiE 'manifest unknown|no such manifest'; then
+            echo "$IMAGE is absent: building it"
+          elif [ "$pkg_absent" = true ] && printf '%s' "$out" | grep -qE '^denied'; then
+            echo "$IMAGE: first release of package $PACKAGE: building it"
+          else
+            echo "::error::cannot tell whether $IMAGE exists (details below)"
+            printf '%s\n' "$out"
+            exit 1
+          fi
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+      - name: Build (load for the scan, then push this same image)
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with:
+          context: .
+          file: action/Dockerfile
+          build-args: GIT_SHA=${{ github.sha }}
+          load: true
+          push: false
+          provenance: false
+          sbom: false
+          tags: ${{ env.OWNER_IMAGES }}/pruefstand-action:${{ github.ref_name }}
+          labels: org.opencontainers.image.revision=${{ github.sha }}
+      - name: Trivy gate (HIGH/CRITICAL with a fix available fails)
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0 (pins setup-trivy 3fb12ec = v0.2.6)
+        with:
+          image-ref: ${{ env.OWNER_IMAGES }}/pruefstand-action:${{ github.ref_name }}
+          format: table
+          severity: HIGH,CRITICAL
+          ignore-unfixed: true
+          exit-code: "1"
+      - name: Push the tag
+        id: push
+        # the image Trivy scanned above is the one pushed: same image, same digest
+        env:
+          IMAGE: ${{ env.OWNER_IMAGES }}/pruefstand-action:${{ github.ref_name }}
+        run: |
+          docker push "$IMAGE"
+          ref="$(docker inspect --format '{{index .RepoDigests 0}}' "$IMAGE")"
+          echo "digest=${ref#*@}" >> "$GITHUB_OUTPUT"
+
+  image-rag-demo:
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      packages: write
+    outputs:
+      digest: ${{ steps.push.outputs.digest }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: docker/login-action@8aa5831fb8d48d8f76594c7ddde61ae58019f550 # v4.8.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: The tag must not exist yet (never overwrite)
+        env:
+          IMAGE: ${{ env.OWNER_IMAGES }}/rag-demo:${{ github.ref_name }}
+          PACKAGE: rag-demo
+          OWNER: ${{ github.repository_owner }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        # fail closed. The registry decides: a manifest that exists is never overwritten. Absent is
+        # only (a) a definite "manifest unknown" / "no such manifest" of the tag, or (b) for a package
+        # that does not exist yet (Packages API answers exactly "(HTTP 404)") the registry's `denied`
+        # of the first release. Any other answer (auth, 5xx, network, timeout) stops the release.
+        run: |
+          pkg_absent=false
+          if pkg="$(gh api "/users/$OWNER/packages/container/$PACKAGE" 2>&1)"; then
+            echo "package $PACKAGE exists"
+          elif printf '%s' "$pkg" | grep -qE '\(HTTP 404\)$'; then
+            pkg_absent=true
+            echo "package $PACKAGE not found by the Packages API"
+          else
+            echo "::error::cannot read package $PACKAGE (details below)"
+            printf '%s\n' "$pkg"
+            exit 1
+          fi
+          if out="$(docker manifest inspect "$IMAGE" 2>&1)"; then
+            echo "::error::$IMAGE already exists; a release image is built once and never overwritten"
+            exit 1
+          fi
+          if printf '%s' "$out" | grep -qiE 'manifest unknown|no such manifest'; then
+            echo "$IMAGE is absent: building it"
+          elif [ "$pkg_absent" = true ] && printf '%s' "$out" | grep -qE '^denied'; then
+            echo "$IMAGE: first release of package $PACKAGE: building it"
+          else
+            echo "::error::cannot tell whether $IMAGE exists (details below)"
+            printf '%s\n' "$out"
+            exit 1
+          fi
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+      - name: Build (load for the scan, then push this same image)
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with:
+          context: .
+          file: apps/rag-demo/Dockerfile
+          build-args: GIT_SHA=${{ github.sha }}
+          load: true
+          push: false
+          provenance: false
+          sbom: false
+          tags: ${{ env.OWNER_IMAGES }}/rag-demo:${{ github.ref_name }}
+          labels: org.opencontainers.image.revision=${{ github.sha }}
+      - name: Trivy gate (HIGH/CRITICAL with a fix available fails)
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0 (pins setup-trivy 3fb12ec = v0.2.6)
+        with:
+          image-ref: ${{ env.OWNER_IMAGES }}/rag-demo:${{ github.ref_name }}
+          format: table
+          severity: HIGH,CRITICAL
+          ignore-unfixed: true
+          exit-code: "1"
+      - name: Push the tag
+        id: push
+        # the image Trivy scanned above is the one pushed: same image, same digest
+        env:
+          IMAGE: ${{ env.OWNER_IMAGES }}/rag-demo:${{ github.ref_name }}
+        run: |
+          docker push "$IMAGE"
+          ref="$(docker inspect --format '{{index .RepoDigests 0}}' "$IMAGE")"
+          echo "digest=${ref#*@}" >> "$GITHUB_OUTPUT"
+
+  sign:
+    needs: [image-action, image-rag-demo]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    permissions:
+      id-token: write
+      packages: write
+    steps:
+      - uses: sigstore/cosign-installer@756fe2d284c7292c4e9b62c8a28f1e5629c59532 # v4.1.3
+      - uses: docker/login-action@8aa5831fb8d48d8f76594c7ddde61ae58019f550 # v4.8.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Sign both digests (keyless, release.yml tag identity)
+        env:
+          ACTION: ${{ env.OWNER_IMAGES }}/pruefstand-action@${{ needs.image-action.outputs.digest }}
+          RAG: ${{ env.OWNER_IMAGES }}/rag-demo@${{ needs.image-rag-demo.outputs.digest }}
+        run: |
+          cosign sign --yes "$ACTION"
+          cosign sign --yes "$RAG"
+
+  attest:
+    needs: [image-action, image-rag-demo, sign]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    permissions:
+      id-token: write
+      packages: write
+      attestations: write
+    strategy:
+      matrix:
+        name: [pruefstand-action, rag-demo]
+    steps:
+      - uses: sigstore/cosign-installer@756fe2d284c7292c4e9b62c8a28f1e5629c59532 # v4.1.3
+      - uses: docker/login-action@8aa5831fb8d48d8f76594c7ddde61ae58019f550 # v4.8.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Pick the digest
+        id: d
+        env:
+          NAME: ${{ matrix.name }}
+          ACTION: ${{ needs.image-action.outputs.digest }}
+          RAG: ${{ needs.image-rag-demo.outputs.digest }}
+        run: |
+          if [ "$NAME" = pruefstand-action ]; then echo "digest=$ACTION" >> "$GITHUB_OUTPUT"; else echo "digest=$RAG" >> "$GITHUB_OUTPUT"; fi
+      - name: SBOM (syft, SPDX JSON)
+        uses: anchore/sbom-action@66cbf4bc1f1c0d2edc94016e65bc221b6bb0ad6c # v0.24.3
+        with:
+          image: ${{ env.OWNER_IMAGES }}/${{ matrix.name }}@${{ steps.d.outputs.digest }}
+          format: spdx-json
+          output-file: sbom-${{ matrix.name }}.spdx.json
+          upload-artifact: false
+          upload-release-assets: false
+      - name: Attach the SBOM (cosign attest)
+        env:
+          REF: ${{ env.OWNER_IMAGES }}/${{ matrix.name }}@${{ steps.d.outputs.digest }}
+          NAME: ${{ matrix.name }}
+        run: cosign attest --yes --type spdxjson --predicate "sbom-${NAME}.spdx.json" "$REF"
+      - name: Build provenance
+        uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+        with:
+          subject-name: ${{ env.OWNER_IMAGES }}/${{ matrix.name }}
+          subject-digest: ${{ steps.d.outputs.digest }}
+          push-to-registry: true
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: sbom-${{ matrix.name }}
+          path: sbom-${{ matrix.name }}.spdx.json
+          if-no-files-found: error
+
+  release-assets:
+    needs: [image-action, image-rag-demo, attest, publish-pypi]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          path: assets/
+      - name: image-digests.json and the release assets (an existing asset is never replaced)
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+          TAG: ${{ github.ref_name }}
+          ACTION: ${{ needs.image-action.outputs.digest }}
+          RAG: ${{ needs.image-rag-demo.outputs.digest }}
+        run: |
+          printf '{\n  "tag": "%s",\n  "pruefstand-action": "%s",\n  "rag-demo": "%s"\n}\n' "$TAG" "$ACTION" "$RAG" > image-digests.json
+          gh release view "$TAG" --repo "$REPO" > /dev/null 2>&1 || gh release create "$TAG" --repo "$REPO" --verify-tag --generate-notes
+          gh release upload "$TAG" --repo "$REPO" image-digests.json assets/sbom-*/*.spdx.json assets/dist/*
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: image-digests
+          path: image-digests.json
+          if-no-files-found: error

@@ -1,0 +1,76 @@
+# Release PR maintenance (T9.1a, ADR-0017, D159, D1292, D1293). On every push to main release-please (token of the
+# GitHub App pruefstand-release, minted only in environment `release`: deployment branch main, no required
+# reviewer) creates or updates the single release PR (one root package, tags vX.Y.Z). Then the `uv lock` step
+# re-locks the release branch and commits ONLY uv.lock when the version lines changed (X2.9);
+# scripts/ci/check_release_lock_diff.py refuses any other lock line. The App token is used for both writes, so
+# the tag it creates triggers release.yml and the lock commit triggers the release PR's checks. GITHUB_TOKEN
+# stays read-only; no id-token.
+name: release-please
+
+on:
+  push:
+    branches: [main]
+
+permissions: {}
+
+concurrency:
+  group: release-please
+  cancel-in-progress: false
+
+jobs:
+  release-please:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    environment: release
+    permissions:
+      contents: read
+    steps:
+      - name: Mint the pruefstand-release token
+        id: app
+        uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
+        with:
+          app-id: ${{ secrets.RELEASE_APP_ID }}
+          private-key: ${{ secrets.RELEASE_APP_KEY }}
+          # scoped to what release-please and the lock push need (zizmor: no broad App token)
+          permission-contents: write
+          permission-pull-requests: write
+      - name: release-please (single root package)
+        id: rp
+        uses: googleapis/release-please-action@45996ed1f6d02564a971a2fa1b5860e934307cf7 # v5.0.0
+        with:
+          token: ${{ steps.app.outputs.token }}
+          config-file: release-please-config.json
+          manifest-file: .release-please-manifest.json
+      - name: Check out the release branch
+        if: steps.rp.outputs.prs_created == 'true' || steps.rp.outputs.pr != ''
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: release-please--branches--main
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
+        if: steps.rp.outputs.prs_created == 'true' || steps.rp.outputs.pr != ''
+        with:
+          version: "0.13.6"
+          enable-cache: false
+      - name: uv lock, guard, commit only uv.lock (X2.9)
+        id: lock
+        if: steps.rp.outputs.prs_created == 'true' || steps.rp.outputs.pr != ''
+        # no token in this step: uv lock and the guard run without it
+        run: |
+          uv lock
+          git diff -- uv.lock | python3 scripts/ci/check_release_lock_diff.py
+          if git diff --quiet -- uv.lock; then
+            echo "uv.lock unchanged: no commit"
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          git -c user.name="pruefstand-release[bot]" \
+              -c user.email="pruefstand-release[bot]@users.noreply.github.com" \
+              commit -m "chore: update uv.lock for release" -- uv.lock
+          echo "changed=true" >> "$GITHUB_OUTPUT"
+      - name: Push the uv.lock commit (App token)
+        if: steps.lock.outputs.changed == 'true'
+        env:
+          TOKEN: ${{ steps.app.outputs.token }}
+          REPO: ${{ github.repository }}
+        run: git push "https://x-access-token:${TOKEN}@github.com/${REPO}.git" HEAD:release-please--branches--main
