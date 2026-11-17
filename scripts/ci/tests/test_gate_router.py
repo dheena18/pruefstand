@@ -47,7 +47,15 @@ UV_MEMBERS = (
     _lock_hunk("pruefstand", "0.1.0", "0.2.0") + "\n" + _lock_hunk("rag-demo", "0.1.0", "0.2.0")
 )
 UV_OTHER = _lock_hunk("httpx", "0.27.0", "0.28.0")
+# D1292: the virtual workspace root's version line is release-exempt; any other line of it is not
+UV_ROOT = _lock_hunk("pruefstand-workspace", "0.1.0", "0.2.0")
+UV_ROOT_OTHER = "\n".join(
+    ["@@ -1,4 +1,4 @@", " [[package]]", ' name = "pruefstand-workspace"', ' version = "0.2.0"',
+     '-source = { virtual = "." }', '+source = { virtual = "./x" }']
+)  # fmt: skip
 CHANGELOG = "@@ -1,1 +1,3 @@\n+## 0.2.0\n+- feat: x\n # Changelog"
+ROOT_LOCK = {"filename": "uv.lock", "patch": UV_MEMBERS + "\n" + UV_ROOT}
+ROOT_OTHER_LOCK = {"filename": "uv.lock", "patch": UV_ROOT_OTHER}
 RELEASE_FILES = [
     {"filename": "apps/rag-demo/pyproject.toml", "patch": PYPROJECT},
     {"filename": "uv.lock", "patch": UV_MEMBERS},
@@ -68,6 +76,10 @@ CASES: list[tuple[str, list[dict[str, Any]], str, str, tuple[str, str]]] = [
     ),
     ("release", RELEASE_FILES, RELEASE, REF, ("success", RELEASE_BUMP)),
     ("release+other-lock-line", [*RELEASE_FILES, OTHER_LOCK], RELEASE, REF, GATE),
+    ("release+workspace-root-version", [*RELEASE_FILES[:1], ROOT_LOCK], RELEASE, REF,
+     ("success", RELEASE_BUMP)),
+    ("release+workspace-root-other-line", [*RELEASE_FILES[:1], ROOT_OTHER_LOCK], RELEASE, REF,
+     GATE),
     ("release+src", [*RELEASE_FILES, SRC], RELEASE, REF, GATE),
     ("release-diff-other-author", RELEASE_FILES, "someone", REF, GATE),
     ("release-author-other-branch", RELEASE_FILES, RELEASE, "feat/x", GATE),

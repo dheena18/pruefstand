@@ -31,7 +31,8 @@ RELEASE_RULES: tuple[dict[str, object], ...] = (
     {
         "file": r"^uv\.lock$",
         "line": r'^version = "[^"]+"$',
-        "after_name": ["pruefstand", "rag-demo"],  # the two workspace members only (X2.9)
+        # the workspace members and the virtual workspace root, version lines only (X2.9, D1292)
+        "after_name": ["pruefstand", "rag-demo", "pruefstand-workspace"],
     },
 )
 _NAME = re.compile(r'^name = "([^"]+)"$')
