@@ -119,3 +119,15 @@ def test_dry_run_prints_one_encrypting_pipeline_and_writes_nothing(tmp_path: Pat
     assert f"| age -r {RECIPIENT} -o {root}/backups/" in pipeline
     assert any(line.startswith("mv -f -- ") and line.endswith(".tar.age") for line in lines)
     assert list(root.iterdir()) == []
+
+
+@pytest.mark.skipif(AGE is None, reason="age is not installed")
+def test_a_failed_encryption_leaves_no_partial_file(tmp_path: Path) -> None:
+    # review #214: "age1" + 58 x "q" has the right shape but a bad checksum, so age fails
+    root = tmp_path / "root"
+    root.mkdir()
+    repo = str(_repo(tmp_path))
+    proc = _run(tmp_path, "--repo", repo, AGE_RECIPIENT=RECIPIENT, PRUEFSTAND_DATA_ROOT=str(root))
+    assert proc.returncode != 0
+    assert list(root.glob("backups/*/*.partial")) == []
+    assert list(root.glob("backups/*/*.age")) == []

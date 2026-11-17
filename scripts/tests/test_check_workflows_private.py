@@ -136,3 +136,95 @@ def test_backup_reads_the_recipient_from_an_actions_variable_and_fetches_nothing
     assert "AGE_RECIPIENT: ${{ vars.AGE_RECIPIENT }}" in text
     assert "extraheader" not in text
     assert "fetch-depth: 0" in text
+
+
+@pytest.mark.parametrize(
+    ("name", "old", "new", "needle"),
+    [
+        # review #214, finding 1: each mutant slipped through before
+        (
+            "nightly.yml",
+            '--deadline-input "$DEADLINE_INPUT"',
+            '--deadline-input "${{ inputs.deadline }}"',
+            "inside run:",
+        ),
+        ("gate-executor.yml", '--pr "$PR"', '--pr "${{ inputs.pr }}"', "inside run:"),
+        (
+            "nightly.yml",
+            "    permissions:\n      contents: read\n    outputs:",
+            "    permissions: write-all\n    outputs:",
+            "exactly {contents: read}",
+        ),
+        (
+            "gate-executor.yml",
+            "      contents: write  #",
+            "      actions: write\n      contents: write  #",
+            "exactly {contents: read|write}",
+        ),
+        (
+            "gate-executor.yml",
+            "      contents: write  #",
+            "      id-token: write\n      contents: write  #",
+            "exactly {contents: read|write}",
+        ),
+        (
+            "gate-executor.yml",
+            "          persist-credentials: false\n",
+            "",
+            "persist-credentials: false",
+        ),
+        (
+            "baseline-promote.yml",
+            'run: gate-orchestrator promote-poll --report-dir "$REPORT_DIR"',
+            'run: gate-orchestrator promote-poll --token "$STATE_TOKEN" --report-dir "$REPORT_DIR"',
+            "$STATE_TOKEN on a command line",
+        ),
+        (
+            "backup.yml",
+            "run: gate-orchestrator backup-check",
+            "run: echo ${DASHBOARD_DATA_PAT} | gate-orchestrator backup-check",
+            "$DASHBOARD_DATA_PAT on a command line",
+        ),
+        (
+            "backup.yml",
+            "run: gate-orchestrator backup-check",
+            "run: X=${{ secrets.DASHBOARD_DATA_PAT }} gate-orchestrator backup-check",
+            "inside run:",
+        ),
+        (
+            "gate-executor.yml",
+            "runs-on: [self-hosted, linux, a40]",
+            "runs-on: [self-hosted, a40]",
+            "[self-hosted, linux, a40]",
+        ),
+        # finding 6: rules that had no mutant test
+        (
+            "gate-executor.yml",
+            "        required: true\n",
+            "        required: false\n",
+            "required input pr",
+        ),
+        (
+            "nightly.yml",
+            "DEADLINE: ${{ needs.guard.outputs.deadline }}",
+            "DEADLINE: ${{ inputs.deadline }}",
+            "nightly --deadline",
+        ),
+        (
+            "backup.yml",
+            "actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1",
+            "actions/checkout@v7 # v7.0.1",
+            "40-hex",
+        ),
+    ],
+)
+def test_review_214_mutant_fails(name: str, old: str, new: str, needle: str) -> None:
+    _fails(name, old, new, needle)
+
+
+def test_findings_name_the_file_once() -> None:
+    text = _text("gate-executor.yml").replace(
+        "        required: true\n", "        required: false\n"
+    )
+    (finding,) = [f for f in check_private_text("gate-executor.yml", text) if "required" in f]
+    assert finding.count("gate-executor.yml") == 1

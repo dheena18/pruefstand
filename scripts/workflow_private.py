@@ -15,6 +15,7 @@ from pathlib import Path
 import yaml
 from workflow_hardening import pins
 from workflow_model import Doc, jobs, steps, strings, triggers
+from workflow_private_hardening import hardening
 from workflow_schedule import crons
 
 FILES = frozenset({"gate-executor.yml", "baseline-promote.yml", "nightly.yml", "backup.yml"})
@@ -104,7 +105,7 @@ def _gate_executor(doc: Doc) -> list[str]:
         or not isinstance(pr, dict)
         or pr.get("required") is not True
     ):
-        return ["gate-executor.yml: only trigger workflow_dispatch with required input pr (P1.2)"]
+        return ["only trigger workflow_dispatch with required input pr (P1.2)"]
     return []
 
 
@@ -146,6 +147,8 @@ def check_private_text(name: str, text: str) -> list[str]:
     found = pins(doc, text) + _common(name, doc)
     for job_id, job in jobs(doc).items():
         found += _job(name, job_id, job)
+        guard = name == "nightly.yml" and job_id == "guard"
+        found += hardening(doc, job_id, job, hosted_guard=guard)
     if name == "gate-executor.yml":
         found += _gate_executor(doc)
     if name == "nightly.yml":

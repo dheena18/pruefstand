@@ -109,3 +109,26 @@ def test_dry_run_pushes_nothing(tmp_path: Path) -> None:
 @pytest.mark.parametrize("args", [[], ["x"], ["0"], ["7", "--bogus"], ["7;id"]])
 def test_usage_errors(tmp_path: Path, args: list[str]) -> None:
     assert _run(tmp_path, *args).returncode == 64
+
+
+def test_moving_a_protected_file_out_is_refused(tmp_path: Path) -> None:
+    # review #214: with rename detection, `git mv .github/workflows/x.yml docs/` lists only docs/
+    origin, work = tmp_path / "origin.git", tmp_path / "work"
+    _git(tmp_path, "init", "-q", "--bare", "-b", "main", str(origin))
+    _git(tmp_path, "clone", "-q", str(origin), str(work))
+    (work / ".github" / "workflows").mkdir(parents=True)
+    (work / ".github" / "workflows" / "x.yml").write_text(
+        "name: x\non: push\n" * 20, encoding="utf-8"
+    )
+    _git(work, "add", ".")
+    _git(work, "commit", "-q", "-m", "base")
+    _git(work, "push", "-q", "origin", "HEAD:main")
+    (work / "docs").mkdir()
+    _git(work, "mv", ".github/workflows/x.yml", "docs/x.yml")
+    _git(work, "commit", "-q", "-m", "move")
+    _git(work, "push", "-q", "origin", "HEAD:refs/pull/7/head")
+    _git(work, "reset", "-q", "--hard", "origin/main")
+    proc = _run(work, "7", "--reviewed")
+    assert proc.returncode == 1
+    assert ".github/workflows/x.yml" in proc.stderr
+    assert _git(tmp_path, "--git-dir", str(origin), "branch", "--list", "gate/*") == ""

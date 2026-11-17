@@ -43,7 +43,8 @@ fi
 command -v age >/dev/null || die "age is not installed" 1
 
 tmp="$(mktemp -d)"
-trap 'rm -rf -- "$tmp"' EXIT
+partial=""
+trap 'rm -rf -- "$tmp"; [ -z "$partial" ] || rm -f -- "$partial"' EXIT
 git -C "$repo" bundle create "$tmp/pruefstand-gate.bundle" --all
 members=(-C "$tmp" pruefstand-gate.bundle)
 if [ -d "$root/baselines" ]; then
@@ -53,8 +54,10 @@ else
 fi
 
 mkdir -p "$dest"
-tar -cf - "${members[@]}" | age -r "$AGE_RECIPIENT" -o "$out.partial"
-mv -f -- "$out.partial" "$out"
+partial="$out.partial"  # removed by the EXIT trap if tar or age fails (review #214)
+tar -cf - "${members[@]}" | age -r "$AGE_RECIPIENT" -o "$partial"
+mv -f -- "$partial" "$out"
+partial=""
 echo "backup: wrote $out sha256 $(sha256sum "$out" | cut -d' ' -f1)"
 
 # keep the newest $keep dated directories (names sort by date)

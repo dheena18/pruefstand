@@ -5,7 +5,8 @@
 # PR (a same-repo PR would run fork code with repo permissions) and never labels anything; it prints the
 # owner's next step, the dispatch of the private gate-executor.yml, which the VM token cannot run.
 # Refused (exit 1) when the diff against main touches .github/**, infra/runner/**, infra/gate-executor/**,
-# action/** or this script. --dry-run prints what would be pushed instead of pushing.
+# action/** or this script, on either side of a rename (--no-renames, review #214). --dry-run prints what
+# would be pushed instead of pushing.
 # Env: REMOTE (default origin), MAIN_REF (default <REMOTE>/main).
 # Exit: 0 pushed (or dry run), 1 refused / not reviewed / git failure, 64 usage.
 set -euo pipefail
@@ -30,7 +31,7 @@ main_ref="${MAIN_REF:-$remote/main}"
 
 git fetch -q "$remote" main "+refs/pull/$pr/head:refs/mirror-fork/pr-$pr"
 head="$(git rev-parse "refs/mirror-fork/pr-$pr^{commit}")"
-denied="$(git diff --name-only "$main_ref...$head" | grep -E '^(\.github/|infra/runner/|infra/gate-executor/|action/|scripts/mirror_fork_pr\.sh$)' || true)"
+denied="$(git diff --name-only --no-renames "$main_ref...$head" | grep -E '^(\.github/|infra/runner/|infra/gate-executor/|action/|scripts/mirror_fork_pr\.sh$)' || true)"
 if [ -n "$denied" ]; then
   printf 'mirror_fork_pr: refused: the diff touches protected paths:\n%s\n' "$denied" >&2
   exit 1

@@ -252,3 +252,29 @@ def test_init_names_the_remote_it_pushed_to(box: Sandbox) -> None:
     assert res.returncode == 0, res.stderr
     assert str(box.private) in res.stdout
     assert "dheena18/pruefstand-gate" not in res.stdout
+
+
+def _workflow_calling(box: Sandbox, cli: str | None) -> None:
+    step = "      - run: gate-orchestrator nightly --deadline x\n"
+    _write(
+        box.public, "infra/gate-executor/workflows/nightly.yml", f"jobs:\n  n:\n    steps:\n{step}"
+    )
+    if cli is not None:
+        _write(box.public, "infra/gate-executor/orchestrator/gate_orchestrator/cli.py", cli)
+    _git(box.public, "add", "-A")
+    _git(box.public, "commit", "-q", "-m", "workflows")
+    box.tag()
+
+
+def test_workflows_calling_a_missing_cli_subcommand_are_refused(box: Sandbox) -> None:
+    # D1095 (review #214): never sync workflows calling a gate-orchestrator subcommand the tag lacks
+    _workflow_calling(box, None)
+    done = box.run(TAG)
+    assert done.returncode == 2
+    assert "gate-orchestrator nightly" in done.stderr
+    assert "sync/" + TAG not in _git(box.private, "branch", "--list")
+
+
+def test_workflows_calling_a_defined_subcommand_sync(box: Sandbox) -> None:
+    _workflow_calling(box, 'sub.add_parser("nightly", help="x")\n')
+    assert box.run(TAG).returncode == 0
