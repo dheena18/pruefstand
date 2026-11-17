@@ -18,6 +18,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))  # run as a script: import rq2.*
 
+from rq2.binarise import is_local
 from rq2.calib_schema import CalibrationItem
 from rq2.rq2_config import REPO, RQ2Config, load_config, load_items, set_available
 from rq2.subsample import stratified_subsample
@@ -38,8 +39,8 @@ NEEDS = ("pruefstand.dataset.vm_datagen",)
 def vm_items(cfg: RQ2Config, size: int) -> list[tuple[str, CalibrationItem]]:
     """The seeded per-set subsample of the publishable ``test`` sets for the VM judge.
 
-    MEMERAG (``local_only``) is left out until the VM provider counts as local in
-    ``rq2.binarise`` (plan step 3); pending sets (``legal_hard``) are skipped.
+    MEMERAG (``local_only``) is included: the VM model counts as local (``rq2.binarise``, plan
+    step 3, D1283), so the text never leaves the VM; pending sets (``legal_hard``) are skipped.
 
     Args:
         cfg: The RQ2 configuration (seed, sets).
@@ -50,11 +51,19 @@ def vm_items(cfg: RQ2Config, size: int) -> list[tuple[str, CalibrationItem]]:
     """
     out: list[tuple[str, CalibrationItem]] = []
     for entry in cfg.sets:
-        if entry.local_only or not set_available(entry):
+        if (entry.local_only and not is_local(VM_JUDGE)) or not set_available(entry):
             continue
         items = stratified_subsample(load_items(entry, "test"), size, cfg.seed)
         out += [(entry.name, item) for item in items]
     return out
+
+
+def cassette_items(cfg: RQ2Config, n: int = 3) -> list[CalibrationItem]:
+    """The first ``n`` VM-plan items of the publishable sets: what the VM judge cassettes hold.
+
+    MEMERAG (CC BY-NC) is never in a committed cassette, so its set is skipped here.
+    """
+    return [item for name, item in vm_items(cfg, 300) if not cfg.set_named(name).local_only][:n]
 
 
 def sessions(
