@@ -37,10 +37,15 @@ def require_base(base: str, *, present: bool, env: Mapping[str, str]) -> None:
 
 def test_a_missing_base_fails_in_ci_and_skips_locally() -> None:
     require_base("a" * 40, present=True, env={"CI": "true"})  # present: nothing happens
-    with pytest.raises(pytest.fail.Exception, match="must fetch it"):
+    # BaseException: a Skipped from a fail->skip change must not escape as a skipped test
+    with pytest.raises(BaseException, match="must fetch it") as failed:
         require_base("a" * 40, present=False, env={"CI": "true"})
-    with pytest.raises(pytest.skip.Exception, match="shallow checkout"):
+    assert failed.type is pytest.fail.Exception
+    assert "must fetch it" in str(failed.value)
+    with pytest.raises(BaseException, match="shallow checkout") as skipped:
         require_base("a" * 40, present=False, env={})
+    assert skipped.type is pytest.skip.Exception
+    assert "shallow checkout" in str(skipped.value)
 
 
 def test_every_patch_applies_at_base_sha(worktree: Path) -> None:
