@@ -5,21 +5,34 @@ import { classify, type Answer, type AnswerChunk, type Failure } from "./try-sta
 export type Outcome =
   { kind: "ok"; answer: Answer } | { kind: "failure"; failure: Failure } | { kind: "aborted" };
 
+const isNumber = (v: unknown): v is number => typeof v === "number" && Number.isFinite(v);
+const isOptional = (v: unknown, kind: "string" | "boolean"): boolean =>
+  v === undefined || v === null || typeof v === kind;
+
+/** Every field the cards read (`chunk_id` key, `doc_id`, `text`, `score.toFixed`, `rank`) has its type. */
 function isChunk(value: unknown): value is AnswerChunk {
-  const c = value as Partial<AnswerChunk> | null;
+  const c = value as Partial<Record<keyof AnswerChunk, unknown>> | null;
   return (
-    typeof c?.chunk_id === "string" && typeof c.doc_id === "string" && typeof c.text === "string"
+    typeof c === "object" &&
+    c !== null &&
+    typeof c.chunk_id === "string" &&
+    typeof c.doc_id === "string" &&
+    typeof c.text === "string" &&
+    isNumber(c.score) &&
+    isNumber(c.rank) &&
+    isOptional(c.tenant_id, "string") &&
+    isOptional(c.used_in_prompt, "boolean")
   );
 }
 
-/** Parse a 200 body; `null` when it does not look like a query answer. */
+/** Parse a 200 body; `null` when it does not look like a query answer (a malformed chunk or citation too). */
 export function parseAnswer(body: unknown): Answer | null {
   const b = body as Record<string, unknown> | null;
   if (typeof b !== "object" || b === null || typeof b["answer"] !== "string") return null;
-  const citations = Array.isArray(b["citations"])
-    ? b["citations"].filter((c) => typeof c === "string")
-    : [];
-  const chunks = Array.isArray(b["chunks"]) ? b["chunks"].filter(isChunk) : [];
+  const citations = b["citations"] ?? [];
+  const chunks = b["chunks"] ?? [];
+  if (!Array.isArray(citations) || !citations.every((c) => typeof c === "string")) return null;
+  if (!Array.isArray(chunks) || !chunks.every(isChunk)) return null;
   return {
     answer: b["answer"],
     citations,

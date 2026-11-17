@@ -159,6 +159,7 @@ export function reduce(state: TryState, action: TryAction): TryState {
       if (state.countdownS === null) return state;
       return { ...state, countdownS: Math.max(0, state.countdownS - 1) };
     case "answered":
+      if (!isLoading(state.id)) return state; // a late answer after Cancel or a timeout is dropped
       return {
         ...state,
         id: action.answer.refused ? "T-REFUSED" : "T-SUCCESS",
@@ -166,6 +167,7 @@ export function reduce(state: TryState, action: TryAction): TryState {
         countdownS: null,
       };
     case "failed": {
+      if (!isLoading(state.id)) return state;
       const { state: id, retryAfterS } = action.failure;
       const countdown = id === "T-RATE-LIMITED" || id === "T-BUSY";
       return {
