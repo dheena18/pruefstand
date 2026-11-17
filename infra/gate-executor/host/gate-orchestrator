@@ -1,0 +1,15 @@
+#!/usr/bin/env bash
+# gate-orchestrator <subcommand> [args] (T6.2a, D1095): the command the private workflows call on the A40 runner.
+# Runs gate_orchestrator from the job's private checkout ($GITHUB_WORKSPACE) with the pruefstand package of the
+# trusted public main checkout at $PRUEFSTAND_MAIN_DIR (runner.env), which it first moves to origin/main
+# (anonymous fetch of the public repo; never a PR ref). Installed once by the owner as a symlink on the runner's
+# PATH (runbook section 0 step 6): ln -s <stable private clone>/infra/gate-executor/host/gate-orchestrator
+# /home/pruefstand/.local/bin/gate-orchestrator
+set -euo pipefail
+ws="${GITHUB_WORKSPACE:?gate-orchestrator runs inside a job of the private repo}"
+main="${PRUEFSTAND_MAIN_DIR:?set PRUEFSTAND_MAIN_DIR (trusted public main checkout) in runner.env}"
+[ -d "$main/.git" ] || { echo "gate-orchestrator: $main is not a git checkout" >&2; exit 2; }
+git -C "$main" fetch -q origin main
+git -C "$main" checkout -q --detach FETCH_HEAD
+export PYTHONPATH="$ws/infra/gate-executor/orchestrator"
+exec uv run --project "$main" --all-packages --frozen python -m gate_orchestrator "$@"
