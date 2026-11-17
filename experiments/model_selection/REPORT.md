@@ -203,3 +203,38 @@ free** (reserve 2 GiB, so 0.2 GiB of headroom). If every removable catalogue mod
 planned. Choices for the owner: (a) keep the generator and the judged subset (current), (b) free cluster disk (or add a disk) and
 run the candidate pass, (c) wait for Ollama to support parallel requests for this architecture.
 
+
+## Phase 2 run-side measurements (2026-11-17)
+
+| Item | Result |
+| --- | --- |
+| Embedding `bge-m3`, GermanDPR test | **nDCG@10 0.8263** (95 % CI 0.8099–0.8424; bootstrap 2 000, seed 42), 1 025 queries over 2 876 passages (`germandpr_eval.py`; the passages are keyed by a text hash because the split's `passage_id` fields are empty). Run under `pruefstand-lock`, 11:16–11:24 CET, about 7.5 min. `/api/ps` showed no model loaded before; afterwards only `bge-m3`, loaded on demand by the `/api/embed` requests with the server's default keep_alive. No other model was requested, loaded or evicted. |
+| Reranker `bge-reranker-v2-m3`, VM CPU (`rerank-cpu`, dev stack, `RERANK_CPUS` default 8) | 10 passages per query in one batched request, cut to 256 tokens, 100 queries (`rerank_bench.py`, `results/rerank_latency.csv`). **Concurrency 1: 3.93 s/query** (p50 3.89, p95 4.47). **Concurrency 4: 11.75 s wall per query** (p50 46.8 s per request): parallel requests contend for the same 8 CPUs, so concurrency 1 is the operating point. Run under `stack.lock`, 11:40–12:07 CET; the weights came from the cache (`RERANK_OFFLINE=1`). |
+
+**Budget with these inputs** (`budget.report()` with the measured tier-2 prompt of about 1 650 tokens and 0.19 s embedding, D1289; generator output capped at 256 tokens from `rag.gpu.yaml`):
+
+| Run | GPU0 | GPU1 | CPU (rerank) | Budget |
+| --- | --- | --- | --- | --- |
+| PR, full core | 89.4 min | 49.7 | 51.8 | does not fit the 72 min limit (90 min minus 20 % margin, D655) |
+| PR, 150-case subset | 62.1 min | 24.8 | 51.8 | fits (31 % margin) |
+| Nightly, 600 generations | 149.0 min | 99.3 | – | 480 min: fits |
+
+The CPU column is before the reranker fallback. The prompt size does not change it. D1286's 98.8 / 67.9 / 168 min used the phase-1 prompt of 3 500 tokens and are superseded by D1289.
+
+**Reranker lane.** 790 queries × 3.93 s = **51.8 min, above the 20-minute D222 limit**. `robust_pr` alone (440 queries) is 28.8 min, also above it. By D222 the reranker is therefore **off for `robust_pr`**: first-stage robustness only. The `core` queries keep the reranker (`/v1/query`).
+
+**After the fallback** (`rerank.on_retrieve: false`; D271 acts per endpoint and per config, not per stratum).
+- Every `/v1/retrieve` of the config skips the reranker; `/v1/query` always reranks.
+- Full `core`: the reranked lane is smoke + core = 350 queries × 3.93 s = **22.9 min, still above 20 min**.
+- With the 150-case judged subset, the PR default (D655): the about 110 `core` answerable cases outside the subset are routed to `/v1/retrieve` too (`route_case`, `not_in_judged_subset`). So they also run without the reranker. The reranked lane is then 240 × 3.93 s = **15.7 min**.
+- The cost: retrieval metrics on those `core` cases are first-stage. Baseline and candidate route them identically, so the paired gate stays consistent.
+- The reranker lane runs on the VM CPU in parallel with the GPU0 generator lane, so it does not bind the PR wall time. The 20-minute limit is D222's own rule.
+- Whether 22.9 min (full core) or the subset's first-stage `core` cases are acceptable is left to the owner, as are the ways back below.
+
+
+Options to bring it back, each needing an owner decision:
+- give `rerank-cpu` more CPUs; the VM has 160 vCPUs and the service is capped at 8 (`RERANK_CPUS`);
+- tune the intra-op threads;
+- lower `rerank.top_n`.
+
+The e5 embedding arm on the VM CPU was not measured: no e5 service exists yet (the M03 blocker).

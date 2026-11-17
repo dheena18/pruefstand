@@ -7,7 +7,7 @@ one entry on a fresh worktree with
 `uv run python benchmarks/mutations/apply.py apply <ID> --worktree <dir>` and undo it with
 `revert`. No-ops (`N`) expect PASS and measure the false-alarm rate, never the detection rate.
 
-`base_sha`: `8186931af266d5c9d39b4fc0abb3e02a2a171e35`
+`base_sha`: `aac3edf14105bd83f21a417636a72dba45a889e0`
 
 | ID | Title | Kind | Change | Tier | Splits | Stratum | tier1 | Expected | Metrics |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
