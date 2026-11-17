@@ -30,6 +30,7 @@ def test_codes_statuses_and_messages_cover_the_same_set() -> None:
         "invalid_request": 422,
         "body_too_large": 413,
         "timeout": 504,
+        "server_error": 503,
     }
 
 
