@@ -19,6 +19,7 @@ from gate_orchestrator.dispatch_flow import IMAGE_CONTEXT
 from gate_orchestrator.gate_job import run_gate_job
 from gate_orchestrator.gate_run import Runner, digest_from_status
 from gate_orchestrator.github_read import status_of
+from gate_orchestrator.index_job import Aliases, qdrant_aliases
 from gate_orchestrator.models import Job
 from gate_orchestrator.nightly import promotable_nightly, prune_due
 from gate_orchestrator.nightly_flow import MainReader
@@ -73,6 +74,7 @@ class PollDeps:
     run_job: Callable[[MainPromotion, Path], str]  # run_gate_job(attempt, health_sh=...)
     now: Callable[[], datetime]
     log: LogPoster = field(default_factory=LogPoster)
+    aliases: Aliases | None = None
 
 
 def _main(deps: PollDeps, state: Path, work: Path) -> None:
@@ -93,6 +95,7 @@ def _main(deps: PollDeps, state: Path, work: Path) -> None:
         main_config=main_dir / "pruefstand.yaml",
         work=work,
         env=deps.env,
+        aliases=deps.aliases,
     )
     result = deps.run_job(attempt, main_dir / "infra" / "gpu" / "health.sh")
     deps.log.lines.append(f"main {head[:7]}: {result}")
@@ -155,6 +158,7 @@ def promote_poll(args: argparse.Namespace) -> int:
         run=runner,
         run_job=lambda attempt, health: run_gate_job(attempt, health_sh=health),
         now=lambda: datetime.now(UTC),
+        aliases=qdrant_aliases,
     )
     sys.stdout.write("\n".join(run_poll(deps, Path(args.report_dir))) + "\n")
     return 0

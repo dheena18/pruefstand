@@ -12,6 +12,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 from gate_orchestrator.github_read import PUBLIC_REPO, PublicRepo
+from gate_orchestrator.index_job import qdrant_aliases
 from gate_orchestrator.lock import LOCK_DIR
 from gate_orchestrator.nightly_flow import NightDeps, make_runner, run_nightly
 from gate_orchestrator.post_run import subprocess_runner
@@ -67,5 +68,6 @@ def nightly(args: argparse.Namespace) -> int:
         run=make_runner(deadline, now, subprocess_runner),
         lock_dir=LOCK_DIR,
         now=now,
+        aliases=qdrant_aliases,
     )
     return run_nightly(deadline, Path(args.report_dir), deps)

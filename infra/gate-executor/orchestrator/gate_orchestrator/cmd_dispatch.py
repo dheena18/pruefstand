@@ -16,6 +16,7 @@ from gate_orchestrator.dispatch_flow import IMAGE_CONTEXT, Deps, load_maintainer
 from gate_orchestrator.gate_job import Attempt, run_gate_job
 from gate_orchestrator.gate_run import digest_from_status
 from gate_orchestrator.github_read import PUBLIC_REPO, PublicRepo, status_of
+from gate_orchestrator.index_job import qdrant_aliases
 from gate_orchestrator.jobs import load_gated_paths
 from gate_orchestrator.models import Dispatch, Job
 from gate_orchestrator.post_run import subprocess_runner
@@ -53,6 +54,7 @@ def dispatch(args: argparse.Namespace) -> int:
             main_config=main_dir / "pruefstand.yaml",
             work=work,
             env=env,
+            aliases=qdrant_aliases,
         )
         return run_gate_job(attempt, health_sh=main_dir / "infra" / "gpu" / "health.sh")
 

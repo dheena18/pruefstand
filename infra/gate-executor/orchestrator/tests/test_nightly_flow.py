@@ -9,6 +9,7 @@ from typing import Any
 
 import pytest
 from gate_orchestrator import heartbeat_store
+from gate_orchestrator.index_job import Aliases
 from gate_orchestrator.infra import InfraError
 from gate_orchestrator.nightly_flow import NightDeps, make_runner, run_nightly
 from gate_orchestrator.nightly_run import PLANNED_MINUTES, gate_failed
@@ -73,7 +74,9 @@ def pushed(monkeypatch: pytest.MonkeyPatch) -> list[Mapping[str, str]]:
     return sent
 
 
-def _night(tmp: Path, host: Host, *, now: datetime = START) -> tuple[SpyPoster, Path]:
+def _night(
+    tmp: Path, host: Host, *, now: datetime = START, aliases: Aliases | None = None
+) -> tuple[SpyPoster, Path]:
     home = tmp / "home"
     poster = SpyPoster()
     deps = NightDeps(
@@ -83,6 +86,7 @@ def _night(tmp: Path, host: Host, *, now: datetime = START) -> tuple[SpyPoster, 
         run=host,
         lock_dir=tmp / "lock",
         now=lambda: now,
+        aliases=aliases,
     )
     deps.lock_dir.mkdir(exist_ok=True)
     assert run_nightly(DEADLINE, tmp / "report", deps) == 0
@@ -187,3 +191,14 @@ def test_the_nightly_run_may_use_the_time_left_before_the_deadline() -> None:
     run(["docker", "pull", "x"], {})
     assert seen[0][1] >= PLANNED_MINUTES["nightly-gate"] * 60  # never the PR runner's 100 min
     assert seen[1][1] == 600
+
+
+def test_the_night_checks_the_shared_index_through_its_deps(
+    tmp_path: Path, pushed: list[Mapping[str, str]]
+) -> None:
+    # review #259: nightly_flow must hand NightDeps.aliases to the attempt
+    host = Host()
+    _, home = _night(tmp_path, host, aliases=lambda env: set())
+    assert "index_missing" in pushed[-1]["last_nightly_status"]
+    assert not host.has("pruefstand", "run")
+    assert _counter(home) == "0"
