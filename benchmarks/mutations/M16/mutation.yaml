@@ -15,5 +15,5 @@ expected:
 rationale: >-
   The candidate is indexed from the corpus version before the one the dataset pins (resolved by the executor
   from the corpus registry; no corpus file is committed). run_eval's precondition aborts the run with
-  counts.corpus_mismatch = 1, exit 1, in both tiers. Variant M16b (the target misreports its version, a
-  /v1/info override) is informational and follows as its own entry.
+  counts.corpus_mismatch = 1, exit 1, in both tiers. Variant M16b (the target misreports its version) is
+  dropped (D1273).
