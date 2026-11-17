@@ -14,6 +14,7 @@ import pytest
 HOST = Path(__file__).resolve().parents[2] / "host"
 NAMES = HOST / "runner-env-names.sh"
 KEYS = HOST / "runner-env-keys.sh"
+ALL_KEYS = ("PRUEFSTAND_NONCE_KEY", "PRUEFSTAND_CANDIDATE_API_KEY", "QDRANT_READ_ONLY_API_KEY")
 SECRETS = ("s3cr3t-alpha", "b=c d", "quoted value", "single q", "multi", "line two", "tail")
 FAKE = """# runner.env (fake)
 
@@ -77,19 +78,19 @@ def test_names_refuses_a_missing_file(tmp_path: Path) -> None:
     assert "no such file" in done.stderr
 
 
-def test_keys_appends_both_keys_once_never_printing_them(env_file: Path) -> None:
+def test_keys_appends_all_keys_once_never_printing_them(env_file: Path) -> None:
     before = env_file.read_text(encoding="utf-8")
     done = run(KEYS, str(env_file))
     assert done.returncode == 0, done.stderr
     after = env_file.read_text(encoding="utf-8")
     assert after.startswith(before)  # nothing above changed
     added = dict(line.split("=", 1) for line in after[len(before) :].splitlines())
-    assert set(added) == {"PRUEFSTAND_NONCE_KEY", "PRUEFSTAND_CANDIDATE_API_KEY"}
+    assert set(added) == set(ALL_KEYS)
     for value in added.values():
         assert re.fullmatch(r"[0-9a-f]{64}", value)
         assert value not in done.stdout
         assert value not in done.stderr
-    assert added["PRUEFSTAND_NONCE_KEY"] != added["PRUEFSTAND_CANDIDATE_API_KEY"]
+    assert len(set(added.values())) == len(ALL_KEYS)  # distinct values
     assert stat.S_IMODE(env_file.stat().st_mode) == 0o600
     again = run(KEYS, str(env_file))
     assert again.returncode == 0
@@ -112,7 +113,7 @@ def test_keys_creates_a_missing_file_with_mode_600(tmp_path: Path) -> None:
     done = run(KEYS, str(path), stdin_script=True)
     assert done.returncode == 0, done.stderr
     assert stat.S_IMODE(path.stat().st_mode) == 0o600
-    assert len(path.read_text(encoding="utf-8").splitlines()) == 2
+    assert len(path.read_text(encoding="utf-8").splitlines()) == len(ALL_KEYS)
 
 
 def test_keys_refuses_a_symlink_and_a_group_readable_file(tmp_path: Path) -> None:
@@ -142,7 +143,7 @@ def test_no_value_reaches_a_trace(env_file: Path) -> None:
     )
     assert done.returncode == 0, done.stderr
     for line in env_file.read_text(encoding="utf-8").splitlines():
-        if line.startswith(("PRUEFSTAND_NONCE_KEY=", "PRUEFSTAND_CANDIDATE_API_KEY=")):
+        if line.startswith(tuple(f"{key}=" for key in ALL_KEYS)):
             assert line.split("=", 1)[1] not in done.stderr
 
 
@@ -200,10 +201,7 @@ def test_keys_ignore_a_key_like_line_inside_a_quoted_value(tmp_path: Path) -> No
     done = run(KEYS, str(path))
     assert done.returncode == 0, done.stderr
     added = path.read_text(encoding="utf-8")[len(text) :].splitlines()
-    assert [line.split("=", 1)[0] for line in added] == [
-        "PRUEFSTAND_NONCE_KEY",
-        "PRUEFSTAND_CANDIDATE_API_KEY",
-    ]
+    assert [line.split("=", 1)[0] for line in added] == list(ALL_KEYS)
 
 
 def test_keys_refuses_a_read_only_file_with_a_clear_message(tmp_path: Path) -> None:
@@ -246,13 +244,16 @@ def test_keys_refuses_an_empty_value_before_a_comment(tmp_path: Path, line: str)
 
 def test_keys_keep_a_value_with_a_comment_and_an_apostrophe(tmp_path: Path) -> None:
     path = tmp_path / "runner.env"
-    text = "PRUEFSTAND_NONCE_KEY=x # note\nPRUEFSTAND_CANDIDATE_API_KEY=it's\nOTHER=1\n"
+    text = (
+        "PRUEFSTAND_NONCE_KEY=x # note\nPRUEFSTAND_CANDIDATE_API_KEY=it's\n"
+        "QDRANT_READ_ONLY_API_KEY='k' # ro\nOTHER=1\n"
+    )
     path.write_text(text, encoding="utf-8")
     path.chmod(0o600)
     done = run(KEYS, str(path))
     assert done.returncode == 0, done.stderr
     assert path.read_text(encoding="utf-8") == text  # no duplicate key appended
-    assert done.stdout.count("present, kept") == 2
+    assert done.stdout.count("present, kept") == len(ALL_KEYS)
 
 
 def test_names_unquoted_quotes_are_literal_and_ansi_c_values_are_quoted(tmp_path: Path) -> None:
