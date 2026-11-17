@@ -4,9 +4,9 @@ import json
 from pathlib import Path
 
 import pytest
-from rq1.grid import GRID
+from rq1.grid import GRID, GridConfig
 from rq1.grid_plan import main, write_plans
-from rq1.run_grid import GPU_CONFIG, load_yaml, materialise, write_plan
+from rq1.run_grid import GPU_CONFIG, load_yaml, materialise, with_rerank, write_plan
 
 BASE, GRID_YAML = load_yaml(GPU_CONFIG), load_yaml(GRID)
 
@@ -64,3 +64,29 @@ def test_the_cli_prints_cleanup_only_for_done_cells(
     assert capsys.readouterr().out.split() == [
         "uv", "run", "rag-demo", "index", "--drop", f"rq1_{cells[2].rag_hash}"
     ]  # fmt: skip
+
+
+def test_no_plan_can_touch_the_shared_alias(tmp_path: Path) -> None:
+    """Every cell indexes into its own rq1_<hash> collection, never chunks_active (gate index)."""
+    cells = materialise(BASE, GRID_YAML)
+    write_plan(tmp_path, cells, 1234)
+    plans = write_plans(tmp_path, Path("corpus/v1"), Path("pruefstand.yaml"))
+    assert len(plans) == len(cells)
+    for plan in plans:
+        index = plan["index_argv"]
+        assert "--no-alias" in index, plan["cell"]
+        assert index[index.index("--collection") + 1] == f"rq1_{plan['cell']}"
+        assert plan["target_env"]["RAG_COLLECTION"] == f"rq1_{plan['cell']}"
+        assert plan["target_env"]["RAG_CONFIG"].endswith(f"{plan['cell']}/rag.yaml")
+        assert "chunks_active" not in " ".join(index + plan["run_argv"])
+
+
+def test_the_rerank_override_is_a_deep_merge() -> None:
+    reranked = materialise(BASE, GRID_YAML, rerank="reranked")
+    for cell in reranked:
+        assert cell.config["rerank"] == {**BASE["rerank"], "on_retrieve": True}
+    cfg = GridConfig(
+        name="x", config_hash="0" * 12, embedder="e", retrieval="dense", chunking="c",
+        compound_split=None, overrides={"rerank": {"top_n": 5}},
+    )  # fmt: skip
+    assert with_rerank(cfg, "reranked").overrides["rerank"] == {"top_n": 5, "on_retrieve": True}

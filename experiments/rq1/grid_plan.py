@@ -3,8 +3,11 @@
 Reads ``<out>/grid.json`` and each cell's ``rag.yaml`` (``run_grid.py``) and the cell states
 (``grid_state.py``). For every pending or partial cell it writes ``<out>/<hash>/plan.json``: the
 Qdrant collection ``rq1_<hash>``, the ``rag-demo index`` command (encoder from the cell's embed
-engine), the ``pruefstand run --split rq1`` command and the cell's ``rerank.on_retrieve``. Nothing
-is executed: the tier-2 stack runner of T6.2b runs the commands (index first, then the run).
+engine; ``--no-alias``, so the shared ``chunks_active`` alias the gate reads is never switched), the
+target environment (``RAG_COLLECTION`` = that collection, ``RAG_CONFIG`` = the cell's ``rag.yaml``:
+the candidate reads the cell's collection by name, never the alias), the ``pruefstand run --split
+rq1`` command and the cell's ``rerank.on_retrieve``. Nothing is executed: the tier-2 stack runner
+of T6.2b runs the commands (index first, then the run).
 
     uv run python experiments/rq1/grid_plan.py --corpus corpus/<v> [--out runs/rq1] [--cleanup]
 """
@@ -39,6 +42,7 @@ def cell_plan(out: Path, rag_hash: str, corpus: Path, config: Path) -> dict[str,
         "cell": rag_hash,
         "collection": collection,
         "rerank_on_retrieve": rag["rerank"]["on_retrieve"],
+        "target_env": {"RAG_COLLECTION": collection, "RAG_CONFIG": str(cell / "rag.yaml")},
         "index_argv": [
             "uv", "run", "rag-demo", "index", "--corpus", str(corpus),
             "--encoder", ENCODERS[rag["embed"]["engine"]], "--config", str(cell / "rag.yaml"),

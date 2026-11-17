@@ -74,7 +74,9 @@ def with_rerank(cfg: GridConfig, mode: RerankMode) -> GridConfig:
     """``cfg`` with the RQ1 reranker override for ``mode`` (``first_stage``: unchanged)."""
     if mode == "first_stage":
         return cfg
-    overrides = {**cfg.overrides, **RERANK_OVERRIDE}
+    # deep merge: a rerank section the grid already overrides keeps its other keys
+    rerank = {**cfg.overrides.get("rerank", {}), **RERANK_OVERRIDE["rerank"]}
+    overrides = {**cfg.overrides, "rerank": rerank}
     return cfg.model_copy(update={"overrides": overrides, "config_hash": overrides_hash(overrides)})
 
 
