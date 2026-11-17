@@ -17,9 +17,10 @@ services:
       - "127.0.0.1:${QDRANT_HTTP_PORT:-6333}:6333"
       - "127.0.0.1:${QDRANT_GRPC_PORT:-6334}:6334"
     environment:
-      # Admin key from runner.env; the candidate gets a scoped JWT (read the main collection, write pr_<N>_<sha>, S5)
+      # Read-write key for the trusted orchestrator; the candidate gets only the read-only key, passed to it as
+      # QDRANT_API_KEY (D1098), so it can never wipe or poison chunks_active. Both from runner.env, both required.
       QDRANT__SERVICE__API_KEY: ${QDRANT_API_KEY:?set QDRANT_API_KEY in runner.env (the executor's Qdrant admin key)}
-      QDRANT__SERVICE__JWT_RBAC: "true"
+      QDRANT__SERVICE__READ_ONLY_API_KEY: ${QDRANT_READ_ONLY_API_KEY:?set QDRANT_READ_ONLY_API_KEY in runner.env}
     volumes:
       # $PRUEFSTAND_HOME/qdrant on the VM disk, never the data root (prompt "Constraints")
       - ${PRUEFSTAND_HOME:?set PRUEFSTAND_HOME (runner.env)}/qdrant:/qdrant/storage

@@ -26,10 +26,12 @@ def test_qdrant_uses_the_pinned_image_of_the_root_compose() -> None:
     assert "@sha256:" in SERVICES["qdrant"]["image"]
 
 
-def test_qdrant_needs_its_api_key_and_jwt_rbac() -> None:
+def test_qdrant_needs_its_admin_key_and_the_candidates_read_only_key() -> None:
     env = SERVICES["qdrant"]["environment"]
     assert env["QDRANT__SERVICE__API_KEY"].startswith("${QDRANT_API_KEY:?")
-    assert env["QDRANT__SERVICE__JWT_RBAC"] == "true"  # scoped candidate keys (S5)
+    # D1098: the candidate gets only the read-only key; without it the candidate has no usable key
+    assert env["QDRANT__SERVICE__READ_ONLY_API_KEY"].startswith("${QDRANT_READ_ONLY_API_KEY:?")
+    assert "QDRANT__SERVICE__JWT_RBAC" not in env  # no scoped JWTs: the read-only key replaces them
 
 
 def test_qdrant_publishes_loopback_default_ports_only() -> None:
