@@ -51,6 +51,20 @@ def test_reorder_keeps_values_changes_order_and_keeps_the_config_hash() -> None:
     assert rag_hash(permuted) == config_hash(parse_config(GPU_CONFIG.read_text("utf-8"), CATALOGUE))
 
 
+def section_order(config: Mapping[str, object], name: str) -> list[str]:
+    section = config[name]
+    assert isinstance(section, dict)
+    return list(section)
+
+
+def test_reorder_permutes_nested_sections_too() -> None:
+    base = load_base()
+    nested = [
+        section_order(reorder(base, np.random.default_rng(s)), "generation") for s in range(20)
+    ]
+    assert any(order != section_order(base, "generation") for order in nested)
+
+
 def test_the_same_seed_gives_the_same_permutation() -> None:
     base = load_base()
     first = keys(reorder(base, np.random.default_rng(7)))
