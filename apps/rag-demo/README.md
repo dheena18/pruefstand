@@ -150,3 +150,8 @@ collection with a missing or different fingerprint (503, "re-index"). The served
 `uv run python -m rag_demo.analysis.analyzer "Kündigungsschutzgesetz"` prints the token list.
 Benchmark (`uv run pytest -m slow apps/rag-demo/tests/unit/analysis/test_benchmark.py -s`): 10 000 chunks
 tokenised and encoded in well under the 20 s limit on CPU.
+
+## Public demo mode (T8.4)
+
+`RAG_CONFIG=apps/rag-demo/configs/rag.public.yaml` switches on `public_mode`: kill switch, per-client rate limit, daily request and token budget, concurrency cap, server timeout, fixed tenants and CORS for one origin. Limits come from the `public` section and the `DEMO_*` / `TRUSTED_PROXY_HOPS` variables (`.env.example`). Every error is `{"code", "message", "retry_after_s"}` with `code` one of `rate_limited`, `daily_limit`, `busy`, `budget_exhausted`, `demo_disabled`, `invalid_request`, `body_too_large`, `timeout`, `server_error` (interfaces section 16). With `DEMO_TEST_RESET=1` (the e2e instance only) `POST /v1/_test/reset` clears the in-process state; it answers only loopback peers and only when idle.
+

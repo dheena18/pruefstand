@@ -133,7 +133,7 @@ def test_the_default_chunking_leaves_every_config_hash_unchanged() -> None:
     other = cfg.model_copy(update={"chunking": fixed(512)})
     assert config_hash(other) != config_hash(cfg)
     dump = cfg.model_dump(mode="json")
-    del dump["chunking"]
+    del dump["chunking"], dump["public_mode"], dump["public"]  # fields added later (T3.4b, T8.4)
     canonical = json.dumps(dump, sort_keys=True, separators=(",", ":"))
     digest = hashlib.sha256(canonical.encode())
     digest.update(b"\0")
