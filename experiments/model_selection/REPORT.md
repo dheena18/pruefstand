@@ -203,3 +203,27 @@ free** (reserve 2 GiB, so 0.2 GiB of headroom). If every removable catalogue mod
 planned. Choices for the owner: (a) keep the generator and the judged subset (current), (b) free cluster disk (or add a disk) and
 run the candidate pass, (c) wait for Ollama to support parallel requests for this architecture.
 
+
+## Phase 2 run-side measurements (2026-11-17)
+
+| Item | Result |
+| --- | --- |
+| Embedding `bge-m3`, GermanDPR test | **nDCG@10 0.8263** (95 % CI 0.8099–0.8424; bootstrap 2 000, seed 42), 1 025 queries over 2 876 passages (`germandpr_eval.py`; the passages are keyed by a text hash because the split's `passage_id` fields are empty). Run under `pruefstand-lock`, 11:16–11:24 CET, about 7.5 min. `/api/ps` showed no model loaded before; afterwards only `bge-m3`, loaded on demand by the `/api/embed` requests with the server's default keep_alive. No other model was requested, loaded or evicted. |
+| Reranker `bge-reranker-v2-m3`, VM CPU (`rerank-cpu`, dev stack, `RERANK_CPUS` default 8) | 10 passages per query in one batched request, cut to 256 tokens, 100 queries (`rerank_bench.py`, `results/rerank_latency.csv`). **Concurrency 1: 3.93 s/query** (p50 3.89, p95 4.47). **Concurrency 4: 11.75 s wall per query** (p50 46.8 s per request): parallel requests contend for the same 8 CPUs, so concurrency 1 is the operating point. Run under `stack.lock`, 11:40–12:07 CET; the weights came from the cache (`RERANK_OFFLINE=1`). |
+
+**Budget with these inputs** (`budget.report()`; generator output capped at 256 tokens from `rag.gpu.yaml`, D1286):
+
+| Run | GPU0 | GPU1 | CPU (rerank) | Budget |
+| --- | --- | --- | --- | --- |
+| PR, full core | 98.8 min | 49.7 | 51.8 | 90 min: over (GPU0) |
+| PR, 150-case subset | 67.9 min | 24.8 | 51.8 | fits |
+| Nightly, 600 generations | 168.2 min | 99.3 | – | 480 min: fits |
+
+**Reranker lane.** 790 queries × 3.93 s = **51.8 min, above the 20-minute D222 limit**. `robust_pr` alone (440 queries) is 28.8 min, also above it. By D222 the reranker is therefore **off for `robust_pr`**: first-stage robustness only. The `core` queries keep the reranker.
+
+Options to bring it back, each needing an owner decision:
+- give `rerank-cpu` more CPUs; the VM has 160 vCPUs and the service is capped at 8 (`RERANK_CPUS`);
+- tune the intra-op threads;
+- lower `rerank.top_n`.
+
+The e5 embedding arm on the VM CPU was not measured: no e5 service exists yet (the M03 blocker).
