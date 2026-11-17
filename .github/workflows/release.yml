@@ -70,7 +70,7 @@ jobs:
           repository-url: https://test.pypi.org/legacy/
 
   publish-pypi:
-    if: startsWith(github.ref, 'refs/tags/v')
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
     needs: build-dist
     runs-on: ubuntu-24.04
     timeout-minutes: 10
@@ -85,7 +85,7 @@ jobs:
       - uses: pypa/gh-action-pypi-publish@7245906fb61fa33a13554f9d5fb856fe61758086 # v1.14.3
 
   image-action:
-    if: startsWith(github.ref, 'refs/tags/v')
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     permissions:
@@ -105,13 +105,21 @@ jobs:
       - name: The tag must not exist yet (never overwrite)
         env:
           IMAGE: ${{ env.OWNER_IMAGES }}/pruefstand-action:${{ github.ref_name }}
+        # fail closed: only a definite "not found" from the registry counts as absent; an error
+        # (auth, 5xx, network, timeout) stops the release instead of risking an overwrite
         run: |
-          if docker manifest inspect "$IMAGE" > /dev/null 2>&1; then
+          if out="$(docker manifest inspect "$IMAGE" 2>&1)"; then
             echo "::error::$IMAGE already exists; a release image is built once and never overwritten"
             exit 1
           fi
+          if printf '%s' "$out" | grep -qiE 'manifest unknown|no such manifest'; then
+            echo "$IMAGE is absent: building it"
+          else
+            echo "::error::cannot tell whether $IMAGE exists: $out"
+            exit 1
+          fi
       - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
-      - name: Build (load for the scan)
+      - name: Build (load for the scan, then push this same image)
         uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
         with:
           context: .
@@ -122,6 +130,7 @@ jobs:
           provenance: false
           sbom: false
           tags: ${{ env.OWNER_IMAGES }}/pruefstand-action:${{ github.ref_name }}
+          labels: org.opencontainers.image.revision=${{ github.sha }}
       - name: Trivy gate (HIGH/CRITICAL with a fix available fails)
         uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0 (pins setup-trivy 3fb12ec = v0.2.6)
         with:
@@ -132,19 +141,16 @@ jobs:
           exit-code: "1"
       - name: Push the tag
         id: push
-        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
-        with:
-          context: .
-          file: action/Dockerfile
-          build-args: GIT_SHA=${{ github.sha }}
-          push: true
-          provenance: false
-          sbom: false
-          tags: ${{ env.OWNER_IMAGES }}/pruefstand-action:${{ github.ref_name }}
-          labels: org.opencontainers.image.revision=${{ github.sha }}
+        # the image Trivy scanned above is the one pushed: same image, same digest
+        env:
+          IMAGE: ${{ env.OWNER_IMAGES }}/pruefstand-action:${{ github.ref_name }}
+        run: |
+          docker push "$IMAGE"
+          ref="$(docker inspect --format '{{index .RepoDigests 0}}' "$IMAGE")"
+          echo "digest=${ref#*@}" >> "$GITHUB_OUTPUT"
 
   image-rag-demo:
-    if: startsWith(github.ref, 'refs/tags/v')
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     permissions:
@@ -164,13 +170,21 @@ jobs:
       - name: The tag must not exist yet (never overwrite)
         env:
           IMAGE: ${{ env.OWNER_IMAGES }}/rag-demo:${{ github.ref_name }}
+        # fail closed: only a definite "not found" from the registry counts as absent; an error
+        # (auth, 5xx, network, timeout) stops the release instead of risking an overwrite
         run: |
-          if docker manifest inspect "$IMAGE" > /dev/null 2>&1; then
+          if out="$(docker manifest inspect "$IMAGE" 2>&1)"; then
             echo "::error::$IMAGE already exists; a release image is built once and never overwritten"
             exit 1
           fi
+          if printf '%s' "$out" | grep -qiE 'manifest unknown|no such manifest'; then
+            echo "$IMAGE is absent: building it"
+          else
+            echo "::error::cannot tell whether $IMAGE exists: $out"
+            exit 1
+          fi
       - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
-      - name: Build (load for the scan)
+      - name: Build (load for the scan, then push this same image)
         uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
         with:
           context: .
@@ -181,6 +195,7 @@ jobs:
           provenance: false
           sbom: false
           tags: ${{ env.OWNER_IMAGES }}/rag-demo:${{ github.ref_name }}
+          labels: org.opencontainers.image.revision=${{ github.sha }}
       - name: Trivy gate (HIGH/CRITICAL with a fix available fails)
         uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0 (pins setup-trivy 3fb12ec = v0.2.6)
         with:
@@ -191,16 +206,13 @@ jobs:
           exit-code: "1"
       - name: Push the tag
         id: push
-        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
-        with:
-          context: .
-          file: apps/rag-demo/Dockerfile
-          build-args: GIT_SHA=${{ github.sha }}
-          push: true
-          provenance: false
-          sbom: false
-          tags: ${{ env.OWNER_IMAGES }}/rag-demo:${{ github.ref_name }}
-          labels: org.opencontainers.image.revision=${{ github.sha }}
+        # the image Trivy scanned above is the one pushed: same image, same digest
+        env:
+          IMAGE: ${{ env.OWNER_IMAGES }}/rag-demo:${{ github.ref_name }}
+        run: |
+          docker push "$IMAGE"
+          ref="$(docker inspect --format '{{index .RepoDigests 0}}' "$IMAGE")"
+          echo "digest=${ref#*@}" >> "$GITHUB_OUTPUT"
 
   sign:
     needs: [image-action, image-rag-demo]

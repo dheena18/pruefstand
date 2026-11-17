@@ -1,10 +1,14 @@
 """T9.1a: guards for release-please.yml, release.yml and the release-please config (ADR-0017)."""
 
 import json
+import os
 import re
+import shutil
+import subprocess
 from pathlib import Path
 from typing import Any
 
+import pytest
 import yaml
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -27,7 +31,7 @@ def uses(job: dict[str, Any]) -> list[str]:
 
 RP = load("release-please.yml")
 REL = load("release.yml")
-TAG_ONLY = "startsWith(github.ref, 'refs/tags/v')"
+TAG_ONLY = "github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')"
 RC_ONLY = "github.event_name == 'workflow_dispatch' && inputs.prerelease"
 APP_TOKEN = "${{ steps.app.outputs.token }}"  # noqa: S105  (an expression, not a secret)
 
@@ -61,7 +65,7 @@ def test_the_lock_step_runs_after_release_please_and_commits_only_uv_lock() -> N
     assert run.index("uv lock") < run.index("check_release_lock_diff.py") < run.index("commit")
     assert 'commit -m "chore: update uv.lock for release" -- uv.lock' in run
     assert "git add" not in run
-    assert steps(job)[lock]["env"]["TOKEN"] == APP_TOKEN
+    assert "push" not in run  # the push is its own step with the token (see below)
 
 
 def test_one_root_package_and_plain_tags() -> None:
@@ -113,3 +117,61 @@ def test_signing_is_by_digest_and_assets_are_never_clobbered() -> None:
     assert "--clobber" not in upload
     assert "demo-ready" not in json.dumps(REL["jobs"])  # only demo-ready.yml writes that asset
     assert "image-digests.json" in upload
+
+
+def test_the_app_token_is_scoped_and_only_the_push_step_sees_it() -> None:
+    job = RP["jobs"]["release-please"]
+    app = steps(job)[0]["with"]
+    assert (app["permission-contents"], app["permission-pull-requests"]) == ("write", "write")
+    lock = next(s for s in steps(job) if str(s.get("name", "")).startswith("uv lock"))
+    assert "env" not in lock
+    assert "token" not in json.dumps(lock).lower()
+    push = next(s for s in steps(job) if s.get("name") == "Push the uv.lock commit (App token)")
+    assert push["env"]["TOKEN"] == APP_TOKEN
+    assert push["if"] == "steps.lock.outputs.changed == 'true'"
+
+
+def test_the_scanned_image_is_the_one_pushed() -> None:
+    for name in ("image-action", "image-rag-demo"):
+        job_steps = steps(REL["jobs"][name])
+        push = next(s for s in job_steps if s.get("name") == "Push the tag")
+        assert "uses" not in push  # docker push of the loaded image, no second build
+        trivy = next(s for s in job_steps if str(s.get("uses", "")).startswith("aquasecurity/"))
+        assert push["env"]["IMAGE"] == trivy["with"]["image-ref"]
+        assert 'docker push "$IMAGE"' in str(push["run"])
+
+
+def check_step(job: str) -> dict[str, Any]:
+    return next(
+        s
+        for s in steps(REL["jobs"][job])
+        if s.get("name") == "The tag must not exist yet (never overwrite)"
+    )
+
+
+@pytest.mark.parametrize(
+    ("rc", "output", "verdict"),
+    [
+        (0, '{"schemaVersion": 2}', "refuse"),  # exists: never overwrite
+        (1, "manifest unknown", "build"),  # a definite not-found: build it
+        (1, "no such manifest: ghcr.io/x:v1", "build"),
+        (1, "unauthorized: authentication required", "refuse"),  # fail closed
+        (1, "received unexpected HTTP status: 503 Service Unavailable", "refuse"),
+        (1, "net/http: request canceled (Client.Timeout exceeded)", "refuse"),
+    ],
+)
+def test_the_tag_check_fails_closed(tmp_path: Path, rc: int, output: str, verdict: str) -> None:
+    fake = tmp_path / "docker"
+    fake.write_text(f"#!/bin/sh\nprintf '%s\\n' '{output}' >&2\nexit {rc}\n", encoding="utf-8")
+    fake.chmod(0o755)
+    env = {
+        **os.environ,
+        "PATH": f"{tmp_path}{os.pathsep}{os.environ['PATH']}",
+        "IMAGE": "ghcr.io/x:v1",
+    }
+    for job in ("image-action", "image-rag-demo"):
+        done = subprocess.run(  # noqa: S603  (the workflow's own script)
+            [shutil.which("bash") or "/bin/bash", "-e", "-c", str(check_step(job)["run"])],
+            env=env, capture_output=True, text=True, timeout=30, check=False,
+        )  # fmt: skip
+        assert (done.returncode == 0) is (verdict == "build"), (job, output, done.stdout)

@@ -31,6 +31,9 @@ jobs:
         with:
           app-id: ${{ secrets.RELEASE_APP_ID }}
           private-key: ${{ secrets.RELEASE_APP_KEY }}
+          # scoped to what release-please and the lock push need (zizmor: no broad App token)
+          permission-contents: write
+          permission-pull-requests: write
       - name: release-please (single root package)
         id: rp
         uses: googleapis/release-please-action@45996ed1f6d02564a971a2fa1b5860e934307cf7 # v5.0.0
@@ -50,18 +53,24 @@ jobs:
           version: "0.13.6"
           enable-cache: false
       - name: uv lock, guard, commit only uv.lock (X2.9)
+        id: lock
         if: steps.rp.outputs.prs_created == 'true' || steps.rp.outputs.pr != ''
-        env:
-          TOKEN: ${{ steps.app.outputs.token }}
-          REPO: ${{ github.repository }}
+        # no token in this step: uv lock and the guard run without it
         run: |
           uv lock
           git diff -- uv.lock | python3 scripts/ci/check_release_lock_diff.py
           if git diff --quiet -- uv.lock; then
             echo "uv.lock unchanged: no commit"
+            echo "changed=false" >> "$GITHUB_OUTPUT"
             exit 0
           fi
           git -c user.name="pruefstand-release[bot]" \
               -c user.email="pruefstand-release[bot]@users.noreply.github.com" \
               commit -m "chore: update uv.lock for release" -- uv.lock
-          git push "https://x-access-token:${TOKEN}@github.com/${REPO}.git" HEAD:release-please--branches--main
+          echo "changed=true" >> "$GITHUB_OUTPUT"
+      - name: Push the uv.lock commit (App token)
+        if: steps.lock.outputs.changed == 'true'
+        env:
+          TOKEN: ${{ steps.app.outputs.token }}
+          REPO: ${{ github.repository }}
+        run: git push "https://x-access-token:${TOKEN}@github.com/${REPO}.git" HEAD:release-please--branches--main
