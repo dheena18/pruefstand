@@ -29,6 +29,7 @@ from gate_orchestrator.infra import InfraError, run_with_retry
 from gate_orchestrator.lock import LOCK_DIR, run_locked
 from gate_orchestrator.models import Job
 from gate_orchestrator.preflight import report_preflight, run_preflight
+from gate_orchestrator.proxy_job import llm_proxy
 from gate_orchestrator.report import current_gate_status, post_gate_result
 from gate_orchestrator.status import StatusPoster
 from pruefstand.core.enums import GateStatus
@@ -97,15 +98,16 @@ class Attempt:
         ref = verify_image(self.digest, self.job.sha, lambda argv: self.run(argv, self.env))
         cenv = candidate_env(self.env)
         argv = candidate_argv(ref, name=name, job_label=name, env=cenv)
-        try:
-            code, _ = self.run(argv, docker_run_env(self.env, cenv))
-            if code != 0:
-                msg = f"candidate_down: docker run exit {code}"
-                raise InfraError(msg)
-            ip = self._must(ip_argv(name), "inspect").strip()
-            return self._run_and_gate(f"http://{ip}:{CANDIDATE_PORT}")
-        finally:
-            self.run(["docker", "rm", "-f", name], self.env)
+        with llm_proxy(self.run, self.env, self.main_config.parent):  # D1029: before the candidate
+            try:
+                code, _ = self.run(argv, docker_run_env(self.env, cenv))
+                if code != 0:
+                    msg = f"candidate_down: docker run exit {code}"
+                    raise InfraError(msg)
+                ip = self._must(ip_argv(name), "inspect").strip()
+                return self._run_and_gate(f"http://{ip}:{CANDIDATE_PORT}")
+            finally:
+                self.run(["docker", "rm", "-f", name], self.env)
 
 
 def run_gate_job(
