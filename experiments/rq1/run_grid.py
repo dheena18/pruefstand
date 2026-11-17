@@ -23,14 +23,14 @@ import json
 import sys
 from collections.abc import Mapping, Sequence
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
 import yaml
 
 # run as a script: import rq1.*
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from rq1.grid import GRID, GridConfig, apply_overrides, expand
+from rq1.grid import GRID, GridConfig, apply_overrides, expand, overrides_hash
 
 from pruefstand.core.errors import ConfigError
 from rag_demo.config import config_hash, parse_config
@@ -63,6 +63,21 @@ def derived_grid(grid: Mapping[str, Any], base: Mapping[str, Any]) -> dict[str, 
     return out
 
 
+# RQ1 reranker (owner decision pending, PR #254): "first_stage" keeps rag.gpu.yaml's
+# rerank.on_retrieve false (D1288), "reranked" overrides it to true for every cell. The choice is
+# part of the overrides, so it moves every grid and rag-demo hash and is recorded in grid.json.
+RerankMode = Literal["first_stage", "reranked"]
+RERANK_OVERRIDE: dict[str, Any] = {"rerank": {"on_retrieve": True}}
+
+
+def with_rerank(cfg: GridConfig, mode: RerankMode) -> GridConfig:
+    """``cfg`` with the RQ1 reranker override for ``mode`` (``first_stage``: unchanged)."""
+    if mode == "first_stage":
+        return cfg
+    overrides = {**cfg.overrides, **RERANK_OVERRIDE}
+    return cfg.model_copy(update={"overrides": overrides, "config_hash": overrides_hash(overrides)})
+
+
 class Cell:
     """One grid cell: its grid config, the full rag-demo config and that config's hash."""
 
@@ -74,7 +89,11 @@ class Cell:
 
 
 def materialise(
-    base: Mapping[str, Any], grid: Mapping[str, Any], *, extended: bool = False
+    base: Mapping[str, Any],
+    grid: Mapping[str, Any],
+    *,
+    extended: bool = False,
+    rerank: RerankMode = "first_stage",
 ) -> list[Cell]:
     """Every cell as a full, validated rag-demo config, in the expander's order.
 
@@ -85,7 +104,8 @@ def materialise(
             ``ConfigError`` for a catalogue mismatch).
     """
     cells = []
-    for cfg in expand(derived_grid(grid, base), extended=extended):
+    for expanded in expand(derived_grid(grid, base), extended=extended):
+        cfg = with_rerank(expanded, rerank)
         config = apply_overrides(base, cfg.overrides)
         endpoint = config["embed"].get("endpoint_env")
         if endpoint not in ALLOWED_ENDPOINT_ENVS:
@@ -103,7 +123,9 @@ def materialise(
     return cells
 
 
-def write_plan(out: Path, cells: Sequence[Cell], seed: int) -> Path:
+def write_plan(
+    out: Path, cells: Sequence[Cell], seed: int, rerank: RerankMode = "first_stage"
+) -> Path:
     """Write ``<out>/<rag_hash>/rag.yaml`` per cell and ``<out>/grid.json``; return the manifest."""
     rows = []
     for cell in cells:
@@ -117,9 +139,13 @@ def write_plan(out: Path, cells: Sequence[Cell], seed: int) -> Path:
             "embed_endpoint_env": cell.config["embed"].get("endpoint_env"),
             "retrieval": cell.grid.retrieval, "chunking": cell.grid.chunking,
             "compound_split": cell.grid.compound_split,
+            "rerank_on_retrieve": cell.config["rerank"]["on_retrieve"],
         })  # fmt: skip
     manifest = out / "grid.json"
-    body = {"seed": seed, "derived_from": "apps/rag-demo/configs/rag.gpu.yaml", "cells": rows}
+    body = {
+        "seed": seed, "derived_from": "apps/rag-demo/configs/rag.gpu.yaml",
+        "rerank_mode": rerank, "cells": rows,
+    }  # fmt: skip
     manifest.write_text(json.dumps(body, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
     return manifest
 
@@ -130,9 +156,12 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser.add_argument("--seed", type=int, default=1234)
     parser.add_argument("--extended", action="store_true")
     parser.add_argument("--out", type=Path, default=Path("runs/rq1"))
+    parser.add_argument("--rerank", choices=["first_stage", "reranked"], default="first_stage")
     args = parser.parse_args(argv)
-    cells = materialise(load_yaml(GPU_CONFIG), load_yaml(GRID), extended=args.extended)
-    manifest = write_plan(args.out, cells, args.seed)
+    cells = materialise(
+        load_yaml(GPU_CONFIG), load_yaml(GRID), extended=args.extended, rerank=args.rerank
+    )
+    manifest = write_plan(args.out, cells, args.seed, args.rerank)
     for cell in cells:
         print(f"{cell.rag_hash}  {cell.grid.name}")
     print(f"{manifest}: {len(cells)} cells")
