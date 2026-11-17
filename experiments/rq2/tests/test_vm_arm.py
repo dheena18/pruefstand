@@ -13,7 +13,7 @@ from pathlib import Path
 import pytest
 from rq2.rq2_config import REPO, load_config
 from rq2.run_judges import CALIBRATION_NONCE
-from rq2.vm_arm import VM_JUDGE, preflight, sessions, vm_items
+from rq2.vm_arm import VM_JUDGE, cassette_items, preflight, sessions, vm_items
 
 from pruefstand.core.config import LLMPolicyConfig
 from pruefstand.core.errors import ConfigError
@@ -31,24 +31,25 @@ CFG = load_config(REPO / "experiments/rq2/configs/rq2_judges.yaml")
 CASSETTES = Path(__file__).parent / "cassettes" / "vm_judge"
 
 
-def test_the_item_plan_is_seeded_and_never_holds_memerag() -> None:
+def test_the_item_plan_is_seeded_and_keeps_the_strata() -> None:
+    # MEMERAG joins the plan where data/derived/memerag_de exists (the VM model is local, D1283)
     first = vm_items(CFG, 300)
     assert [i.item_id for _, i in first] == [i.item_id for _, i in vm_items(CFG, 300)]
-    per_set = Counter(name for name, _ in first)
+    per_set = Counter(name for name, _ in first if name != "memerag")
     assert per_set == {
         "faithfulness_constructed": 300,
         "correctness": 300,
         "refusal": 300,
         "consistency": 300,
     }
-    assert all(i.calib_split == "test" and i.source != "memerag" for _, i in first)
+    assert all(i.calib_split == "test" for _, i in first)
     hard = {name: sum(1 for n, i in first if n == name and i.hard_negative) for name in per_set}
     assert all(v > 0 for k, v in hard.items() if k != "refusal")  # strata kept
 
 
 def test_sessions_cover_every_call_once_within_the_launcher_limit() -> None:
     plan = sessions(1200, 45.0)
-    assert [len(r) for r in plan] == [256, 256, 256, 256, 176]
+    assert [len(r) for r in plan] == [120] * 10
     assert [k for r in plan for k in r] == list(range(1200))
     assert sessions(0, 45.0) == []
     with pytest.raises(ValueError, match="positive"):
@@ -75,7 +76,7 @@ def test_recorded_vm_answers_parse_to_raw_scores() -> None:
     backend = CassetteRecorder(CASSETTES, "replay").wrap(None)
     client = LLMClient(backend, None, Budget(None, None), CallRecorder(), LLMPolicy(policy))
     judge = Judge(client, VM_JUDGE, PromptRegistry([PROMPT_ROOT]), nonce_key=CALIBRATION_NONCE)
-    items = [i for _, i in vm_items(CFG, 300)][:3]
+    items = cassette_items(CFG)  # the publishable sets only: no MEMERAG text in a cassette
     for item in items:
         verdict = asyncio.run(judge.score(make_task(item.metric, **item.inputs)))
         assert verdict.raw_score is not None
