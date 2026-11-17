@@ -21,6 +21,7 @@ from gate_orchestrator.gate_run import Runner, digest_from_status
 from gate_orchestrator.github_read import Json, status_of
 from gate_orchestrator.heartbeat import nightly_fields
 from gate_orchestrator.image import ImageVerificationError
+from gate_orchestrator.index_job import Aliases
 from gate_orchestrator.infra import InfraError, run_with_retry
 from gate_orchestrator.lock import maintenance_path, run_locked
 from gate_orchestrator.models import Job
@@ -166,6 +167,7 @@ class NightDeps:
     run: Runner
     lock_dir: Path
     now: Callable[[], datetime]
+    aliases: Aliases | None = None  # the CLI passes qdrant_aliases (D1030)
 
 
 def _finish(deps: NightDeps, head: str, status: str) -> int:
@@ -206,6 +208,7 @@ def run_nightly(deadline: datetime, report_dir: Path, deps: NightDeps) -> int:
         env=env,
         counter=read_counter(nightly_counter_path(env)),
         runs_dir=Path(env["PRUEFSTAND_HOME"]) / "runs",
+        aliases=deps.aliases,
     )
     done = run_locked(
         head,

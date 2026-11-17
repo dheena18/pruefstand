@@ -25,6 +25,7 @@ from gate_orchestrator.gate_run import (
     run_config,
 )
 from gate_orchestrator.image import ImageVerificationError, verify_image
+from gate_orchestrator.index_job import Aliases, ensure_shared_index
 from gate_orchestrator.infra import InfraError, run_with_retry
 from gate_orchestrator.lock import LOCK_DIR, run_locked
 from gate_orchestrator.models import Job
@@ -52,6 +53,7 @@ class Attempt:
     env: Mapping[str, str] = field(default_factory=dict)
     judged_subset: bool = False
     result: str = "error"
+    aliases: Aliases | None = None  # set by the CLI: check/build chunks_active first (D1030)
 
     def _must(self, argv: list[str], what: str) -> str:
         code, out = self.run(argv, self.env)
@@ -98,6 +100,8 @@ class Attempt:
         ref = verify_image(self.digest, self.job.sha, lambda argv: self.run(argv, self.env))
         cenv = candidate_env(self.env)
         argv = candidate_argv(ref, name=name, job_label=name, env=cenv)
+        if self.aliases is not None:
+            ensure_shared_index(self.run, self.env, self.aliases)
         with llm_proxy(self.run, self.env, self.main_config.parent):  # D1029: before the candidate
             try:
                 code, _ = self.run(argv, docker_run_env(self.env, cenv))
