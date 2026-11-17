@@ -105,9 +105,22 @@ jobs:
       - name: The tag must not exist yet (never overwrite)
         env:
           IMAGE: ${{ env.OWNER_IMAGES }}/pruefstand-action:${{ github.ref_name }}
-        # fail closed: only a definite "not found" from the registry counts as absent; an error
-        # (auth, 5xx, network, timeout) stops the release instead of risking an overwrite
+          PACKAGE: pruefstand-action
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        # fail closed. A package that does not exist yet (first release) is a definite 404 of the
+        # Packages API (the registry itself answers `denied` there); for an existing package only
+        # a definite "not found" of the tag counts as absent; any other error (auth, 5xx, network,
+        # timeout) stops the release instead of risking an overwrite
         run: |
+          if pkg="$(gh api "/users/dheena18/packages/container/$PACKAGE" 2>&1)"; then
+            echo "package $PACKAGE exists: checking the tag"
+          elif printf '%s' "$pkg" | grep -q 'HTTP 404'; then
+            echo "package $PACKAGE does not exist yet (first release): building"
+            exit 0
+          else
+            echo "::error::cannot read package $PACKAGE: $pkg"
+            exit 1
+          fi
           if out="$(docker manifest inspect "$IMAGE" 2>&1)"; then
             echo "::error::$IMAGE already exists; a release image is built once and never overwritten"
             exit 1
@@ -170,9 +183,22 @@ jobs:
       - name: The tag must not exist yet (never overwrite)
         env:
           IMAGE: ${{ env.OWNER_IMAGES }}/rag-demo:${{ github.ref_name }}
-        # fail closed: only a definite "not found" from the registry counts as absent; an error
-        # (auth, 5xx, network, timeout) stops the release instead of risking an overwrite
+          PACKAGE: rag-demo
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        # fail closed. A package that does not exist yet (first release) is a definite 404 of the
+        # Packages API (the registry itself answers `denied` there); for an existing package only
+        # a definite "not found" of the tag counts as absent; any other error (auth, 5xx, network,
+        # timeout) stops the release instead of risking an overwrite
         run: |
+          if pkg="$(gh api "/users/dheena18/packages/container/$PACKAGE" 2>&1)"; then
+            echo "package $PACKAGE exists: checking the tag"
+          elif printf '%s' "$pkg" | grep -q 'HTTP 404'; then
+            echo "package $PACKAGE does not exist yet (first release): building"
+            exit 0
+          else
+            echo "::error::cannot read package $PACKAGE: $pkg"
+            exit 1
+          fi
           if out="$(docker manifest inspect "$IMAGE" 2>&1)"; then
             echo "::error::$IMAGE already exists; a release image is built once and never overwritten"
             exit 1

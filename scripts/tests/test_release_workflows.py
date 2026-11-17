@@ -149,29 +149,38 @@ def check_step(job: str) -> dict[str, Any]:
     )
 
 
-@pytest.mark.parametrize(
-    ("rc", "output", "verdict"),
-    [
-        (0, '{"schemaVersion": 2}', "refuse"),  # exists: never overwrite
-        (1, "manifest unknown", "build"),  # a definite not-found: build it
-        (1, "no such manifest: ghcr.io/x:v1", "build"),
-        (1, "unauthorized: authentication required", "refuse"),  # fail closed
-        (1, "received unexpected HTTP status: 503 Service Unavailable", "refuse"),
-        (1, "net/http: request canceled (Client.Timeout exceeded)", "refuse"),
-    ],
-)
-def test_the_tag_check_fails_closed(tmp_path: Path, rc: int, output: str, verdict: str) -> None:
-    fake = tmp_path / "docker"
-    fake.write_text(f"#!/bin/sh\nprintf '%s\\n' '{output}' >&2\nexit {rc}\n", encoding="utf-8")
-    fake.chmod(0o755)
-    env = {
-        **os.environ,
-        "PATH": f"{tmp_path}{os.pathsep}{os.environ['PATH']}",
-        "IMAGE": "ghcr.io/x:v1",
-    }
+def fake(path: Path, name: str, rc: int, output: str) -> None:
+    script = path / name
+    script.write_text(f"#!/bin/sh\nprintf '%s\\n' '{output}' >&2\nexit {rc}\n", encoding="utf-8")
+    script.chmod(0o755)
+
+
+PKG_OK = (0, '{"name": "x"}')
+CHECK_CASES = [
+    ((1, "gh: Not Found (HTTP 404)"), (1, "denied: denied"), "build"),  # first release
+    ((1, "gh: Server Error (HTTP 500)"), (1, "manifest unknown"), "refuse"),  # API error
+    ((1, "gh: Bad credentials (HTTP 401)"), (1, "manifest unknown"), "refuse"),
+    (PKG_OK, (0, '{"schemaVersion": 2}'), "refuse"),  # the tag exists: never overwrite
+    (PKG_OK, (1, "manifest unknown"), "build"),  # a definite not-found of the tag
+    (PKG_OK, (1, "no such manifest: ghcr.io/x:v1"), "build"),
+    (PKG_OK, (1, "denied: denied"), "refuse"),  # the package exists: denied is an error here
+    (PKG_OK, (1, "unauthorized: authentication required"), "refuse"),
+    (PKG_OK, (1, "received unexpected HTTP status: 503 Service Unavailable"), "refuse"),
+    (PKG_OK, (1, "net/http: request canceled (Client.Timeout exceeded)"), "refuse"),
+]
+
+
+@pytest.mark.parametrize(("api", "registry", "verdict"), CHECK_CASES)
+def test_the_tag_check_fails_closed(
+    tmp_path: Path, api: tuple[int, str], registry: tuple[int, str], verdict: str
+) -> None:
+    fake(tmp_path, "gh", *api)
+    fake(tmp_path, "docker", *registry)
+    path = f"{tmp_path}{os.pathsep}{os.environ['PATH']}"
+    env = {**os.environ, "PATH": path, "IMAGE": "ghcr.io/x:v1", "PACKAGE": "x", "GH_TOKEN": "t"}
     for job in ("image-action", "image-rag-demo"):
         done = subprocess.run(  # noqa: S603  (the workflow's own script)
             [shutil.which("bash") or "/bin/bash", "-e", "-c", str(check_step(job)["run"])],
             env=env, capture_output=True, text=True, timeout=30, check=False,
         )  # fmt: skip
-        assert (done.returncode == 0) is (verdict == "build"), (job, output, done.stdout)
+        assert (done.returncode == 0) is (verdict == "build"), (job, api, registry, done.stdout)
