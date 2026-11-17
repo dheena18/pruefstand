@@ -76,9 +76,8 @@ def test_a_failed_build_leaves_no_build_json_and_no_stale_out(tmp_path: Path) ->
 
 
 def test_refusals_happen_before_any_build(tmp_path: Path) -> None:
-    for key, value in (("DATA_SHA", "main"), ("DEPLOY_RUN_ID", "run-1")):
-        result = _run(tmp_path, **{key: value})
-        assert result.returncode == 2, key
+    for result in (_run(tmp_path, DATA_SHA="main"), _run(tmp_path, DEPLOY_RUN_ID="run-1")):
+        assert result.returncode == 2
         assert not (tmp_path / "env.log").exists()
     bare = tmp_path / "bare"
     bare.mkdir()
