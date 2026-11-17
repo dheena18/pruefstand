@@ -50,3 +50,7 @@
   margin-left: var(--space-2);
   font-size: var(--text-sm);
 }
+/* The refusal badge carries a full German sentence: it must wrap at 360 px instead of scrolling the page (found by try_e2e T-REFUSED). */
+.try-answer .badge {
+  white-space: normal;
+}

@@ -24,6 +24,7 @@ const chromium = (width: number, height: number) => ({
 
 const ignoreFor = (set: "populated" | "empty") => [
   "**/basepath.spec.ts",
+  "**/try.spec.ts", // real demo stack: playwright.try.config.ts, scripts/demo/try_e2e.sh
   "**/offline-probe.spec.ts",
   `**/*.${set === "populated" ? "empty" : "populated"}.spec.ts`,
 ];

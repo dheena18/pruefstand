@@ -1749,9 +1749,10 @@ It is **never** a `ui.yml` job or a PR check (no `try-it` job exists in `ui.yml`
   `populated-try` is served on 4175 for every group; for `T-TIMEOUT` (run last) the script stops it and
   serves `populated-try-timeout` on 4175, so both have the one CORS origin
   `DEMO_ALLOWED_ORIGIN=http://localhost:4175`.
-- **One demo instance:** `rag-demo-e2e` (compose project `pruefstand-demo`, profile `e2e` in
-  `infra/deploy/demo/compose.yml`, published only on `127.0.0.1:$E2E_PORT`) shares the demo's Qdrant,
-  `llm` and `embed`; the public `rag-demo` is never touched. Its env adds `TRUSTED_PROXY_HOPS=0` (the
+- **One demo instance:** `rag-demo-e2e` (own compose project `pruefstand-demo-e2e`, profile `e2e` in
+  `infra/deploy/demo/compose.yml`, published only on `127.0.0.1:$E2E_PORT`) with its own Qdrant,
+  `llm`, `embed` and `index` (`demo-net` subnet `DEMO_NET_SUBNET=10.234.0.0/24`); the public demo project
+  `pruefstand-demo` is never touched, and the script's `down -v` only removes this project (D1310). Its env adds `TRUSTED_PROXY_HOPS=0` (the
   browser and the test call it directly, so the client key is the peer address rag-demo sees, which for
   host connections through the published port is the Docker bridge gateway, stable for the run;
   UI13-04) and `DEMO_TEST_RESET=1`.
@@ -1762,7 +1763,7 @@ It is **never** a `ui.yml` job or a PR check (no `try-it` job exists in `ui.yml`
   `demo` profile never sets the env. While a generation is in flight it returns **409** and changes
   nothing (UI13-15). A host request to the published port is never loopback inside the container, so
   **`try_e2e.sh` calls it from inside the container** before each test (row × combination):
-  `docker compose -p pruefstand-demo exec -T rag-demo-e2e curl -fsS -X POST http://localhost:8000/v1/_test/reset`
+  `docker compose -p pruefstand-demo-e2e exec -T rag-demo-e2e python -c '<urllib POST http://localhost:8000/v1/_test/reset>'` (the image has no `curl`)
   (retry on 409 for ≤ 60 s), then runs that one test with `docker exec` in a long-lived Playwright
   container (`-g '<exact title>' --project <p>`). `try.spec.ts` itself never calls the reset. So **each
   of the 8 combinations** of a row starts from empty limits.

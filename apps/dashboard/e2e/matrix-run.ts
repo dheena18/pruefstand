@@ -1,7 +1,4 @@
 // Generates the matrix tests of one fixture set: row x {light, dark} x {de, en} (report rows: x {light, dark}).
-import { readFileSync } from "node:fs";
-import path from "node:path";
-
 import { expect, test, type Page } from "@playwright/test";
 
 import {
@@ -15,30 +12,11 @@ import {
   type Theme,
 } from "./checks";
 import type { Row, SetName } from "./matrix";
+import { textOf } from "./i18n-text";
 import { rowsOf } from "./matrix-all";
 
 const THEMES: Theme[] = ["light", "dark"];
 const LOCALES: Locale[] = ["de", "en"];
-const messages = Object.fromEntries(
-  LOCALES.map((l) => [
-    l,
-    JSON.parse(
-      readFileSync(path.join(import.meta.dirname, "..", "src", "i18n", `${l}.json`), "utf8"),
-    ) as Record<string, string>,
-  ]),
-) as Record<Locale, Record<string, string>>;
-
-/** i18n text as a regex: placeholders `{x}` match anything. */
-function textOf(locale: Locale, key: string): RegExp {
-  const raw = messages[locale][key];
-  if (raw === undefined) throw new Error(`unknown i18n key ${key}`);
-  const source = raw
-    .split(/\{[a-z_]+\}/)
-    .map((part) => part.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"))
-    .join(".+?");
-  return new RegExp(source);
-}
-
 async function assertRow(page: Page, row: Row, locale: Locale): Promise<void> {
   const e = row.expect;
   const textLocale: Locale = row.lang === "de" ? "de" : locale;
