@@ -11,12 +11,11 @@ appears here or in a workflow.
 from dataclasses import dataclass
 from typing import Literal
 
-from gate_orchestrator.window import BLOCKS
+from gate_orchestrator.window import BLOCKS, RELEASE_REFS
 
 EXIT_OK = 0
 EXIT_NOT_PROMOTED = 1
 EXIT_INTEGRITY = 3
-RELEASE_REFS = tuple(f"release-b{k}" for k in range(BLOCKS))
 NIGHTLY_REFS = tuple(f"nightly-b{k}" for k in range(BLOCKS))
 Status = Literal["promoted", "not_promoted", "integrity_error", "error"]
 

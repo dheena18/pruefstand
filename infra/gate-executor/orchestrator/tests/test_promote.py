@@ -5,11 +5,11 @@ from pathlib import Path
 import pytest
 from gate_orchestrator.promote import (
     NIGHTLY_REFS,
-    RELEASE_REFS,
     interpret_promote_exit,
     promotion_commands,
     valid_ref,
 )
+from gate_orchestrator.window import RELEASE_REFS
 
 REPO = Path(__file__).resolve().parents[4]
 
@@ -74,7 +74,7 @@ def test_the_owner_override_appears_in_no_executor_workflow_or_public_workflow()
         for root in roots
         for path in root.rglob("*")
         if path.is_file()
-        and path.suffix in {".yml", ".yaml", ".sh", ".py"}
+        and "__pycache__" not in path.parts
         and path != Path(__file__).resolve()
         and "allow-failed-gate" in path.read_text(encoding="utf-8", errors="ignore")
     ]

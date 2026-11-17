@@ -4,7 +4,6 @@ from datetime import UTC, date, datetime
 
 import pytest
 from gate_orchestrator.nightly import (
-    RELEASE_REFS,
     NightResult,
     RunInfo,
     cause_switches_due,
@@ -16,6 +15,7 @@ from gate_orchestrator.nightly import (
     prune_due,
     release_run_due,
 )
+from gate_orchestrator.window import RELEASE_REFS
 
 
 def night(day: int, kind: str) -> NightResult:
@@ -44,9 +44,15 @@ def test_cause_switches_on_a_berlin_sunday_or_when_forced() -> None:
     assert cause_switches_due(saturday_evening, forced=True) is True
 
 
-def test_the_berlin_weekday_not_the_utc_weekday_decides() -> None:
-    late_saturday_utc = datetime(2026, 11, 7, 23, 30, tzinfo=UTC)  # 00:30 Sunday in Berlin
-    assert cause_switches_due(late_saturday_utc) is True
+def test_a_job_starting_after_midnight_belongs_to_the_evening_it_was_fired() -> None:
+    sunday_night_after_midnight = datetime(2026, 11, 8, 23, 30, tzinfo=UTC)  # 00:30 Monday Berlin
+    saturday_night_after_midnight = datetime(2026, 11, 7, 23, 30, tzinfo=UTC)  # 00:30 Sunday
+    assert cause_switches_due(sunday_night_after_midnight) is True
+    assert cause_switches_due(saturday_night_after_midnight) is False
+
+
+def test_sunday_daytime_start_before_the_deadline_is_still_the_saturday_night() -> None:
+    assert cause_switches_due(datetime(2026, 11, 8, 4, 0, tzinfo=UTC)) is False  # 05:00 Sunday
 
 
 def test_a_naive_datetime_is_refused() -> None:

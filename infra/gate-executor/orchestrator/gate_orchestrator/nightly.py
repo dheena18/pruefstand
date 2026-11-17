@@ -7,13 +7,12 @@ elsewhere (``night_guard.py``, ``backup_check.py``); the window rules are in ``w
 
 from collections.abc import Collection, Mapping, Sequence
 from dataclasses import dataclass
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from typing import Literal
 
-from gate_orchestrator.window import BERLIN, BLOCKS
+from gate_orchestrator.window import BERLIN, BLOCKS, RELEASE_REFS, night_deadline
 
 SUNDAY = 6
-RELEASE_REFS = tuple(f"release-b{k}" for k in range(BLOCKS))
 FailKind = Literal["none", "hard", "statistical"]
 
 
@@ -29,7 +28,14 @@ def release_run_due(promoted_refs: Collection[str]) -> bool:
 
 
 def cause_switches_due(started: datetime, *, forced: bool = False) -> bool:
-    """True when the night starts on a Sunday (Europe/Berlin), or when forced (D223).
+    """True when the night that ``started`` belongs to began on a Sunday (Europe/Berlin), or forced.
+
+    A night belongs to the evening it was fired: its deadline (06:00) minus one day, so a job that
+    starts after 00:00 on Monday still counts for the Sunday night (D223).
+
+    >>> from datetime import timezone
+    >>> cause_switches_due(datetime(2026, 11, 8, 23, 30, tzinfo=timezone.utc))  # 00:30 Monday
+    True
 
     Raises:
         ValueError: ``started`` is naive.
@@ -37,7 +43,8 @@ def cause_switches_due(started: datetime, *, forced: bool = False) -> bool:
     if started.tzinfo is None:
         msg = "datetime must be timezone-aware"
         raise ValueError(msg)
-    return forced or started.astimezone(BERLIN).weekday() == SUNDAY
+    night_start = night_deadline(started).astimezone(BERLIN).date() - timedelta(days=1)
+    return forced or night_start.weekday() == SUNDAY
 
 
 @dataclass(frozen=True)
