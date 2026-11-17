@@ -23,6 +23,13 @@
 set -euo pipefail
 
 die() { echo "sync_executor: $1" >&2; exit "${2:-1}"; }
+VM_STEP="sudo -u pruefstand git -C /home/pruefstand/pruefstand-gate pull --ff-only"
+# Every successful run ends with the step on the VM that brings the executor's checkout up to date.
+done_ok() {
+  echo "sync_executor: $1"
+  echo "Then, on the VM (once the private main has the change): $VM_STEP"
+  exit 0
+}
 usage="usage: sync_executor.sh <executor-YYYYMMDD[.N]> [--init] [--dry-run]"
 
 [ "$#" -ge 1 ] && [ "$#" -le 3 ] || die "$usage" 64
@@ -103,21 +110,29 @@ fi
 printf '%s %s\n%s' "$tag" "$commit" "$listing" > "$dest/SYNCED_FROM"
 
 git -C "$dest" add -A
+# File modes come from the public tree, never from the clone's filesystem: with core.fileMode=false
+# (Windows Git Bash) a plain `git add` stores the executable host scripts as 100644.
+for dir in orchestrator llm-proxy host; do
+  git ls-tree -r "$commit" -- "infra/gate-executor/$dir" | while read -r mode _ _ path; do
+    case "$mode" in
+      100755) git -C "$dest" update-index --chmod=+x -- "$path" ;;
+      100644) git -C "$dest" update-index --chmod=-x -- "$path" ;;
+    esac
+  done
+done
 if git -C "$dest" diff --cached --quiet; then
-  echo "sync_executor: nothing to sync for $tag"
-  exit 0
+  done_ok "nothing to sync for $tag"
 fi
 git -C "$dest" commit -q -m "sync: public $tag ($commit)"
 git -C "$dest" show --stat --format='%s' HEAD
 if [ "$dry_run" -eq 1 ]; then
-  echo "sync_executor: dry run, nothing pushed"
-  exit 0
+  done_ok "dry run, nothing pushed"
 fi
 git -C "$dest" push -q origin "$branch"
 if [ "$init" -eq 1 ]; then
-  echo "sync_executor: initial executor code pushed to main of $private_remote"
-  exit 0
+  done_ok "initial executor code pushed to main of $private_remote"
 fi
 gh pr create --repo "$private_repo" --base main --head "$branch" \
   --title "sync: public $tag" \
   --body "Executor code of the public repo at \`$tag\` (\`$commit\`), copied by scripts/sync_executor.sh (T6.2a S10). Review the diff, then merge."
+done_ok "PR opened in $private_repo; review and merge it there"

@@ -51,6 +51,8 @@ class Sandbox:
             "apps/rag-demo/not_synced.py": "N = 1\n",
         }.items():
             _write(self.public, rel, text)
+        hook = self.public / "infra/gate-executor/host/job_started.sh"
+        hook.chmod(hook.stat().st_mode | stat.S_IEXEC)  # an executable host script (100755)
         _git(self.public, "add", "-A")
         _git(self.public, "commit", "-q", "-m", "public")
         self.private = tmp / "private.git"
@@ -72,7 +74,7 @@ class Sandbox:
         args = ["tag", "-a", name, "-m", "executor sync"] if annotated else ["tag", name]
         _git(self.public, *args)
 
-    def run(self, *args: str) -> subprocess.CompletedProcess[str]:
+    def run(self, *args: str, **extra_env: str) -> subprocess.CompletedProcess[str]:
         env = {
             **os.environ,
             "PATH": f"{self.bin}:{os.environ['PATH']}",
@@ -82,6 +84,7 @@ class Sandbox:
             "GIT_AUTHOR_EMAIL": "test@example.invalid",
             "GIT_COMMITTER_NAME": "test",
             "GIT_COMMITTER_EMAIL": "test@example.invalid",
+            **extra_env,
         }
         return subprocess.run(  # noqa: S603 - fixed argv
             ["bash", str(SCRIPT), *args], cwd=self.public, env=env, capture_output=True, text=True,  # noqa: S607 - bash from PATH
@@ -278,3 +281,36 @@ def test_workflows_calling_a_missing_cli_subcommand_are_refused(box: Sandbox) ->
 def test_workflows_calling_a_defined_subcommand_sync(box: Sandbox) -> None:
     _workflow_calling(box, 'sub.add_parser("nightly", help="x")\n')
     assert box.run(TAG).returncode == 0
+
+
+VM_STEP = "sudo -u pruefstand git -C /home/pruefstand/pruefstand-gate pull --ff-only"
+
+
+def test_modes_come_from_the_public_tree_even_with_filemode_false(box: Sandbox) -> None:
+    # Windows Git Bash clones with core.fileMode=false, so a plain `git add` stores every new
+    # file as 100644; the executable host scripts must stay 100755 in the private repo.
+    # Command-level config wins over the repo-local value a fresh clone probes on Linux.
+    box.tag()
+    res = box.run(
+        TAG, GIT_CONFIG_COUNT="1", GIT_CONFIG_KEY_0="core.fileMode", GIT_CONFIG_VALUE_0="false"
+    )
+    assert res.returncode == 0, res.stderr
+    ref = f"sync/{TAG}"
+    hook = _git(box.private, "ls-tree", ref, "infra/gate-executor/host/job_started.sh")
+    assert hook.startswith("100755 ")
+    plain = _git(box.private, "ls-tree", ref, "infra/gate-executor/llm-proxy/llm_proxy.py")
+    assert plain.startswith("100644 ")
+
+
+@pytest.mark.parametrize("mode", ["pr", "dry-run", "nothing", "init"])
+def test_the_printed_instructions_end_with_the_vm_pull(box: Sandbox, mode: str) -> None:
+    if mode == "init":
+        box.private = _empty_remote(box)
+    box.tag()
+    if mode == "nothing":
+        assert box.run(TAG).returncode == 0
+        _git(box.tmp, "--git-dir", str(box.private), "branch", "-f", "main", f"sync/{TAG}")
+    args = {"pr": (), "dry-run": ("--dry-run",), "nothing": (), "init": ("--init",)}[mode]
+    res = box.run(TAG, *args)
+    assert res.returncode == 0, res.stderr
+    assert res.stdout.rstrip().splitlines()[-1].endswith(VM_STEP)
