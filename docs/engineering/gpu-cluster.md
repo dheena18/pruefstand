@@ -367,6 +367,17 @@ seeded 150-case judged subset of `core` (`TestCase.judged_subset`, T4.1; stratif
 no `lang` stratum; round 13 P3.4: it acts on the bottleneck, and `budget.py` reports which lane binds, generator or
 judge); retrieval metrics stay on all of `core` via `/v1/retrieve`, deterministic security cases always run in
 full; `RunManifest.judged_subset` is part of the fingerprint, N1, and the SPEC MDE tables are updated (Z4). Never silently shrink a split; a budget overrun reports `stop_reason` and fails.
+**Measured (T3.1b, 2026-11-03 rates; 256-token output cap; D655, D1286):**
+- PR tier, full `core`: generator lane 98.8 min, judge lane 49.7 min. That is over 90 min, so the 150-case judged subset is the PR default (D655): 67.9 min.
+- Nightly: 168 min.
+
+**Reranker lane (2026-11-17, D1287):**
+- `bge-reranker-v2-m3` on the VM CPU takes 3.93 s/query at concurrency 1. Concurrency 4 is slower per query: the service is CPU-bound at `RERANK_CPUS` 8.
+- PR lane: 790 queries = 51.8 min, over 20 min. So `rerank.on_retrieve: false` (D271, D1288): `/v1/retrieve` skips the reranker, and `/v1/query` keeps it.
+- `/v1/retrieve` serves `robust_pr` and, with the subset, the `core` answerable cases outside it. Their retrieval metrics are first-stage.
+- The reranked lane is then about 15.7 min, and it runs on the CPU in parallel with the generator lane.
+- Way back (owner): more CPUs for `rerank-cpu`, then re-measure with `experiments/model_selection/rerank_bench.py`.
+
 Measured run-dir sizes: PR run _pending (T6.3)_, nightly run _pending (T6.3)_.
 
 ## 6. How CI reaches the GPUs
