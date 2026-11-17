@@ -5,7 +5,9 @@ only applies to the current tree breaks the RQ3 bench (it did for N01 after D128
 out ``base_sha`` in a temporary worktree and runs ``git apply --check`` for every patch entry.
 """
 
+import os
 import subprocess
+from collections.abc import Mapping
 from pathlib import Path
 
 import pytest
@@ -23,10 +25,32 @@ def _has_commit(sha: str) -> bool:
     return done.returncode == 0
 
 
+def require_base(base: str, *, present: bool, env: Mapping[str, str]) -> None:
+    """Fail in CI (``CI=true``: ci.yml fetches base_sha, D1291), skip in a shallow local clone."""
+    if present:
+        return
+    msg = f"base_sha {base[:12]} is not in this clone"
+    if env.get("CI") == "true":
+        pytest.fail(f"{msg}: the CI test job must fetch it (ci.yml, D1291)")
+    pytest.skip(f"{msg} (shallow checkout)")
+
+
+def test_a_missing_base_fails_in_ci_and_skips_locally() -> None:
+    require_base("a" * 40, present=True, env={"CI": "true"})  # present: nothing happens
+    # BaseException: a Skipped from a fail->skip change must not escape as a skipped test
+    with pytest.raises(BaseException, match="must fetch it") as failed:
+        require_base("a" * 40, present=False, env={"CI": "true"})
+    assert failed.type is pytest.fail.Exception
+    assert "must fetch it" in str(failed.value)
+    with pytest.raises(BaseException, match="shallow checkout") as skipped:
+        require_base("a" * 40, present=False, env={})
+    assert skipped.type is pytest.skip.Exception
+    assert "shallow checkout" in str(skipped.value)
+
+
 def test_every_patch_applies_at_base_sha(worktree: Path) -> None:
     base = load_index().base_sha
-    if not _has_commit(base):  # a shallow CI checkout lacks history (fetch base_sha, T7.1c)
-        pytest.skip(f"base_sha {base[:12]} is not in this clone (shallow checkout)")
+    require_base(base, present=_has_commit(base), env=os.environ)
     ensure_worktree(worktree, base)
     failed = []
     for spec in load_all():
