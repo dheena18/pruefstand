@@ -1,13 +1,25 @@
 """T7.2 S4 (pure core): detection is FAIL only, should-detect denominator, no-op rates, tiers."""
 
+from collections.abc import Iterable, Mapping
+
 import pytest
-from mutations.schema import load_all
-from rq3.score import Decision, Rate, SummaryRow, Variant, matches_expected, rate, summarise
+from mutations.schema import MutationSpec, load_all, load_index, load_spec
+from rq3.score import Decision, Rate, SummaryRow, Variant, matches_expected, rate
+from rq3.score import summarise as score_all
 
 from pruefstand.core.enums import GateStatus
 from pruefstand.core.errors import ConfigError
 
 SPECS = {s.id: s for s in load_all()}
+PENDING = tuple(load_index().pending)
+
+
+def summarise(
+    decisions: Iterable[Decision], specs: Mapping[str, MutationSpec], should: Mapping[str, bool]
+) -> list[SummaryRow]:
+    return score_all(decisions, specs, should, pending=PENDING)
+
+
 F, W, P = GateStatus.FAIL, GateStatus.WARN, GateStatus.PASS
 STATISTICAL = sorted(i for i, s in SPECS.items() if s.stratum == "statistical" and not s.is_noop)
 
@@ -78,7 +90,7 @@ def test_wrong_tier_unknown_entry_and_missing_true_effect_are_refused() -> None:
     with pytest.raises(ConfigError, match=r"X3\.10"):
         summarise([d("M06", F, tier="pr")], SPECS, {"M06": True})
     with pytest.raises(ConfigError, match="not an entry"):
-        summarise([d("M11", F)], SPECS, {})  # pending entries are never scored
+        summarise([d("XX9", F)], SPECS, {})
     with pytest.raises(ConfigError, match="true-effect"):
         summarise([d("M01", F)], SPECS, {})
 
@@ -87,3 +99,33 @@ def test_expected_status_comparison() -> None:
     assert matches_expected(d("M08", F), SPECS["M08"])
     assert not matches_expected(d("N01", W), SPECS["N01"])
     assert rate(0, 0).rate is None
+
+
+U, INSUF = GateStatus.UNSUPPORTED_CONFIG, GateStatus.INSUFFICIENT_DATA
+
+
+def test_unsupported_config_counts_as_warn_everywhere() -> None:
+    should = dict.fromkeys(STATISTICAL, True)
+    rows = summarise([d("N01", U), d("M01", U)], SPECS, should)
+    assert cell(rows, "pruefstand", "pr", "false_warn").k == 1
+    assert cell(rows, "pruefstand", "pr", "false_block").k == 0
+    assert cell(rows, "pruefstand", "pr", "warn_statistical").k == 1
+    assert cell(rows, "pruefstand", "pr", "detection_statistical").k == 0
+    assert not matches_expected(d("N01", U), SPECS["N01"])
+
+
+def test_insufficient_data_is_neither_a_detection_nor_an_alarm_and_is_counted() -> None:
+    should = dict.fromkeys(STATISTICAL, True)
+    rows = summarise([d("N01", INSUF), d("M01", INSUF), d("M08", F)], SPECS, should)
+    assert cell(rows, "pruefstand", "pr", "false_block").k == 0
+    assert cell(rows, "pruefstand", "pr", "false_warn").k == 0
+    det = cell(rows, "pruefstand", "pr", "detection_statistical")
+    assert (det.k, det.n) == (0, 1)  # stays in the denominator as not detected
+    insufficient = cell(rows, "pruefstand", "pr", "insufficient_data")
+    assert (insufficient.k, insufficient.n) == (2, 3)
+
+
+def test_a_pending_entry_is_refused_even_if_the_caller_passes_its_spec() -> None:
+    assert "M11" in PENDING
+    with pytest.raises(ConfigError, match="pending"):
+        summarise([d("M11", F)], {**SPECS, "M11": load_spec("M11")}, {"M11": True})

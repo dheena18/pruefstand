@@ -17,6 +17,7 @@ import numpy as np
 
 from pruefstand.core.config.gate import GatePolicy
 from pruefstand.core.enums import GateStatus
+from pruefstand.core.errors import ConfigError
 from pruefstand.core.models.gate import GateReport
 from pruefstand.core.models.metric import MetricStatus
 from pruefstand.core.models.run import RunResults
@@ -60,6 +61,9 @@ def naive_gate(
 
     Returns:
         ``FAIL`` or ``PASS``.
+
+    Raises:
+        ConfigError: a gated paired metric has no entry in ``directions``.
     """
     if production.hard_fails or any(
         c.status is GateStatus.FAIL for c in production.absolute_checks
@@ -71,6 +75,9 @@ def naive_gate(
         base, cand = overall_mean(baseline, metric), overall_mean(candidate, metric)
         if base is None or cand is None:
             continue
+        if metric not in directions:
+            msg = f"no direction for the gated metric {metric} (MetricRegistry.directions())"
+            raise ConfigError(msg)
         drop = base - cand if directions[metric] else cand - base
         if drop > rule.max_drop:
             return GateStatus.FAIL

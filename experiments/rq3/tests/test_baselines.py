@@ -1,12 +1,14 @@
 """T7.2 S2: the naive mean gate and the no-slices gate on the gate's own test fixture."""
 
 import numpy as np
+import pytest
 from rq3.baselines import naive_gate, no_slice_gate, overall_mean
 from testsupport.builders import fixture_f0, make_run
 from testsupport.gate_helpers import DIRECTIONS, FAIL, PASS
 from testsupport.gate_helpers import POLICY as GATE_POLICY
 
 from pruefstand.core.enums import GateStatus
+from pruefstand.core.errors import ConfigError
 from pruefstand.core.models.run import RunResults
 from pruefstand.gate.policy import evaluate_gate
 
@@ -58,3 +60,11 @@ def test_a_large_drop_in_a_few_clusters_fails_the_naive_gate_only() -> None:
     prod, naive, _ = three(few)
     assert naive is FAIL
     assert prod is not FAIL
+
+
+def test_naive_gate_names_a_metric_without_direction() -> None:
+    base, cand = runs({})
+    prod = evaluate_gate(base, cand, POLICY, np.random.default_rng(1), directions=DIRECTIONS)
+    partial = {m: v for m, v in DIRECTIONS.items() if m != "faithfulness"}
+    with pytest.raises(ConfigError, match="faithfulness"):
+        naive_gate(prod, base, cand, POLICY, directions=partial)

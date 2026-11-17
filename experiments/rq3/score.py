@@ -10,7 +10,7 @@ per tier.
 """
 
 from collections import defaultdict
-from collections.abc import Iterable, Mapping
+from collections.abc import Collection, Iterable, Mapping
 from typing import Literal
 
 from mutations.schema import MutationSpec
@@ -30,6 +30,7 @@ Outcome = Literal[
     "normaliser_pass",
     "false_block",
     "false_warn",
+    "insufficient_data",
 ]
 ALSO_NIGHTLY = frozenset({"M14", "M15", "M20"})  # also in the nightly table (X3.10)
 
@@ -97,6 +98,19 @@ def _outcomes(
     return [("below_delta_flagged", GateStatus.FAIL)]
 
 
+def counted_status(status: GateStatus) -> GateStatus:
+    """The status a decision is scored as: ``UNSUPPORTED_CONFIG`` counts as ``WARN`` (GateStatus).
+
+    ``INSUFFICIENT_DATA`` stays as it is: it is neither a detection nor an alarm and gets its own
+    ``insufficient_data`` row (PREREGISTRATION.md, amendment A1).
+
+    Examples:
+        >>> counted_status(GateStatus.UNSUPPORTED_CONFIG) is GateStatus.WARN
+        True
+    """
+    return GateStatus.WARN if status is GateStatus.UNSUPPORTED_CONFIG else status
+
+
 def _check_tier(decision: Decision, spec: MutationSpec) -> None:
     allowed = {spec.tier} | ({"nightly"} if spec.id in ALSO_NIGHTLY else set())
     if decision.tier not in allowed:
@@ -110,6 +124,8 @@ def summarise(
     decisions: Iterable[Decision],
     specs: Mapping[str, MutationSpec],
     should_detect: Mapping[str, bool],
+    *,
+    pending: Collection[str],
 ) -> list[SummaryRow]:
     """Count every outcome per variant and tier.
 
@@ -117,24 +133,34 @@ def summarise(
         decisions: The scored runs (re-runs after infra errors are already replaced).
         specs: ``mutation.yaml`` of every scored entry, by id.
         should_detect: statistical mutation id -> true effect >= delta (``true_effect.csv``).
+        pending: the ``pending`` ids of ``index.yaml``; a decision for one of them is refused,
+            whatever ``specs`` holds (pending entries are never scored).
 
     Returns:
         One row per (variant, tier, outcome) that has decisions, sorted.
 
     Raises:
-        ConfigError: an unknown entry, a decision in a tier the entry does not declare, or a
-            statistical mutation without a true-effect result.
+        ConfigError: a pending or unknown entry, a decision in a tier the entry does not declare,
+            or a statistical mutation without a true-effect result.
     """
     counts: dict[tuple[Variant, Tier, Outcome], list[int]] = defaultdict(lambda: [0, 0])
     for decision in decisions:
+        if decision.entry in pending:
+            msg = f"{decision.entry}: pending in benchmarks/mutations/index.yaml, never scored"
+            raise ConfigError(msg)
         spec = specs.get(decision.entry)
         if spec is None:
             msg = f"{decision.entry}: not an entry of benchmarks/mutations/index.yaml"
             raise ConfigError(msg)
         _check_tier(decision, spec)
-        for outcome, counted in _outcomes(spec, should_detect):
+        status = counted_status(decision.status)
+        outcomes = [
+            *_outcomes(spec, should_detect),
+            ("insufficient_data", GateStatus.INSUFFICIENT_DATA),
+        ]
+        for outcome, counted in outcomes:
             cell = counts[(decision.variant, decision.tier, outcome)]
-            cell[0] += decision.status is counted
+            cell[0] += status is counted
             cell[1] += 1
     return [
         SummaryRow(variant=v, tier=t, outcome=o, rate=rate(k, n))
@@ -144,4 +170,4 @@ def summarise(
 
 def matches_expected(decision: Decision, spec: MutationSpec) -> bool:
     """Whether the decided status equals ``expected.status`` of ``mutation.yaml``."""
-    return decision.status.value == spec.expected.status.lower()
+    return counted_status(decision.status).value == spec.expected.status.lower()
