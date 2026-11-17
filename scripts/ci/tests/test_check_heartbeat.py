@@ -279,3 +279,21 @@ def test_string_payload_unknown_flag_closes_nothing(value: str) -> None:
     hb = _as_pushed(_hb())
     hb["tunnel_ok"] = value
     assert [a for a in evaluate(hb, NOW, open_labels=ALL_OPEN) if a.op == "close"] == []
+
+
+@pytest.mark.parametrize("age", ["nan", "NaN", "-1", "inf", "-0.5"])
+def test_non_finite_or_negative_backup_age_keeps_backup_stale_open(age: str) -> None:
+    # review #215: such a value is unknown, never evidence that the laptop copy is fresh
+    hb = _as_pushed(_hb())
+    hb["laptop_backup_age_days"] = age
+    assert "backup-stale" not in _ops(evaluate(hb, NOW, open_labels={"backup-stale"}))
+
+
+def test_executor_down_closes_only_when_every_health_field_is_true() -> None:
+    # review #215: a field false for less than 2 h is no alert, but no recovery either
+    hb = _as_pushed(_hb(tunnel_ok=False))
+    hb["tunnel_ok_false_since"] = _ago(minutes=30)
+    assert "executor-down" not in _ops(evaluate(hb, NOW, open_labels={"executor-down"}))
+    assert _ops(evaluate(_as_pushed(_hb()), NOW, open_labels={"executor-down"})) == {
+        "executor-down": "close"
+    }

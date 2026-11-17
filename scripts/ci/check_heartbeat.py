@@ -10,6 +10,7 @@ Usage: ``check_heartbeat.py --heartbeat <file|-> --now <iso> [--open <label>]...
 
 import argparse
 import json
+import math
 import re
 import sys
 from collections.abc import Mapping, Sequence
@@ -73,15 +74,14 @@ def _flag(value: object) -> bool | None:
 
 
 def _number(value: object) -> float | None:
-    """A numeric payload value (``"9"``, ``"8.5"`` or a number); anything else is ``None``."""
-    if isinstance(value, bool):
+    """A finite, non-negative number (``"9"``, ``"8.5"``, a number); else ``None`` (review #215)."""
+    if isinstance(value, bool) or not isinstance(value, int | float | str):
         return None
-    if isinstance(value, int | float):
-        return float(value)
     try:
-        return float(value) if isinstance(value, str) else None
+        number = float(value)
     except ValueError:
         return None
+    return number if math.isfinite(number) and number >= 0 else None
 
 
 def _tag(value: object) -> str:
@@ -191,7 +191,9 @@ def _may_close(label: str, hb: Heartbeat | None) -> bool:
     if label == "nightly-failed":
         result = hb.get("last_nightly_result")
         return isinstance(result, str) and bool(result)
-    return True
+    # executor-down (review #215): only when every health field is "true"; a field false for less
+    # than 2 h raises no alert, but it is no recovery either
+    return all(_flag(hb.get(f)) is True for f in HEALTH_FIELDS)
 
 
 def main(argv: Sequence[str] | None = None) -> int:
