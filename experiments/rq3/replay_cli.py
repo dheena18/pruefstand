@@ -21,9 +21,9 @@ from typing import Literal
 
 import numpy as np
 
-sys.path.insert(
-    0, str(Path(__file__).resolve().parents[1])
-)  # run as a script: import rq3.*, noise.*
+# run as a script: import rq3.*, noise.* and (through rq3.score) mutations.*
+sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "benchmarks"))
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from noise.replay import aa_pair
 from rq3.replay import ArmResult, replay_arm
