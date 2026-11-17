@@ -37,7 +37,7 @@ def digest_from_status(status: Mapping[str, object] | None) -> str | None:
     return None
 
 
-def candidate_env(env: Mapping[str, str]) -> dict[str, str]:
+def candidate_env(env: Mapping[str, str], *, rag_config: str = CANDIDATE_CONFIG) -> dict[str, str]:
     """Values the candidate gets by name (the allow-list of ``candidate.ALLOWED_ENV``).
 
     Qdrant: the candidate only retrieves, so its ``QDRANT_API_KEY`` is the executor's
@@ -45,7 +45,7 @@ def candidate_env(env: Mapping[str, str]) -> dict[str, str]:
     orchestrator never reaches it (review #224: it could wipe or poison ``chunks_active``).
     """
     out = {
-        "RAG_CONFIG": CANDIDATE_CONFIG,
+        "RAG_CONFIG": rag_config,
         "QDRANT_URL": QDRANT_URL,
         "RAG_COLLECTION": SHARED_COLLECTION,
     }

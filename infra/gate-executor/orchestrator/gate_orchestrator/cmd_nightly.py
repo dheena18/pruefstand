@@ -11,21 +11,24 @@ completed night and posts ``pruefstand/nightly`` on main's head. Env as for ``di
 
 import argparse
 import os
+import sys
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 from gate_orchestrator import heartbeat_store
+from gate_orchestrator.cause_phase import CausePhase
 from gate_orchestrator.cmd_dispatch import runner
 from gate_orchestrator.dispatch_flow import IMAGE_CONTEXT
 from gate_orchestrator.gate_run import digest_from_status
 from gate_orchestrator.github_read import PUBLIC_REPO, PublicRepo, status_of
 from gate_orchestrator.heartbeat import nightly_fields
-from gate_orchestrator.image import ImageVerificationError
+from gate_orchestrator.image import ImageVerificationError, image_ref
 from gate_orchestrator.infra import InfraError, run_with_retry
 from gate_orchestrator.lock import LOCK_DIR, maintenance_path, run_locked
 from gate_orchestrator.models import Job
+from gate_orchestrator.nightly import cause_switches_due
 from gate_orchestrator.nightly_run import JUDGE, PLANNED_MINUTES, NightlyRun
 from gate_orchestrator.preflight import run_preflight
 from gate_orchestrator.state import finish_nightly, nightly_counter_path, read_counter
@@ -108,8 +111,32 @@ def _must(argv: list[str], child: dict[str, str]) -> None:
         raise InfraError(msg)
 
 
+def _causes(attempt: NightlyRun, child: dict[str, str], main_dir: Path, deadline: datetime) -> None:
+    """The informational cause-switches phase (D1027); its report goes to the job output."""
+    phase = CausePhase(
+        run=runner,
+        image_ref=image_ref(attempt.digest),
+        main_dir=main_dir,
+        work=attempt.work,
+        env=child,
+        now=lambda: datetime.now(UTC),
+        deadline=deadline,
+        lines=[],
+    )
+    try:
+        phase()
+    except (OSError, ValueError) as exc:  # a broken plan is reported, never fails the night
+        phase.lines.append(f"cause-switches: not run: {exc}")
+    sys.stdout.write("".join(f"{line}\n" for line in phase.lines))
+
+
 def locked_night(
-    attempt: NightlyRun, child: dict[str, str], main_dir: Path, deadline: datetime
+    attempt: NightlyRun,
+    child: dict[str, str],
+    main_dir: Path,
+    deadline: datetime,
+    *,
+    cause_switches: bool = False,
 ) -> str:
     """The job body under the lock: preflight, phases, ``switch-mode.sh day`` in ``finally``."""
     attempt.env = child
@@ -122,6 +149,8 @@ def locked_night(
         ("judge-drift", lambda: _must(["pruefstand", "judge-drift", "--judge", JUDGE], child)),
         ("nightly-gate", lambda: _gate(attempt, child, main_dir)),
     ]
+    if cause_switches:  # weekly, Sunday nights (Y4.3); each scenario is deadline-checked itself
+        steps.append(("cause-switches", lambda: _causes(attempt, child, main_dir, deadline)))
     try:
         exceeded = phases(lambda: datetime.now(UTC), deadline, steps)
     except InfraError as exc:
@@ -129,6 +158,13 @@ def locked_night(
     finally:
         runner([str(gpu / "switch-mode.sh"), "day"], child)
     return "aborted: window_exceeded" if exceeded else night_status(attempt.result)
+
+
+def causes_tonight(mode: str, started: datetime | None = None) -> bool:
+    """``force`` → yes, ``skip`` → no, ``auto`` → Sunday nights only (``cause_switches_due``)."""
+    if mode == "skip":
+        return False
+    return cause_switches_due(started or datetime.now(UTC), forced=mode == "force")
 
 
 def nightly(args: argparse.Namespace) -> int:
@@ -167,7 +203,9 @@ def nightly(args: argparse.Namespace) -> int:
     budget = lock_budget_s(datetime.now(UTC), deadline)
     done = run_locked(
         head,
-        lambda child: locked_night(attempt, child, main_dir, deadline),
+        lambda child: locked_night(
+            attempt, child, main_dir, deadline, cause_switches=causes_tonight(args.cause_switches)
+        ),
         poster=poster,
         env=env,
         timeout_s=budget,
