@@ -125,7 +125,8 @@ that a guard job which merely exits 0 still lets its dependent nightly job run.
     that `backup-check` watches (> 8 days → issue `backup-stale`, Y5.5); the key lives only on the
     owner's laptop (X2.6, `docs/ops/runbook.md`).
 11. **Budgets (round 10 Z4, D199; round 11 Y4, D222–D224):** tier-2 PR run ≤ 90 min (`robust_pr` via
-    `/v1/retrieve` only, reranker top 10); nightly ≤ 8 h in the window 22:00–06:00 Europe/Berlin (two UTC
+    `/v1/retrieve` only, reranker top 10; T3.1b measured the reranker lane at 51.8 min > 20, so `/v1/retrieve`
+    runs without the reranker, D1287/D1288); nightly ≤ 8 h in the window 22:00–06:00 Europe/Berlin (two UTC
     cron entries; a hosted guard accepts the cron that matches the current Berlin offset, and one orchestrator job stops at the 06:00 deadline, round 12 N4.3), a fixed refusal stratum (all unanswerable cases, ≥ 100 clusters) plus one of 3 stratified blocks of
     `full` (≤ 600 cases; `full` covered every 3 nights, SPEC §6.2), cause-switches
     weekly; judge fallback ⇒ judged metrics informational; the first model load per mode is

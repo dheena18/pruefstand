@@ -294,7 +294,7 @@ container on `demo-net` and the egress network `demo-egress`, the only demo cont
 drops `demo-egress` (`10.233.0.0/24`) → RFC 1918, `PRUEFSTAND-INPUT` drops both subnets → the VM's own addresses;
 `demo-net` = `10.232.0.0/24`, `cloudflared` = `10.232.0.2`, P2.2; token in `/home/pruefstand/demo.env`):
 no inbound port, no LAN, TrueNAS or cluster access, no host port beyond
-loopback (`127.0.0.1:8090`/`8091` for smoke and e2e), no link to `gate-net`, `llm-proxy`, the tunnel, the data root or the GPU lock (`security.md`
+loopback (`127.0.0.1:8092` for the e2e instance only; the production rag-demo has no host port), no link to `gate-net`, `llm-proxy`, the tunnel, the data root or the GPU lock (`security.md`
 D4). It is the same rag-demo image with demo settings: fixed tenant list, no canary registry, and the
 in-process rate limit and daily budget enforced before every LLM call (429 for rate limit, 503 when the
 budget is spent or the kill switch is on, both with a JSON body `{code, message, retry_after_s}`). The

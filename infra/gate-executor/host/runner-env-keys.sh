@@ -1,20 +1,23 @@
 #!/usr/bin/env bash
-# runner-env-keys.sh [file] (D1267): append PRUEFSTAND_NONCE_KEY and PRUEFSTAND_CANDIDATE_API_KEY to the
-# runner's env file when they are missing; never prints a value, never changes an existing line.
+# runner-env-keys.sh [file] (D1267, D1281): append PRUEFSTAND_NONCE_KEY, PRUEFSTAND_CANDIDATE_API_KEY and
+# QDRANT_READ_ONLY_API_KEY to the runner's env file when they are missing; never prints a value, never changes
+# an existing line.
 # Owner, on the VM, as the file's owner (the script is read from stdin):
 #   sudo -u pruefstand bash -s -- /home/pruefstand/runner.env < infra/gate-executor/host/runner-env-keys.sh
 # Each value is `openssl rand -hex 32` (docs/ops/secrets.md), written straight from openssl into the file.
 # A missing file is created with mode 0600. Refused (exit 2, file unchanged): a symlink, a file owned by
 # another user or not writable, a mode other than 600, a line longer than 8192 bytes, a key present with an
 # empty value (empty, blank, "" or '', also before a trailing comment): remove that line by hand, then run
-# again. Only lines that start an assignment count, never a line inside an open value. Exit 0: both keys
+# again. Only lines that start an assignment count, never a line inside an open value. Exit 0: all keys
 # present.
 set -euo pipefail
 set +x  # a trace would show the values
 export LC_ALL=C
 
 file="${1:-/home/pruefstand/runner.env}"
-keys=(PRUEFSTAND_NONCE_KEY PRUEFSTAND_CANDIDATE_API_KEY)
+# QDRANT_READ_ONLY_API_KEY: the executor Qdrant's read-only key (compose.executor.yml), the only Qdrant key the
+# candidate gets, as its QDRANT_API_KEY (D1098).
+keys=(PRUEFSTAND_NONCE_KEY PRUEFSTAND_CANDIDATE_API_KEY QDRANT_READ_ONLY_API_KEY)
 die() { echo "runner-env-keys: $1" >&2; exit 2; }
 
 # --- quote scanner (same code in runner-env-names.sh and runner-env-keys.sh, checked by a test; the

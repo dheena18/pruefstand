@@ -9,7 +9,8 @@
 # (hard stop after $VM_LLM_MAX_MIN minutes), and never while a gate run or a `make check-vm` runs: the server holds the
 # host lock (`pruefstand-lock`, gpu.lock) AND every check slot of scripts/vm_check.sh for its whole life, so a gate job
 # or a check waits for it to stop, and it refuses to start while either is busy.
-#   start  exit 0 ready; 75 gpu.lock or a check slot busy; 2 usage/config/model file; 1 the server did not come up
+#   start  exit 0 ready; 75 MAINTENANCE set, gpu.lock or a check slot busy; 2 usage/config/model file; 1 the server
+#          did not come up
 #   stop   exit 0 (also when nothing runs), 2 when the PID file names a live server on another VM_LLM_PORT;
 #          waits for a start that is still running (up to VM_LLM_READY_S + 90 s)
 #   status exit 0 running (prints the base URL), 3 stopped
@@ -30,6 +31,8 @@ ctx="${VM_LLM_CTX:-8192}"
 max_min="${VM_LLM_MAX_MIN:-240}"
 ready_s="${VM_LLM_READY_S:-240}"
 lock_cmd="${VM_LLM_LOCK_CMD:-pruefstand-lock}"
+# Directory of gpu.lock and MAINTENANCE (as fetch-model.sh / gate_orchestrator.lock); tests point it at a temp dir.
+lock_dir="${PRUEFSTAND_LOCK_DIR:-/var/lib/pruefstand}"
 check_dir="${PRUEFSTAND_CHECK_DIR:-${XDG_CACHE_HOME:-$HOME/.cache}/pruefstand-check}"
 check_slots="${PRUEFSTAND_CHECK_SLOTS:-2}"
 MAX_THREADS=80
@@ -179,6 +182,8 @@ drop_own_pid() { local _p _s t; read -r _p _s t 2> /dev/null < "$state/pid" && [
 start() {
   local model=$1 i rc token launcher
   validate "$model"
+  # A model swap is running (gpu-cluster.md section 8): never start then (read-only existence test, D1285).
+  [ ! -e "$lock_dir/MAINTENANCE" ] || die 75 "MAINTENANCE is set (a model swap is running): refused"
   take_start_lock "${VM_LLM_START_WAIT_S:-10}"
   drop_stale
   if our_server > /dev/null; then die 2 "already running (pid $(our_server)); run '$0 stop' first"; fi

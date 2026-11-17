@@ -116,6 +116,17 @@ def test_start_is_refused_while_the_gate_holds_gpu_lock(tmp_path: Path) -> None:
     assert not (tmp_path / "state" / "pid").exists()
 
 
+def test_start_is_refused_while_maintenance_is_set(tmp_path: Path) -> None:
+    """D1285: a model swap is running; refused before the model file is even looked at."""
+    (tmp_path / "lock").mkdir()
+    (tmp_path / "lock" / "MAINTENANCE").touch()
+    run = _run(tmp_path, "start")
+    assert run.returncode == 75, run.stderr  # without the check: 2 (no model file here)
+    assert "MAINTENANCE is set" in run.stderr
+    assert not (tmp_path / "state" / "pid").exists()
+    assert (tmp_path / "lock" / "MAINTENANCE").exists()  # never removed
+
+
 def test_start_is_refused_while_a_check_slot_is_busy(tmp_path: Path) -> None:
     with _held(tmp_path / "check" / "slot2.lock"):
         run = _run(tmp_path, "start")

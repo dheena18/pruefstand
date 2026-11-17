@@ -1,0 +1,3 @@
+date,model,top,concurrency,n,p50_s,p95_s,mean_s,wall_per_query_s
+2026-11-17T10:40,BAAI/bge-reranker-v2-m3,10,1,100.0,3.8945,4.474,3.9332,3.9332
+2026-11-17T10:40,BAAI/bge-reranker-v2-m3,10,4,100.0,47.7889,50.3045,46.8839,11.7466

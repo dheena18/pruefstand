@@ -64,3 +64,4 @@ docs/decisions-log.md
 # T8.3: Playwright output (apps/dashboard)
 apps/dashboard/playwright-report/
 apps/dashboard/test-results/
+apps/dashboard/test-results-try/

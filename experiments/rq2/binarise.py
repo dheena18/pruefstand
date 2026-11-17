@@ -3,6 +3,8 @@
 A score or label is positive iff it is the metric's top raw score ("2 vs < 2" on 3-point metrics,
 the raw value on binary ones). MEMERAG content (CC BY-NC, ``data/derived/memerag_de/``) is judged
 by local judges only: routing it to a ``github/...`` judge raises ``ConfigError`` before any call.
+Local means the A40 cluster (``ollama/``) or the VM CPU model on loopback
+(``openai_compatible_local/``, the text never leaves the VM; T5.4e, D1283).
 """
 
 from collections.abc import Sequence
@@ -11,7 +13,7 @@ from pathlib import PurePath
 from pruefstand.core.errors import ConfigError
 from pruefstand.judges.output import spec_of
 
-LOCAL_PROVIDERS = ("ollama/",)
+LOCAL_PROVIDERS = ("ollama/", "openai_compatible_local/")
 MEMERAG_DIR = "memerag_de"
 
 
@@ -36,7 +38,7 @@ def binary_pairs(
 
 
 def is_local(judge_id: str) -> bool:
-    """Whether the judge runs on the local A40 cluster (Ollama)."""
+    """Whether the judge runs locally: the A40 cluster (Ollama) or the VM CPU model (loopback)."""
     return judge_id.startswith(LOCAL_PROVIDERS)
 
 
