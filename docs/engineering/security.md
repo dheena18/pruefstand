@@ -71,6 +71,10 @@ ADR-0006, ADR-0009, ADR-0012, ADR-0017.
 | X2 | GitHub Models in CI | Elevation / abuse | A PR workflow uses `GITHUB_TOKEN` `models: read` to burn the free quota or exfiltrate via prompts | Retired with GitHub Models (2026-07-30, D1202): no workflow grants `models: read` (`MODELS_READ_FILES` empty, guard test), tier 1 runs `judge_mode=skipped`. Before that: `models: read` only in `live-e2e.yml` and `cassettes.yml` (`action-selftest.yml` runs without judged metrics); forks get no `models` permission (GitHub default); inputs are public data only (X1), cases with a registered canary are excluded before judging; ≤ 10 judge calls per PR, ≤ 60 per nightly run plus 50 drift anchors, cached (D99); 429 → judged metrics skipped (`judge_mode=skipped`), never a fallback judge; tier-1 judged metrics are informational, so quota abuse cannot flip a required check | workflow-guards test: `models` permission allowlist |
 | DA3 | Personal data | Disclosure | Real names in synthetic docs or court decisions | synthetic docs use generated invented names; OLDP decisions are anonymised by the courts; demo logs kept ≤ 7 days | human review of synthetic docs (T2.6) |
 
+### Public demo (T8.4, D1303, D1304)
+
+`public_mode` (config `rag.public.yaml`) adds, in front of the unchanged tenant filter: a kill switch (`DEMO_ENABLED=false` or the flag file, per request), in-process token buckets and daily counters per client key (the `X-Forwarded-For` hop `TRUSTED_PROXY_HOPS` places from the right, IPv6 by /64, never `CF-Connecting-IP`; a restart resets them), a concurrency cap (no queue), a reserve-then-settle daily token budget, a server timeout below the client's, body (8 KB) and field validation with a fixed tenant allow-list, and CORS for the dashboard origin only. Every refusal is the fixed `{code, message, retry_after_s}` JSON; the question text is never logged. The test-only reset route exists only with `DEMO_TEST_RESET=1`, answers only a loopback TCP peer and is called from inside the container (a published-port request never has a loopback peer); the public `demo` profile never sets it.
+
 ## 3. Security-relevant defaults
 
 | Setting | Default |

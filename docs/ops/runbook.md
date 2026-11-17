@@ -118,6 +118,12 @@ half). Re-run those steps only to rebuild the VM.
    `git -C /home/pruefstand/pruefstand-gate pull --ff-only` between jobs), never from a job workspace under
    `runner/_work/`, which the hooks themselves wipe (D1096). The unit sets no `NoNewPrivileges=`: the preflight's
    tunnel repair needs `sudo -n` (D1096).
+   **CLI** (D1095): clone the public repo once as `pruefstand` to the path you set as `PRUEFSTAND_MAIN_DIR`
+   in `runner.env` (HTTPS, no credentials), then link the wrapper onto the runner's PATH:
+   `ln -s /home/pruefstand/pruefstand-gate/infra/gate-executor/host/gate-orchestrator /home/pruefstand/.local/bin/`
+   (and make sure `/home/pruefstand/.local/bin` is in the runner's `.path`).
+   Who may dispatch tier 2 is `infra/gate-executor/orchestrator/gate_orchestrator/maintainers.txt` (D1097;
+   the owner only); change it by a public PR and a sync.
 7. `llm-proxy` (`gate-net` + `proxy-egress`, `http://llm-proxy:11500`, D242), `rerank-cpu` and Qdrant (profile `gpu`) on the VM as
    `pruefstand` (T3.1a, T6.2a); ports in `docker.md` §3. Your dev stack uses `PORT_OFFSET=10000`; run
    `make ports-env` once so even a raw `docker compose … up` binds the dev ports, and `make check-ports`
