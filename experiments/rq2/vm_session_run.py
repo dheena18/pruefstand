@@ -22,7 +22,14 @@ from rq2.make_degraded import load_pairs
 from rq2.rq2_config import REPO, load_config
 from rq2.run_judges import make_judge, select_items
 from rq2.vm_arm import VM_JUDGE
-from rq2.vm_sessions import ancestors, current_stop, deadline, server_pid, start_refusal
+from rq2.vm_sessions import (
+    SESSION_MIN,
+    ancestors,
+    current_stop,
+    deadline,
+    server_pid,
+    start_refusal,
+)
 
 from pruefstand.core.errors import PruefstandError
 from pruefstand.core.models.judge import JudgeTask
@@ -99,7 +106,10 @@ def run_session(args: argparse.Namespace) -> int:
         sys.stdout.write(f"refused: {refusal}\n")
         return 75
     tasks = planned_tasks(args)
-    started = subprocess.run([str(VM_LLM), "start", "14b"], check=False, timeout=900)  # noqa: S603
+    env = {**os.environ, "VM_LLM_MAX_MIN": str(SESSION_MIN)}  # the server itself dies at the cap
+    started = subprocess.run(  # noqa: S603
+        [str(VM_LLM), "start", "14b"], check=False, timeout=900, env=env
+    )
     if started.returncode != 0:
         sys.stdout.write(f"refused: vm_llm.sh start exit {started.returncode}\n")
         return 75 if started.returncode == 75 else 1

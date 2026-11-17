@@ -26,11 +26,16 @@ from datetime import UTC, datetime, time, timedelta
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
+from rq2.vm_arm import SESSION_S, SESSION_USE
+
 BERLIN = ZoneInfo("Europe/Berlin")
 NIGHT_START, NIGHT_END = time(22, 0), time(6, 0)
 STOP_BEFORE_NIGHT = timedelta(minutes=5)
 START_BEFORE_NIGHT = timedelta(minutes=30)
-SESSION_MIN, SESSION_USE = 240, 0.8
+# A session is capped BELOW the gate job's 2 h lock wait (gate_job.LOCK_TIMEOUT_S, a test keeps it
+# so): the orchestrator and vm_check poll with LOCK_NB and never show up as blocked waiters in
+# /proc/locks; the cap, not the /proc/locks check, lets a waiting gate job in (D1284).
+SESSION_MIN = SESSION_S // 60
 STOP_FILE = Path.home() / "pruefstand" / "rq2-vm.stop"
 LOCK_LINE = re.compile(
     r"^\d+:\s+(?P<blocked>->\s+)?\S+\s+\S+\s+\S+\s+(?P<pid>\d+)\s+(?P<id>[0-9a-f]+:[0-9a-f]+:\d+)\s"
@@ -87,7 +92,7 @@ def deadline(start: datetime, minutes: int = SESSION_MIN, use: float = SESSION_U
     """The session's last call start: ``minutes x use`` after ``start``, at the latest 21:55 Berlin.
 
     Examples:
-        >>> d = deadline(datetime(2026, 11, 17, 19, 0, tzinfo=BERLIN))
+        >>> d = deadline(datetime(2026, 11, 17, 21, 0, tzinfo=BERLIN))
         >>> d.astimezone(BERLIN).strftime("%H:%M")
         '21:55'
     """
@@ -133,11 +138,11 @@ def ancestors(pid: int, proc: Path = Path("/proc")) -> list[int]:
     return chain
 
 
-def server_pid(state: Path) -> int | None:
+def server_pid(state: Path, proc: Path = Path("/proc")) -> int | None:
     """The live ``llama-server`` pid from ``vm_llm.sh``'s PID file, or None."""
     try:
         pid = int((state / "pid").read_text(encoding="utf-8").split()[0])
-        cmd = Path(f"/proc/{pid}/cmdline").read_bytes()
+        cmd = (proc / str(pid) / "cmdline").read_bytes()
     except (OSError, ValueError, IndexError):
         return None
     return pid if b"llama-server" in cmd else None

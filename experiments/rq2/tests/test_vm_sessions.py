@@ -13,6 +13,7 @@ from rq2.vm_sessions import (
     in_night,
     lock_wanted,
     parse_locks,
+    server_pid,
     start_refusal,
     stop_reason,
 )
@@ -64,8 +65,8 @@ def test_night_window_and_start_margin(monkeypatch: pytest.MonkeyPatch, tmp_path
 
 
 def test_deadline_is_the_session_budget_or_21_55() -> None:
-    assert deadline(at(10)) == at(10) + timedelta(minutes=192)
-    assert deadline(at(20)) == at(21, 55)
+    assert deadline(at(10)) == at(11, 30)  # 100 min x 0.9
+    assert deadline(at(21)) == at(21, 55)
 
 
 def test_stop_reasons(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
@@ -85,3 +86,29 @@ def test_ancestors_follow_ppid_up_to_init(tmp_path: Path) -> None:
         (tmp_path / str(pid) / "stat").write_text(f"{pid} (a b) S {ppid} 0 0", encoding="utf-8")
     assert ancestors(300, tmp_path) == [300, 200, 100]
     assert ancestors(42, tmp_path) == [42]  # gone: the pid alone
+
+
+def test_the_session_cap_is_below_the_gate_s_lock_wait() -> None:
+    """Polling waiters are invisible in /proc/locks: the cap is the real protection (D1284)."""
+    from gate_orchestrator.gate_job import LOCK_TIMEOUT_S  # noqa: PLC0415  (other import root)
+
+    assert vm_sessions.SESSION_MIN * 60 < LOCK_TIMEOUT_S
+    start = at(10)
+    assert deadline(start) - start <= timedelta(minutes=vm_sessions.SESSION_MIN)
+
+
+def test_a_start_in_the_night_is_refused(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    monkeypatch.setattr(vm_sessions, "STOP_FILE", tmp_path / "rq2-vm.stop")
+    assert "night window" in str(start_refusal(at(2)))
+    assert "night window" in str(start_refusal(at(5, 59)))
+
+
+def test_server_pid_needs_a_llama_server_cmdline(tmp_path: Path) -> None:
+    state, proc = tmp_path / "state", tmp_path / "proc"
+    state.mkdir()
+    (proc / "77").mkdir(parents=True)
+    (state / "pid").write_text("77 123 tok\n", encoding="utf-8")
+    (proc / "77" / "cmdline").write_bytes(b"/opt/llama-server\x00--port\x0018091\x00")
+    assert server_pid(state, proc) == 77
+    (proc / "77" / "cmdline").write_bytes(b"/usr/bin/python3\x00other\x00")
+    assert server_pid(state, proc) is None  # a recycled pid is never taken for our server
