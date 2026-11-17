@@ -20,7 +20,7 @@ Decision: ADR-0017. Workflows: `ci-cd.md` §1 (`release-please.yml`, `release.ym
 | # | Step | Who |
 | --- | --- | --- |
 | 1 | Merge feature PRs with Conventional Commit titles | sessions + you |
-| 2 | release-please (token of GitHub App `pruefstand-release`, used by `release-please.yml` and the optional `sync-action-repo` job; environment `release`, one package, tags `vX.Y.Z`) updates the release PR (CHANGELOG, versions), then **runs `uv lock` (pinned uv) and commits the updated `uv.lock` to the release PR** (X2.9), so `uv sync --locked` stays green. The public `gate-router.yml` marks it `pruefstand/gate` = success "not gated (release version bump)" (with the `pruefstand-bot` App token, round 13 P1.1/P4.2) when its diff touches only version fields, `CHANGELOG.md` and the two workspace-member `version` lines in `uv.lock` (D105) | bot |
+| 2 | release-please (token of GitHub App `pruefstand-release`, used by `release-please.yml` and the optional `sync-action-repo` job; environment `release`, one package, tags `vX.Y.Z`) updates the release PR (CHANGELOG, versions), then **runs `uv lock` (pinned uv) and commits the updated `uv.lock` to the release PR** (X2.9), so `uv sync --locked` stays green. The public `gate-router.yml` marks it `pruefstand/gate` = success "not gated (release version bump)" (with the `pruefstand-bot` App token, round 13 P1.1/P4.2) when its diff touches only version fields, `CHANGELOG.md` and the `version` lines of the two workspace members and the virtual workspace root in `uv.lock` (D105, D1292); `scripts/ci/check_release_lock_diff.py` refuses any other lock line before the commit | bot |
 | 3 | Check the CHANGELOG, then make sure `main` is green, including the nightly | you |
 | 4 | Merge the release PR → the release App creates tag `vX.Y.Z` (App-created tags trigger workflows; `GITHUB_TOKEN` tags would not) | you |
 | 5 | `release.yml` `build-dist` → `publish-pypi` (Trusted Publishing, environment `pypi`); RCs go to TestPyPI via `workflow_dispatch` and a separate TestPyPI trusted publisher | CI |
@@ -64,3 +64,28 @@ Marketplace agreement.
 - [ ] Marketplace listing shows the new version (only if T9.1b is done)
 - [ ] Docs site updated by `docs.yml`; README results table matches `experiments/` outputs
 - [ ] Dashboard on GitHub Pages smoke-tested; (optional) the next nightly `demo-deploy` deployed the demo-ready digest and `demo-e2e` passed; rollback target noted
+
+## 4. Release candidates and user verification (T9.1a, D1294)
+
+**Release candidate.**
+1. Run `release.yml` with `workflow_dispatch` (`prerelease: true`) from `main`.
+2. It runs `build-dist` and `publish-testpypi` only (environment `testpypi`). No image, no signature and no `image-digests.json`.
+3. Check the candidate:
+   ```
+   uvx --index-url https://test.pypi.org/simple/ --extra-index-url https://pypi.org/simple \
+     --index-strategy unsafe-best-match --from pruefstand==0.1.0rc1 pruefstand --help
+   ```
+
+**Images.**
+- Every release image is built **once** at the tag. The image jobs fail if `:vX.Y.Z` already exists on GHCR, so re-running `release.yml` for the same tag stops there.
+- Until the first tag, `action/action.yml` keeps `image: Dockerfile`. The first release PR switches it to the pinned GHCR image (D1293).
+
+**Verify a release image** (digest from `image-digests.json` or the release notes):
+```
+cosign verify ghcr.io/dheena18/pruefstand-action@sha256:<digest> \
+  --certificate-identity https://github.com/dheena18/pruefstand/.github/workflows/release.yml@refs/tags/vX.Y.Z \
+  --certificate-oidc-issuer https://token.actions.githubusercontent.com
+cosign verify-attestation --type spdxjson ghcr.io/dheena18/pruefstand-action@sha256:<digest> \
+  --certificate-identity https://github.com/dheena18/pruefstand/.github/workflows/release.yml@refs/tags/vX.Y.Z \
+  --certificate-oidc-issuer https://token.actions.githubusercontent.com
+```

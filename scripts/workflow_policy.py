@@ -108,6 +108,11 @@ OTHER_WRITE: dict[tuple[str, str, str], str] = {
         "push-sign",
         "packages",
     ): "T6.2b S1 (D1307): pushes the rag-demo image to GHCR",
+    ("release.yml", "image-action", "packages"): "T9.1a: pushes pruefstand-action:vX.Y.Z once",
+    ("release.yml", "image-rag-demo", "packages"): "T9.1a: pushes rag-demo:vX.Y.Z once",
+    ("release.yml", "sign", "packages"): "T9.1a: writes the cosign signatures to GHCR",
+    ("release.yml", "attest", "packages"): "T9.1a: writes the SBOM attestation and provenance",
+    ("release.yml", "attest", "attestations"): "T9.1a: build provenance (attest-build-provenance)",
     ("security.yml", "codeql", "security-events"): "CodeQL SARIF upload",
     ("security.yml", "scorecard", "security-events"): "OpenSSF Scorecard SARIF upload",
     (
