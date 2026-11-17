@@ -1,5 +1,6 @@
 """T6.3 S4, offline part: judge plan, scenario configs, MDE pre-check and the cause check."""
 
+import math
 from pathlib import Path
 
 import pytest
@@ -12,6 +13,7 @@ from noise.cause_switches import (
     ScenarioUnderpoweredError,
     decide,
     main,
+    paired_se,
     plan,
     precheck,
     problems,
@@ -24,6 +26,7 @@ from pruefstand.core.config import PruefstandConfig
 from pruefstand.core.config_loader import load_config
 from pruefstand.core.errors import ConfigError
 from pruefstand.core.models.run import RunResults
+from pruefstand.gate.stats import minimum_detectable_effect
 
 DETERMINISTIC = ["retrieval", "citation_format", "language", "errors"]
 
@@ -128,3 +131,48 @@ def test_select_and_the_cli() -> None:
         select(["nope"])
     assert main(["--plan", "runs/noise/cause", "--scenarios", "language", "errors"]) == 0
     assert main(["--check", "a", "b", "--scenarios", "all"]) == 2
+
+
+def test_planned_drops_are_the_d1278_values() -> None:
+    """D1278 fixes the planned drops of the MDE pre-check before any run."""
+    planned = {s.name: s.expected_drop for s in SCENARIOS}
+    assert planned == {
+        "retrieval": 0.10,
+        "citation_format": 0.20,
+        "language": 0.50,
+        "refusal_policy": 0.30,
+        "errors": None,
+    }
+
+
+def test_paired_se_weights_cluster_sizes_and_doubles_the_variance() -> None:
+    se, k = paired_se({"a": [0.0], "b": [1.0, 1.0], "c": [0.5]})
+    assert k == 3
+    assert se == pytest.approx(math.sqrt(2 * 0.2724609375 / 3))  # weighted; unweighted: 0.2734375
+    with pytest.raises(ScenarioUnderpoweredError, match="at least 2"):
+        paired_se({"a": [0.5, 0.6]})
+
+
+def test_precheck_uses_one_comparison_and_the_paired_se() -> None:
+    cases, values = fixture_f0()
+    values["context_recall"] = [0.65 if c.cluster_id < "k030" else 0.95 for c in cases]
+    cfg = scenario_cfg("retrieval")
+    var = 0.15**2 * 60 / 59  # equal sizes: the plain spread of 30 x 0.65 and 30 x 0.95
+    se = math.sqrt(2 * var / 60)
+    one = minimum_detectable_effect(se, cfg.gate.alpha, 0.05, m=1)
+    found = precheck(make_run("b", cases, values), BY_NAME["retrieval"], cfg)
+    assert found is not None
+    assert found == pytest.approx(one, rel=1e-9)
+    assert found != pytest.approx(minimum_detectable_effect(se, cfg.gate.alpha, 0.05, m=5))
+    assert found > 0.05 + 0.8416 * se  # above the delta floor, so m and se both show
+
+
+def test_the_errors_scenario_reads_its_absolute_check() -> None:
+    cases, values = fixture_f0()
+    baseline = make_run("base", cases, values)
+    unchanged = make_run("switch", cases, values)
+    report = decide(baseline, unchanged, scenario_cfg("errors"))
+    found = problems(BY_NAME["errors"], unchanged, report)
+    assert "error_rate absolute check passed: the closed port made no errors" in found
+    aborted = make_run("switch", cases, values, complete=False)
+    assert not any("incomplete" in p for p in problems(BY_NAME["errors"], aborted, report))

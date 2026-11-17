@@ -173,12 +173,32 @@ def baseline_se(baseline: RunResults, metric: str) -> tuple[float, int]:
         for value in scored.values:
             if value.metric == metric and value.status == "ok" and value.value is not None:
                 sums.setdefault(scored.case.cluster_id, []).append(value.value)
-    k = len(sums)
+    return paired_se(sums, metric)
+
+
+def paired_se(clusters: Mapping[str, Sequence[float]], metric: str = "metric") -> tuple[float, int]:
+    """``sqrt(2 * var / k)`` and ``k`` for one run's case values grouped by cluster (D1278).
+
+    ``var = sum_c (n_c / n_bar)^2 (mean_c - case_mean)^2 / (k - 1)``, the size-weighted spread of
+    the cluster means around the case mean (D1275); ``sqrt(2)``: the difference of two such runs.
+
+    Raises:
+        ScenarioUnderpoweredError: fewer than two clusters.
+
+    Examples:
+        Sizes 1, 2, 1 with means 0, 1, 0.5: case mean 0.625, n_bar 4/3, weights 0.5625, 2.25,
+        0.5625, var = (0.2197 + 0.3164 + 0.0088) / 2 = 0.27246, se = sqrt(2 * 0.27246 / 3):
+
+        >>> se, k = paired_se({"a": [0.0], "b": [1.0, 1.0], "c": [0.5]})
+        >>> round(se, 4), k
+        (0.4262, 3)
+    """
+    k = len(clusters)
     if k < 2:  # a spread needs two clusters
         msg = f"baseline: {k} clusters with an ok {metric} value; the MDE needs at least 2"
         raise ScenarioUnderpoweredError(msg)
-    sizes = np.array([len(v) for v in sums.values()], dtype=float)
-    means = np.array([sum(v) / len(v) for v in sums.values()])
+    sizes = np.array([len(v) for v in clusters.values()], dtype=float)
+    means = np.array([sum(v) / len(v) for v in clusters.values()])
     case_mean = float((sizes * means).sum() / sizes.sum())
     var = float(((sizes / sizes.mean()) ** 2 * (means - case_mean) ** 2).sum() / (k - 1))
     return math.sqrt(2 * var / k), k
