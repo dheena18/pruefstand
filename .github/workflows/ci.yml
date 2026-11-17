@@ -124,9 +124,11 @@ jobs:
       - name: Fetch the mutation base commit (T7.1c, D1291)
         # the checkout is shallow; test_base_sha.py applies every mutation patch at base_sha and fails in CI
         # without it. One commit, depth 1, read from index.yaml so it cannot drift; no credentials needed.
+        # The file is PR-controlled: first base_sha line only, 40 hex digits only, and `--` ends git's options.
         run: |
-          base="$(sed -n 's/^base_sha: *//p' benchmarks/mutations/index.yaml)"
-          git fetch --no-tags --depth=1 origin "$base"
+          base="$(grep -m1 -E '^base_sha:' benchmarks/mutations/index.yaml | sed -E 's/^base_sha:[[:space:]]*//')"
+          [[ "$base" =~ ^[0-9a-f]{40}$ ]] || { echo "::error::base_sha in index.yaml is not a 40-hex SHA" >&2; exit 1; }
+          git fetch --no-tags --depth=1 origin -- "$base"
       - name: Unit, property, contract and doctests with coverage gates
         run: make coverage
 
