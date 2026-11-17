@@ -1,99 +1,9 @@
 """``scripts/sync_executor.sh`` (T6.2a S10, D1085): real local git repos, a stubbed ``gh``."""
 
-import os
-import stat
-import subprocess
 from pathlib import Path
 
 import pytest
-
-SCRIPT = Path(__file__).resolve().parents[1] / "sync_executor.sh"
-TAG = "executor-20261115"
-
-
-def _git(cwd: Path, *args: str) -> str:
-    done = subprocess.run(  # noqa: S603 - fixed argv
-        ["git", *args],  # noqa: S607 - git from PATH
-        cwd=cwd,
-        check=True,
-        capture_output=True,
-        text=True,
-    )
-    return done.stdout.strip()
-
-
-def _write(root: Path, rel: str, text: str) -> None:
-    path = root / rel
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(text, encoding="utf-8")
-
-
-def _init(path: Path) -> None:
-    path.mkdir(parents=True)
-    _git(path, "init", "-q", "-b", "main")
-    _git(path, "config", "user.email", "test@example.invalid")
-    _git(path, "config", "user.name", "test")
-
-
-class Sandbox:
-    def __init__(self, tmp: Path) -> None:
-        self.tmp = tmp
-        self.public = tmp / "public"
-        _init(self.public)
-        for rel, text in {
-            "infra/gate-executor/orchestrator/gate_orchestrator/x.py": "X = 1\n",
-            "infra/gate-executor/llm-proxy/llm_proxy.py": "P = 1\n",
-            "infra/gate-executor/host/job_started.sh": "#!/usr/bin/env bash\n",
-            "infra/gate-executor/workflows/gate-executor.yml": "name: gate-executor\n",
-            "infra/gate-executor/workflows/README.md": "source of the private workflows\n",
-            "infra/gate-executor/private-repo-template/README.md": "# pruefstand-gate\n",
-            "infra/gate-executor/private-repo-template/.gitignore": "*.partial\n",
-            "apps/rag-demo/not_synced.py": "N = 1\n",
-        }.items():
-            _write(self.public, rel, text)
-        hook = self.public / "infra/gate-executor/host/job_started.sh"
-        hook.chmod(hook.stat().st_mode | stat.S_IEXEC)  # an executable host script (100755)
-        _git(self.public, "add", "-A")
-        _git(self.public, "commit", "-q", "-m", "public")
-        self.private = tmp / "private.git"
-        seed = tmp / "seed"
-        _init(seed)
-        _write(seed, "infra/gate-executor/orchestrator/old.py", "OLD = 1\n")
-        _write(seed, "canaries/heldout/README.md", "private\n")
-        _write(seed, ".github/workflows/retired.yml", "name: retired\n")
-        _git(seed, "add", "-A")
-        _git(seed, "commit", "-q", "-m", "seed")
-        _git(tmp, "clone", "-q", "--bare", str(seed), str(self.private))
-        self.bin = tmp / "bin"
-        self.bin.mkdir()
-        gh = self.bin / "gh"
-        gh.write_text(f'#!/bin/sh\necho "$@" >> {tmp / "gh.log"}\n', encoding="utf-8")
-        gh.chmod(gh.stat().st_mode | stat.S_IEXEC)
-
-    def tag(self, name: str = TAG, *, annotated: bool = True) -> None:
-        args = ["tag", "-a", name, "-m", "executor sync"] if annotated else ["tag", name]
-        _git(self.public, *args)
-
-    def run(self, *args: str, **extra_env: str) -> subprocess.CompletedProcess[str]:
-        env = {
-            **os.environ,
-            "PATH": f"{self.bin}:{os.environ['PATH']}",
-            "PRIVATE_REMOTE": str(self.private),
-            "MAIN_REF": "main",
-            "GIT_AUTHOR_NAME": "test",
-            "GIT_AUTHOR_EMAIL": "test@example.invalid",
-            "GIT_COMMITTER_NAME": "test",
-            "GIT_COMMITTER_EMAIL": "test@example.invalid",
-            **extra_env,
-        }
-        return subprocess.run(  # noqa: S603 - fixed argv
-            ["bash", str(SCRIPT), *args], cwd=self.public, env=env, capture_output=True, text=True,  # noqa: S607 - bash from PATH
-            check=False,
-        )  # fmt: skip
-
-    def private_tree(self, ref: str) -> dict[str, str]:
-        names = _git(self.private, "ls-tree", "-r", "--name-only", ref).splitlines()
-        return {n: _git(self.private, "show", f"{ref}:{n}") for n in names}
+from sync_executor_testkit import TAG, Sandbox, empty_remote, git, write
 
 
 @pytest.fixture
@@ -114,7 +24,7 @@ def test_sync_copies_the_executor_dirs_at_the_tag_and_opens_a_pr(box: Sandbox) -
     assert "infra/gate-executor/workflows/gate-executor.yml" not in tree
     assert "apps/rag-demo/not_synced.py" not in tree
     assert tree["canaries/heldout/README.md"] == "private"  # private content untouched
-    commit = _git(box.public, "rev-parse", f"{TAG}^{{commit}}")
+    commit = git(box.public, "rev-parse", f"{TAG}^{{commit}}")
     assert tree["SYNCED_FROM"] == f"{TAG} {commit}\nworkflow gate-executor.yml"
     gh_log = (box.tmp / "gh.log").read_text(encoding="utf-8")
     assert "pr create" in gh_log
@@ -127,7 +37,7 @@ def test_dry_run_pushes_nothing(box: Sandbox) -> None:
     res = box.run(TAG, "--dry-run")
     assert res.returncode == 0, res.stderr
     assert "infra/gate-executor/orchestrator/old.py" in res.stdout  # the removal is listed
-    assert _git(box.private, "branch", "--list", f"sync/{TAG}") == ""
+    assert git(box.private, "branch", "--list", f"sync/{TAG}") == ""
     assert not (box.tmp / "gh.log").exists()
 
 
@@ -148,10 +58,10 @@ def test_lightweight_tag_is_refused(box: Sandbox) -> None:
 
 
 def test_tag_off_main_is_refused(box: Sandbox) -> None:
-    _git(box.public, "checkout", "-q", "-b", "side")
-    _write(box.public, "infra/gate-executor/orchestrator/side.py", "S = 1\n")
-    _git(box.public, "add", "-A")
-    _git(box.public, "commit", "-q", "-m", "side")
+    git(box.public, "checkout", "-q", "-b", "side")
+    write(box.public, "infra/gate-executor/orchestrator/side.py", "S = 1\n")
+    git(box.public, "add", "-A")
+    git(box.public, "commit", "-q", "-m", "side")
     box.tag()
     res = box.run(TAG)
     assert res.returncode == 2
@@ -173,14 +83,8 @@ def test_the_template_lands_at_the_root_and_only_yml_reaches_the_workflows(box: 
     assert not any(n.startswith("infra/gate-executor/private-repo-template") for n in tree)
 
 
-def _empty_remote(box: Sandbox) -> Path:
-    empty = box.tmp / "empty.git"
-    _git(box.tmp, "init", "-q", "--bare", "-b", "main", str(empty))
-    return empty
-
-
 def test_init_pushes_main_of_an_empty_private_repo_without_a_pr(box: Sandbox) -> None:
-    box.private = _empty_remote(box)
+    box.private = empty_remote(box)
     box.tag()
     res = box.run(TAG, "--init")
     assert res.returncode == 0, res.stderr
@@ -197,15 +101,15 @@ def test_init_is_refused_when_the_private_repo_has_a_branch(box: Sandbox) -> Non
     res = box.run(TAG, "--init")
     assert res.returncode == 2
     assert "not empty" in res.stderr
-    assert _git(box.private, "log", "--format=%s", "main") == "seed"
+    assert git(box.private, "log", "--format=%s", "main") == "seed"
 
 
 def test_init_dry_run_pushes_nothing(box: Sandbox) -> None:
-    box.private = _empty_remote(box)
+    box.private = empty_remote(box)
     box.tag()
     res = box.run(TAG, "--init", "--dry-run")
     assert res.returncode == 0, res.stderr
-    assert _git(box.private, "branch", "--list") == ""
+    assert git(box.private, "branch", "--list") == ""
 
 
 def test_a_workflow_retired_in_the_public_repo_disappears_from_the_private_repo(
@@ -220,13 +124,13 @@ def test_a_workflow_retired_in_the_public_repo_disappears_from_the_private_repo(
 
 
 def test_no_yml_in_the_source_never_wipes_the_private_workflows(box: Sandbox) -> None:
-    _git(box.public, "rm", "-q", "infra/gate-executor/workflows/gate-executor.yml")
-    _git(box.public, "commit", "-q", "-m", "no workflows")
+    git(box.public, "rm", "-q", "infra/gate-executor/workflows/gate-executor.yml")
+    git(box.public, "commit", "-q", "-m", "no workflows")
     box.tag()
     res = box.run(TAG)
     assert res.returncode == 2
     assert "no *.yml or *.yaml" in res.stderr
-    assert _git(box.private, "branch", "--list", f"sync/{TAG}") == ""
+    assert git(box.private, "branch", "--list", f"sync/{TAG}") == ""
 
 
 def test_init_with_an_unreachable_private_repo_fails(box: Sandbox) -> None:
@@ -238,9 +142,9 @@ def test_init_with_an_unreachable_private_repo_fails(box: Sandbox) -> None:
 
 
 def test_yaml_workflows_sync_too(box: Sandbox) -> None:
-    _write(box.public, "infra/gate-executor/workflows/nightly.yaml", "name: nightly\n")
-    _git(box.public, "add", "-A")
-    _git(box.public, "commit", "-q", "-m", "yaml workflow")
+    write(box.public, "infra/gate-executor/workflows/nightly.yaml", "name: nightly\n")
+    git(box.public, "add", "-A")
+    git(box.public, "commit", "-q", "-m", "yaml workflow")
     box.tag()
     assert box.run(TAG).returncode == 0
     tree = box.private_tree(f"sync/{TAG}")
@@ -249,89 +153,9 @@ def test_yaml_workflows_sync_too(box: Sandbox) -> None:
 
 
 def test_init_names_the_remote_it_pushed_to(box: Sandbox) -> None:
-    box.private = _empty_remote(box)
+    box.private = empty_remote(box)
     box.tag()
     res = box.run(TAG, "--init")
     assert res.returncode == 0, res.stderr
     assert str(box.private) in res.stdout
     assert "dheena18/pruefstand-gate" not in res.stdout
-
-
-def _workflow_calling(box: Sandbox, cli: str | None) -> None:
-    step = "      - run: gate-orchestrator nightly --deadline x\n"
-    _write(
-        box.public, "infra/gate-executor/workflows/nightly.yml", f"jobs:\n  n:\n    steps:\n{step}"
-    )
-    if cli is not None:
-        _write(box.public, "infra/gate-executor/orchestrator/gate_orchestrator/cli.py", cli)
-    _git(box.public, "add", "-A")
-    _git(box.public, "commit", "-q", "-m", "workflows")
-    box.tag()
-
-
-def test_workflows_calling_a_missing_cli_subcommand_are_refused(box: Sandbox) -> None:
-    # D1095 (review #214): never sync workflows calling a gate-orchestrator subcommand the tag lacks
-    _workflow_calling(box, None)
-    done = box.run(TAG)
-    assert done.returncode == 2
-    assert "gate-orchestrator nightly" in done.stderr
-    assert "sync/" + TAG not in _git(box.private, "branch", "--list")
-
-
-def test_workflows_calling_a_defined_subcommand_sync(box: Sandbox) -> None:
-    _workflow_calling(box, 'sub.add_parser("nightly", help="x")\n')
-    assert box.run(TAG).returncode == 0
-
-
-VM_STEP = "sudo -u pruefstand git -C /home/pruefstand/pruefstand-gate pull --ff-only"
-
-
-def test_modes_come_from_the_public_tree_even_with_filemode_false(box: Sandbox) -> None:
-    # Windows Git Bash clones with core.fileMode=false, so a plain `git add` stores every new
-    # file as 100644; the executable host scripts must stay 100755 in the private repo.
-    # Command-level config wins over the repo-local value a fresh clone probes on Linux.
-    box.tag()
-    res = box.run(
-        TAG, GIT_CONFIG_COUNT="1", GIT_CONFIG_KEY_0="core.fileMode", GIT_CONFIG_VALUE_0="false"
-    )
-    assert res.returncode == 0, res.stderr
-    ref = f"sync/{TAG}"
-    hook = _git(box.private, "ls-tree", ref, "infra/gate-executor/host/job_started.sh")
-    assert hook.startswith("100755 ")
-    plain = _git(box.private, "ls-tree", ref, "infra/gate-executor/llm-proxy/llm_proxy.py")
-    assert plain.startswith("100644 ")
-
-
-@pytest.mark.parametrize("mode", ["pr", "dry-run", "nothing", "init"])
-def test_the_printed_instructions_end_with_the_vm_pull(box: Sandbox, mode: str) -> None:
-    if mode == "init":
-        box.private = _empty_remote(box)
-    box.tag()
-    if mode == "nothing":
-        assert box.run(TAG).returncode == 0
-        _git(box.tmp, "--git-dir", str(box.private), "branch", "-f", "main", f"sync/{TAG}")
-    args = {"pr": (), "dry-run": ("--dry-run",), "nothing": (), "init": ("--init",)}[mode]
-    res = box.run(TAG, *args)
-    assert res.returncode == 0, res.stderr
-    assert res.stdout.rstrip().splitlines()[-1].endswith(VM_STEP)
-
-
-@pytest.mark.parametrize(
-    "step",
-    [
-        "      - run: gate-orchestrator  nightly --deadline x\n",
-        "      - run: |\n          gate-orchestrator \\\n            nightly --deadline x\n",
-        "      - run: >-\n          python3 -m gate_orchestrator\n"
-        "          night-guard --event x\n",
-    ],
-)
-def test_odd_spacing_does_not_hide_a_missing_subcommand(box: Sandbox, step: str) -> None:
-    _write(
-        box.public, "infra/gate-executor/workflows/nightly.yml", f"jobs:\n  n:\n    steps:\n{step}"
-    )
-    _git(box.public, "add", "-A")
-    _git(box.public, "commit", "-q", "-m", "workflows")
-    box.tag()
-    done = box.run(TAG)
-    assert done.returncode == 2, done.stdout
-    assert "D1095" in done.stderr
