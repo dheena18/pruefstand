@@ -39,8 +39,12 @@ def qdrant_aliases(env: Mapping[str, str]) -> set[str]:
     if not response.is_success:
         msg = f"index_unavailable: qdrant /aliases HTTP {response.status_code}"
         raise InfraError(msg)
-    aliases = response.json().get("result", {}).get("aliases", [])
-    return {str(a.get("alias_name")) for a in aliases if isinstance(a, dict)}
+    try:
+        aliases = response.json()["result"]["aliases"]
+        return {str(a["alias_name"]) for a in aliases}
+    except (ValueError, KeyError, TypeError) as exc:  # stay on the infra retry path (review #259)
+        msg = "index_unavailable: qdrant /aliases answer is not an alias list"
+        raise InfraError(msg) from exc
 
 
 def corpus_dir(env: Mapping[str, str]) -> Path:
@@ -50,8 +54,10 @@ def corpus_dir(env: Mapping[str, str]) -> Path:
         InfraError: either variable is unset or the directory does not exist (``index_missing``).
     """
     root, version = env.get("PRUEFSTAND_DATA_ROOT", ""), env.get("PRUEFSTAND_CORPUS_VERSION", "")
-    path = Path(root) / "corpus" / version
-    if not root or not version or "/" in version or not path.is_dir():
+    corpus = Path(root) / "corpus"
+    path = corpus / version
+    plain = bool(root) and version not in {"", ".", ".."} and "/" not in version
+    if not plain or path.resolve().parent != corpus.resolve() or not path.is_dir():
         msg = (
             f"index_missing: {ALIAS} is absent and no corpus to build it from "
             "(set PRUEFSTAND_CORPUS_VERSION in runner.env to a directory under <data root>/corpus/)"
@@ -70,8 +76,16 @@ def ensure_shared_index(run: Runner, env: Mapping[str, str], aliases: Aliases) -
     if ALIAS in aliases(env):
         return False
     corpus = corpus_dir(env)
+    tunnel = env.get("OLLAMA_GPU0_URL", "")
+    if not tunnel:
+        msg = "index_unavailable: OLLAMA_GPU0_URL (the tunnel) is unset, nothing to embed with"
+        raise InfraError(msg)
     argv = ["rag-demo", "index", "--corpus", str(corpus), "--encoder", "ollama"]
-    code, _ = run(argv, {**env, "QDRANT_URL": env.get("QDRANT_URL") or LOOPBACK})
+    # rag.gpu.yaml embeds through endpoint_env LLM_PROXY_URL (D1081); this trusted host call goes
+    # straight to the tunnel, like the owner's `make index` (review #259; llm-proxy is not up yet
+    # and its name resolves only on gate-net)
+    index_env = {**env, "QDRANT_URL": env.get("QDRANT_URL") or LOOPBACK, "LLM_PROXY_URL": tunnel}
+    code, _ = run(argv, index_env)
     if code != 0:
         msg = f"index_failed: rag-demo index exit {code}"
         raise InfraError(msg)

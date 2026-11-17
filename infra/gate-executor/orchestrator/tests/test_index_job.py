@@ -72,7 +72,11 @@ def test_a_missing_alias_is_built_once_from_the_named_corpus(tmp_path: Path) -> 
     (tmp_path / "corpus" / "v3").mkdir(parents=True)
     states = iter([set(), {ALIAS}])
     calls: list[list[str]] = []
-    env = {"PRUEFSTAND_DATA_ROOT": str(tmp_path), "PRUEFSTAND_CORPUS_VERSION": "v3"}
+    env = {
+        "PRUEFSTAND_DATA_ROOT": str(tmp_path),
+        "PRUEFSTAND_CORPUS_VERSION": "v3",
+        "OLLAMA_GPU0_URL": "http://127.0.0.1:11434",
+    }
     assert ensure_shared_index(_runner(calls), env, lambda e: next(states)) is True
     assert calls == [
         ["rag-demo", "index", "--corpus", str(tmp_path / "corpus" / "v3"), "--encoder", "ollama"]
@@ -90,7 +94,11 @@ def test_without_a_corpus_the_error_says_what_to_set(env: dict[str, str]) -> Non
 
 def test_a_failed_or_incomplete_build_is_an_infra_error(tmp_path: Path) -> None:
     (tmp_path / "corpus" / "v3").mkdir(parents=True)
-    env = {"PRUEFSTAND_DATA_ROOT": str(tmp_path), "PRUEFSTAND_CORPUS_VERSION": "v3"}
+    env = {
+        "PRUEFSTAND_DATA_ROOT": str(tmp_path),
+        "PRUEFSTAND_CORPUS_VERSION": "v3",
+        "OLLAMA_GPU0_URL": "http://127.0.0.1:11434",
+    }
     with pytest.raises(InfraError, match="exit 2"):
         ensure_shared_index(_runner([], code=2), env, lambda e: set())
     with pytest.raises(InfraError, match="still missing"):
@@ -120,3 +128,65 @@ def test_the_attempt_checks_the_index_before_the_proxy_and_the_candidate(tmp_pat
     with pytest.raises(InfraError, match="index_missing"):
         attempt(1)
     assert not any(c[:2] in (["docker", "compose"], ["docker", "run"]) for c in calls)
+
+
+def test_the_index_build_embeds_through_the_tunnel(tmp_path: Path) -> None:
+    # review #259 B2: rag.gpu.yaml embeds via LLM_PROXY_URL; on the host that must be the tunnel
+    (tmp_path / "corpus" / "v3").mkdir(parents=True)
+    envs: list[Mapping[str, str]] = []
+
+    def run(argv: Sequence[str], env: Mapping[str, str]) -> tuple[int, str]:
+        envs.append(env)
+        return 0, ""
+
+    states = iter([set(), {ALIAS}])
+    env = {
+        "PRUEFSTAND_DATA_ROOT": str(tmp_path),
+        "PRUEFSTAND_CORPUS_VERSION": "v3",
+        "OLLAMA_GPU0_URL": "http://127.0.0.1:11434",
+        "LLM_PROXY_URL": "http://llm-proxy:11500",
+    }
+    ensure_shared_index(run, env, lambda e: next(states))
+    assert envs[0]["LLM_PROXY_URL"] == "http://127.0.0.1:11434"
+    assert envs[0]["QDRANT_URL"] == "http://127.0.0.1:6333"
+
+
+def test_without_the_tunnel_nothing_is_built(tmp_path: Path) -> None:
+    (tmp_path / "corpus" / "v3").mkdir(parents=True)
+    env = {"PRUEFSTAND_DATA_ROOT": str(tmp_path), "PRUEFSTAND_CORPUS_VERSION": "v3"}
+    calls: list[list[str]] = []
+    with pytest.raises(InfraError, match="OLLAMA_GPU0_URL"):
+        ensure_shared_index(_runner(calls), env, lambda e: set())
+    assert calls == []
+
+
+@pytest.mark.parametrize("version", ["..", ".", "v3/../..", "/etc", "a/b"])
+def test_a_corpus_version_outside_the_corpus_dir_is_refused(tmp_path: Path, version: str) -> None:
+    (tmp_path / "corpus" / "a" / "b").mkdir(parents=True)
+    env = {"PRUEFSTAND_DATA_ROOT": str(tmp_path), "PRUEFSTAND_CORPUS_VERSION": version}
+    with pytest.raises(InfraError, match="PRUEFSTAND_CORPUS_VERSION"):
+        ensure_shared_index(_runner([]), env, lambda e: set())
+
+
+@pytest.mark.parametrize(
+    ("status", "body"), [(401, "{}"), (403, "{}"), (200, "not json"), (200, '{"result": 1}')]
+)
+def test_a_refused_key_or_odd_answer_is_an_infra_error(status: int, body: str) -> None:
+    class Handler(BaseHTTPRequestHandler):
+        def do_GET(self) -> None:
+            self.send_response(status)
+            self.end_headers()
+            self.wfile.write(body.encode())
+
+        def log_message(self, format: str, *args: object) -> None:  # noqa: A002  (http.server API)
+            del format, args
+
+    server = HTTPServer(("127.0.0.1", 0), Handler)
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    try:
+        url = f"http://127.0.0.1:{server.server_address[1]}"
+        with pytest.raises(InfraError, match="index_unavailable"):
+            qdrant_aliases({"QDRANT_URL": url, "QDRANT_API_KEY": "wrong"})
+    finally:
+        server.shutdown()
