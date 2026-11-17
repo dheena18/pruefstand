@@ -16,6 +16,8 @@ from pathlib import Path
 
 import yaml
 
+from gate_orchestrator.infra import InfraError
+
 DIGEST = re.compile(r"sha256:[0-9a-f]{64}")
 CANDIDATE_PORT = 8000
 CANDIDATE_CONFIG = "/app/configs/rag.gpu.yaml"
@@ -36,16 +38,31 @@ def digest_from_status(status: Mapping[str, object] | None) -> str | None:
 
 
 def candidate_env(env: Mapping[str, str]) -> dict[str, str]:
-    """Values the candidate gets by name (the allow-list of ``candidate.ALLOWED_ENV``)."""
+    """Values the candidate gets by name (the allow-list of ``candidate.ALLOWED_ENV``).
+
+    Qdrant: the candidate only retrieves, so its ``QDRANT_API_KEY`` is the executor's
+    **read-only** key ``QDRANT_READ_ONLY_API_KEY``; the read-write ``QDRANT_API_KEY`` of the
+    orchestrator never reaches it (review #224: it could wipe or poison ``chunks_active``).
+    """
     out = {
         "RAG_CONFIG": CANDIDATE_CONFIG,
         "QDRANT_URL": QDRANT_URL,
         "RAG_COLLECTION": SHARED_COLLECTION,
     }
-    for name in ("QDRANT_API_KEY", "PRUEFSTAND_CANDIDATE_API_KEY"):
-        if env.get(name):
-            out[name] = env[name]
+    if env.get("QDRANT_READ_ONLY_API_KEY"):
+        out["QDRANT_API_KEY"] = env["QDRANT_READ_ONLY_API_KEY"]
+    if env.get("PRUEFSTAND_CANDIDATE_API_KEY"):
+        out["PRUEFSTAND_CANDIDATE_API_KEY"] = env["PRUEFSTAND_CANDIDATE_API_KEY"]
     return out
+
+
+def docker_run_env(env: Mapping[str, str], cenv: Mapping[str, str]) -> dict[str, str]:
+    """The ``docker run`` client env (``--env NAME`` copies the value from it).
+
+    The orchestrator's read-write ``QDRANT_API_KEY`` is dropped and the candidate's values are set.
+    """
+    base = {k: v for k, v in env.items() if k not in {"QDRANT_API_KEY", "QDRANT_READ_ONLY_API_KEY"}}
+    return {**base, **cenv}
 
 
 def ip_argv(name: str) -> list[str]:
@@ -90,14 +107,18 @@ def read_outcome(run_dir: Path) -> GateOutcome:
     """Parse ``gate.json`` and ``run.json`` of a run directory.
 
     Raises:
-        ValueError: ``gate.json`` is missing or not a gate report.
+        InfraError: ``gate.json`` or ``run.json`` is missing, unreadable or has no status.
     """
-    gate = json.loads((run_dir / "gate.json").read_text(encoding="utf-8"))
-    run = json.loads((run_dir / "run.json").read_text(encoding="utf-8"))
+    try:
+        gate = json.loads((run_dir / "gate.json").read_text(encoding="utf-8"))
+        run = json.loads((run_dir / "run.json").read_text(encoding="utf-8"))
+    except (OSError, ValueError) as exc:  # e.g. pruefstand gate crashed (review #224)
+        msg = f"gate_failed: no readable gate.json/run.json in {run_dir.name}"
+        raise InfraError(msg) from exc
     status = gate.get("status")
     if not isinstance(status, str):
-        msg = f"{run_dir}/gate.json has no status"
-        raise ValueError(msg)  # noqa: TRY004  (a malformed file, not a caller's type error)
+        msg = f"gate_failed: {run_dir.name}/gate.json has no status"
+        raise InfraError(msg)
     infra = run.get("infra_error")  # run.json is the RunManifest
     no_baseline = bool(gate.get("no_baseline"))
     summary = gate.get("eval_fingerprint") if no_baseline else gate.get("candidate_run_id")

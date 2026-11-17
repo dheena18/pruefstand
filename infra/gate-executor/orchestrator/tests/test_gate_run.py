@@ -10,12 +10,14 @@ from gate_orchestrator.candidate import ALLOWED_ENV
 from gate_orchestrator.gate_run import (
     candidate_env,
     digest_from_status,
+    docker_run_env,
     gate_argv,
     ip_argv,
     pruefstand_run_argv,
     read_outcome,
     run_config,
 )
+from gate_orchestrator.infra import InfraError
 
 REPO_ROOT = Path(__file__).resolve().parents[4]
 DIGEST = "sha256:" + "b" * 64
@@ -39,11 +41,26 @@ def test_digest_from_status(status: dict[str, str] | None, digest: str | None) -
 
 
 def test_candidate_env_is_inside_the_sandbox_allow_list() -> None:
-    env = candidate_env({"QDRANT_API_KEY": "k", "PUBLIC_TOKEN": "t", "DASHBOARD_DATA_PAT": "p"})
+    env = candidate_env(
+        {"QDRANT_READ_ONLY_API_KEY": "ro", "PUBLIC_TOKEN": "t", "DASHBOARD_DATA_PAT": "p"}
+    )
     assert set(env) <= ALLOWED_ENV
-    assert env["QDRANT_API_KEY"] == "k"
+    assert env["QDRANT_API_KEY"] == "ro"
     assert env["RAG_CONFIG"] == "/app/configs/rag.gpu.yaml"
     assert "PRUEFSTAND_CANDIDATE_API_KEY" not in candidate_env({})
+
+
+def test_the_read_write_qdrant_key_never_reaches_the_candidate() -> None:
+    # review #224: a read-write key could wipe or poison chunks_active
+    assert "QDRANT_API_KEY" not in candidate_env({"QDRANT_API_KEY": "rw"})
+    env = candidate_env({"QDRANT_API_KEY": "rw", "QDRANT_READ_ONLY_API_KEY": "ro"})
+    assert env["QDRANT_API_KEY"] == "ro"
+    client = docker_run_env(
+        {"QDRANT_API_KEY": "rw", "QDRANT_READ_ONLY_API_KEY": "ro", "HOME": "/h"}, env
+    )
+    assert client["QDRANT_API_KEY"] == "ro"
+    assert "rw" not in client.values()
+    assert "QDRANT_READ_ONLY_API_KEY" not in client
 
 
 def test_run_config_rewrites_only_the_target_url(tmp_path: Path) -> None:
@@ -93,14 +110,14 @@ def _run_dir(tmp: Path, gate: Mapping[str, object], infra: str | None = None) ->
 
 def test_outcome_of_a_finished_gate(tmp_path: Path) -> None:
     gate = {
-        "status": "FAIL",
+        "status": "fail",
         "candidate_run_id": "r1",
         "eval_fingerprint": "fp",
         "no_baseline": False,
     }
     outcome = read_outcome(_run_dir(tmp_path, gate))
     assert (outcome.status, outcome.summary, outcome.no_baseline, outcome.infra_error) == (
-        "FAIL",
+        "fail",
         "r1",
         False,
         None,
@@ -109,7 +126,7 @@ def test_outcome_of_a_finished_gate(tmp_path: Path) -> None:
 
 def test_outcome_without_baseline_names_the_fingerprint(tmp_path: Path) -> None:
     gate = {
-        "status": "INSUFFICIENT_DATA",
+        "status": "insufficient_data",
         "candidate_run_id": "r1",
         "eval_fingerprint": "fp",
         "no_baseline": True,
@@ -118,10 +135,17 @@ def test_outcome_without_baseline_names_the_fingerprint(tmp_path: Path) -> None:
 
 
 def test_outcome_carries_the_runs_infra_error(tmp_path: Path) -> None:
-    gate = {"status": "INSUFFICIENT_DATA", "candidate_run_id": "r1"}
+    gate = {"status": "insufficient_data", "candidate_run_id": "r1"}
     assert read_outcome(_run_dir(tmp_path, gate, "ollama_down: x")).infra_error == "ollama_down: x"
 
 
-def test_gate_json_without_status_is_an_error(tmp_path: Path) -> None:
-    with pytest.raises(ValueError, match="no status"):
+def test_gate_json_without_status_is_an_infra_error(tmp_path: Path) -> None:
+    with pytest.raises(InfraError, match=r"gate_failed: r1/gate\.json has no status"):
         read_outcome(_run_dir(tmp_path, {"candidate_run_id": "r1"}))
+
+
+def test_a_missing_gate_json_is_an_infra_error(tmp_path: Path) -> None:
+    run = _run_dir(tmp_path, {"status": "pass"})
+    (run / "gate.json").unlink()
+    with pytest.raises(InfraError, match="gate_failed"):
+        read_outcome(run)

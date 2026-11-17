@@ -77,3 +77,13 @@ def test_statuses_file_at_and_pull() -> None:
 def test_bad_token_is_refused(token: str) -> None:
     with pytest.raises(ValueError, match="invalid token"):
         PublicRepo(token)
+
+
+def test_redirects_are_not_followed() -> None:
+    # review #224: a redirect would carry the reader elsewhere; it is an error instead
+    def handle(request: httpx.Request) -> httpx.Response:
+        assert request.url.host == "api.github.com"
+        return httpx.Response(302, headers={"Location": "https://example.invalid/x"})
+
+    with pytest.raises(GitHubReadError, match="HTTP 302"):
+        _repo(httpx.MockTransport(handle)).statuses("a" * 40)
