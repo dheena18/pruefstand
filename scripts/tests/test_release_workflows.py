@@ -156,9 +156,14 @@ def fake(path: Path, name: str, rc: int, output: str) -> None:
 
 
 PKG_OK = (0, '{"name": "x"}')
+PKG_404 = (1, "gh: Not Found (HTTP 404)")
 CHECK_CASES = [
-    ((1, "gh: Not Found (HTTP 404)"), (1, "denied: denied"), "build"),  # first release
-    ((1, "gh: Server Error (HTTP 500)"), (1, "manifest unknown"), "refuse"),  # API error
+    (PKG_404, (1, "denied: denied"), "build"),  # first release of a new package
+    (PKG_404, (0, '{"schemaVersion": 2}'), "refuse"),  # a 404 (token cannot see it) never wins
+    (PKG_404, (1, "manifest unknown"), "build"),
+    (PKG_404, (1, "net/http: request canceled (Client.Timeout exceeded)"), "refuse"),
+    ((1, "gh: Server Error: upstream 404 (HTTP 500)"), (1, "denied: denied"), "refuse"),
+    ((1, "gh: Server Error (HTTP 500)"), (1, "manifest unknown"), "refuse"),
     ((1, "gh: Bad credentials (HTTP 401)"), (1, "manifest unknown"), "refuse"),
     (PKG_OK, (0, '{"schemaVersion": 2}'), "refuse"),  # the tag exists: never overwrite
     (PKG_OK, (1, "manifest unknown"), "build"),  # a definite not-found of the tag
@@ -177,10 +182,22 @@ def test_the_tag_check_fails_closed(
     fake(tmp_path, "gh", *api)
     fake(tmp_path, "docker", *registry)
     path = f"{tmp_path}{os.pathsep}{os.environ['PATH']}"
-    env = {**os.environ, "PATH": path, "IMAGE": "ghcr.io/x:v1", "PACKAGE": "x", "GH_TOKEN": "t"}
+    env = {**os.environ, "PATH": path, "IMAGE": "ghcr.io/x:v1", "PACKAGE": "x", "OWNER": "o"}
     for job in ("image-action", "image-rag-demo"):
         done = subprocess.run(  # noqa: S603  (the workflow's own script)
             [shutil.which("bash") or "/bin/bash", "-e", "-c", str(check_step(job)["run"])],
             env=env, capture_output=True, text=True, timeout=30, check=False,
         )  # fmt: skip
         assert (done.returncode == 0) is (verdict == "build"), (job, api, registry, done.stdout)
+
+
+def test_the_check_uses_the_repository_owner_and_single_line_errors() -> None:
+    for job in ("image-action", "image-rag-demo"):
+        step = check_step(job)
+        assert step["env"]["OWNER"] == "${{ github.repository_owner }}"
+        run = str(step["run"])
+        assert "/users/$OWNER/packages/container/$PACKAGE" in run
+        assert "dheena18" not in run
+        assert all(
+            "$pkg" not in ln and "$out" not in ln for ln in run.splitlines() if "::error::" in ln
+        )

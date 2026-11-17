@@ -106,19 +106,22 @@ jobs:
         env:
           IMAGE: ${{ env.OWNER_IMAGES }}/pruefstand-action:${{ github.ref_name }}
           PACKAGE: pruefstand-action
+          OWNER: ${{ github.repository_owner }}
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        # fail closed. A package that does not exist yet (first release) is a definite 404 of the
-        # Packages API (the registry itself answers `denied` there); for an existing package only
-        # a definite "not found" of the tag counts as absent; any other error (auth, 5xx, network,
-        # timeout) stops the release instead of risking an overwrite
+        # fail closed. The registry decides: a manifest that exists is never overwritten. Absent is
+        # only (a) a definite "manifest unknown" / "no such manifest" of the tag, or (b) for a package
+        # that does not exist yet (Packages API answers exactly "(HTTP 404)") the registry's `denied`
+        # of the first release. Any other answer (auth, 5xx, network, timeout) stops the release.
         run: |
-          if pkg="$(gh api "/users/dheena18/packages/container/$PACKAGE" 2>&1)"; then
-            echo "package $PACKAGE exists: checking the tag"
-          elif printf '%s' "$pkg" | grep -q 'HTTP 404'; then
-            echo "package $PACKAGE does not exist yet (first release): building"
-            exit 0
+          pkg_absent=false
+          if pkg="$(gh api "/users/$OWNER/packages/container/$PACKAGE" 2>&1)"; then
+            echo "package $PACKAGE exists"
+          elif printf '%s' "$pkg" | grep -qE '\(HTTP 404\)$'; then
+            pkg_absent=true
+            echo "package $PACKAGE not found by the Packages API"
           else
-            echo "::error::cannot read package $PACKAGE: $pkg"
+            echo "::error::cannot read package $PACKAGE (details below)"
+            printf '%s\n' "$pkg"
             exit 1
           fi
           if out="$(docker manifest inspect "$IMAGE" 2>&1)"; then
@@ -127,8 +130,11 @@ jobs:
           fi
           if printf '%s' "$out" | grep -qiE 'manifest unknown|no such manifest'; then
             echo "$IMAGE is absent: building it"
+          elif [ "$pkg_absent" = true ] && printf '%s' "$out" | grep -qE '^denied'; then
+            echo "$IMAGE: first release of package $PACKAGE: building it"
           else
-            echo "::error::cannot tell whether $IMAGE exists: $out"
+            echo "::error::cannot tell whether $IMAGE exists (details below)"
+            printf '%s\n' "$out"
             exit 1
           fi
       - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
@@ -184,19 +190,22 @@ jobs:
         env:
           IMAGE: ${{ env.OWNER_IMAGES }}/rag-demo:${{ github.ref_name }}
           PACKAGE: rag-demo
+          OWNER: ${{ github.repository_owner }}
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        # fail closed. A package that does not exist yet (first release) is a definite 404 of the
-        # Packages API (the registry itself answers `denied` there); for an existing package only
-        # a definite "not found" of the tag counts as absent; any other error (auth, 5xx, network,
-        # timeout) stops the release instead of risking an overwrite
+        # fail closed. The registry decides: a manifest that exists is never overwritten. Absent is
+        # only (a) a definite "manifest unknown" / "no such manifest" of the tag, or (b) for a package
+        # that does not exist yet (Packages API answers exactly "(HTTP 404)") the registry's `denied`
+        # of the first release. Any other answer (auth, 5xx, network, timeout) stops the release.
         run: |
-          if pkg="$(gh api "/users/dheena18/packages/container/$PACKAGE" 2>&1)"; then
-            echo "package $PACKAGE exists: checking the tag"
-          elif printf '%s' "$pkg" | grep -q 'HTTP 404'; then
-            echo "package $PACKAGE does not exist yet (first release): building"
-            exit 0
+          pkg_absent=false
+          if pkg="$(gh api "/users/$OWNER/packages/container/$PACKAGE" 2>&1)"; then
+            echo "package $PACKAGE exists"
+          elif printf '%s' "$pkg" | grep -qE '\(HTTP 404\)$'; then
+            pkg_absent=true
+            echo "package $PACKAGE not found by the Packages API"
           else
-            echo "::error::cannot read package $PACKAGE: $pkg"
+            echo "::error::cannot read package $PACKAGE (details below)"
+            printf '%s\n' "$pkg"
             exit 1
           fi
           if out="$(docker manifest inspect "$IMAGE" 2>&1)"; then
@@ -205,8 +214,11 @@ jobs:
           fi
           if printf '%s' "$out" | grep -qiE 'manifest unknown|no such manifest'; then
             echo "$IMAGE is absent: building it"
+          elif [ "$pkg_absent" = true ] && printf '%s' "$out" | grep -qE '^denied'; then
+            echo "$IMAGE: first release of package $PACKAGE: building it"
           else
-            echo "::error::cannot tell whether $IMAGE exists: $out"
+            echo "::error::cannot tell whether $IMAGE exists (details below)"
+            printf '%s\n' "$out"
             exit 1
           fi
       - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
