@@ -5,7 +5,7 @@ import json
 from pathlib import Path
 
 import pytest
-from rq1.grid import GRID
+from rq1.grid import GRID, overrides_hash
 from rq1.run_grid import (
     DERIVED,
     GPU_CONFIG,
@@ -59,8 +59,31 @@ def test_the_grid_hashes_cover_the_derived_section() -> None:
 def test_a_tunnel_endpoint_is_refused() -> None:
     grid = copy.deepcopy(GRID_YAML)
     grid["embedders"]["e5_large_instruct"]["endpoint_env"] = "OLLAMA_GPU0_URL"
-    with pytest.raises(ConfigError, match="bypasses llm-proxy"):
+    with pytest.raises(ConfigError, match="would bypass llm-proxy"):
         materialise(BASE, grid)
+
+
+def test_only_the_allowed_endpoint_variables_pass() -> None:
+    grid = copy.deepcopy(GRID_YAML)
+    grid["embedders"]["e5_large_instruct"]["endpoint_env"] = "SOME_OTHER_URL"
+    with pytest.raises(ConfigError, match="not one of"):
+        materialise(BASE, grid)
+
+
+def test_two_cells_with_the_same_hash_are_refused() -> None:
+    grid = copy.deepcopy(GRID_YAML)
+    grid["embedders"]["twin"] = copy.deepcopy(BASE["embed"])  # the derived bge_m3 section again
+    with pytest.raises(ConfigError, match="same rag-demo config hash"):
+        materialise(BASE, grid)
+
+
+def test_grid_json_carries_each_cell_s_grid_hash(tmp_path: Path) -> None:
+    cells = materialise(BASE, GRID_YAML)
+    rows = json.loads(write_plan(tmp_path, cells, 1234).read_text(encoding="utf-8"))["cells"]
+    for row, cell in zip(rows, cells, strict=True):
+        assert row["grid_hash"] == overrides_hash(cell.grid.overrides)
+        assert row["rag_config_hash"] == cell.rag_hash
+    assert len({row["grid_hash"] for row in rows}) == len(rows)
 
 
 def test_derived_grid_does_not_change_its_inputs() -> None:

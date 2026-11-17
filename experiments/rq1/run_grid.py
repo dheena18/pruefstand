@@ -39,7 +39,8 @@ REPO = Path(__file__).resolve().parents[2]
 GPU_CONFIG = REPO / "apps/rag-demo/configs/rag.gpu.yaml"
 CATALOGUE = REPO / "infra/gpu/models.yaml"
 DERIVED = "bge_m3"  # the arm whose embed section comes from rag.gpu.yaml (D1272)
-TUNNEL_ENVS = frozenset({"OLLAMA_GPU0_URL", "OLLAMA_GPU1_URL", "OLLAMA_URL"})
+# the only endpoint variables a cell may name: llm-proxy (bge-m3, D1272), VM CPU TEI (e5, D1263)
+ALLOWED_ENDPOINT_ENVS = frozenset({"LLM_PROXY_URL", "EMBED_URL"})
 
 
 def load_yaml(path: Path) -> dict[str, Any]:
@@ -78,7 +79,7 @@ def materialise(
     """Every cell as a full, validated rag-demo config, in the expander's order.
 
     Raises:
-        ConfigError: a cell reaches a model through a tunnel variable instead of ``llm-proxy``,
+        ConfigError: a cell's embed endpoint variable is not in ``ALLOWED_ENDPOINT_ENVS``,
             or two cells have the same rag-demo config hash.
         pydantic.ValidationError: a cell is not a valid ``rag.gpu.yaml`` (rag-demo's own
             ``ConfigError`` for a catalogue mismatch).
@@ -87,8 +88,11 @@ def materialise(
     for cfg in expand(derived_grid(grid, base), extended=extended):
         config = apply_overrides(base, cfg.overrides)
         endpoint = config["embed"].get("endpoint_env")
-        if endpoint in TUNNEL_ENVS:
-            msg = f"{cfg.name}: embed endpoint {endpoint} bypasses llm-proxy (D1272)"
+        if endpoint not in ALLOWED_ENDPOINT_ENVS:
+            msg = (
+                f"{cfg.name}: embed endpoint {endpoint} is not one of "
+                f"{sorted(ALLOWED_ENDPOINT_ENVS)} (it would bypass llm-proxy, D1272)"
+            )
             raise ConfigError(msg)
         parsed = parse_config(yaml.safe_dump(config, sort_keys=False), CATALOGUE)
         cells.append(Cell(cfg, config, config_hash(parsed)))
