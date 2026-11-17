@@ -60,6 +60,51 @@ def _free_port() -> int:
         return int(sock.getsockname()[1])
 
 
+START_DEADLINE_S = 30.0  # node's cold start on a loaded CI runner took > 5 s (the old poll budget)
+
+
+def _wait_for_port(port: int, proc: subprocess.Popen[bytes] | None, deadline_s: float) -> None:
+    """Return once 127.0.0.1:``port`` accepts a connection; fail clearly instead of racing.
+
+    Raises:
+        AssertionError: ``proc`` exited first, or nothing listens within ``deadline_s``.
+    """
+    deadline = time.monotonic() + deadline_s
+    while True:
+        if proc is not None and proc.poll() is not None:
+            msg = f"server exited with code {proc.returncode} before listening"
+            raise AssertionError(msg)
+        try:
+            with socket.create_connection(("127.0.0.1", port), timeout=1):
+                return
+        except OSError:
+            if time.monotonic() >= deadline:
+                msg = f"nothing listens on port {port} after {deadline_s} s"
+                raise AssertionError(msg) from None
+            time.sleep(0.05)
+
+
+def test_wait_for_port_returns_once_a_socket_listens() -> None:
+    with socket.socket() as listener:
+        listener.bind(("127.0.0.1", 0))
+        listener.listen()
+        _wait_for_port(int(listener.getsockname()[1]), None, deadline_s=5)
+
+
+def test_wait_for_port_fails_clearly_instead_of_racing() -> None:
+    started = time.monotonic()
+    with pytest.raises(AssertionError, match="nothing listens on port"):
+        _wait_for_port(_free_port(), None, deadline_s=0.3)
+    assert time.monotonic() - started < 5
+
+
+def test_wait_for_port_stops_when_the_server_exits() -> None:
+    proc = subprocess.Popen(["true"])  # noqa: S607  # fixed argv
+    proc.wait(timeout=10)
+    with pytest.raises(AssertionError, match="server exited with code 0"):
+        _wait_for_port(_free_port(), proc, deadline_s=5)
+
+
 def test_the_static_server_answers_400_for_a_malformed_escape_and_404_for_unknown(
     tmp_path: Path,
 ) -> None:
@@ -70,12 +115,7 @@ def test_the_static_server_answers_400_for_a_malformed_escape_and_404_for_unknow
     )
     try:
         base = f"http://127.0.0.1:{port}"
-        for _ in range(50):
-            try:
-                urllib.request.urlopen(base + "/de/", timeout=2).read()  # noqa: S310
-                break
-            except OSError:
-                time.sleep(0.1)
+        _wait_for_port(port, proc, START_DEADLINE_S)
         for path, status in (("/%E0%A4%A", 400), ("/nope/", 404)):
             with pytest.raises(urllib.error.HTTPError) as err:
                 urllib.request.urlopen(base + path, timeout=5)  # noqa: S310
