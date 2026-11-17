@@ -1,4 +1,4 @@
-"""T6.3 S2 (core): sigma_d is cluster-aware and pooled over pairs; the MDE table and the quota."""
+"""T6.3 S2 (core): size-weighted sigma_d, pooling, the MDE table and the quota (D1275)."""
 
 import math
 
@@ -8,7 +8,8 @@ import pytest
 from noise.analyze import MAX_MDE_FACTOR, clusters_needed, mde, mde_table, sigma_table
 
 from pruefstand.core.config.gate import GatePolicy, MetricPolicy
-from pruefstand.gate.stats import minimum_detectable_effect
+from pruefstand.core.errors import ConfigError
+from pruefstand.gate.stats import minimum_detectable_effect, paired_cluster_bootstrap
 
 POLICY = GatePolicy(
     metrics={
@@ -18,75 +19,99 @@ POLICY = GatePolicy(
 )
 
 
-def diffs(
-    sigma: float, *, clusters: int = 400, pairs: int = 2, arm: str = "churn", seed: int = 3
-) -> pl.DataFrame:
+def frame(cases: list[tuple[str, float]], *, pair: str = "p0", arm: str = "churn") -> pl.DataFrame:
+    """Rows of one pair: (cluster id, case diff)."""
+    return pl.DataFrame(
+        [
+            {"arm": arm, "kind": "temp03", "pair": pair, "metric": "context_recall",
+             "slice": "overall", "cluster_id": c, "diff": d}
+            for c, d in cases
+        ]
+    )  # fmt: skip
+
+
+def normal_clusters(
+    sigma: float, k: int, seed: int, sizes: tuple[int, ...] = (1,)
+) -> list[tuple[str, float]]:
     rng = np.random.default_rng(seed)
-    rows = []
-    for pair in range(pairs):
-        means = rng.normal(0.0, sigma, size=clusters)
-        for c, m in enumerate(means):
-            for offset in (-0.01, 0.01):  # two cases per cluster around the cluster mean
-                rows.append(
-                    {"arm": arm, "kind": "temp03", "pair": f"p{pair}", "metric": "context_recall",
-                     "slice": "overall", "cluster_id": f"k{c}", "diff": float(m + offset)}
-                )  # fmt: skip
-    return pl.DataFrame(rows)
+    out = []
+    for c, mean in enumerate(rng.normal(0.0, sigma, size=k)):
+        out += [(f"k{c}", float(mean))] * sizes[c % len(sizes)]
+    return out
 
 
-def test_sigma_is_the_spread_of_cluster_means_pooled_over_pairs() -> None:
-    table = sigma_table(diffs(0.1))
-    kind = table.filter(pl.col("kind") == "temp03").row(0, named=True)
-    pooled = table.filter(pl.col("kind") == "all").row(0, named=True)
-    assert kind["sigma_d"] == pytest.approx(
-        0.1, rel=0.08
-    )  # case offsets cancel in the cluster mean
-    assert (kind["pairs"], kind["clusters"]) == (2, 400)
-    assert pooled["sigma_d"] == pytest.approx(kind["sigma_d"])
+def kind_sigma(table: pl.DataFrame) -> float:
+    return float(table.filter(pl.col("kind") == "temp03")["sigma_d"][0])
+
+
+def test_prompt_plan_sigma_recovered_within_ten_percent() -> None:
+    table = sigma_table(frame(normal_clusters(0.2, 300, seed=1234)))
+    assert kind_sigma(table) == pytest.approx(0.2, rel=0.10)
+
+
+def test_exact_value_uses_cluster_means_and_k_minus_one() -> None:
+    # cluster means 0, 0.3, 0.6 from very different cases: sigma^2 = (0.09 + 0 + 0.09) / 2
+    cases = [("a", -0.1), ("a", 0.1), ("b", 0.0), ("b", 0.6), ("c", 0.5), ("c", 0.7)]
+    assert kind_sigma(sigma_table(frame(cases))) == pytest.approx(0.3)
+
+
+def test_se_matches_the_gate_bootstrap_with_unequal_cluster_sizes() -> None:
+    cases = normal_clusters(0.2, 300, seed=7, sizes=(1, 9))
+    sigma = kind_sigma(sigma_table(frame(cases)))
+    diffs = np.array([d for _, d in cases])
+    ids = np.array([c for c, _ in cases])
+    boot = paired_cluster_bootstrap(
+        diffs, ids, n_resamples=4000, confidence=0.95, rng=np.random.default_rng(1)
+    )
+    assert sigma / math.sqrt(300) == pytest.approx(boot.se, rel=0.10)
 
 
 def test_pooling_is_the_root_mean_of_the_variances() -> None:
-    both = pl.concat(
-        [
-            diffs(0.1, pairs=1, seed=1),
-            diffs(0.2, pairs=1, seed=2).with_columns(pl.lit("p9").alias("pair")),
-        ]
-    )
-    table = sigma_table(both)
-    pooled = table.filter(pl.col("kind") == "all")["sigma_d"][0]
-    per_pair = [diffs(0.1, pairs=1, seed=1), diffs(0.2, pairs=1, seed=2)]
-    variances = [
-        sigma_table(t).filter(pl.col("kind") == "all")["sigma_d"][0] ** 2 for t in per_pair
-    ]
+    first = frame(normal_clusters(0.1, 200, seed=1), pair="p1")
+    second = frame(normal_clusters(0.2, 200, seed=2), pair="p2")
+    pooled = sigma_table(pl.concat([first, second])).filter(pl.col("kind") == "all")["sigma_d"][0]
+    variances = [kind_sigma(sigma_table(f)) ** 2 for f in (first, second)]
     assert pooled == pytest.approx(math.sqrt(sum(variances) / 2))
 
 
-def test_mde_rows_use_the_family_size_and_flag_too_few_clusters() -> None:
-    sigma = sigma_table(diffs(0.1))
-    table = mde_table(sigma, {("context_recall", "overall"): 220}, POLICY, m_family=12)
-    row = table.row(0, named=True)
-    se = row["sigma_d"] / math.sqrt(220)
+def test_a_pair_with_one_cluster_is_refused() -> None:
+    with pytest.raises(ConfigError, match="fewer than 2 clusters"):
+        sigma_table(frame([("only", 0.1), ("only", 0.2)]))
+
+
+def _row(sigma: float, k: int) -> dict[str, float]:
+    table = sigma_table(frame(normal_clusters(sigma, 400, seed=3)))
+    rows = mde_table(table, {("context_recall", "overall"): k}, POLICY, m_family=12)
+    row: dict[str, float] = rows.row(0, named=True)
+    return row
+
+
+def test_mde_uses_the_holm_family_when_significance_binds() -> None:
+    row = _row(0.6, 220)
+    se = float(row["sigma_d"]) / math.sqrt(220)
     assert row["mde"] == pytest.approx(minimum_detectable_effect(se, 0.025, 0.05, m=12))
-    assert row["gated"]
+    assert row["mde"] > minimum_detectable_effect(se, 0.025, 0.05, m=1) + 0.01
+
+
+def test_mde_never_drops_below_the_delta_floor() -> None:
+    row = _row(0.05, 220)
+    se = float(row["sigma_d"]) / math.sqrt(220)
+    assert row["mde"] >= 0.05 + 0.8416 * se - 1e-9
     assert row["ok"]
     assert row["clusters_needed"] is None
-    small = mde_table(sigma, {("context_recall", "overall"): 20}, POLICY, m_family=12).row(
-        0, named=True
-    )
-    assert not small["gated"]
+
+
+@pytest.mark.parametrize(("k", "gated"), [(30, True), (29, False)])
+def test_gated_from_exactly_min_clusters(k: int, gated: bool) -> None:  # noqa: FBT001
+    assert _row(0.1, k)["gated"] is gated
 
 
 def test_a_failing_row_gets_the_cluster_quota_that_would_pass() -> None:
-    sigma = sigma_table(diffs(0.6))
-    row = mde_table(sigma, {("context_recall", "overall"): 220}, POLICY, m_family=12).row(
-        0, named=True
-    )
+    row = _row(0.6, 220)
     assert not row["ok"]
-    needed = row["clusters_needed"]
+    needed = int(str(row["clusters_needed"]))
+    sigma = float(row["sigma_d"])
     target = MAX_MDE_FACTOR * 0.05
-    assert (
-        mde(row["sigma_d"], needed, POLICY, 0.05, 12)
-        <= target
-        < mde(row["sigma_d"], needed - 1, POLICY, 0.05, 12)
-    )
-    assert clusters_needed(row["sigma_d"], POLICY, 0.05, 12) == needed
+    assert mde(sigma, needed, POLICY, 0.05, 12) <= target
+    assert mde(sigma, needed - 1, POLICY, 0.05, 12) > target
+    assert clusters_needed(sigma, POLICY, 0.05, 12) == needed

@@ -1,39 +1,29 @@
 """T6.3 S3: the shipped gate thresholds equal the SPEC defaults (or a decision records why not).
 
-δ (``max_drop``) is a product decision (SPEC §7.2): this check compares ``pruefstand.yaml`` with
-the ``gate:`` block of ``docs/spec/SPEC.md`` §5.6 key by key, so a threshold is never changed
-silently.
+delta (``max_drop``) is a product decision (SPEC §7.2): this check compares the ``gate`` block of
+``pruefstand.yaml`` with the ``gate:`` block of ``docs/spec/SPEC.md`` §5.6 over the **union** of
+their keys, at the gate level and per metric rule, so no threshold or setting changes silently.
 
 Usage::
 
-uv run python experiments/noise/check_consistency.py # exit 1 and one line per difference
+    uv run python experiments/noise/check_consistency.py      # exit 1 and one line per difference
 """
 
 import re
 import sys
 from collections.abc import Mapping
 from pathlib import Path
-from typing import Any
 
 import yaml
 
 REPO = Path(__file__).resolve().parents[2]
-GATE_KEYS = (
-    "hard_fail",
-    "gated_slices",
-    "min_clusters",
-    "n_resamples",
-    "correction",
-    "alpha",
-    "warn_p",
-)
-RULE_KEYS = ("max_drop", "max_value")
 # "gate.<key>" or "gate.metrics.<metric>.<rule>" -> decision id that records an intended difference.
 RECORDED: Mapping[str, str] = {}
 _YAML_BLOCK = re.compile(r"```yaml\n(.*?)```", re.S)
+Gate = Mapping[str, object]
 
 
-def spec_gate(spec_text: str) -> dict[str, Any]:
+def spec_gate(spec_text: str) -> dict[str, object]:
     """Return the ``gate`` mapping of the first YAML block of the SPEC that has one.
 
     Raises:
@@ -48,26 +38,33 @@ def spec_gate(spec_text: str) -> dict[str, Any]:
     raise ValueError(msg)
 
 
-def differences(
-    shipped: Mapping[str, Any], spec: Mapping[str, Any], recorded: Mapping[str, str] = RECORDED
-) -> list[str]:
-    """Compare two ``gate`` mappings; return one line per unrecorded difference.
+def _rules(gate: Gate) -> dict[str, dict[str, object]]:
+    metrics = gate.get("metrics")
+    if not isinstance(metrics, dict):
+        return {}
+    return {str(m): dict(r) if isinstance(r, dict) else {} for m, r in metrics.items()}
+
+
+def differences(shipped: Gate, spec: Gate, recorded: Mapping[str, str] = RECORDED) -> list[str]:
+    """Compare two ``gate`` mappings over the union of keys; one line per unrecorded difference.
 
     Examples:
-        >>> differences({"alpha": 0.025, "metrics": {}}, {"alpha": 0.05, "metrics": {}})
+        >>> differences({"alpha": 0.025}, {"alpha": 0.05})
         ['gate.alpha: shipped 0.025, SPEC 0.05']
+        >>> differences({"new_key": 1}, {})
+        ['gate.new_key: shipped 1, SPEC None']
     """
-    found = []
-    for key in GATE_KEYS:
+    found: list[tuple[str, object, object]] = []
+    for key in sorted((set(shipped) | set(spec)) - {"metrics"}):
         if shipped.get(key) != spec.get(key):
             found.append((f"gate.{key}", shipped.get(key), spec.get(key)))
-    metrics = sorted(set(shipped.get("metrics", {})) | set(spec.get("metrics", {})))
-    for metric in metrics:
-        ours, theirs = shipped["metrics"].get(metric) or {}, spec["metrics"].get(metric) or {}
-        for rule in RULE_KEYS:
-            if ours.get(rule) != theirs.get(rule):
-                found.append((f"gate.metrics.{metric}.{rule}", ours.get(rule), theirs.get(rule)))
-    return [f"{key}: shipped {a}, SPEC {b}" for key, a, b in found if key not in recorded]
+    ours, theirs = _rules(shipped), _rules(spec)
+    for metric in sorted(set(ours) | set(theirs)):
+        a, b = ours.get(metric, {}), theirs.get(metric, {})
+        for rule in sorted(set(a) | set(b)):
+            if a.get(rule) != b.get(rule):
+                found.append((f"gate.metrics.{metric}.{rule}", a.get(rule), b.get(rule)))
+    return [f"{key}: shipped {x}, SPEC {y}" for key, x, y in found if key not in recorded]
 
 
 def main(argv: list[str] | None = None) -> int:
