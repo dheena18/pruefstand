@@ -4,7 +4,7 @@ import { ask, parseAnswer } from "@/lib/try-api";
 
 const OK = {
   answer: "Vier Wochen (§ 622 BGB).",
-  citations: ["§ 622 BGB", 7],
+  citations: ["§ 622 BGB"],
   chunks: [
     {
       chunk_id: "c1",
@@ -16,7 +16,6 @@ const OK = {
       used_in_prompt: false,
     },
     { chunk_id: "c2", doc_id: "d2", text: "u", score: 0.5, rank: 2 },
-    { nonsense: true },
   ],
   refused: false,
   model: "qwen",
@@ -30,7 +29,7 @@ const json = (status: number, body: unknown) =>
 const signal = () => new AbortController().signal;
 
 describe("parseAnswer", () => {
-  it("keeps well-formed citations and chunks and fills the optional fields", () => {
+  it("keeps citations and chunks and fills the optional fields", () => {
     const a = parseAnswer(OK);
     expect(a?.citations).toEqual(["§ 622 BGB"]);
     expect(a?.chunks.map((c) => [c.chunk_id, c.tenant_id, c.used_in_prompt])).toEqual([
@@ -38,6 +37,34 @@ describe("parseAnswer", () => {
       ["c2", null, null],
     ]);
     expect(a?.refused).toBe(false);
+  });
+  it.each([
+    ["no score", { chunk_id: "c", doc_id: "d", text: "t", rank: 1 }],
+    ["a string score", { chunk_id: "c", doc_id: "d", text: "t", score: "0.5", rank: 1 }],
+    ["a NaN score", { chunk_id: "c", doc_id: "d", text: "t", score: null, rank: 1 }],
+    ["no rank", { chunk_id: "c", doc_id: "d", text: "t", score: 0.5 }],
+    ["no chunk id", { doc_id: "d", text: "t", score: 0.5, rank: 1 }],
+    ["no doc id", { chunk_id: "c", text: "t", score: 0.5, rank: 1 }],
+    ["no text", { chunk_id: "c", doc_id: "d", score: 0.5, rank: 1 }],
+    [
+      "a numeric tenant",
+      { chunk_id: "c", doc_id: "d", text: "t", score: 0.5, rank: 1, tenant_id: 3 },
+    ],
+    [
+      "a string used_in_prompt",
+      { chunk_id: "c", doc_id: "d", text: "t", score: 0.5, rank: 1, used_in_prompt: "no" },
+    ],
+    ["not an object", "chunk"],
+  ])("is null when a chunk has %s (it would crash the card)", (_name, chunk) => {
+    expect(parseAnswer({ ...OK, chunks: [OK.chunks[0], chunk] })).toBeNull();
+  });
+  it("is null when a citation is not a string or chunks is not a list", () => {
+    expect(parseAnswer({ ...OK, citations: ["§ 1", 7] })).toBeNull();
+    expect(parseAnswer({ ...OK, chunks: "x" })).toBeNull();
+  });
+  it("treats a missing chunk list and citation list as empty", () => {
+    const a = parseAnswer({ answer: "x" });
+    expect([a?.citations, a?.chunks]).toEqual([[], []]);
   });
   it("is null without an answer string", () => {
     expect(parseAnswer({})).toBeNull();
@@ -47,6 +74,20 @@ describe("parseAnswer", () => {
 });
 
 describe("ask", () => {
+  it("answers a 200 with a malformed chunk as a server error, not as an answer", async () => {
+    const bad = { ...OK, chunks: [{ chunk_id: "c", doc_id: "d", text: "t", rank: 1 }] };
+    const out = await ask(
+      "https://demo.example",
+      "kanzlei_mueller",
+      "Frage?",
+      signal(),
+      json(200, bad),
+    );
+    expect(out).toEqual({
+      kind: "failure",
+      failure: { state: "T-SERVER-ERROR", retryAfterS: null },
+    });
+  });
   it("returns the parsed answer for a 200 and posts the tenant and the question", async () => {
     let seen: { url: string; init: RequestInit | undefined } | null = null;
     const fetcher = (async (url: string, init?: RequestInit) => {

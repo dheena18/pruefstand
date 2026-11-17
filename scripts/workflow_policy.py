@@ -103,6 +103,11 @@ REPO_CODE_RUN = re.compile(
 # default: packages, pull-requests, checks, issues, deployments, attestations, actions, ...).
 OTHER_WRITE: dict[tuple[str, str, str], str] = {
     ("build-images.yml", "trivy", "security-events"): "uploads the Trivy SARIF to code scanning",
+    (
+        "build-images.yml",
+        "push-sign",
+        "packages",
+    ): "T6.2b S1 (D1307): pushes the rag-demo image to GHCR",
     ("security.yml", "codeql", "security-events"): "CodeQL SARIF upload",
     ("security.yml", "scorecard", "security-events"): "OpenSSF Scorecard SARIF upload",
     (

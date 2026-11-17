@@ -118,6 +118,12 @@ half). Re-run those steps only to rebuild the VM.
    `git -C /home/pruefstand/pruefstand-gate pull --ff-only` between jobs), never from a job workspace under
    `runner/_work/`, which the hooks themselves wipe (D1096). The unit sets no `NoNewPrivileges=`: the preflight's
    tunnel repair needs `sudo -n` (D1096).
+   **CLI** (D1095): clone the public repo once as `pruefstand` to the path you set as `PRUEFSTAND_MAIN_DIR`
+   in `runner.env` (HTTPS, no credentials), then link the wrapper onto the runner's PATH:
+   `ln -s /home/pruefstand/pruefstand-gate/infra/gate-executor/host/gate-orchestrator /home/pruefstand/.local/bin/`
+   (and make sure `/home/pruefstand/.local/bin` is in the runner's `.path`).
+   Who may dispatch tier 2 is `infra/gate-executor/orchestrator/gate_orchestrator/maintainers.txt` (D1097;
+   the owner only); change it by a public PR and a sync.
 7. `llm-proxy` (`gate-net` + `proxy-egress`, `http://llm-proxy:11500`, D242), `rerank-cpu` and Qdrant (profile `gpu`) on the VM as
    `pruefstand` (T3.1a, T6.2a); ports in `docker.md` §3. Your dev stack uses `PORT_OFFSET=10000`; run
    `make ports-env` once so even a raw `docker compose … up` binds the dev ports, and `make check-ports`
@@ -401,7 +407,7 @@ All secrets with their locations and scopes: `docs/ops/secrets.md` (this table c
 | `PRUEFSTAND_CANDIDATE_API_KEY` | `runner.env` of user `pruefstand` (set by the orchestrator per job; your dev stack has its own value in `.env`) | on suspicion | new random value in `.env`; not a security boundary (`gate-net` + `llm-proxy` are) |
 | Your VM `gh` token (fine-grained, `dheena18/pruefstand` only, contents + pull requests + workflows write; N4.4, D284) | `gh` config of your user on the VM | ≤ 90 days (expiry set at creation) | create the new token in the browser with the same single-repo scope → `gh auth login --with-token` on the VM → `gh api repos/dheena18/pruefstand-gate` → 404 → delete the old token |
 | Runner registration | runner config on the VM | only when moving hosts | persistent runner, registered once (D100); to move: `./config.sh remove`, then register on the new host |
-| `age` key pair | your laptop | on loss or suspicion | new key pair → update `AGE_RECIPIENT` in `runner.env` of `pruefstand` → run `backup.yml` once → keep the old private key until all bundles encrypted to it have aged out |
+| `age` key pair | your laptop | on loss or suspicion | new key pair → update the Actions variable `AGE_RECIPIENT` of `pruefstand-gate` (D1094) → run `backup.yml` once → keep the old private key until all bundles encrypted to it have aged out |
 
 ## 8. Baselines storage (no rollover)
 

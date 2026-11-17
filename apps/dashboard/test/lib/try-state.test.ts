@@ -73,6 +73,14 @@ describe("the state machine (ui-spec 4.6)", () => {
   });
   it("a 200 is a success, a refused one a refusal", () => {
     expect(reduce(loading(), { type: "answered", answer: ANSWER }).id).toBe("T-SUCCESS");
+    // a late response after Cancel or a timeout must not resurrect the card
+    const cancelled = reduce(loading(), { type: "cancel" });
+    expect(reduce(cancelled, { type: "answered", answer: ANSWER })).toBe(cancelled);
+    expect(
+      reduce(cancelled, { type: "failed", failure: { state: "T-BUSY", retryAfterS: 3 } }),
+    ).toBe(cancelled);
+    const idle = initialState("kanzlei_mueller");
+    expect(reduce(idle, { type: "answered", answer: ANSWER })).toBe(idle);
     expect(reduce(loading(), { type: "answered", answer: { ...ANSWER, refused: true } }).id).toBe(
       "T-REFUSED",
     );

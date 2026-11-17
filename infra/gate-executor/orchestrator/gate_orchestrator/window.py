@@ -15,6 +15,7 @@ BERLIN = ZoneInfo("Europe/Berlin")
 WINDOW_START = time(22, 0)
 WINDOW_END = time(6, 0)
 BLOCKS = 3
+RELEASE_REFS = tuple(f"release-b{k}" for k in range(BLOCKS))
 COMPLETED = frozenset({"ok", "failed"})
 
 
