@@ -9,6 +9,7 @@ service of ``compose.executor.yml`` (``gate-net`` + ``proxy-egress``; the candid
 """
 
 import json
+import sys
 from collections.abc import Iterator, Mapping
 from contextlib import contextmanager
 from pathlib import Path
@@ -96,8 +97,9 @@ def llm_proxy(
     """Serve ``llm-proxy`` for the body; always removed afterwards.
 
     Raises:
-        InfraError: the policy cannot be built (``proxy_policy``) or the proxy does not come up
-            healthy (``proxy_down``).
+        InfraError: the policy cannot be built (``proxy_policy``), the proxy does not come up
+            healthy (``proxy_down``) or cannot be removed (``proxy_cleanup``, only when the body
+            itself succeeded).
     """
     try:
         policy = policy_json(
@@ -106,11 +108,16 @@ def llm_proxy(
     except (OSError, ValueError) as exc:
         msg = f"proxy_policy: {exc}"
         raise InfraError(msg) from exc
+    # compose interpolates the whole file for every command, so the teardown needs the policy too
+    penv = {**env, "LLM_PROXY_POLICY": policy}
     try:
-        code, _ = run(up_argv(compose), {**env, "LLM_PROXY_POLICY": policy})
+        code, _ = run(up_argv(compose), penv)
         if code != 0:
             msg = f"proxy_down: llm-proxy did not come up healthy (exit {code})"
             raise InfraError(msg)
         yield
     finally:
-        run(down_argv(compose), env)
+        down, _ = run(down_argv(compose), penv)
+        if down != 0 and sys.exc_info()[1] is None:  # never hide the attempt's own error
+            msg = f"proxy_cleanup: docker compose rm llm-proxy exit {down}"
+            raise InfraError(msg)
