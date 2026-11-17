@@ -128,6 +128,10 @@ DANGEROUS_TRIGGERS: dict[tuple[str, str], str] = {
         "docs.yml",
         "workflow_run",
     ): "N5.2: deploys the dashboard site after deploy.yml; provenance check first, main code only",
+    (
+        "demo-ready.yml",
+        "workflow_run",
+    ): "D318: marks a tag release demo-ready after cosign verify and leak probes; main code only, no secrets",
 }
 
 # ``github.event.*`` values that may be interpolated into run: / with: (numbers, SHAs, ids and the

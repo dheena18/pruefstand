@@ -1,0 +1,25 @@
+# Override of infra/deploy/demo/compose.yml for the pre-deploy leak probes of demo-ready.yml (T8.5 S6): the
+# verified release image BY DIGEST instead of a build, the rate and budget limits raised for the probe run, and a
+# throwaway bridge so the runner's `pruefstand run` can reach rag-demo on 127.0.0.1:8000. Hosted runner only;
+# never used on the VM. PROBE_IMAGE is `ghcr.io/dheena18/rag-demo@sha256:<digest>`.
+services:
+  index:
+    image: ${PROBE_IMAGE:?PROBE_IMAGE is required}
+    build: !reset null
+    pull_policy: always
+  rag-demo:
+    image: ${PROBE_IMAGE:?PROBE_IMAGE is required}
+    build: !reset null
+    pull_policy: always
+    networks: [demo-net, probe-edge]
+    ports:
+      - "127.0.0.1:8000:8000"
+    environment:
+      DEMO_RATE_PER_MIN: "600"
+      DEMO_DAILY_PER_KEY: "100000"
+      DEMO_DAILY_REQUESTS: "100000"
+      DEMO_DAILY_TOKENS: "100000000"
+      DEMO_MAX_CONCURRENCY: "1"
+
+networks:
+  probe-edge: {}
