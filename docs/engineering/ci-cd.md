@@ -420,7 +420,8 @@ PR. Demo rollback: dispatch `demo-nightly.yml` with `mode: pin` (previous demo-r
 - **Release exemption (W2.6):** a release-please PR whose diff touches only version fields
   (`version = …` in `pyproject.toml` files, `.release-please-manifest.json`, `action/action.yml`
   image tag), `CHANGELOG.md` and the `version` lines of the two workspace-member entries
-  (`pruefstand`, `rag-demo`) in `uv.lock` written by the `uv lock` step (X2.9) gets
+  (`pruefstand`, `rag-demo`) and of the virtual workspace root (`pruefstand-workspace`, D1292) in `uv.lock`
+  written by the `uv lock` step (X2.9; `scripts/ci/check_release_lock_diff.py` refuses any other lock line) gets
   `pruefstand/gate` = success "not gated (release version bump)" from `gate-router.yml` (it reads the
   patches from `pulls/N/files` and requires every changed patch line (`+`/`-`, not `+++`/`---`) to match the
   release-exempt line regex inlined from `gate_router_regex.py`, D322; P4.2: "not gated" only from there). Tested with fixture diffs (T6.2a/T6.2b):
