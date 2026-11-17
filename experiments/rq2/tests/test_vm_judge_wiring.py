@@ -1,10 +1,11 @@
 """T5.4e step A: the VM CPU judge in the RQ2 config, backend, concurrency, MEMERAG routing."""
 
 import socket
+from pathlib import Path
 
 import pytest
 from rq2.binarise import check_route, is_local
-from rq2.rq2_config import REPO, load_config
+from rq2.rq2_config import REPO, SetEntry, load_config, load_items
 from rq2.run_judges import is_vm, judge_concurrency, make_judge
 from rq2.vm_arm import VM_JUDGE, cassette_items
 
@@ -56,3 +57,29 @@ def test_cassette_items_never_hold_memerag() -> None:
     items = cassette_items(CFG)
     assert len(items) == 3
     assert all(item.source != "memerag" and item.calib_split == "test" for item in items)
+
+
+def test_cassette_items_drop_a_local_only_set_even_when_it_comes_first(tmp_path: Path) -> None:
+    """Licence guard (MEMERAG, CC BY-NC 4.0, never redistributed): no local-only text in a cassette.
+
+    MEMERAG data is absent in CI, so a tmp local-only set stands in for it: it is listed FIRST,
+    so without the filter its items would be the first three cassette items.
+    """
+    real = load_items(CFG.set_named("correctness"), "test")[:5]
+    mem = [i.model_copy(update={"item_id": f"mem-{i.item_id}", "source": "memerag"}) for i in real]
+    files = {"memerag": mem, "correctness": real}
+    for name, items in files.items():
+        lines = "".join(i.model_dump_json() + "\n" for i in items)
+        (tmp_path / f"{name}.jsonl").write_text(lines, encoding="utf-8")
+    sets = [
+        SetEntry(
+            name="memerag", path=str(tmp_path / "memerag.jsonl"), origin="human", local_only=True
+        ),
+        SetEntry(
+            name="correctness", path=str(tmp_path / "correctness.jsonl"), origin="construction"
+        ),
+    ]
+    cfg = CFG.model_copy(update={"sets": sets})
+    picked = cassette_items(cfg)
+    assert len(picked) == 3
+    assert not any(i.item_id.startswith("mem-") or i.source == "memerag" for i in picked)
