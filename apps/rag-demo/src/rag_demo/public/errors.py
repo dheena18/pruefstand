@@ -16,6 +16,7 @@ Code = Literal[
     "invalid_request",
     "body_too_large",
     "timeout",
+    "server_error",
 ]
 
 STATUS: dict[Code, int] = {
@@ -27,6 +28,7 @@ STATUS: dict[Code, int] = {
     "invalid_request": 422,
     "body_too_large": 413,
     "timeout": 504,
+    "server_error": 503,
 }
 MESSAGES: dict[Code, str] = {
     "rate_limited": "Too many requests; please slow down.",
@@ -37,6 +39,7 @@ MESSAGES: dict[Code, str] = {
     "invalid_request": "The request is not valid.",
     "body_too_large": "The request body is too large.",
     "timeout": "The answer took too long.",
+    "server_error": "The service is temporarily unavailable.",
 }
 BUSY_RETRY_S = 5
 
