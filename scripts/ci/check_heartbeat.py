@@ -133,8 +133,10 @@ def evaluate(
     conditions = _conditions(hb, now)
     # review #198: an unknown, empty or stale heartbeat (or a failing health field) is no evidence
     # that anything recovered, so nothing is closed while executor-down holds.
-    may_close = "executor-down" not in conditions
+    # review #198 minor 1: a partial heartbeat (health field missing or not a bool) is unknown.
+    may_close = "executor-down" not in conditions and _complete(hb)
     actions: list[Action] = []
+    closed: set[str] = set()
     for label, title in TITLES.items():
         reason = conditions.get(label)
         if reason:
@@ -142,23 +144,35 @@ def evaluate(
             actions.append(Action(label, op, title, reason))
         elif may_close and label in open_labels and _may_close(label, hb):
             actions.append(Action(label, "close", title, "healthy again"))
+            closed.add(label)
     if hb is not None and hb.get("drift_no_release_baseline") is True:
         tag = _tag(hb.get("release_tag"))
         marker = f"drift-no-release:{tag}"
         if marker not in markers:
-            op = (
-                "comment"
-                if "nightly-skipped" in open_labels or "nightly-skipped" in conditions
-                else "open"
-            )
+            # minor 2: never a comment on an issue this run closes (the note would be lost)
+            still_open = "nightly-skipped" in open_labels and "nightly-skipped" not in closed
+            op = "comment" if still_open or "nightly-skipped" in conditions else "open"
             body = f"drift: no release baseline for `{tag}` (`{marker}`)"
             actions.append(Action("nightly-skipped", op, TITLES["nightly-skipped"], body, marker))
     return actions
 
 
+def _complete(hb: Heartbeat | None) -> bool:
+    return hb is not None and all(isinstance(hb.get(f), bool) for f in HEALTH_FIELDS)
+
+
 def _may_close(label: str, hb: Heartbeat | None) -> bool:
+    """Close only on positive evidence in the label's own field (missing = unknown)."""
+    if hb is None:
+        return False
     if label == "nightly-skipped":  # closed only by the next completed nightly (N4.3)
-        return hb is not None and hb.get("last_nightly_status") == "ok"
+        return hb.get("last_nightly_status") == "ok"
+    if label == "backup-stale":
+        age = hb.get("laptop_backup_age_days")
+        return isinstance(age, int | float) and not isinstance(age, bool)
+    if label == "nightly-failed":
+        result = hb.get("last_nightly_result")
+        return isinstance(result, str) and bool(result)
     return True
 
 

@@ -198,3 +198,47 @@ def test_marker_is_found_by_the_workflow_regex(tag: str) -> None:
     hb = _hb(drift_no_release_baseline=True, release_tag=tag)
     (action,) = [a for a in evaluate(hb, NOW, open_labels=set()) if a.marker]
     assert re.findall(pattern.group(1), action.body) == [action.marker]
+
+
+@pytest.mark.parametrize("field", ["tunnel_ok", "ollama_gpu0_ok", "ollama_gpu1_ok", "data_root_ok"])
+def test_partial_heartbeat_missing_a_health_field_closes_nothing(field: str) -> None:
+    # review #198 minor 1: a missing health field is unknown, not healthy
+    hb = _hb()
+    del hb[field]
+    assert [a for a in evaluate(hb, NOW, open_labels=ALL_OPEN) if a.op == "close"] == []
+
+
+@pytest.mark.parametrize("value", [None, "true", 1])
+def test_non_bool_health_field_closes_nothing(value: object) -> None:
+    hb = _hb(tunnel_ok=value)
+    assert [a for a in evaluate(hb, NOW, open_labels=ALL_OPEN) if a.op == "close"] == []
+
+
+@pytest.mark.parametrize(
+    ("label", "field"),
+    [("backup-stale", "laptop_backup_age_days"), ("nightly-failed", "last_nightly_result")],
+)
+def test_missing_own_field_keeps_that_issue_open(label: str, field: str) -> None:
+    hb = _hb()
+    del hb[field]
+    assert label not in _ops(evaluate(hb, NOW, open_labels={label}))
+
+
+def test_unparsable_backup_age_keeps_backup_stale_open() -> None:
+    hb = _hb(laptop_backup_age_days="3")
+    assert "backup-stale" not in _ops(evaluate(hb, NOW, open_labels={"backup-stale"}))
+
+
+def test_close_and_drift_note_in_one_run_are_independent() -> None:
+    # review #198 minor 2: a drift note must not be a comment on the issue closed in the same run
+    hb = _hb(drift_no_release_baseline=True, release_tag="v0.3.0")
+    actions = evaluate(hb, NOW, open_labels={"nightly-skipped"})
+    assert [(a.op, a.marker) for a in actions] == [
+        ("close", ""),
+        ("open", "drift-no-release:v0.3.0"),
+    ]
+
+
+def test_workflow_comment_without_open_issue_creates_one() -> None:
+    text = WORKFLOW.read_text(encoding="utf-8")
+    assert "open|comment)" in text
