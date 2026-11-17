@@ -1,0 +1,52 @@
+/* Try it page (T8.4, ui-spec §4.6). No inline styles: the CSP forbids them. */
+.try-form fieldset {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  margin: var(--space-3) 0;
+}
+.try-tenant {
+  display: block;
+  padding: var(--space-1) 0;
+}
+.try-form textarea {
+  width: 100%;
+  font: inherit;
+  padding: var(--space-2);
+  background: var(--surface);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+}
+.try-count {
+  text-align: right;
+  font-size: var(--text-sm);
+  color: var(--text-muted);
+}
+.try-count--full,
+.try-problem {
+  color: var(--fail-text, var(--text));
+  font-weight: 600;
+}
+.try-answer {
+  margin-top: var(--space-4);
+}
+.try-chunks {
+  padding-left: var(--space-4);
+}
+.try-chunk__text {
+  display: -webkit-box;
+  -webkit-line-clamp: 6;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.try-chunk__meta,
+.try-answer__meta,
+.try-chunk__note {
+  font-size: var(--text-sm);
+  color: var(--text-muted);
+}
+.try-slow,
+.try-elapsed {
+  margin-left: var(--space-2);
+  font-size: var(--text-sm);
+}

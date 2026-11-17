@@ -6,6 +6,8 @@ export { BASE_PATH } from "./data-url";
 
 /** Origin of the Try-it demo API; the "Try it" link exists only when it is set at build (UI-25). */
 export const DEMO_API_URL: string = process.env["NEXT_PUBLIC_DEMO_API_URL"] ?? "";
+/** Client timeout of a Try-it query in seconds (ui-spec §4.6; the server answers `timeout` at 75). */
+export const DEMO_TIMEOUT_S: number = Number(process.env["NEXT_PUBLIC_DEMO_TIMEOUT_S"] ?? "") || 90;
 
 export const GITHUB_URL = "https://github.com/dheena18/pruefstand";
 

@@ -1,0 +1,50 @@
+{
+  "tenants": [
+    {
+      "id": "kanzlei_mueller",
+      "label": { "de": "Kanzlei Müller", "en": "Kanzlei Müller" },
+      "description": {
+        "de": "Anwaltskanzlei, Arbeitsrecht",
+        "en": "law firm, labour law"
+      }
+    },
+    {
+      "id": "versicherung_nord",
+      "label": { "de": "Versicherung Nord", "en": "Versicherung Nord" },
+      "description": {
+        "de": "Versicherer, Versicherungsvertragsrecht",
+        "en": "insurer, insurance contract law"
+      }
+    },
+    {
+      "id": "stadtwerke_sued",
+      "label": { "de": "Stadtwerke Süd", "en": "Stadtwerke Süd" },
+      "description": {
+        "de": "Energieversorger, Energierecht, DSGVO, NIS2",
+        "en": "utility, energy law, GDPR, NIS2"
+      }
+    }
+  ],
+  "examples": [
+    {
+      "tenant": "kanzlei_mueller",
+      "question": "Wie lange habe ich Zeit, um gegen eine Kündigung vor dem Arbeitsgericht zu klagen?"
+    },
+    {
+      "tenant": "kanzlei_mueller",
+      "question": "Welche Kündigungsfrist gilt nach zwei Jahren?"
+    },
+    {
+      "tenant": "versicherung_nord",
+      "question": "Wie hoch ist der Schadenfreiheitsrabatt nach fünf schadenfreien Jahren in der Hausratversicherung?"
+    },
+    {
+      "tenant": "stadtwerke_sued",
+      "question": "Wie schnell muss ich handeln, wenn ich einem Mitarbeiter aus wichtigem Grund fristlos kündigen will?"
+    }
+  ],
+  "refusal_example": {
+    "tenant": "kanzlei_mueller",
+    "question": "Kann mein Vermieter mir wegen Eigenbedarf kündigen und welche Frist gilt dann?"
+  }
+}
