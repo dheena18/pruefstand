@@ -46,10 +46,12 @@ def laptop_backup_age_days(backups: Path, now: datetime) -> tuple[float, str]:
         return STALE_DAYS, "no valid laptop-receipt.json"
     if copied.tzinfo is None or _SHA.fullmatch(sha) is None:
         return STALE_DAYS, "laptop-receipt.json needs an aware copied_at and a sha256"
+    if copied > now:  # review #224: a future copy would read as 0.0 days and hide a stale backup
+        return STALE_DAYS, "laptop-receipt.json has copied_at in the future"
     kept = sorted(backups.glob(f"*/{BUNDLE}"))
     if not any(_sha256(bundle) == sha for bundle in kept):
         return STALE_DAYS, "the receipt's sha256 matches no kept bundle"
-    age = max(0.0, (now - copied).total_seconds() / 86400)
+    age = (now - copied).total_seconds() / 86400
     return round(age, 1), f"laptop copy is {age:.1f} days old"
 
 

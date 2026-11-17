@@ -51,7 +51,7 @@ def test_dispatch_always_runs_with_tonights_or_the_override_deadline() -> None:
     now = _at(2026, 11, 16, 22, 0)  # 23:00 Berlin
     assert decide("workflow_dispatch", "", now) == (True, "2026-11-17T06:00:00+01:00")
     assert decide("workflow_dispatch", "", now, "23:30") == (True, "2026-11-16T23:30:00+01:00")
-    assert decide("workflow_dispatch", "", now, "22:30") == (True, "2026-11-17T22:30:00+01:00")
+    assert decide("workflow_dispatch", "", now, "22:30") == (True, "2026-11-17T06:00:00+01:00")
 
 
 @pytest.mark.parametrize(
@@ -83,3 +83,10 @@ def test_hosted_guard_needs_only_the_standard_library() -> None:
     )
     assert done.returncode == 0, done.stderr
     assert done.stdout.startswith("run=")
+
+
+def test_override_never_reaches_past_tonights_06_00() -> None:
+    # review #224 (D290): a 22:08 dispatch with 14:00 must not run into the next afternoon
+    now = _at(2026, 11, 16, 21, 8)  # 22:08 Berlin
+    assert decide("workflow_dispatch", "", now, "14:00") == (True, "2026-11-17T06:00:00+01:00")
+    assert decide("workflow_dispatch", "", now, "05:30") == (True, "2026-11-17T05:30:00+01:00")

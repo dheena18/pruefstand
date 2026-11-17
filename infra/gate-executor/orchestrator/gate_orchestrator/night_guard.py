@@ -5,7 +5,8 @@ is on summer time (CEST, UTC+2) at the fired instant, ``7 21 * * *`` only on win
 UTC+1), so exactly one of the two fires per night. The fired instant is the latest instant <= now
 that matches the cron, so a nightly delayed by a busy runner or a late GitHub cron still runs and
 keeps its night's deadline. ``workflow_dispatch`` always runs; its deadline is 06:00 Berlin of the
-night containing the dispatch, or the ``HH:MM`` drill override (the next such Berlin time).
+night containing the dispatch, or the ``HH:MM`` drill override (the next such Berlin time),
+never later than that 06:00 (D290: a drill can shorten the night, not extend it into the day).
 """
 
 import re
@@ -65,7 +66,9 @@ def decide(event: str, schedule: str, now: datetime, deadline_input: str = "") -
         msg = "now must be timezone-aware"
         raise GuardError(msg)
     if event == "workflow_dispatch":
-        deadline = _override(deadline_input, now) if deadline_input else night_deadline(now)
+        deadline = night_deadline(now)
+        if deadline_input:  # a drill may shorten the night, never extend it past 06:00 (D290)
+            deadline = min(deadline, _override(deadline_input, now))
         return True, deadline.isoformat()
     if event != "schedule":
         msg = f"unknown event {event!r}"

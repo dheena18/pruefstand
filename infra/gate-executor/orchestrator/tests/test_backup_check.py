@@ -102,3 +102,11 @@ def test_cli_backup_check_writes_summary_and_heartbeat(
 def test_cli_backup_check_needs_the_data_root(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("PRUEFSTAND_DATA_ROOT", "/nonexistent-data-root")
     assert main(["backup-check"]) == 1
+
+
+def test_receipt_copied_in_the_future_is_invalid(tmp_path: Path) -> None:
+    # review #224: a year ahead must not read as "0.0 days old"
+    future = (NOW + timedelta(days=365)).isoformat()
+    age, why = laptop_backup_age_days(_backups(tmp_path, copied=future), NOW)
+    assert age == STALE_DAYS
+    assert "future" in why
