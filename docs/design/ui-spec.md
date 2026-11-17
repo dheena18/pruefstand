@@ -1740,7 +1740,7 @@ It is **never** a `ui.yml` job or a PR check (no `try-it` job exists in `ui.yml`
   the pinned Playwright image (the one used for visual baselines) with `--network host`, mounting the
   job's disposable checkout of trusted `main`. The service user `pruefstand` needs only Docker, no
   Node, pnpm or browsers (UI12-12).
-- **Ports:** `E2E_PORT = 8091 + ${PORT_OFFSET:-0}` (`PORT_OFFSET=10000` on an agent dev stack → 18091);
+- **Ports:** `E2E_PORT = 8092 + ${PORT_OFFSET:-0}` (`PORT_OFFSET=10000` on an agent dev stack → 18092; 8091 / 18091 belong to `vm_llm.sh`, D1311);
   the script uses it for the compose port and for `NEXT_PUBLIC_DEMO_API_URL=http://127.0.0.1:$E2E_PORT`.
   The site is served on 4175. The public demo `rag-demo` publishes no host port and is never touched; `embed`
   has no host port (UI12-11).
