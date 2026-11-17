@@ -24,6 +24,7 @@ from gate_orchestrator.gate_run import (
     read_outcome,
     run_config,
 )
+from gate_orchestrator.heartbeat import HEALTH_FIELDS
 from gate_orchestrator.image import ImageVerificationError, verify_image
 from gate_orchestrator.index_job import Aliases, ensure_shared_index
 from gate_orchestrator.infra import InfraError, run_with_retry
@@ -33,9 +34,14 @@ from gate_orchestrator.preflight import report_preflight, run_preflight
 from gate_orchestrator.proxy_job import llm_proxy
 from gate_orchestrator.report import current_gate_status, post_gate_result
 from gate_orchestrator.status import StatusPoster
+from gate_orchestrator.ticker import ticking
 from pruefstand.core.enums import GateStatus
 from pruefstand.report.github import truncate
 
+HEALTHY = {
+    **dict.fromkeys(HEALTH_FIELDS, "true"),
+    **{f"{f}_false_since": "" for f in HEALTH_FIELDS},
+}
 LOCK_TIMEOUT_S = 2 * 3600  # PR and promote jobs wait at most 2 h (A12-M1)
 
 
@@ -119,6 +125,7 @@ def run_gate_job(
     *,
     health_sh: Path,
     lock_dir: Path | None = None,
+    beat: Callable[[Mapping[str, str]], None] | None = None,
 ) -> str:
     """Lock → preflight → attempt (one infra retry after ``health.sh --repair``).
 
@@ -126,12 +133,16 @@ def run_gate_job(
         The ``processed.jsonl`` result text.
     """
     sha = attempt.job.sha
+    fields: dict[str, str] = {
+        "last_job": f"{attempt.job.tier} {attempt.job.pr_number or ''} {sha[:7]}"
+    }
 
     def body(child: dict[str, str]) -> str:
         attempt.env = child
         pre = run_preflight("day", health_sh, attempt.run, child)
         if not report_preflight(sha, pre, attempt.poster):
             return "error"
+        fields.update(HEALTHY)  # the preflight just checked tunnel, Ollama and the data root
 
         def repair() -> None:
             code, _ = attempt.run(["bash", str(health_sh), "--repair", "--mode", "day"], child)
@@ -151,12 +162,17 @@ def run_gate_job(
             attempt.result = f"error: {exc}"
         return attempt.result
 
-    done = run_locked(
-        sha,
-        body,
-        poster=attempt.poster,
-        env=attempt.env,
-        timeout_s=LOCK_TIMEOUT_S,
-        lock_dir=LOCK_DIR if lock_dir is None else lock_dir,
-    )
-    return done if done is not None else "not run (maintenance or busy)"
+    with ticking(lambda: beat(dict(fields)) if beat is not None else None):
+        done = run_locked(
+            sha,
+            body,
+            poster=attempt.poster,
+            env=attempt.env,
+            timeout_s=LOCK_TIMEOUT_S,
+            lock_dir=LOCK_DIR if lock_dir is None else lock_dir,
+        )
+    result = done if done is not None else "not run (maintenance or busy)"
+    fields["last_result"] = result
+    if beat is not None:
+        beat(dict(fields))  # the job's end, outside the ticker (D225)
+    return result

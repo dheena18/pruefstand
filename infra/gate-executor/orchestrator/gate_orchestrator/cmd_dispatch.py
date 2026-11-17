@@ -12,6 +12,7 @@ from collections.abc import Mapping, Sequence
 from datetime import UTC, datetime
 from pathlib import Path
 
+from gate_orchestrator import heartbeat_store
 from gate_orchestrator.dispatch_flow import IMAGE_CONTEXT, Deps, load_maintainers, run_dispatch
 from gate_orchestrator.gate_job import Attempt, run_gate_job
 from gate_orchestrator.gate_run import digest_from_status
@@ -43,6 +44,9 @@ def dispatch(args: argparse.Namespace) -> int:
     work = Path(args.report_dir)
     work.mkdir(parents=True, exist_ok=True)
 
+    def beat(fields: Mapping[str, str]) -> None:
+        heartbeat_store.update(heartbeat_store.payload_path(env), fields, datetime.now(UTC))
+
     def run_gate(job: Job) -> str:
         digest = digest_from_status(status_of(reader.statuses(job.sha), IMAGE_CONTEXT)) or ""
         attempt = Attempt(
@@ -56,7 +60,7 @@ def dispatch(args: argparse.Namespace) -> int:
             env=env,
             aliases=qdrant_aliases,
         )
-        return run_gate_job(attempt, health_sh=main_dir / "infra" / "gpu" / "health.sh")
+        return run_gate_job(attempt, health_sh=main_dir / "infra" / "gpu" / "health.sh", beat=beat)
 
     deps = Deps(
         reader=reader,
