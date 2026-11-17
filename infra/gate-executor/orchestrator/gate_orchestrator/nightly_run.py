@@ -5,8 +5,9 @@ Order (each phase deadline-checked with :func:`phase_check`): ``switch-mode.sh n
 --tier nightly --split full --stratum all --block auto`` with ``PRUEFSTAND_NIGHTLY_COUNTER``, gate
 against ``nightly-b<k>``, drift against ``release-b<k>``) → ``switch-mode.sh day`` (also in
 ``finally``). A start at or after the deadline is ``aborted: window_exceeded`` (no phase runs); a
-phase that does not fit stops the night the same way. The weekly cause-switches, the contamination
-probe and the prune phases come in a later slice (D1099).
+phase that does not fit stops the night the same way. The informational contamination probe runs
+after the gate phase (``nightly_probe``); the weekly cause-switches and the prune phases come in a
+later slice (D1099).
 """
 
 import json
@@ -18,7 +19,13 @@ from gate_orchestrator.gate_run import run_config
 from gate_orchestrator.infra import InfraError
 from gate_orchestrator.window import baseline_refs
 
-PLANNED_MINUTES = {"switch-mode": 5.0, "judge-drift": 5.0, "nightly-gate": 360.0, "drift": 15.0}
+PLANNED_MINUTES = {
+    "switch-mode": 5.0,
+    "judge-drift": 5.0,
+    "nightly-gate": 360.0,
+    "drift": 15.0,
+    "contamination-probe": 10.0,
+}
 JUDGE = "ollama/gemma3:12b"  # the one judge for PR and nightly (ADR-0019)
 
 

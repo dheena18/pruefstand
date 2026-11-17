@@ -11,6 +11,7 @@ completed night and posts ``pruefstand/nightly`` on main's head. Env as for ``di
 
 import argparse
 import os
+import sys
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
@@ -26,6 +27,7 @@ from gate_orchestrator.image import ImageVerificationError
 from gate_orchestrator.infra import InfraError, run_with_retry
 from gate_orchestrator.lock import LOCK_DIR, maintenance_path, run_locked
 from gate_orchestrator.models import Job
+from gate_orchestrator.nightly_probe import probe_argv
 from gate_orchestrator.nightly_run import JUDGE, PLANNED_MINUTES, NightlyRun
 from gate_orchestrator.preflight import run_preflight
 from gate_orchestrator.state import finish_nightly, nightly_counter_path, read_counter
@@ -108,6 +110,17 @@ def _must(argv: list[str], child: dict[str, str]) -> None:
         raise InfraError(msg)
 
 
+def _inform(build: Callable[[], list[str]], child: dict[str, str]) -> None:
+    """An informational phase: reported, never fails the night (T4.6 S7)."""
+    try:
+        argv = build()
+    except (OSError, ValueError) as exc:
+        sys.stdout.write(f"informational phase not run: {exc}\n")
+        return
+    code, _ = runner(argv, child)
+    sys.stdout.write(f"{Path(argv[1]).name}: exit {code} (informational)\n")
+
+
 def locked_night(
     attempt: NightlyRun, child: dict[str, str], main_dir: Path, deadline: datetime
 ) -> str:
@@ -121,6 +134,7 @@ def locked_night(
         ("switch-mode", lambda: _must([str(gpu / "switch-mode.sh"), "night"], child)),
         ("judge-drift", lambda: _must(["pruefstand", "judge-drift", "--judge", JUDGE], child)),
         ("nightly-gate", lambda: _gate(attempt, child, main_dir)),
+        ("contamination-probe", lambda: _inform(lambda: probe_argv(main_dir, attempt.work), child)),
     ]
     try:
         exceeded = phases(lambda: datetime.now(UTC), deadline, steps)

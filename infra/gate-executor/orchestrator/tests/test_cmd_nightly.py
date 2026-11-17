@@ -9,7 +9,12 @@ import pytest
 from gate_orchestrator.cmd_nightly import final_status, lock_budget_s, night_status, phases
 from gate_orchestrator.heartbeat import check_nightly_status
 from gate_orchestrator.models import Job
-from gate_orchestrator.nightly_run import NightlyRun, nightly_gate_argvs, nightly_run_argv
+from gate_orchestrator.nightly_run import (
+    PLANNED_MINUTES,
+    NightlyRun,
+    nightly_gate_argvs,
+    nightly_run_argv,
+)
 from orch_testkit import SpyPoster
 
 DEADLINE = datetime(2026, 11, 18, 5, 0, tzinfo=UTC)  # 06:00 Berlin
@@ -38,8 +43,9 @@ def test_every_gate_result_maps_to_the_a13_m3_vocabulary(result: str) -> None:
 
 
 def test_lock_budget_leaves_room_for_the_phases() -> None:
+    planned = sum(PLANNED_MINUTES.values())
     assert lock_budget_s(DEADLINE - timedelta(hours=8), DEADLINE) == pytest.approx(
-        (8 * 60 - 385) * 60
+        (8 * 60 - planned) * 60
     )
     assert lock_budget_s(DEADLINE - timedelta(hours=1), DEADLINE) == 0.0
 
