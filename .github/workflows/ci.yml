@@ -121,6 +121,12 @@ jobs:
           restore-keys: |
             hypothesis-${{ github.ref_name }}-
             hypothesis-main-
+      - name: Fetch the mutation base commit (T7.1c, D1291)
+        # the checkout is shallow; test_base_sha.py applies every mutation patch at base_sha and fails in CI
+        # without it. One commit, depth 1, read from index.yaml so it cannot drift; no credentials needed.
+        run: |
+          base="$(sed -n 's/^base_sha: *//p' benchmarks/mutations/index.yaml)"
+          git fetch --no-tags --depth=1 origin "$base"
       - name: Unit, property, contract and doctests with coverage gates
         run: make coverage
 
