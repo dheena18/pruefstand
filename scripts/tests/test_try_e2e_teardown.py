@@ -12,6 +12,7 @@ ROOT = Path(__file__).resolve().parents[2]
 SCRIPT = ROOT / "scripts" / "demo" / "try_e2e.sh"
 FAKE_DOCKER = """#!/bin/sh
 printf '%s\\n' "$*" >> "$FAKE_DOCKER_LOG"
+printf '%s\\n' "$DEMO_NET_SUBNET" >> "$FAKE_DOCKER_LOG.subnet"
 case "$1" in
   run) exit 1 ;;
 esac
@@ -78,3 +79,24 @@ def test_the_production_project_is_refused_before_any_docker_call(tmp_path: Path
 def test_no_docker_call_ever_names_the_production_project(tmp_path: Path) -> None:
     _, calls = _run(tmp_path, E2E_PROJECT="pruefstand-demo-e2e-x")
     assert "pruefstand-demo" not in _projects(calls)
+
+
+def _subnets(tmp_path: Path) -> set[str]:
+    return set((tmp_path / "docker.log.subnet").read_text(encoding="utf-8").split())
+
+
+def test_the_compose_calls_get_the_e2e_subnet_by_default(tmp_path: Path) -> None:
+    _run(tmp_path)
+    assert _subnets(tmp_path) == {"10.234.0.0/24"}
+
+
+def test_the_subnet_can_be_overridden(tmp_path: Path) -> None:
+    _run(tmp_path, DEMO_NET_SUBNET="10.240.0.0/24")
+    assert _subnets(tmp_path) == {"10.240.0.0/24"}
+
+
+def test_the_production_subnet_is_refused_before_any_docker_call(tmp_path: Path) -> None:
+    result, calls = _run(tmp_path, DEMO_NET_SUBNET="10.232.0.0/24")
+    assert result.returncode == 2
+    assert "10.232.0.0/24" in result.stderr
+    assert calls == []

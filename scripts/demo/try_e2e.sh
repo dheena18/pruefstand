@@ -29,6 +29,10 @@ PW_IMAGE="${PW_IMAGE:-mcr.microsoft.com/playwright:v1.56.1-noble}"
 pw="try-e2e-pw-$$"
 # demo-net of this project must not overlap the production one (10.232.0.0/24; proxy-egress 10.231, demo-egress 10.233)
 DEMO_NET_SUBNET="${DEMO_NET_SUBNET:-10.234.0.0/24}"
+if [ "$DEMO_NET_SUBNET" = "10.232.0.0/24" ]; then
+  printf 'try_e2e: DEMO_NET_SUBNET must not be the production demo-net 10.232.0.0/24 ("Pool overlaps")\n' >&2
+  exit 2
+fi
 export E2E_PORT DEMO_NET_SUBNET DEMO_ALLOWED_ORIGIN="http://localhost:${SITE_PORT}"
 # The e2e run has its OWN compose project (own containers, network and volumes), so its teardown (`down -v`) can never
 # touch the production demo project `pruefstand-demo` (its qdrant_data index, llm, embed, rag-demo).
