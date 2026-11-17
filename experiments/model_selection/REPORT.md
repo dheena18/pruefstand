@@ -219,7 +219,16 @@ run the candidate pass, (c) wait for Ollama to support parallel requests for thi
 | PR, 150-case subset | 67.9 min | 24.8 | 51.8 | fits |
 | Nightly, 600 generations | 168.2 min | 99.3 | – | 480 min: fits |
 
-**Reranker lane.** 790 queries × 3.93 s = **51.8 min, above the 20-minute D222 limit**. `robust_pr` alone (440 queries) is 28.8 min, also above it. By D222 the reranker is therefore **off for `robust_pr`**: first-stage robustness only. The `core` queries keep the reranker.
+**Reranker lane.** 790 queries × 3.93 s = **51.8 min, above the 20-minute D222 limit**. `robust_pr` alone (440 queries) is 28.8 min, also above it. By D222 the reranker is therefore **off for `robust_pr`**: first-stage robustness only. The `core` queries keep the reranker (`/v1/query`).
+
+**After the fallback** (`rerank.on_retrieve: false`; D271 acts per endpoint and per config, not per stratum).
+- Every `/v1/retrieve` of the config skips the reranker; `/v1/query` always reranks.
+- Full `core`: the reranked lane is smoke + core = 350 queries × 3.93 s = **22.9 min, still above 20 min**.
+- With the 150-case judged subset, the PR default (D655): the about 110 `core` answerable cases outside the subset are routed to `/v1/retrieve` too (`route_case`, `not_in_judged_subset`). So they also run without the reranker. The reranked lane is then 240 × 3.93 s = **15.7 min**.
+- The cost: retrieval metrics on those `core` cases are first-stage. Baseline and candidate route them identically, so the paired gate stays consistent.
+- The reranker lane runs on the VM CPU in parallel with the GPU0 generator lane, so it does not bind the PR wall time. The 20-minute limit is D222's own rule.
+- Whether 22.9 min (full core) or the subset's first-stage `core` cases are acceptable is left to the owner, as are the ways back below.
+
 
 Options to bring it back, each needing an owner decision:
 - give `rerank-cpu` more CPUs; the VM has 160 vCPUs and the service is capped at 8 (`RERANK_CPUS`);
