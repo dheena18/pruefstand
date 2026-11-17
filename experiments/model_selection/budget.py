@@ -235,11 +235,22 @@ def fits(
 
 
 def report() -> str:
-    """Budgets from the rates measured on 2026-11-03: the generator serialises (1 stream)."""
-    gen = Lane(350, 3500, 200, prefill_tps=966.0, decode_tps=19.4, slots=1)
+    """Budgets from the rates measured on 2026-11-03: the generator serialises (1 stream).
+
+    The generator's output tokens are capped by ``rag.gpu.yaml`` and the reranker lane uses the
+    measured seconds per query when ``results/rerank_latency.csv`` has them (``budget_inputs``).
+    """
+    from model_selection.budget_inputs import generator_out_tokens, rerank_input  # noqa: PLC0415
+
+    out_tokens = generator_out_tokens()
+    rerank = rerank_input()
+    gen = Lane(350, 3500, out_tokens, prefill_tps=966.0, decode_tps=19.4, slots=1)
     judge = Lane(900, 3000, 150, prefill_tps=1625.0, decode_tps=25.6, slots=4)
-    inp = PrInputs(50, 300, 440, gen, judge, embed_s=0.05, rerank_s=1.2)
-    lines = []
+    inp = PrInputs(50, 300, 440, gen, judge, embed_s=0.05, rerank_s=rerank.seconds_per_query)
+    lines = [
+        f"inputs: generator out {out_tokens} tokens (rag.gpu.yaml), rerank"
+        f" {rerank.seconds_per_query:.2f} s/query ({rerank.source})"
+    ]
     for label, sub in (("PR full core", False), ("PR 150-case subset", True)):
         e = pr_estimate(inp, judged_subset=sub)
         lines.append(
