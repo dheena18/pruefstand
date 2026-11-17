@@ -28,9 +28,9 @@ from pruefstand.core.errors import ConfigError
 VM_JUDGE = "openai_compatible_local/ministral-3-14b-instruct-2512"
 """The VM model pin of PR #166 (``datagen_pins.VM_DATAGEN_MODEL``); family ``mistral``."""
 VM_FAMILY = "mistral"
-SESSION_S = 240 * 60
+SESSION_S = 100 * 60
 """Hard stop of one ``vm_llm.sh`` server session (PR #165)."""
-SESSION_USE = 0.8
+SESSION_USE = 0.9
 """Share of a session planned for calls (start-up, model load and the tail stay free)."""
 NEEDS = ("pruefstand.dataset.vm_datagen",)
 """Modules of PR #166 the real run needs (``check_vm_served``, ``build_vm_backend``)."""
@@ -76,7 +76,7 @@ def sessions(
 
     Examples:
         >>> [len(r) for r in sessions(600, 45.0)]
-        [256, 256, 88]
+        [120, 120, 120, 120, 120]
     """
     if s_per_call <= 0:
         msg = f"s_per_call must be positive (got {s_per_call})"

@@ -49,7 +49,7 @@ def test_the_item_plan_is_seeded_and_keeps_the_strata() -> None:
 
 def test_sessions_cover_every_call_once_within_the_launcher_limit() -> None:
     plan = sessions(1200, 45.0)
-    assert [len(r) for r in plan] == [256, 256, 256, 256, 176]
+    assert [len(r) for r in plan] == [120] * 10
     assert [k for r in plan for k in r] == list(range(1200))
     assert sessions(0, 45.0) == []
     with pytest.raises(ValueError, match="positive"):
