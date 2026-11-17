@@ -1,0 +1,30 @@
+#!/usr/bin/env bash
+# gate-orchestrator <subcommand> [args] (T6.2a, D1095): the command the private workflows call on the A40 runner.
+# Runs gate_orchestrator from the job's private checkout ($GITHUB_WORKSPACE) with the pruefstand package of the
+# trusted public main. $PRUEFSTAND_MAIN_DIR (runner.env) is only a shared object store: under a short flock the
+# wrapper fetches origin/main (anonymous; never a PR ref), resolves its SHA ONCE and adds a private worktree
+# at that SHA under $RUNNER_TEMP; the job runs from there and the worktree is removed at the end. The shared
+# checkout's HEAD never moves, so a schedule that starts during a 90-min dispatch cannot change that
+# dispatch's code or health.sh (review #224). Installed once by the owner as a symlink on the runner's PATH
+# (runbook section 0 step 6).
+set -euo pipefail
+ws="${GITHUB_WORKSPACE:?gate-orchestrator runs inside a job of the private repo}"
+main="${PRUEFSTAND_MAIN_DIR:?set PRUEFSTAND_MAIN_DIR (trusted public main checkout) in runner.env}"
+tmp="${RUNNER_TEMP:?gate-orchestrator runs inside a job (RUNNER_TEMP)}"
+[ -d "$main/.git" ] || { echo "gate-orchestrator: $main is not a git checkout" >&2; exit 2; }
+work="$(mktemp -d "$tmp/pruefstand-main.XXXXXX")"
+rmdir "$work"
+{
+  flock -w 120 9 || { echo "gate-orchestrator: fetch lock busy" >&2; exit 1; }
+  git -C "$main" fetch -q origin main
+  sha="$(git -C "$main" rev-parse FETCH_HEAD)"
+  git -C "$main" worktree add -q --detach "$work" "$sha"
+} 9>"$main/.git/pruefstand-fetch.lock"
+cleanup() {
+  { flock -w 120 9 && git -C "$main" worktree remove --force "$work"; } 9>"$main/.git/pruefstand-fetch.lock" || true
+}
+trap cleanup EXIT
+export PYTHONPATH="$ws/infra/gate-executor/orchestrator"
+# The Python code reads pruefstand.yaml and infra/gpu/*.sh from PRUEFSTAND_MAIN_DIR: point it at the pinned worktree
+export PRUEFSTAND_MAIN_DIR="$work"
+uv run --project "$work" --all-packages --frozen python -m gate_orchestrator "$@"

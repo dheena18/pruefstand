@@ -1,5 +1,6 @@
 # Image checks (T0.3, docs/engineering/ci-cd.md section 1): hadolint, compose validation and lint, a smoke
-# build of the Dockerfile template and a Trivy scan. Nothing is pushed here (push + cosign: T6.2b).
+# build of the Dockerfile template and a Trivy scan, and (T6.2b S1) the job push-sign: the rag-demo image of the
+# PR head SHA is pushed to GHCR, signed with cosign keyless and announced as the commit status pruefstand/image.
 # Every checkout uses the PR HEAD sha, never the refs/pull/N/merge commit (X2.4), so the image label
 # org.opencontainers.image.revision is the head SHA the executor later verifies.
 name: build-images
@@ -7,7 +8,7 @@ name: build-images
 on:
   pull_request:
   push:
-    branches: [main]
+    branches: [main, "gate/pr-*", "bench/**"]
 
 permissions: {}
 
@@ -190,6 +191,66 @@ jobs:
           python3 -m venv "$RUNNER_TEMP/lint"
           "$RUNNER_TEMP/lint/bin/pip" install --quiet --no-deps "pyyaml==6.0.3"
           "$RUNNER_TEMP/lint/bin/python" scripts/check_compose.py
+
+  push-sign:
+    # T6.2b S1 (X2.4): the executor gates the PR head, so the image is built from the head SHA, never from the
+    # refs/pull/N/merge commit. Independent of `changes` (a source-only change still needs an image) and not in
+    # the images-gate aggregate. Same-repo branches only: a fork or Dependabot token cannot push packages.
+    if: >-
+      github.actor != 'dependabot[bot]' &&
+      (github.event_name == 'push' || github.event.pull_request.head.repo.full_name == github.repository)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      packages: write
+      id-token: write
+      statuses: write
+    env:
+      IMAGE: ghcr.io/dheena18/rag-demo
+      HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+      - uses: docker/login-action@8aa5831fb8d48d8f76594c7ddde61ae58019f550 # v4.8.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Build and push rag-demo (head SHA tag and revision label)
+        id: build
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with:
+          context: .
+          file: apps/rag-demo/Dockerfile
+          build-args: |
+            GIT_SHA=${{ github.event.pull_request.head.sha || github.sha }}
+          push: true
+          provenance: false
+          sbom: false
+          tags: ghcr.io/dheena18/rag-demo:sha-${{ github.event.pull_request.head.sha || github.sha }}
+          labels: |
+            org.opencontainers.image.revision=${{ github.event.pull_request.head.sha || github.sha }}
+          cache-from: type=gha,scope=rag-demo-push
+          cache-to: type=gha,scope=rag-demo-push,mode=min,ignore-error=true
+      - uses: sigstore/cosign-installer@756fe2d284c7292c4e9b62c8a28f1e5629c59532 # v4.1.3
+      - name: Sign the image by digest (keyless)
+        env:
+          DIGEST: ${{ steps.build.outputs.digest }}
+        run: cosign sign --yes "${IMAGE}@${DIGEST}"
+      - name: Post the commit status pruefstand/image on the head SHA
+        env:
+          GH_TOKEN: ${{ github.token }}
+          DIGEST: ${{ steps.build.outputs.digest }}
+          REPO: ${{ github.repository }}
+        run: |
+          gh api "repos/${REPO}/statuses/${HEAD_SHA}" \
+            -f state=success -f context=pruefstand/image \
+            -f description="${DIGEST}" \
+            -f target_url="https://github.com/${REPO}/actions/runs/${GITHUB_RUN_ID}"
 
   images-gate:
     name: images-gate

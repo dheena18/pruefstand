@@ -1,0 +1,3 @@
+# Logins allowed to dispatch tier 2 (gate-executor.yml, round 13 P1.2, R9-24): the owner only.
+# Shipped inside the package so scripts/sync_executor.sh carries it to the private repo (D1095).
+dheena18

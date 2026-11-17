@@ -198,3 +198,102 @@ def test_marker_is_found_by_the_workflow_regex(tag: str) -> None:
     hb = _hb(drift_no_release_baseline=True, release_tag=tag)
     (action,) = [a for a in evaluate(hb, NOW, open_labels=set()) if a.marker]
     assert re.findall(pattern.group(1), action.body) == [action.marker]
+
+
+@pytest.mark.parametrize("field", ["tunnel_ok", "ollama_gpu0_ok", "ollama_gpu1_ok", "data_root_ok"])
+def test_partial_heartbeat_missing_a_health_field_closes_nothing(field: str) -> None:
+    # review #198 minor 1: a missing health field is unknown, not healthy
+    hb = _hb()
+    del hb[field]
+    assert [a for a in evaluate(hb, NOW, open_labels=ALL_OPEN) if a.op == "close"] == []
+
+
+@pytest.mark.parametrize("value", [None, "yes", 1])
+def test_non_bool_health_field_closes_nothing(value: object) -> None:
+    hb = _hb(tunnel_ok=value)
+    assert [a for a in evaluate(hb, NOW, open_labels=ALL_OPEN) if a.op == "close"] == []
+
+
+@pytest.mark.parametrize(
+    ("label", "field"),
+    [("backup-stale", "laptop_backup_age_days"), ("nightly-failed", "last_nightly_result")],
+)
+def test_missing_own_field_keeps_that_issue_open(label: str, field: str) -> None:
+    hb = _hb()
+    del hb[field]
+    assert label not in _ops(evaluate(hb, NOW, open_labels={label}))
+
+
+def test_unparsable_backup_age_keeps_backup_stale_open() -> None:
+    hb = _hb(laptop_backup_age_days="three")
+    assert "backup-stale" not in _ops(evaluate(hb, NOW, open_labels={"backup-stale"}))
+
+
+def test_close_and_drift_note_in_one_run_are_independent() -> None:
+    # review #198 minor 2: a drift note must not be a comment on the issue closed in the same run
+    hb = _hb(drift_no_release_baseline=True, release_tag="v0.3.0")
+    actions = evaluate(hb, NOW, open_labels={"nightly-skipped"})
+    assert [(a.op, a.marker) for a in actions] == [
+        ("close", ""),
+        ("open", "drift-no-release:v0.3.0"),
+    ]
+
+
+def test_workflow_comment_without_open_issue_creates_one() -> None:
+    text = WORKFLOW.read_text(encoding="utf-8")
+    assert "open|comment)" in text
+
+
+def _as_pushed(hb: dict[str, Any]) -> dict[str, str]:
+    # push_heartbeat (T6.1, interfaces section 7) only takes string values: "true"/"false", "9", ...
+    return {k: (str(v).lower() if isinstance(v, bool) else str(v)) for k, v in hb.items()}
+
+
+def test_string_payload_fresh_and_healthy_needs_no_action_and_closes() -> None:
+    assert evaluate(_as_pushed(_hb()), NOW, open_labels=set()) == []
+    assert _ops(evaluate(_as_pushed(_hb()), NOW, open_labels=ALL_OPEN)) == dict.fromkeys(
+        ALL_OPEN, "close"
+    )
+
+
+def test_string_payload_backup_age_opens_backup_stale() -> None:
+    hb = _as_pushed(_hb(laptop_backup_age_days=9))
+    assert _ops(evaluate(hb, NOW, open_labels=set())) == {"backup-stale": "open"}
+
+
+def test_string_payload_maintenance_suppresses_field_alerts() -> None:
+    hb = _as_pushed(_hb(maintenance=True, ollama_gpu1_ok=False))
+    hb["ollama_gpu1_ok_false_since"] = _ago(hours=3)
+    assert "executor-down" not in _ops(evaluate(hb, NOW, open_labels=set()))
+
+
+def test_string_payload_drift_flag_is_reported() -> None:
+    hb = _as_pushed(_hb(drift_no_release_baseline=True, release_tag="v0.3.0"))
+    assert [a.marker for a in evaluate(hb, NOW, open_labels=set()) if a.marker] == [
+        "drift-no-release:v0.3.0"
+    ]
+
+
+@pytest.mark.parametrize("value", ["yes", "", "TRUE "])
+def test_string_payload_unknown_flag_closes_nothing(value: str) -> None:
+    hb = _as_pushed(_hb())
+    hb["tunnel_ok"] = value
+    assert [a for a in evaluate(hb, NOW, open_labels=ALL_OPEN) if a.op == "close"] == []
+
+
+@pytest.mark.parametrize("age", ["nan", "NaN", "-1", "inf", "-0.5"])
+def test_non_finite_or_negative_backup_age_keeps_backup_stale_open(age: str) -> None:
+    # review #215: such a value is unknown, never evidence that the laptop copy is fresh
+    hb = _as_pushed(_hb())
+    hb["laptop_backup_age_days"] = age
+    assert "backup-stale" not in _ops(evaluate(hb, NOW, open_labels={"backup-stale"}))
+
+
+def test_executor_down_closes_only_when_every_health_field_is_true() -> None:
+    # review #215: a field false for less than 2 h is no alert, but no recovery either
+    hb = _as_pushed(_hb(tunnel_ok=False))
+    hb["tunnel_ok_false_since"] = _ago(minutes=30)
+    assert "executor-down" not in _ops(evaluate(hb, NOW, open_labels={"executor-down"}))
+    assert _ops(evaluate(_as_pushed(_hb()), NOW, open_labels={"executor-down"})) == {
+        "executor-down": "close"
+    }
