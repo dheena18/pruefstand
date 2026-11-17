@@ -131,3 +131,30 @@ def test_a_failed_encryption_leaves_no_partial_file(tmp_path: Path) -> None:
     assert proc.returncode != 0
     assert list(root.glob("backups/*/*.partial")) == []
     assert list(root.glob("backups/*/*.age")) == []
+
+
+@pytest.mark.skipif(AGE is None or AGE_KEYGEN is None, reason="age is not installed")
+def test_a_tar_failure_after_age_started_removes_the_partial_file(tmp_path: Path) -> None:
+    # review #214 follow-up: the EXIT trap itself, not an early refusal. age is real and has
+    # already created and written the .partial; a `tar` shim then fails mid-stream (pipefail).
+    assert AGE_KEYGEN is not None
+    key = tmp_path / "key.txt"
+    assert _call(AGE_KEYGEN, "-o", str(key)).returncode == 0
+    recipient = _call(AGE_KEYGEN, "-y", str(key)).stdout.strip()
+    shim = tmp_path / "shim"
+    shim.mkdir()
+    (shim / "tar").write_text("#!/bin/sh\nprintf 'half a stream'\nexit 2\n", encoding="utf-8")
+    (shim / "tar").chmod(0o755)
+    root = tmp_path / "root"
+    (root / "baselines").mkdir(parents=True)
+    proc = _run(
+        tmp_path,
+        "--repo",
+        str(_repo(tmp_path)),
+        AGE_RECIPIENT=recipient,
+        PRUEFSTAND_DATA_ROOT=str(root),
+        PATH=f"{shim}:{os.environ['PATH']}",
+    )
+    assert proc.returncode != 0
+    assert list(root.glob("backups/*/*.partial")) == []
+    assert list(root.glob("backups/*/*.age")) == []
