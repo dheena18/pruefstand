@@ -1,0 +1,101 @@
+name: nightly
+
+# Nightly tier 2 (private repo, synced by scripts/sync_executor.sh; T6.2b, ci-cd.md section 1.2; Y4.3,
+# N4.3, P2.1, A12-03, A13-02). Exactly two jobs: the hosted `guard` decides by WHICH cron fired (summer
+# cron only in CEST, winter cron only in CET; dispatch always runs) and sets the outputs `run` and
+# `deadline` (06:00 Europe/Berlin of the fired night); `nightly` is one orchestrator job on the A40
+# runner that runs only when run == 'true'. Phases, deadline checks, skip reports, the counter and the
+# commit status pruefstand/nightly are the orchestrator's (gate_orchestrator, T6.2a/T6.2b). The CPU-only
+# simulation/hypothesis/mutmut jobs run in public ci.yml; pruning runs in baseline-promote.yml.
+on:
+  schedule:
+    - cron: "7 20 * * *"  # 22:07 Europe/Berlin in summer time (CEST)
+    - cron: "7 21 * * *"  # 22:07 Europe/Berlin in winter time (CET)
+  workflow_dispatch:
+    inputs:
+      cause_switches:
+        description: "auto | force | skip"
+        required: false
+        default: auto
+        type: choice
+        options: [auto, force, skip]
+      deadline:
+        description: "optional HH:MM Europe/Berlin (drill override of 06:00)"
+        required: false
+        default: ""
+        type: string
+
+permissions: {}
+
+concurrency:
+  group: ${{ github.workflow }}
+  cancel-in-progress: false
+
+jobs:
+  guard:
+    name: guard
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    outputs:
+      run: ${{ steps.guard.outputs.run }}
+      deadline: ${{ steps.guard.outputs.deadline }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          sparse-checkout: infra/gate-executor/orchestrator
+      - name: night-guard
+        id: guard
+        env:
+          SCHEDULE: ${{ github.event.schedule }}
+          EVENT: ${{ github.event_name }}
+          DEADLINE_INPUT: ${{ inputs.deadline }}
+          PYTHONPATH: infra/gate-executor/orchestrator
+        run: >-
+          python3 -m gate_orchestrator night-guard --schedule "$SCHEDULE" --event "$EVENT"
+          --deadline-input "$DEADLINE_INPUT" >> "$GITHUB_OUTPUT"
+
+  nightly:
+    name: nightly
+    needs: guard
+    if: needs.guard.outputs.run == 'true'
+    runs-on: [self-hosted, linux, a40]
+    timeout-minutes: 470
+    permissions:
+      contents: write  # state/nightly_counter, state/nightly_fails.json on branch executor-state
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: pruefstand-bot token for the public repo (status pruefstand/nightly)
+        id: app
+        uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
+        with:
+          app-id: ${{ secrets.BOT_APP_ID }}
+          private-key: ${{ secrets.BOT_APP_KEY }}
+          owner: dheena18
+          repositories: pruefstand
+          permission-statuses: write
+      - name: Nightly phases
+        env:
+          DEADLINE: ${{ needs.guard.outputs.deadline }}
+          CAUSE_SWITCHES: ${{ inputs.cause_switches || 'auto' }}
+          PUBLIC_TOKEN: ${{ steps.app.outputs.token }}
+          STATE_TOKEN: ${{ github.token }}
+          DASHBOARD_DATA_PAT: ${{ secrets.DASHBOARD_DATA_PAT }}
+          REPORT_DIR: ${{ runner.temp }}/nightly-report
+        run: |
+          gate-orchestrator nightly --deadline "$DEADLINE" --cause-switches "$CAUSE_SWITCHES" \
+            --report-dir "$REPORT_DIR"
+      - name: Upload run.json, gate.json
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: nightly-${{ github.run_id }}
+          path: |
+            ${{ runner.temp }}/nightly-report/**/run.json
+            ${{ runner.temp }}/nightly-report/**/gate.json
+          if-no-files-found: ignore
+          retention-days: 14

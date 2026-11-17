@@ -1,0 +1,47 @@
+name: baseline-promote
+
+# The only baseline writer (R9-14, interfaces section 7; private repo, synced by scripts/sync_executor.sh;
+# T6.2b, ci-cd.md section 1.2). Each poll: a new public main head -> PR-tier run on that SHA and
+# `pruefstand baseline promote --ref main`; the newest complete, unpromoted nightly run -> `nightly-b<k>`;
+# the release run of all of `full` -> `release-b0..b2` (D321). Runs with judge_fallback, judge_drift,
+# judge_degraded, infra_error or complete=false are never promoted (AI13-08). The first poll after
+# 00:00 UTC on day 1 of a month also runs `pruefstand baseline prune --keep 20`. Files go to the data
+# root; only baselines/index.json is committed (branch `baselines`, X2.7).
+on:
+  schedule:
+    - cron: "11,26,41,56 * * * *"
+  workflow_dispatch:
+
+permissions: {}
+
+concurrency:
+  group: ${{ github.workflow }}
+  cancel-in-progress: false
+
+jobs:
+  promote:
+    name: promote
+    runs-on: [self-hosted, linux, a40]
+    timeout-minutes: 315
+    permissions:
+      contents: write  # baselines/index.json on branch baselines, state on executor-state
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Poll and promote
+        env:
+          STATE_TOKEN: ${{ github.token }}
+          DASHBOARD_DATA_PAT: ${{ secrets.DASHBOARD_DATA_PAT }}
+          REPORT_DIR: ${{ runner.temp }}/promote-report
+        run: gate-orchestrator promote-poll --report-dir "$REPORT_DIR"
+      - name: Upload run.json, gate.json
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: promote-${{ github.run_id }}
+          path: |
+            ${{ runner.temp }}/promote-report/run.json
+            ${{ runner.temp }}/promote-report/gate.json
+          if-no-files-found: ignore
+          retention-days: 14
