@@ -31,6 +31,13 @@ def test_ci_has_the_interface_jobs() -> None:
     assert expected | SCHEDULE_ONLY == set(_jobs("ci.yml"))
 
 
+def test_the_unit_test_job_has_its_own_limit_of_25_minutes() -> None:
+    jobs = _jobs("ci.yml")
+    assert jobs["test"]["timeout-minutes"] == 25
+    assert jobs["test-slow"]["timeout-minutes"] == 30
+    assert [n for n, j in jobs.items() if j["timeout-minutes"] == 25] == ["test"]
+
+
 def test_ci_schedule_only_jobs() -> None:
     jobs = _jobs("ci.yml")
     for name in SCHEDULE_ONLY:
@@ -41,9 +48,14 @@ def test_ci_schedule_only_jobs() -> None:
     assert jobs["mutmut"]["timeout-minutes"] == 300
 
 
+# Per-job timeout limits of the PR jobs in minutes (D1308); unlisted jobs keep the default.
+TIMEOUT_LIMITS = {"test": 25, "test-slow": 30}
+DEFAULT_TIMEOUT_LIMIT = 15
+
+
 def test_ci_timeouts_and_pr_jobs_skip_on_schedule() -> None:
     for name, job in _jobs("ci.yml").items():
-        limit = 30 if name == "test-slow" else 15
+        limit = TIMEOUT_LIMITS.get(name, DEFAULT_TIMEOUT_LIMIT)
         if name not in SCHEDULE_ONLY:
             assert job["timeout-minutes"] <= limit, name
         if name not in SCHEDULE_ONLY | {"check"}:

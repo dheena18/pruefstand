@@ -407,7 +407,7 @@ All secrets with their locations and scopes: `docs/ops/secrets.md` (this table c
 | `PRUEFSTAND_CANDIDATE_API_KEY` | `runner.env` of user `pruefstand` (set by the orchestrator per job; your dev stack has its own value in `.env`) | on suspicion | new random value in `.env`; not a security boundary (`gate-net` + `llm-proxy` are) |
 | Your VM `gh` token (fine-grained, `dheena18/pruefstand` only, contents + pull requests + workflows write; N4.4, D284) | `gh` config of your user on the VM | ≤ 90 days (expiry set at creation) | create the new token in the browser with the same single-repo scope → `gh auth login --with-token` on the VM → `gh api repos/dheena18/pruefstand-gate` → 404 → delete the old token |
 | Runner registration | runner config on the VM | only when moving hosts | persistent runner, registered once (D100); to move: `./config.sh remove`, then register on the new host |
-| `age` key pair | your laptop | on loss or suspicion | new key pair → update `AGE_RECIPIENT` in `runner.env` of `pruefstand` → run `backup.yml` once → keep the old private key until all bundles encrypted to it have aged out |
+| `age` key pair | your laptop | on loss or suspicion | new key pair → update the Actions variable `AGE_RECIPIENT` of `pruefstand-gate` (D1094) → run `backup.yml` once → keep the old private key until all bundles encrypted to it have aged out |
 
 ## 8. Baselines storage (no rollover)
 

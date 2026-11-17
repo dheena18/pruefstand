@@ -1,0 +1,62 @@
+name: backup
+
+# Weekly encrypted backup and the daily laptop-copy check (private repo, synced by
+# scripts/sync_executor.sh; T6.2b, ci-cd.md section 1.2; X2.6, Y5.5, D229). `backup` (Sundays 06:23 UTC,
+# after the night window) runs infra/gate-executor/host/backup.sh: one `git bundle --all` of this repo
+# plus a tar of the data root's baselines, the WHOLE stream encrypted with `age -r $AGE_RECIPIENT` (the
+# owner's public key, an Actions variable; the private key lives only on the owner's laptop), written
+# as *.partial then renamed, 8 kept. `backup-check` (daily 06:53 UTC, no lock, no GPU) reads the
+# laptop receipt and writes laptop_backup_age_days into the heartbeat (> 8 -> executor-health.yml opens
+# backup-stale).
+on:
+  schedule:
+    - cron: "23 6 * * 0"
+    - cron: "53 6 * * *"
+  workflow_dispatch:
+    inputs:
+      job:
+        description: "backup | backup-check"
+        required: true
+        default: backup
+        type: choice
+        options: [backup, backup-check]
+
+permissions: {}
+
+concurrency:
+  group: ${{ github.workflow }}
+  cancel-in-progress: false
+
+jobs:
+  backup:
+    name: backup
+    if: github.event.schedule == '23 6 * * 0' || (github.event_name == 'workflow_dispatch' && inputs.job == 'backup')
+    runs-on: [self-hosted, linux, a40]
+    timeout-minutes: 60
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          fetch-depth: 0  # the bundle carries every branch (incl. baselines, executor-state)
+      - name: Encrypted bundle into the data root
+        env:
+          AGE_RECIPIENT: ${{ vars.AGE_RECIPIENT }}
+        run: infra/gate-executor/host/backup.sh --repo . --keep 8
+
+  backup-check:
+    name: backup-check
+    if: github.event.schedule == '53 6 * * *' || (github.event_name == 'workflow_dispatch' && inputs.job == 'backup-check')
+    runs-on: [self-hosted, linux, a40]
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Laptop receipt -> heartbeat laptop_backup_age_days
+        env:
+          DASHBOARD_DATA_PAT: ${{ secrets.DASHBOARD_DATA_PAT }}
+        run: gate-orchestrator backup-check --summary "$GITHUB_STEP_SUMMARY"
