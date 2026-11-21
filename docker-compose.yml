@@ -50,7 +50,7 @@ services:
   llm:
     <<: *service-defaults
     # CPU llama.cpp server, OpenAI-compatible /v1. T1.13 pins the exact server-<version> tag (decisions.md).
-    image: ghcr.io/ggml-org/llama.cpp:server@sha256:c7d58273d753d33a352e5c41ab300c5ae040a16fa4b202231bb606478065c124
+    image: ghcr.io/ggml-org/llama.cpp:server@sha256:ae28f5c2046de51dfd00c9116a36fe44b5e8703ef730d0aea69082781eecb1f7
     profiles: [live]
     # --parallel 1: greedy outputs must not depend on batch composition (AI-36); --jinja: the chat template
     # honours enable_thinking=false for Qwen3 (W1.2). The model file comes from scripts/models/fetch.py (T1.4).
